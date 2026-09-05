@@ -88,7 +88,7 @@ impl TaiKhoan {
 
     // 3. Quyền sở hữu độc quyền: Tiêu thụ và hủy đối tượng (Take ownership & Drop)
     fn dong_tai_khoan(self) {
-        println!("Tài khoản {} đã chính thức bị đóng vĩnh viễn!", self.chu_the);
+        println!("Tài khoản của {} đã chính thức bị đóng vĩnh viễn!", self.ten);
         // Khi hàm này kết thúc, self đi ra khỏi scope và bị giải phóng!
     }
 }

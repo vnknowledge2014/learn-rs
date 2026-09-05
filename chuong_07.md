@@ -61,7 +61,7 @@ Rust bảo vệ bạn bằng một lời răn đe bất biến: **ĐÃ CÓ NGƯ�
 Dưới góc nhìn ô nhớ, một tham chiếu `&s` thực chất là gì?
 - Nó là một **Con trỏ (Pointer)** có kích thước cố định bằng 8 bytes (trên hệ điều hành 64-bit).
 - Con trỏ này nằm trên Stack và lưu trữ **địa chỉ số nhà** của biến gốc mà nó đang trỏ tới.
-- Điểm khác biệt sống còn với ngôn ngữ C/C++: Con trỏ trong Rust luôn được trình biên dịch đảm bảo **chắc chắn 100% là đang trỏ vào một ô nhớ còn sống và hợp lệ**, tuyệt đối không bao giờ có chuyện trỏ vào khoảng không hư vô (Null Pointer hay Dangling Pointer)!
+- Điểm khác biệt sống còn với ngôn ngữ C/C++: trong **Rust an toàn (Safe Rust)**, mọi tham chiếu `&T` / `&mut T` đều được trình biên dịch đảm bảo **chắc chắn 100% là đang trỏ vào một ô nhớ còn sống và hợp lệ**, tuyệt đối không bao giờ có chuyện trỏ vào khoảng không hư vô (Null Pointer hay Dangling Pointer)! (Rust vẫn có *con trỏ thô* `*const T` / `*mut T` có thể null hoặc lơ lửng, nhưng chúng chỉ được phép giải tham chiếu bên trong khối `unsafe` — chủ đề của Chương 39.)
 
 ```
       STACK (Biến tham chiếu)                  STACK (Biến gốc)
@@ -103,7 +103,7 @@ println!("{}", r3);
 
 Khi bạn muốn trích xuất một từ trong một câu văn dài mà không muốn cấp phát thêm bộ nhớ Heap mới để sao chép từ đó, Rust cung cấp kiểu **Lát cắt chuỗi (`&str`)**:
 - Lát cắt thực chất là một tham chiếu trỏ vào một đoạn liên tiếp của chuỗi ban đầu.
-- Nó chỉ chiếm đúng **16 bytes trên Stack** (gồm 8 bytes con trỏ trỏ tới ký tự bắt đầu, và 8 bytes lưu độ dài số ký tự được cắt).
+- Nó chỉ chiếm đúng **16 bytes trên Stack** (gồm 8 bytes con trỏ trỏ tới byte bắt đầu, và 8 bytes lưu **độ dài tính bằng byte** của lát cắt — *không phải* số chữ cái, xem cảnh báo UTF-8 ở cuối mục này).
 
 ### 5. Toán tử Giải tham chiếu (Dereference Operator - `*`)
 

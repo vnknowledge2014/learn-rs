@@ -1,206 +1,380 @@
-# Chương 14: Hàm ẩn danh: Các chế độ bắt giữ giá trị Fn, FnMut, FnOnce (Closures & Capturing Traits: Fn, FnMut, FnOnce)
+# Chương 14: Ghép hàm, Curry hóa và Áp dụng từng phần (Function Composition, Currying & Partial Application)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong Chương 13, chúng ta đã tiếp cận tư duy đường ống (pipeline) của lập trình hàm (functional programming) và thấy được sự thanh thoát khi loại bỏ các biến tạm thay đổi liên tục. Bạn đã thấy những biểu thức ngắn gọn như `|hang| tinh_thanh_tien(hang)` xuất hiện bên trong các phương thức `.map()` hay `.filter()`. Đó chính là **Hàm ẩn danh (Closures)** — một trong những vũ khí lợi hại bậc nhất của Rust.
+Ở Chương 13, bạn đã học được rằng lập trình hàm nhìn chương trình như một **chuỗi biến đổi dữ liệu** thay vì một chuỗi mệnh lệnh xáo trộn bộ nhớ. Nhưng chúng ta mới chỉ nói tới cái *kết quả* — những đường ống `.filter().map().sum()` đẹp mắt — mà chưa trả lời câu hỏi nền tảng nhất:
 
-Trong các ngôn ngữ có bộ gom rác (Garbage Collector) như JavaScript hay Python, bạn có thể tạo một hàm ẩn danh ở bất kỳ đâu và thoải mái dùng chung biến số mà không cần bận tâm biến đó được lưu trữ ở đâu trên thanh RAM hay sống được bao lâu. Nhưng trong Rust, với các nguyên tắc sắt đá về quyền sở hữu (ownership), vay mượn (borrow), và thời gian sống (lifetime), một câu hỏi hóc búa được đặt ra:
-- *Khi một hàm ẩn danh sử dụng các biến ở môi trường xung quanh, nó đang mượn đọc, mượn sửa, hay đoạt đứt quyền sở hữu của biến đó?*
-- *Làm sao trình biên dịch đảm bảo hàm ẩn danh không vô tình dùng một biến đã bị giải phóng khỏi bộ nhớ?*
+> **Vì sao các hàm lại ghép nối được với nhau? Và ghép bằng cách nào?**
 
-Rust giải quyết bài toán này một cách tuyệt mỹ thông qua bộ ba Trait bắt giữ môi trường: **`Fn`**, **`FnMut`**, và **`FnOnce`**. Đây là chìa khóa then chốt giúp bạn viết mã nguồn linh hoạt nhưng vẫn an toàn tuyệt đối ở tốc độ phần cứng cao nhất.
+Đây không phải câu hỏi phụ. Trong cộng đồng lập trình hàm quốc tế, người ta xem toàn bộ trường phái này đứng trên đúng **hai trụ cột**:
+1. **Minh bạch tham chiếu (Referential Transparency)** — đã học ở Chương 13.
+2. **Phép ghép hàm (Composition)** — chính là nội dung của chương này.
+
+Nếu thiếu trụ cột thứ hai, bạn chỉ đang "dùng cú pháp của lập trình hàm" chứ chưa thực sự **tư duy** theo lập trình hàm. Bạn sẽ viết được `.map()` nhưng không tự xây được công cụ mới; bạn sẽ dùng được closure nhưng không biết cách biến một hàm 3 tham số thành một "nhà máy" sinh ra vô số hàm chuyên dụng.
+
+Chương này cũng mở khóa một kỹ thuật cực kỳ thực dụng mà các hệ thống Rust lớn dùng hằng ngày: **tiêm phụ thuộc (Dependency Injection) bằng áp dụng từng phần**, giúp bạn viết mã kiểm thử được mà không cần bất kỳ thư viện giả lập (mocking framework) nào.
 
 Mục tiêu học tập của chương này:
-- Nắm vững cú pháp khai báo **Closure (`|tham_so| { than_ham }`)** và khả năng tự động suy luận kiểu dữ liệu của `rustc`.
-- Thấu hiểu cơ chế **Đóng gói môi trường (Environment Capturing)**: Bản chất Closure trong Rust là một struct vô danh tự động sinh ra trên bộ nhớ ngăn xếp (stack) hoặc vùng nhớ tự do (heap).
-- Phân biệt rạch ròi 3 cấp độ bắt giữ môi trường:
-  - **`Fn`**: Bắt giữ bằng tham chiếu đọc bất biến (`&T`).
-  - **`FnMut`**: Bắt giữ bằng tham chiếu sửa đổi khả biến (`&mut T`).
-  - **`FnOnce`**: Đoạt quyền sở hữu giá trị (`T`), tiêu thụ môi trường và chỉ gọi được đúng một lần duy nhất.
-- Làm chủ từ khóa **`move`** để cưỡng chế chuyển quyền sở hữu vào trong closure.
-- Biết cách truyền closure vào hàm thông qua Ràng buộc Trait (Trait Bounds) hoặc con trỏ thông minh (smart pointer) `Box<dyn Fn()>`.
+- Đọc được **chữ ký hàm** như đọc một hợp đồng: `A -> B` nghĩa là gì, và vì sao hai hợp đồng `A -> B` và `B -> C` lại "khớp nối" được thành `A -> C`.
+- Tự tay xây dựng hàm **`ghep` (compose)** và kiểm chứng **luật kết hợp** của phép ghép hàm.
+- Nắm vững **Curry hóa (Currying)**: biến hàm nhiều tham số thành chuỗi hàm một tham số.
+- Làm chủ **Áp dụng từng phần (Partial Application)** và ứng dụng trực tiếp của nó: nhà máy sinh hàm và tiêm phụ thuộc.
+- Hiểu **Lối viết không nêu tham số (Point-free style)**, biết khi nào nên dùng và khi nào nó làm mã khó đọc hơn.
+- Bổ sung vào kho vũ khí 3 **bộ kết hợp nền tảng (combinators)**: `identity`, `flip`, `const`.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để xóa tan sự khó hiểu về ba cái tên `Fn`, `FnMut`, và `FnOnce`, hãy tưởng tượng bạn là một giám đốc bận rộn và bạn thuê **3 người trợ lý bỏ túi** với 3 tấm thẻ quyền hạn khác nhau:
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│             HÌNH TƯỢNG ĐỜI SỐNG: BA NGƯỜI TRỢ LÝ BỎ TÚI (Fn, FnMut, FnOnce)      │
-├─────────────────────────┬───────────────────────────────┬────────────────────────┤
-│    TRỢ LÝ 1: THẺ VÀNG   │      TRỢ LÝ 2: THẺ XANH       │   TRỢ LÝ 3: THẺ ĐỎ     │
-│          (Fn)           │           (FnMut)             │       (FnOnce)         │
-│                         │                               │                        │
-│ - Chỉ được ngắm nhìn đồ │ - Cầm bút chì ghi chép thêm   │ - Đóng gói toàn bộ đồ  │
-│   vật trong văn phòng   │   vào cuốn sổ tay công tác    │   đạc trên bàn vào hộp │
-│ - Không xê dịch, không  │ - Làm thay đổi dữ liệu trong  │ - Đem gửi xe tải đi    │
-│   sửa chữa bất cứ thứ gì│   sổ sau mỗi lần gọi          │ - Bàn làm việc sạch trơn│
-│ - Có thể gọi ngắm đi    │ - Có thể gọi ghi chép thêm    │ - Chỉ làm được ĐÚNG    │
-│   ngắm lại 1.000 lần!   │   vô số lần liên tục!         │   1 LẦN DUY NHẤT!      │
-└─────────────────────────┴───────────────────────────────┴────────────────────────┘
+│        HÌNH TƯỢNG ĐỜI SỐNG: ỐNG NƯỚC LẮP REN VÀ MÁY PHA CÀ PHÊ CÀI SẴN           │
+├────────────────────────────────────────┬─────────────────────────────────────────┤
+│      GHÉP HÀM = LẮP REN ỐNG NƯỚC       │   CURRY HÓA = MÁY PHA CÀ PHÊ CÀI SẴN    │
+│                                        │                                         │
+│  Ống A→B          Ống B→C              │  Máy pha đầy đủ 3 núm vặn:              │
+│  ┌────────┐      ┌────────┐            │  pha(loại_hạt, độ_đường, cỡ_ly)         │
+│  │ Nước   │      │ Nước   │            │                                         │
+│  │ giếng  │─┐  ┌─│ đã lọc │─┐          │  Quán quen của bạn CÀI SẴN 2 núm:       │
+│  │  → lọc │ │  │ │  → đun │ │          │  ┌────────────────────────────────┐     │
+│  └────────┘ │  │ └────────┘ │          │  │ loại_hạt = "Robusta"  [KHÓA]   │     │
+│    ren cái ─┘  └─ ren đực   │          │  │ độ_đường = "ít"       [KHÓA]   │     │
+│         ▼ VẶN KHỚP ▼        ▼          │  │ cỡ_ly    = ??? (còn trống)     │     │
+│  ┌──────────────────────────────┐      │  └────────────────────────────────┘     │
+│  │  Ống ghép A→C: giếng → sôi   │      │  Giờ bạn chỉ cần hô "LY LỚN!"           │
+│  └──────────────────────────────┘      │  → Ra đúng ly cà phê quen thuộc.        │
+│                                        │                                         │
+│  Điều kiện DUY NHẤT để vặn được:       │  "Cài sẵn một phần các núm vặn"         │
+│  đầu RA của ống 1 phải cùng cỡ ren     │  chính là ÁP DỤNG TỪNG PHẦN             │
+│  với đầu VÀO của ống 2  (B khớp B).    │  (Partial Application)                  │
+└────────────────────────────────────────┴─────────────────────────────────────────┘
 ```
 
-### 1. Trợ lý Thẻ Vàng (Giao ước `Fn` - Chỉ đọc)
-- Người trợ lý này bước vào phòng làm việc của bạn. Họ chỉ dùng mắt để quan sát bức tranh phong cảnh treo tường và đọc bảng số liệu dự án dán trên bảng thông báo (`&T`).
-- Họ không chạm tay vào hiện vật, không xóa sửa bất cứ chữ nào.
-- Vì đồ đạc trong phòng vẫn nguyên vẹn 100%, bạn có thể bấm chuông gọi người trợ lý này bước vào đọc báo cáo bao nhiêu lần tùy thích mà không sợ hỏng phòng.
+### 1. Ống nước lắp ren (Phép ghép hàm)
 
-### 2. Trợ lý Thẻ Xanh (Giao ước `FnMut` - Đọc và Sửa đổi)
-- Người trợ lý này được cấp thêm một cây bút chì và chiếc thước kẻ (`&mut T`). Họ bước vào phòng để ghi thêm số đếm khách hàng vào cuốn sổ tay tích lũy đặt trên bàn làm việc của bạn.
-- Mỗi lần người trợ lý này được gọi (`invoke`), con số trong cuốn sổ tay lại tăng thêm một nấc. Trạng thái căn phòng bị thay đổi!
-- Tuy vậy, cuốn sổ tay vẫn còn nằm nguyên trên bàn của bạn. Bạn vẫn có thể gọi người trợ lý này nhiều lần tiếp theo để ghi chép bổ sung.
+Trong nhà bạn có hai đoạn ống lọc nước rời:
+- Ống thứ nhất: đầu vào là **nước giếng**, đầu ra là **nước đã lọc cặn**.
+- Ống thứ hai: đầu vào là **nước đã lọc cặn**, đầu ra là **nước sôi tiệt trùng**.
 
-### 3. Trợ lý Thẻ Đỏ (Giao ước `FnOnce` - Tiêu thụ và Đoạt quyền)
-- Người trợ lý này mang theo băng keo và thùng carton niêm phong. Khi bạn gọi, họ thu gom chiếc chìa khóa két sắt quý giá trên bàn, bỏ vào thùng và chuyển phát nhanh sang chi nhánh nước ngoài (`move / T`).
-- Sau khi hành động đó diễn ra, chiếc chìa khóa trên bàn làm việc của bạn đã biến mất hoàn toàn!
-- Do vật phẩm đã bị "tiêu thụ" (consumed), bạn **không thể yêu cầu người trợ lý làm lại hành động đó lần thứ hai**. Lệnh này chỉ thực hiện được duy nhất một lần trong đời (`FnOnce`).
+Bạn có thể vặn hai ống này vào nhau để tạo thành **một ống duy nhất**: đầu vào nước giếng, đầu ra nước sôi. Điều kỳ diệu là sau khi vặn xong, người dùng ống mới **không cần biết** bên trong có mấy đoạn — với họ đó chỉ là "một cái ống".
+
+Điều kiện duy nhất để vặn được: **cỡ ren phải khớp**. Nếu ống thứ hai đòi đầu vào là *khí gas* trong khi ống thứ nhất nhả ra *nước*, hai ống không thể lắp vào nhau. Trong lập trình, "cỡ ren" chính là **kiểu dữ liệu**, và người kiểm tra ren chính là **trình biên dịch `rustc`**.
+
+### 2. Máy pha cà phê cài sẵn công thức (Curry hóa & Áp dụng từng phần)
+
+Chiếc máy pha cà phê ở quán có 3 núm vặn: *loại hạt*, *độ đường*, *cỡ ly*. Mỗi lần pha, nhân viên phải vặn cả 3 núm.
+
+Nhưng bạn là khách quen, ngày nào cũng uống "Robusta, ít đường". Chủ quán bèn làm một việc rất thông minh: **vặn sẵn 2 núm rồi khóa lại**, dán nhãn "Máy của anh Nam". Từ đó, bạn chỉ cần nói cỡ ly.
+
+Chiếc "máy đã khóa 2 núm" đó chính là một **hàm mới** được sinh ra từ hàm gốc bằng cách cố định trước một phần tham số. Đây là **Áp dụng từng phần** — kỹ thuật nền tảng để "tiêm phụ thuộc" trong lập trình hàm.
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Cú pháp Closure và Khả năng Tự suy luận kiểu (Type Inference)
+### 1. Đọc chữ ký hàm như đọc một hợp đồng
 
-Hàm thông thường (`fn`) trong Rust luôn bắt buộc bạn phải chú thích kiểu tường minh cho tất cả tham số và giá trị trả về. Ngược lại, Closure (`|...|`) được thiết kế cho các tác vụ cục bộ ngắn gọn nên trình biên dịch `rustc` có khả năng **tự suy luận kiểu dữ liệu cực kỳ mạnh mẽ**:
+Trước khi ghép, phải biết đọc. Trong ký hiệu của lập trình hàm, một hàm được viết là:
 
-```rust
-// 1. Hàm thông thường: Bắt buộc kiểu tường minh
-fn cong_mot_v1(x: i32) -> i32 { x + 1 }
-
-// 2. Closure đầy đủ chú thích kiểu
-let cong_mot_v2 = |x: i32| -> i32 { x + 1 };
-
-// 3. Closure rút gọn: rustc tự suy luận kiểu dựa trên ngữ cảnh gọi đầu tiên
-let cong_mot_v3 = |x| x + 1;
+```
+tinh_do_dai :: String -> usize
 ```
 
-*Lưu ý quan trọng*: Một closure chỉ có thể suy luận kiểu duy nhất một lần. Nếu dòng đầu tiên bạn gọi `cong_mot_v3(5)` (truyền số `i32`), thì closure đó vĩnh viễn khóa cứng với kiểu `i32`. Nếu dòng tiếp theo bạn gọi `cong_mot_v3(5.5)` (số thực `f64`), trình biên dịch sẽ báo lỗi bất đồng kiểu dữ liệu ngay lập tức!
-
-### 2. Bản chất bên dưới nắp ca-pô: Closure thực chất là một Struct vô danh!
-
-Khi bạn viết một closure bắt giữ các biến xung quanh, trình biên dịch Rust thực sự làm gì?
-Rust **không hề dùng con trỏ hàm chậm chạp hay bộ nhớ động dư thừa**. Thay vào đó, `rustc` tự động tạo ra một `struct` ẩn giấu với tên gọi nội bộ duy nhất (ví dụ: `Closure$1234`), trong đó các trường (fields) chính là các biến được bắt giữ:
+Đọc là: *"hàm `tinh_do_dai` nhận một `String` và trả về một `usize`"*. Trong Rust ta viết:
 
 ```rust
-let ten = String::from("Rust");
-let in_ten = || println!("{}", ten);
+fn tinh_do_dai(s: String) -> usize { s.len() }
 ```
 
-Bên dưới tầng mã máy, Rust chuyển đoạn mã trên thành cấu trúc tương đương:
+Chữ ký hàm là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
+
+| Chữ ký | Hàm này có thể làm được gì? |
+|---|---|
+| `fn f<T>(x: T) -> T` | **Chỉ có đúng một cách cài đặt**: trả về chính `x`! Vì `T` là kiểu tùy ý, hàm không biết gì về nó nên không thể tự tạo ra một giá trị `T` mới. Đây chính là hàm `identity`. |
+| `fn f<T>(x: T) -> usize` | Không thể phụ thuộc vào *nội dung* của `x` — chỉ có thể trả về một hằng số. |
+| `fn f(x: &str) -> String` | Có thể cắt, nối, viết hoa... vô số khả năng, vì `&str` và `String` là kiểu cụ thể. |
+| `fn f(x: i32) -> Result<u32, LoiAm>` | Có thể **thất bại**. Chữ ký đã tự thú nhận điều đó. |
+
+> **Kỹ năng cần rèn**: khi nhìn một hàm lạ trong tài liệu Rust, hãy đọc chữ ký trước, đoán xem nó làm gì, rồi mới đọc phần mô tả. Đây là cách nhanh nhất để làm chủ thư viện chuẩn.
+
+### 2. Phép ghép hàm (Function Composition)
+
+Cho hai hàm:
+- `f: A -> B`
+- `g: B -> C`
+
+Ta luôn tạo được hàm thứ ba `g ∘ f : A -> C` (đọc là "g sau f"), định nghĩa bằng `(g ∘ f)(x) = g(f(x))`.
+
+Rust không có sẵn toán tử `∘`, nhưng ta tự viết được trong đúng 3 dòng:
+
 ```rust
-// [Mã do rustc tự sinh ngầm bên dưới]
-struct KhungMoiTruong<'a> {
-    ten: &'a String, // Trường dữ liệu mượn đọc
+pub fn ghep<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) -> C {
+    move |x| g(f(x))
+}
+```
+
+Hãy đọc kỹ chữ ký này — nó chính là định nghĩa toán học viết bằng cú pháp Rust:
+- Nhận vào một hàm `A -> B` và một hàm `B -> C`.
+- Trả về một hàm `A -> C`.
+- Từ khóa `move` là **bắt buộc**: closure trả về phải *sở hữu* `f` và `g`, nếu không chúng sẽ chết ngay khi hàm `ghep` kết thúc.
+
+**Ba tính chất phải nhớ về phép ghép:**
+
+1. **Luật kết hợp (Associativity)**: `h ∘ (g ∘ f) = (h ∘ g) ∘ f`.
+   Nghĩa là bạn ghép ống theo thứ tự nào cũng cho kết quả y hệt — miễn là **thứ tự các ống trên đường ống không đổi**. Nhờ luật này, ta viết `ghep(ghep(f, g), h)` hay `ghep(f, ghep(g, h))` tùy thích.
+2. **Phần tử đơn vị (Identity)**: hàm `identity(x) = x` đóng vai trò "đoạn ống thẳng không làm gì". Ghép nó vào đầu hay cuối đều không đổi kết quả: `f ∘ id = id ∘ f = f`.
+3. **Phép ghép KHÔNG giao hoán**: `g ∘ f` khác `f ∘ g`. "Rửa rau rồi thái" khác hẳn "thái rau rồi rửa"!
+
+> Hai tính chất 1 và 2 nghe có vẻ hiển nhiên, nhưng chúng chính là định nghĩa của một cấu trúc toán học tên là **Phạm trù (Category)** — nền móng của toàn bộ lý thuyết ta sẽ gặp lại ở Chương 18 và Chương 19. Hãy nhớ tên hai luật này.
+
+### 3. Bạn đã dùng phép ghép hàng ngày mà không biết
+
+Nhìn lại đường ống quen thuộc:
+
+```rust
+let ket_qua: Vec<String> = danh_sach
+    .iter()
+    .map(chuan_hoa)      // &str -> String
+    .map(them_tien_to)   // String -> String
+    .collect();
+```
+
+Hai lần `.map()` liên tiếp **chính là một phép ghép hàm**. Và trình biên dịch biết điều đó: nó gộp hai lần `map` thành một vòng lặp duy nhất chạy qua dữ liệu **đúng một lần**, không tạo mảng trung gian. Nói cách khác:
+
+```
+danh_sach.map(f).map(g)   ≡   danh_sach.map(ghep(f, g))
+```
+
+Đẳng thức này có tên chính thức: **luật ghép của Functor (Functor composition law)** — chúng ta sẽ chứng minh nó ở Chương 19.
+
+### 4. Curry hóa (Currying)
+
+**Curry hóa** là kỹ thuật biến một hàm nhận `n` tham số thành một chuỗi `n` hàm, mỗi hàm nhận đúng **1** tham số:
+
+```
+Hàm gốc      : cong(a, b) -> i64          (nhận 2 tham số cùng lúc)
+Hàm curry hóa: cong(a) -> (b -> i64)      (nhận 1 tham số, trả về MỘT HÀM MỚI)
+```
+
+Trong Rust:
+
+```rust
+// Dạng thông thường
+fn cong(a: i64, b: i64) -> i64 { a + b }
+
+// Dạng đã curry hóa
+fn cong_curry(a: i64) -> impl Fn(i64) -> i64 {
+    move |b| a + b
 }
 
-impl<'a> Fn<()> for KhungMoiTruong<'a> {
-    extern "rust-call" fn call(&self, _args: ()) {
-        println!("{}", *self.ten);
+let cong_them_10 = cong_curry(10); // Chưa tính gì cả! Ta vừa tạo ra một HÀM MỚI.
+assert_eq!(cong_them_10(5), 15);
+assert_eq!(cong_them_10(7), 17);   // Dùng lại được vô số lần
+```
+
+*Lưu ý về Rust*: các ngôn ngữ như Haskell hay PureScript **tự động curry hóa** mọi hàm. Rust thì không — bạn phải viết tay như trên. Đó là một đánh đổi có chủ đích: Rust ưu tiên hiệu năng dự đoán được và chữ ký hàm rõ ràng hơn là sự tiện lợi cú pháp.
+
+### 5. Áp dụng từng phần (Partial Application) — Vũ khí thực chiến
+
+**Áp dụng từng phần** là *hệ quả trực tiếp* của curry hóa: cung cấp trước một phần tham số, giữ lại phần còn lại cho sau.
+
+Đây chính là chỗ lý thuyết biến thành lợi ích cực kỳ cụ thể. Xét bài toán quen thuộc: hàm gửi email cần biết địa chỉ máy chủ SMTP.
+
+```rust
+// ❌ Cách làm quen thuộc: hàm tự đi tìm phụ thuộc của mình
+fn gui_email(nguoi_nhan: &str, noi_dung: &str) -> Result<(), String> {
+    let may_chu = doc_cau_hinh_tu_bien_moi_truong(); // Phụ thuộc ẩn, không thấy trong chữ ký!
+    // ... Muốn kiểm thử hàm này thì phải dựng cả biến môi trường.
+}
+
+// ✅ Cách của lập trình hàm: nhận phụ thuộc làm tham số, rồi khóa nó lại
+fn tao_ham_gui_email(may_chu: String) -> impl Fn(&str, &str) -> Result<(), String> {
+    move |nguoi_nhan, noi_dung| {
+        // ... dùng biến may_chu đã bị khóa vào closure
+        Ok(())
     }
 }
-```
-Nhờ cơ chế biến closure thành struct này, Rust đạt được hiệu năng **Trừu tượng hóa không chi phí (Zero-Cost Abstraction)**: Closure được cấp phát trực tiếp trên Stack, không tốn một byte rác nào trên Heap, và có thể được mở rộng nội tuyến (inline) thẳng vào mã máy CPU!
 
-### 3. Phân cấp Kế thừa giữa 3 Trait: `FnOnce` là Gốc rễ
-
-Trong thư viện chuẩn của Rust, 3 trait này có mối quan hệ phụ thuộc chặt chẽ (Sub-traits):
-
-```
-       FnOnce (Đoạt quyền sở hữu, gọi ít nhất 1 lần)
-          ▲
-          │  (Mọi FnMut đều tự động là FnOnce)
-        FnMut (Sửa đổi trạng thái, gọi nhiều lần)
-          ▲
-          │  (Mọi Fn đều tự động là FnMut)
-          Fn (Chỉ đọc, gọi nhiều lần vô hạn)
+// Lúc khởi động chương trình (tầng vỏ):
+let gui = tao_ham_gui_email("smtp.congty.vn".to_string());
+// Lúc kiểm thử: chỉ cần khóa vào một máy chủ giả!
+let gui_test = tao_ham_gui_email("localhost:1025".to_string());
 ```
 
-- **`FnOnce`**: Trait rộng nhất. Mọi closure trong Rust đều tự động triển khai `FnOnce`, bởi vì nếu bạn có thể gọi một hàm nhiều lần, bạn chắc chắn có thể gọi nó ít nhất một lần. Phương thức của nó nhận `self` theo giá trị:
-  ```rust
-  pub trait FnOnce<Args> {
-      type Output;
-      extern "rust-call" fn call_once(self, args: Args) -> Self::Output;
-  }
-  ```
-- **`FnMut`**: Đòi hỏi quyền mượn sửa `&mut self`. Cho phép closure thay đổi các trường dữ liệu nội bộ được đóng gói:
-  ```rust
-  pub trait FnMut<Args>: FnOnce<Args> {
-      extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output;
-  }
-  ```
-- **`Fn`**: Đòi hỏi quyền mượn đọc bất biến `&self`. Tuyệt đối an toàn để chia sẻ giữa nhiều luồng hoặc gọi liên tục:
-  ```rust
-  pub trait Fn<Args>: FnMut<Args> {
-      extern "rust-call" fn call(&self, args: Args) -> Self::Output;
-  }
-  ```
+> **Đây chính là Tiêm phụ thuộc (Dependency Injection)** — không cần framework, không cần container, không cần thư viện giả lập. Nó chỉ là *áp dụng từng phần*. Cuốn *Domain Modeling Made Functional* dành hẳn một mục cho kỹ thuật này, và chúng ta sẽ dùng lại nó ở Chương 20.
 
-### 4. Từ khóa `move` và Cưỡng chế Quyền sở hữu
+### 6. Lối viết không nêu tham số (Point-free style)
 
-Mặc định, Rust sẽ tự động chọn chế độ bắt giữ "nhẹ nhàng nhất có thể" (ưu tiên mượn đọc `&T`, rồi đến mượn sửa `&mut T`, cuối cùng mới đến lấy giá trị `T`).
-Tuy nhiên, khi bạn muốn chuyển một closure sang một luồng tiến trình độc lập (thread) hoặc lưu trữ nó trong một cấu trúc dữ liệu sống lâu hơn hàm hiện tại, bạn phải thêm từ khóa **`move`**:
+So sánh hai cách viết cùng một ý:
 
 ```rust
-let loi_chao = String::from("Xin chào");
-// move ép buộc closure đoạt quyền sở hữu loi_chao vào struct nội bộ của nó
-let closure_chuyen_quyen = move || {
-    println!("{}", loi_chao);
-};
-// loi_chao không còn sử dụng được ở đây nữa vì đã bị move!
+// Có nêu tham số (pointful): ta phải đặt tên cho biến trung gian `s`
+let do_dai: Vec<usize> = ten.iter().map(|s| s.len()).collect();
+
+// Không nêu tham số (point-free): chỉ nói TÊN HÀM cần áp dụng
+let do_dai: Vec<usize> = ten.iter().map(String::len).collect();
 ```
+
+Ưu điểm: ngắn hơn, và quan trọng hơn là **loại bỏ cơ hội gõ nhầm tên biến**. Công cụ `clippy` thậm chí có một lint tên `clippy::redundant_closure` chuyên nhắc bạn rút gọn `|x| f(x)` thành `f`.
+
+Nhược điểm: khi lạm dụng, mã trở nên khó đọc kinh khủng (cộng đồng gọi vui là *pointless style* — "lối viết vô nghĩa"). **Quy tắc thực chiến**: dùng point-free khi nó làm mã *rõ hơn*, đừng dùng chỉ vì nó ngắn hơn.
+
+### 7. Ba bộ kết hợp nền tảng (Combinators)
+
+Trong từ điển thuật ngữ lập trình hàm, **bộ kết hợp (combinator)** là một hàm thuần túy không phụ thuộc vào bất kỳ biến nào bên ngoài. Ba bộ kết hợp cơ bản nhất:
+
+| Tên | Chữ ký | Ý nghĩa | Có sẵn trong Rust? |
+|---|---|---|---|
+| **`identity`** | `T -> T` | Trả về chính đầu vào. Là "phần tử đơn vị" của phép ghép. | ✅ `std::convert::identity` |
+| **`const`** | `A -> (B -> A)` | Nuốt tham số thứ hai, luôn trả về giá trị đã khóa sẵn. | ❌ tự viết |
+| **`flip`** | `(A, B) -> C` thành `(B, A) -> C` | Đảo thứ tự hai tham số. | ❌ tự viết |
+
+`identity` nghe vô dụng nhưng cực kỳ hữu ích trong thực tế: `du_lieu.into_iter().flat_map(identity)` sẽ lọc bỏ toàn bộ `None` khỏi một danh sách `Option`.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Chương trình hoàn chỉnh dưới đây xây dựng một **Hệ thống Quản lý Tác vụ Sự kiện (Event-Driven Task Dispatcher)**, minh họa chi tiết cả ba chế độ bắt giữ `Fn`, `FnMut`, và `FnOnce`, cũng như kỹ thuật truyền closure vào hàm thông qua Generics và con trỏ thông minh (smart pointer) `Box<dyn Fn()>`.
+Chương trình dưới đây xây dựng một **Hệ thống Chuẩn hóa & Kiểm duyệt Bình luận (Comment Sanitization Engine)**. Toàn bộ logic được lắp ghép từ những hàm nhỏ xíu, mỗi hàm làm đúng một việc — đúng triết lý "ống nước lắp ren".
 
 ```rust
 // Tệp: src/main.rs
-// Chương trình thực chiến làm chủ Closures: Fn, FnMut, và FnOnce trong Rust
+// Chương trình thực chiến: Ghép hàm, Curry hóa và Áp dụng từng phần trong Rust
+
+use std::collections::HashMap;
 
 // ============================================================================
-// CÁC HÀM NHẬN CLOSURE LÀM THAM SỐ VỚI RÀNG BUỘC TRAIT (TRAIT BOUNDS)
+// PHẦN 1: BỘ CÔNG CỤ GHÉP HÀM (COMPOSITION TOOLKIT)
 // ============================================================================
 
-/// Hàm 1: Nhận closure thực hiện giao ước Fn (Chỉ đọc môi trường)
-/// Có thể gọi closure này nhiều lần liên tiếp một cách an toàn tuyệt đối
-pub fn thuc_thi_doc<F>(ten_tac_vu: &str, hanh_dong: F)
-where
-    F: Fn(),
-{
-    println!("--- BẮT ĐẦU TÁC VỤ CHỈ ĐỌC: [{}] ---", ten_tac_vu);
-    hanh_dong(); // Gọi lần 1
-    hanh_dong(); // Gọi lần 2
-    println!("--- HOÀN THÀNH TÁC VỤ CHỈ ĐỌC ---");
+/// Ghép 2 hàm: (A -> B) và (B -> C) thành (A -> C).
+/// Đây chính là phép toán `g ∘ f` viết bằng cú pháp Rust.
+pub fn ghep<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) -> C {
+    move |x| g(f(x))
 }
 
-/// Hàm 2: Nhận closure thực hiện giao ước FnMut (Sửa đổi môi trường)
-/// Bắt buộc tham số hanh_dong phải mang từ khóa mut vì trạng thái nội bộ thay đổi
-pub fn thuc_thi_sua_doi<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
-where
-    F: FnMut(usize),
-{
-    println!("\n--- BẮT ĐẦU TÁC VỤ SỬA ĐỔI TRẠNG THÁI: [{}] ---", ten_tac_vu);
-    for buoc in 1..=so_vong_lap {
-        hanh_dong(buoc); // Gọi nhiều lần, mỗi lần biến nội bộ bên ngoài sẽ biến đổi
+/// Ghép 3 hàm liên tiếp cho tiện dùng.
+pub fn ghep3<A, B, C, D>(
+    f: impl Fn(A) -> B,
+    g: impl Fn(B) -> C,
+    h: impl Fn(C) -> D,
+) -> impl Fn(A) -> D {
+    move |x| h(g(f(x)))
+}
+
+/// Bộ kết hợp `identity`: phần tử đơn vị của phép ghép hàm.
+pub fn dong_nhat<T>(x: T) -> T {
+    x
+}
+
+/// Bộ kết hợp `const`: nuốt tham số, luôn trả về giá trị đã khóa sẵn.
+pub fn hang_so<A: Clone, B>(gia_tri: A) -> impl Fn(B) -> A {
+    move |_bo_qua| gia_tri.clone()
+}
+
+/// Bộ kết hợp `flip`: đảo thứ tự hai tham số của một hàm.
+pub fn dao_tham_so<A, B, C>(f: impl Fn(A, B) -> C) -> impl Fn(B, A) -> C {
+    move |b, a| f(a, b)
+}
+
+// ============================================================================
+// PHẦN 2: CÁC HÀM NHỎ THUẦN TÚY — TỪNG "ĐOẠN ỐNG" RIÊNG LẺ
+// ============================================================================
+
+/// Cắt bỏ khoảng trắng thừa ở hai đầu.
+pub fn cat_khoang_trang(s: &str) -> String {
+    s.trim().to_string()
+}
+
+/// Thu gọn nhiều khoảng trắng liên tiếp thành một khoảng trắng duy nhất.
+pub fn thu_gon_khoang_trang(s: String) -> String {
+    s.split_whitespace().collect::<Vec<&str>>().join(" ")
+}
+
+/// Viết hoa chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
+pub fn viet_hoa_chu_dau(s: String) -> String {
+    let mut cac_ky_tu = s.chars();
+    match cac_ky_tu.next() {
+        None => String::new(),
+        Some(dau) => dau.to_uppercase().collect::<String>() + cac_ky_tu.as_str(),
     }
-    println!("--- HOÀN THÀNH TÁC VỤ SỬA ĐỔI TRẠNG THÁI ---");
 }
 
-/// Hàm 3: Nhận closure thực hiện giao ước FnOnce (Tiêu thụ tài nguyên)
-/// Closure này tự hủy ngay sau khi được gọi vì quyền sở hữu đã bị đoạt lấy
-pub fn thuc_thi_tieu_thu<F>(ten_tac_vu: &str, hanh_dong: F)
+// ============================================================================
+// PHẦN 3: CURRY HÓA & ÁP DỤNG TỪNG PHẦN — CÁC "NHÀ MÁY" SINH HÀM
+// ============================================================================
+
+/// Dạng thông thường: nhận đủ 2 tham số cùng lúc.
+pub fn cat_bot(gioi_han: usize, s: &str) -> String {
+    if s.chars().count() <= gioi_han {
+        s.to_string()
+    } else {
+        let phan_dau: String = s.chars().take(gioi_han).collect();
+        format!("{}…", phan_dau)
+    }
+}
+
+/// Dạng đã curry hóa: khóa trước `gioi_han`, sinh ra một hàm chuyên dụng.
+pub fn cat_bot_curry(gioi_han: usize) -> impl Fn(&str) -> String {
+    move |s: &str| cat_bot(gioi_han, s)
+}
+
+/// Nhà máy sinh bộ lọc từ cấm: khóa sẵn danh sách từ, trả về một vị từ (predicate).
+pub fn tao_bo_loc_tu_cam(tu_cam: Vec<String>) -> impl Fn(&str) -> bool {
+    move |van_ban: &str| {
+        let chu_thuong = van_ban.to_lowercase();
+        !tu_cam.iter().any(|tu| chu_thuong.contains(tu.as_str()))
+    }
+}
+
+/// Nhà máy sinh bộ che từ cấm bằng dấu sao.
+pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
+    move |van_ban: String| {
+        tu_cam.iter().fold(van_ban, |ket_qua, tu| {
+            let che = "*".repeat(tu.chars().count());
+            ket_qua.replace(tu.as_str(), che.as_str())
+        })
+    }
+}
+
+// ============================================================================
+// PHẦN 4: TIÊM PHỤ THUỘC BẰNG ÁP DỤNG TỪNG PHẦN
+// ============================================================================
+
+/// Bản ghi nhật ký kiểm duyệt (thay cho việc ghi ra tệp thật).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BanGhiNhatKy {
+    pub ma_binh_luan: u32,
+    pub ket_luan: String,
+}
+
+/// "Phụ thuộc" ở đây là hàm ghi nhật ký. Ta KHÓA nó vào trong bộ kiểm duyệt
+/// bằng áp dụng từng phần, thay vì để bộ kiểm duyệt tự đi tìm.
+/// `ghi_nhat_ky` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
+pub fn tao_bo_kiem_duyet<L>(
+    kiem_tra_sach: impl Fn(&str) -> bool,
+    lam_sach: impl Fn(String) -> String,
+    mut ghi_nhat_ky: L,
+) -> impl FnMut(u32, &str) -> String
 where
-    F: FnOnce() -> String,
+    L: FnMut(BanGhiNhatKy),
 {
-    println!("\n--- BẮT ĐẦU TÁC VỤ TIÊU THỤ MỘT LẦN: [{}] ---", ten_tac_vu);
-    let ket_qua = hanh_dong(); // Gọi DUY NHẤT một lần tại đây
-    // hanh_dong(); // Nếu bỏ dấu chú thích dòng này, rustc sẽ chặn ngay lập tức!
-    println!("Kết quả nhận được sau khi tiêu thụ: {}", ket_qua);
-    println!("--- TÀI NGUYÊN ĐÃ ĐƯỢC GIẢI PHÓNG TOÀN DIỆN ---");
+    move |ma: u32, tho: &str| {
+        let chuan = cat_khoang_trang(tho);
+        // Kiểm tra TRƯỚC khi che — nếu che trước thì từ cấm biến mất
+        // và bộ kiểm tra sẽ luôn báo "hợp lệ". Thứ tự các bước rất quan trọng!
+        let ket_luan = if kiem_tra_sach(&chuan) {
+            "HỢP LỆ"
+        } else {
+            "CHỨA TỪ CẤM — ĐÃ CHE"
+        };
+        let da_lam_sach = lam_sach(chuan);
+        ghi_nhat_ky(BanGhiNhatKy {
+            ma_binh_luan: ma,
+            ket_luan: ket_luan.to_string(),
+        });
+        da_lam_sach
+    }
 }
 
 // ============================================================================
@@ -209,76 +383,176 @@ where
 
 fn main() {
     println!("============================================================");
-    println!("      HỆ THỐNG ĐIỀU PHỐI TÁC VỤ SỰ KIỆN: FN, FNMUT, FNONCE  ");
+    println!("   GHÉP HÀM, CURRY HÓA & ÁP DỤNG TỪNG PHẦN TRONG RUST      ");
     println!("============================================================");
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 1: Giao ước Fn - Bắt giữ tham chiếu chỉ đọc (&T)
-    // ------------------------------------------------------------------------
-    let thong_tin_he_thong = String::from("Máy chủ Cổng thanh toán (Gateway-01)");
-    
-    // Closure in_thong_tin chỉ mượn đọc thong_tin_he_thong
-    let in_thong_tin = || {
-        println!("[GIÁM SÁT] Trạng thái hiện tại của: {}", thong_tin_he_thong);
-    };
+    // ------------------------------------------------------------------
+    // 1. LẮP REN ỐNG NƯỚC: ghép 3 hàm nhỏ thành 1 đường ống chuẩn hóa
+    // ------------------------------------------------------------------
+    let chuan_hoa = ghep3(cat_khoang_trang, thu_gon_khoang_trang, viet_hoa_chu_dau);
 
-    // Truyền closure vào hàm thuc_thi_doc (chứng minh gọi được nhiều lần)
-    thuc_thi_doc("Kiểm tra sức khỏe định kỳ", in_thong_tin);
-    // Biến thong_tin_he_thong vẫn hoàn toàn nguyên vẹn ở phạm vi ngoài:
-    println!("Biến gốc bên ngoài vẫn truy cập bình thường: {}", thong_tin_he_thong);
+    let tho = "   xin    chào     các bạn  ";
+    println!("\n1. GHÉP HÀM (Composition)");
+    println!("   Đầu vào thô  : {:?}", tho);
+    println!("   Sau đường ống: {:?}", chuan_hoa(tho));
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 2: Giao ước FnMut - Bắt giữ tham chiếu sửa đổi (&mut T)
-    // ------------------------------------------------------------------------
-    let mut tong_luong_truy_cap: usize = 0;
-    let mut nhat_ky_hoat_dong: Vec<String> = Vec::new();
+    // ------------------------------------------------------------------
+    // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
+    // ------------------------------------------------------------------
+    let cach_a = ghep(ghep(cat_khoang_trang, thu_gon_khoang_trang), viet_hoa_chu_dau);
+    let cach_b = ghep(cat_khoang_trang, ghep(thu_gon_khoang_trang, viet_hoa_chu_dau));
+    assert_eq!(cach_a(tho), cach_b(tho));
+    println!("\n2. LUẬT KẾT HỢP");
+    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", cach_a(tho));
 
-    // Closure tang_truy_cap mượn sửa đổi biến tong_luong_truy_cap và nhat_ky_hoat_dong
-    let ghi_nhan_luot_xem = |lan_lap: usize| {
-        tong_luong_truy_cap += 10;
-        nhat_ky_hoat_dong.push(format!("Đợt ghi nhận #{}: +10 yêu cầu", lan_lap));
-        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", tong_luong_truy_cap);
-    };
+    // ------------------------------------------------------------------
+    // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
+    // ------------------------------------------------------------------
+    let voi_don_vi = ghep(dong_nhat::<&str>, &chuan_hoa);
+    assert_eq!(voi_don_vi(tho), chuan_hoa(tho));
+    println!("\n3. LUẬT ĐƠN VỊ");
+    println!("   identity ∘ f == f  ✓ (kết quả không đổi)");
 
-    // Thực thi 3 vòng lặp tích lũy
-    thuc_thi_sua_doi("Bộ đếm lưu lượng mạng", ghi_nhan_luot_xem, 3);
-    println!("Kết quả sau khi kết thúc FnMut:");
-    println!("- Tổng lưu lượng cuối cùng: {}", tong_luong_truy_cap);
-    println!("- Chi tiết nhật ký: {:?}", nhat_ky_hoat_dong);
+    // ------------------------------------------------------------------
+    // 4. CURRY HÓA: một hàm gốc sinh ra nhiều hàm chuyên dụng
+    // ------------------------------------------------------------------
+    println!("\n4. CURRY HÓA & ÁP DỤNG TỪNG PHẦN");
+    let cat_ngan = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
+    let cat_dai = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 3: Giao ước FnOnce - Đoạt quyền sở hữu (Move)
-    // ------------------------------------------------------------------------
-    // Giả lập một khóa bảo mật phiên đăng nhập chỉ dùng một lần (One-Time Token)
-    let khoa_bao_mat = String::from("SEC-TOKEN-XYZ-9999-SECRET");
+    let cau = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
+    println!("   Bản gốc   : {}", cau);
+    println!("   Cắt còn 10: {}", cat_ngan(cau));
+    println!("   Cắt còn 25: {}", cat_dai(cau));
 
-    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của khoa_bao_mat
-    let huy_phien_lam_viec = move || {
-        // Biến khoa_bao_mat bị di chuyển vào đây và tiêu thụ
-        let thong_bao = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", khoa_bao_mat);
-        thong_bao // Trả về chuỗi thông báo, khoa_bao_mat bị Drop tại đây
-    };
+    // ------------------------------------------------------------------
+    // 5. NHÀ MÁY SINH HÀM: cùng một danh sách từ cấm, hai công cụ khác nhau
+    // ------------------------------------------------------------------
+    let tu_cam: Vec<String> = vec!["lừa đảo".to_string(), "spam".to_string()];
+    let la_sach = tao_bo_loc_tu_cam(tu_cam.clone());
+    let che_di = tao_bo_che_tu_cam(tu_cam.clone());
 
-    thuc_thi_tieu_thu("Tiêu hủy phiên bảo mật", huy_phien_lam_viec);
-    // println!("{}", khoa_bao_mat); // LỖI: value borrowed here after move!
+    println!("\n5. NHÀ MÁY SINH HÀM (Closure Factory)");
+    let binh_luan_ban = "Đây là tin spam lừa đảo";
+    println!("   {:?} có sạch không? {}", binh_luan_ban, la_sach(binh_luan_ban));
+    println!("   Sau khi che: {}", che_di(binh_luan_ban.to_string()));
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 4: Lưu trữ danh sách Closure trong Vector với Box<dyn Fn()>
-    // ------------------------------------------------------------------------
-    println!("\n--- QUẢN LÝ DANH SÁCH BỘ ĐIỀU HƯỚNG VỚI BOX<DYN FN()> ---");
-    let mut danh_sach_su_kien: Vec<Box<dyn Fn()>> = Vec::new();
+    // ------------------------------------------------------------------
+    // 6. TIÊM PHỤ THUỘC: khóa "bộ ghi nhật ký" vào bộ kiểm duyệt
+    // ------------------------------------------------------------------
+    println!("\n6. TIÊM PHỤ THUỘC BẰNG ÁP DỤNG TỪNG PHẦN");
+    let mut so_nhat_ky: Vec<BanGhiNhatKy> = Vec::new();
 
-    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện A: Khởi động quạt làm mát")));
-    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện B: Đèn LED chuyển màu xanh")));
+    {
+        // Phụ thuộc thật: ghi vào sổ nhật ký trong bộ nhớ.
+        let ghi_vao_so = |ban_ghi: BanGhiNhatKy| so_nhat_ky.push(ban_ghi);
+        let mut kiem_duyet = tao_bo_kiem_duyet(&la_sach, &che_di, ghi_vao_so);
 
-    for (stt, su_kien) in danh_sach_su_kien.iter().enumerate() {
-        print!("Kích hoạt sự kiện #{}: ", stt + 1);
-        su_kien(); // Gọi từng closure qua con trỏ Trait Object
+        println!("   #101 -> {}", kiem_duyet(101, "  Bài viết rất hay!  "));
+        println!("   #102 -> {}", kiem_duyet(102, "  Cẩn thận kẻo bị lừa đảo  "));
     }
 
+    println!("   Nhật ký thu được ({} dòng):", so_nhat_ky.len());
+    for ban_ghi in &so_nhat_ky {
+        println!("     - Bình luận #{}: {}", ban_ghi.ma_binh_luan, ban_ghi.ket_luan);
+    }
+
+    // ------------------------------------------------------------------
+    // 7. BỘ KẾT HỢP `flip` VÀ `const`
+    // ------------------------------------------------------------------
+    println!("\n7. BỘ KẾT HỢP flip & const");
+    let chia = |a: f64, b: f64| a / b;
+    let chia_nguoc = dao_tham_so(chia);
+    println!("   chia(10, 2)       = {}", chia(10.0, 2.0));
+    println!("   flip(chia)(10, 2) = {}", chia_nguoc(10.0, 2.0)); // = chia(2, 10)
+
+    let luon_tra_ve_0 = hang_so::<i32, &str>(0);
+    println!("   const(0)(\"bất kỳ\") = {}", luon_tra_ve_0("bất kỳ"));
+
+    // ------------------------------------------------------------------
+    // 8. `identity` GIÚP LỌC BỎ None — ỨNG DỤNG THỰC TẾ
+    // ------------------------------------------------------------------
+    let du_lieu_tho: Vec<Option<i32>> = vec![Some(1), None, Some(3), None, Some(5)];
+    let sach: Vec<i32> = du_lieu_tho.into_iter().flat_map(dong_nhat).collect();
+    println!("\n8. identity LỌC BỎ None: {:?}", sach);
+    assert_eq!(sach, vec![1, 3, 5]);
+
+    // ------------------------------------------------------------------
+    // 9. GHÉP HÀM QUY MÔ LỚN: xử lý cả một danh sách bình luận
+    // ------------------------------------------------------------------
+    println!("\n9. ÁP DỤNG ĐƯỜNG ỐNG LÊN TOÀN BỘ DỮ LIỆU");
+    let binh_luan_tho = vec![
+        "   rust rất   thú vị  ",
+        " cẩn thận trò spam này ",
+        "   giáo trình  hay quá   ",
+    ];
+
+    let thong_ke: HashMap<bool, usize> = binh_luan_tho
+        .iter()
+        .map(|b| chuan_hoa(b))
+        .fold(HashMap::new(), |mut bang, cau| {
+            *bang.entry(la_sach(&cau)).or_insert(0) += 1;
+            bang
+        });
+
+    for b in binh_luan_tho.iter() {
+        println!("   {:?} -> {:?}", b, chuan_hoa(b));
+    }
+    println!("   Thống kê [sạch = true/false]: {:?}", thong_ke);
+
     println!("\n============================================================");
-    println!("     HOÀN TẤT XÁC THỰC CƠ CHẾ BẮT GIỮ MÔI TRƯỜNG CỦA RUST   ");
+    println!("      HOÀN TẤT: TỪ HÀM NHỎ LẮP THÀNH HỆ THỐNG LỚN          ");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ: BIẾN "LUẬT" THÀNH BÀI TEST CHẠY ĐƯỢC
+// ============================================================================
+
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    #[test]
+    fn luat_ket_hop_cua_phep_ghep() {
+        let mau = ["  a   b ", "Xin   chào", "   rust  "];
+        for s in mau {
+            let a = ghep(ghep(cat_khoang_trang, thu_gon_khoang_trang), viet_hoa_chu_dau);
+            let b = ghep(cat_khoang_trang, ghep(thu_gon_khoang_trang, viet_hoa_chu_dau));
+            assert_eq!(a(s), b(s), "Luật kết hợp bị vi phạm với đầu vào {:?}", s);
+        }
+    }
+
+    #[test]
+    fn luat_don_vi_cua_phep_ghep() {
+        let f = ghep(cat_khoang_trang, viet_hoa_chu_dau);
+        let trai = ghep(dong_nhat::<&str>, &f);
+        for s in ["  xin chào ", "rust"] {
+            assert_eq!(trai(s), f(s));
+        }
+    }
+
+    #[test]
+    fn curry_hoa_tuong_duong_ham_goc() {
+        let cat_15 = cat_bot_curry(15);
+        let cau = "Rust là ngôn ngữ tuyệt vời";
+        assert_eq!(cat_15(cau), cat_bot(15, cau));
+    }
+
+    #[test]
+    fn flip_dao_dung_thu_tu_tham_so() {
+        let tru = |a: i32, b: i32| a - b;
+        let tru_nguoc = dao_tham_so(tru);
+        assert_eq!(tru(10, 3), 7);
+        assert_eq!(tru_nguoc(10, 3), -7); // = tru(3, 10)
+    }
+
+    #[test]
+    fn nha_may_sinh_ham_hoat_dong_doc_lap() {
+        let loc = tao_bo_loc_tu_cam(vec!["spam".to_string()]);
+        assert!(loc("bài viết hay"));
+        assert!(!loc("đây là SPAM"));
+    }
 }
 ```
 
@@ -286,37 +560,28 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Khi làm việc với Closure trong Rust, người lập trình thường vấp phải các thông báo lỗi đặc trưng liên quan đến việc mượn quyền và quyền sở hữu (ownership):
-
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0525** | `expected a closure that implements the 'Fn' trait, but this closure only implements 'FnMut'` | Hàm của bạn đòi hỏi tham số dạng `F: Fn()` (chỉ đọc), nhưng bên trong thân closure bạn lại thay đổi một biến môi trường, khiến nó bị hạ cấp xuống thành `FnMut`. | Đổi ràng buộc của hàm nhận tham số thành `F: FnMut()`, hoặc tái cấu trúc logic bên trong closure để không thay đổi biến ngoài. |
-| **E0507** | `cannot move out of '...', a captured variable in an 'FnMut' closure` | Trong closure dạng `FnMut` (được gọi nhiều lần), bạn lại thực hiện hành động chuyển quyền sở hữu (move) một giá trị ra ngoài. Vì hàm chạy nhiều lần, lần chạy thứ hai biến đó đã mất! | Mượn tham chiếu `&` thay vì lấy quyền sở hữu, hoặc nhân bản giá trị bằng `.clone()` trước khi di chuyển. |
-| **E0382** | `use of moved value: '...'` | Bạn đã dùng từ khóa `move ||` khiến biến bị đoạt quyền sở hữu vào trong closure, sau đó bạn lại cố dùng tiếp biến đó ở phạm vi bên ngoài. | Không dùng từ khóa `move` nếu chỉ cần mượn đọc, hoặc gọi phương thức `.clone()` để tạo bản sao trước khi chuyển vào closure. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn gọi một closure có tính chất `FnMut` nhưng biến lưu closure đó không được đánh dấu bằng từ khóa `mut`. | Thêm từ khóa `mut` vào biến lưu closure: `let mut my_closure = ...;`. |
+| **E0373** | `closure may outlive the current function, but it borrows '...'` | Bạn trả về một closure từ hàm nhưng closure đó chỉ *mượn* các biến cục bộ. Khi hàm kết thúc, biến chết, closure trở thành con trỏ lơ lửng. | Thêm từ khóa `move` trước dấu `\|`. Đây là lỗi số 1 khi tự viết hàm `ghep`. |
+| **E0308** | `mismatched types: expected 'B', found 'X'` | "Cỡ ren không khớp": đầu ra của hàm thứ nhất không cùng kiểu với đầu vào của hàm thứ hai. | Kiểm tra lại chữ ký hai hàm. Chèn một hàm chuyển đổi (`.to_string()`, `.as_str()`, `From::from`) vào giữa để khớp ren. |
+| **E0507** | `cannot move out of '...', a captured variable in an 'Fn' closure` | Closure trả về từ nhà máy được đánh dấu `Fn` (gọi nhiều lần) nhưng bên trong bạn lại chuyển quyền sở hữu biến đã bắt giữ ra ngoài — lần gọi thứ hai sẽ không còn gì. | Dùng `.clone()` bên trong closure (như hàm `hang_so` ở trên), hoặc chỉ mượn tham chiếu `&`. |
+| **E0525** | `expected a closure that implements 'Fn' … only implements 'FnMut'` | Closure của bạn thay đổi trạng thái bên ngoài (ví dụ ghi vào sổ nhật ký) nên nó là `FnMut`, không phải `Fn`. | Đổi ràng buộc thành `FnMut` và đánh dấu biến closure là `mut` — xem hàm `tao_bo_kiem_duyet` ở trên. |
+| **E0562** | `'impl Trait' is not allowed in this position` | Bạn viết `impl Fn(...)` ở vị trí trường của `struct` hoặc bí danh kiểu (`type`). | Dùng tham số generic `struct S<F: Fn()> { f: F }`, hoặc `Box<dyn Fn(...)>`. |
+| **E0282** | `type annotations needed` | Gọi hàm generic như `dong_nhat` hoặc `hang_so` mà trình biên dịch không suy ra được kiểu. | Chỉ định tường minh bằng cú pháp cá voi (turbofish): `dong_nhat::<&str>`, `hang_so::<i32, &str>(0)`. |
 
-### Phân tích lỗi thực tế `E0525`:
+### Phân tích lỗi thực tế `E0373` (quên `move` khi trả về closure):
 
 ```rust
-// Đoạn mã lỗi minh họa E0525:
-fn goi_hai_lan<F: Fn()>(f: F) {
-    f();
-    f();
-}
+// ❌ Đoạn mã lỗi minh họa (đã đóng chú thích để tệp vẫn biên dịch được):
+// fn tao_bo_nhan_sai(he_so: i32) -> impl Fn(i32) -> i32 {
+//     |x| x * he_so
+//     // LỖI E0373: closure may outlive the current function,
+//     //            but it borrows `he_so`, which is owned by the current function
+// }
 
-fn thu_nghiem_loi() {
-    let mut dem = 0;
-    // Closure này sửa biến dem nên nó là FnMut, không thỏa mãn Fn
-    let closure_loi = || { 
-        dem += 1; 
-    };
-    // goi_hai_lan(closure_loi); // LỖI E0525: closure chỉ cài đặt FnMut, không phải Fn!
-}
-
-// Cách sửa chữa:
-fn goi_hai_lan_sua<F: FnMut()>(mut f: F) {
-    f();
-    f();
+// ✅ Cách sửa: thêm `move` để closure ĐOẠT quyền sở hữu `he_so`
+fn tao_bo_nhan_dung(he_so: i32) -> impl Fn(i32) -> i32 {
+    move |x| x * he_so
 }
 ```
 
@@ -325,27 +590,111 @@ fn goi_hai_lan_sua<F: FnMut()>(mut f: F) {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Closure là Struct vô danh**: Trình biên dịch tự động tạo cấu trúc dữ liệu lưu trữ các biến được bắt giữ trên Stack, đem lại hiệu năng tối đa (Zero-Cost Abstraction).
-2. **Ba cấp độ bắt giữ**:
-   - `Fn`: Bắt giữ tham chiếu đọc `&T`, gọi nhiều lần, không làm biến đổi môi trường.
-   - `FnMut`: Bắt giữ tham chiếu sửa đổi `&mut T`, gọi nhiều lần, thay đổi trạng thái nội bộ.
-   - `FnOnce`: Đoạt quyền sở hữu `T`, tiêu thụ tài nguyên và chỉ gọi được đúng một lần duy nhất.
-3. **Từ khóa `move`**: Ép buộc closure đoạt quyền sở hữu toàn bộ các biến môi trường được sử dụng, rất quan trọng khi truyền closure sang luồng mới hoặc trả về từ hàm.
-4. **Linh hoạt đa hình**: Có thể truyền closure tĩnh thông qua Generics `<F: Fn()>` để tối ưu hóa mã máy, hoặc truyền động thông qua Trait Object `Box<dyn Fn()>`.
+1. **Ghép hàm là trụ cột thứ hai của FP**: hai hàm `A -> B` và `B -> C` luôn ghép được thành `A -> C`. Điều kiện duy nhất là "cỡ ren" (kiểu dữ liệu) phải khớp — và `rustc` là người kiểm tra ren.
+2. **Phép ghép tuân hai luật**: *kết hợp* (`h∘(g∘f) = (h∘g)∘f`) và *đơn vị* (`f∘id = id∘f = f`). Hai luật này chính là định nghĩa của một **Phạm trù** — nền móng cho Chương 18 và 19.
+3. **Curry hóa biến hàm nhiều tham số thành nhà máy sinh hàm**. Rust không tự động curry hóa như Haskell; bạn viết tay bằng closure trả về closure kèm `move`.
+4. **Áp dụng từng phần chính là Tiêm phụ thuộc**: khóa sẵn phụ thuộc (máy chủ, bộ ghi nhật ký, cấu hình) vào closure, giữ lại tham số nghiệp vụ. Nhờ vậy kiểm thử không cần bất kỳ framework giả lập nào.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Phán đoán loại Trait)**:  
-   Xem xét đoạn mã sau và phán đoán xem closure `xu_ly` sẽ tự động thực hiện các Trait nào (`Fn`, `FnMut`, hay `FnOnce`):
-   ```rust
-   let danh_sach = vec![1, 2, 3];
-   let xu_ly = || {
-       println!("Độ dài danh sách: {}", danh_sach.len());
-   };
-   ```
-   Hãy viết mã nguồn kiểm chứng bằng cách truyền `xu_ly` vào hàm đòi hỏi `Fn`.
 
-2. **Bài tập 2 (Thiết kế Bộ lọc Tùy biến với Fn)**:  
-   Viết một hàm `loc_du_lieu<F>(danh_sach: &[i32], dieu_kien: F) -> Vec<i32>` trong đó `dieu_kien` là một closure có chữ ký `Fn(&i32) -> bool`. Dùng hàm này để lọc ra các số chẵn lớn hơn 10 từ một mảng số nguyên bất kỳ.
+**Bài tập 1 (Tự xây `ghep4`)**
+Viết hàm `ghep4` ghép bốn hàm liên tiếp `A -> B -> C -> D -> E`. Sau đó dùng nó để xây dựng đường ống xử lý mã sản phẩm: cắt khoảng trắng → viết hoa toàn bộ → thêm tiền tố `"SP-"` → cắt còn tối đa 12 ký tự.
 
-3. **Bài tập 3 (Sử dụng FnMut làm Bộ tích lũy)**:  
-   Viết một closure `tich_luy` sử dụng tính chất `FnMut` để cộng dồn điểm số của học sinh qua từng môn học. Mỗi lần gọi `tich_luy(diem)`, điểm số mới được cộng thêm và in ra màn hình điểm trung bình tạm thời sau mỗi môn thi.
+<details>
+<summary><b>Gợi ý</b></summary>
+
+Bạn có hai lựa chọn: viết thẳng `move |x| k(h(g(f(x))))`, hoặc tận dụng những gì đã có — `ghep4(f,g,h,k)` chính là `ghep(ghep3(f,g,h), k)`. Nhớ `move`, và nhớ rằng mỗi tham số `impl Fn(...)` là một kiểu generic ẩn danh riêng biệt.
+</details>
+
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+pub fn ghep4<A, B, C, D, E>(
+    f: impl Fn(A) -> B,
+    g: impl Fn(B) -> C,
+    h: impl Fn(C) -> D,
+    k: impl Fn(D) -> E,
+) -> impl Fn(A) -> E {
+    move |x| k(h(g(f(x))))
+}
+
+fn main() {
+    let duong_ong = ghep4(
+        |s: &str| s.trim().to_string(),
+        |s: String| s.to_uppercase(),
+        |s: String| format!("SP-{}", s),
+        |s: String| s.chars().take(12).collect::<String>(),
+    );
+    assert_eq!(duong_ong("  ban phim co  "), "SP-BAN PHIM ");
+    println!("{:?}", duong_ong("  ban phim co  "));
+}
+```
+</details>
+
+**Bài tập 2 (Nhà máy sinh bộ kiểm tra)**
+Viết hàm `tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String>` trả về một hàm kiểm tra số có nằm trong khoảng `[min, max]` hay không. Nếu hợp lệ trả `Ok(so)`, nếu không trả `Err` kèm thông báo tiếng Việt rõ ràng. Dùng nó để tạo hai bộ kiểm tra: `kiem_tra_tuoi` (0–120) và `kiem_tra_diem` (0–10).
+
+<details>
+<summary><b>Gợi ý</b></summary>
+
+Đây là bài tập về *áp dụng từng phần*: `min` và `max` bị khóa vào closure bằng `move`, còn `so` là tham số để lại cho lúc gọi. Vì `i64` là kiểu `Copy` nên bạn không cần `.clone()`.
+</details>
+
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+pub fn tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String> {
+    move |so: i64| {
+        if (min..=max).contains(&so) {
+            Ok(so)
+        } else {
+            Err(format!("Giá trị {} nằm ngoài khoảng cho phép [{}, {}]", so, min, max))
+        }
+    }
+}
+
+fn main() {
+    let kiem_tra_tuoi = tao_kiem_tra_khoang(0, 120);
+    let kiem_tra_diem = tao_kiem_tra_khoang(0, 10);
+
+    assert_eq!(kiem_tra_tuoi(35), Ok(35));
+    assert!(kiem_tra_tuoi(500).is_err());
+    assert_eq!(kiem_tra_diem(9), Ok(9));
+    println!("{:?}", kiem_tra_diem(11));
+    // Err("Giá trị 11 nằm ngoài khoảng cho phép [0, 10]")
+}
+```
+</details>
+
+**Bài tập 3 (Tư duy thiết kế)**
+Trong Chương 13 bạn đã học rằng hàm thuần túy luôn cho cùng kết quả với cùng đầu vào. Hãy giải thích: *vì sao chỉ có hàm thuần túy mới ghép nối được một cách an toàn?* Nêu một ví dụ cụ thể trong đó việc ghép hai hàm **không** thuần túy dẫn đến kết quả sai lệch.
+
+<details>
+<summary><b>Gợi ý</b></summary>
+
+Hãy nghĩ tới hai hàm cùng đọc/ghi một biến toàn cục, hoặc một hàm đọc đồng hồ hệ thống. Khi đó `g(f(x))` chạy ở hai thời điểm khác nhau có thể cho kết quả khác nhau — chữ ký hàm không còn kể hết câu chuyện nữa.
+</details>
+
+<details>
+<summary><b>Lời giải tham khảo</b></summary>
+
+Phép ghép hàm dựa trên một giả định ngầm: **giá trị trả về của `f` là toàn bộ những gì `f` tạo ra**. Nếu `f` còn âm thầm sửa một biến toàn cục hay ghi tệp, thì `g(f(x))` mang theo một "kênh dữ liệu ẩn" mà chữ ký hàm không hề nói tới. Hệ quả:
+
+- Bạn không thể thay `f(x)` bằng giá trị nó trả về (mất tính minh bạch tham chiếu ở Chương 13), nên không thể suy luận về đường ống bằng đẳng thức.
+- Bạn không thể kiểm thử `ghep(f, g)` một cách độc lập, vì kết quả phụ thuộc trạng thái ngoài.
+- Bạn không thể chạy song song, vì hai luồng cùng đụng vào trạng thái ẩn đó.
+
+Ví dụ cụ thể:
+
+```rust
+static mut BO_DEM: i32 = 0;
+
+fn tang_va_lay(_: ()) -> i32 {
+    unsafe { BO_DEM += 1; BO_DEM }   // KHÔNG thuần túy
+}
+```
+
+Hàm `tang_va_lay` gọi lần 1 trả `1`, lần 2 trả `2`. Một đường ống gọi nó hai lần sẽ cho kết quả khác nhau mỗi lần chạy, và nếu chạy đa luồng còn phát sinh tranh chấp dữ liệu (data race). Đây chính là lý do Rust bắt buộc phải dùng `unsafe` mới đụng được vào `static mut` — ngôn ngữ đang chủ động cản bạn phá vỡ tính ghép nối.
+</details>

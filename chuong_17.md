@@ -1,210 +1,355 @@
-# Chương 17: Khái niệm Siêu lập trình: Khi code tự động viết code (Declarative Macros: macro_rules! & Syntax Matchers)
+# Chương 17: Hàm bậc cao & Mẫu thiết kế lập trình hàm trong Rust (Higher-Order Functions & Functional Design Patterns)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn bước vào **Chủ đề 4: Siêu lập trình (Meta Programming)** — cảnh giới đỉnh cao của nghệ thuật lập trình trong Rust! Cho đến lúc này, bạn đã quen thuộc với việc viết mã nguồn để ra lệnh cho máy tính xử lý các con số, chuỗi ký tự, cấu trúc dữ liệu và các giao ước trait. Tất cả những thao tác đó đều xoay quanh việc: **Code xử lý Dữ liệu (Code processes Data)**.
+Sau khi đã làm chủ Hàm ẩn danh (Closures) ở Chương 15 và Bộ lặp (Iterators) ở Chương 16, chúng ta đã thu thập đủ các mảnh ghép nền tảng của Lập trình hàm trong Rust. Giờ là lúc nâng tầm tư duy kiến trúc phần mềm bằng cách kết hợp chúng lại thành một bức tranh hoàn chỉnh thông qua **Hàm bậc cao (Higher-Order Functions - HOFs)** và các **Mẫu thiết kế hàm (Functional Design Patterns)**.
 
-Tuy nhiên, có bao giờ bạn tự hỏi:
-- *Làm sao macro `println!("Xin chào {}", ten)` có thể nhận số lượng tham số tùy ý (1 tham số, 3 tham số hay 10 tham số đều được), trong khi hàm thông thường `fn` trong Rust luôn bắt buộc số lượng tham số cố định?*
-- *Làm sao macro `vec![1, 2, 3]` có thể tự động tạo ra một `Vec` đã được nạp sẵn các giá trị ban đầu chỉ bằng một dòng lệnh ngắn ngủi?*
-- *Liệu chúng ta có thể viết ra những đoạn mã có khả năng... **tự động viết ra mã nguồn khác** để giải phóng lập trình viên khỏi hàng trăm dòng code lặp đi lặp lại nhàm chán (boilerplate code)?*
+Trong các ngôn ngữ lập trình truyền thống, hàm thường chỉ được xem như một "khối mã cố định" nhận dữ liệu (số nguyên, chuỗi ký tự) và trả về dữ liệu. Nhưng trong Rust và trường phái Lập trình hàm, **Hàm được coi là một công dân hạng nhất (First-Class Citizens)**:
+- Hàm có thể được truyền vào như một tham số của một hàm khác.
+- Hàm có thể được sinh ra và trả về từ một hàm khác.
+- Hàm có thể được đóng gói vào các cấu trúc dữ liệu hoặc con trỏ thông minh (smart pointer).
 
-Câu trả lời nằm ở **Siêu lập trình (Metaprogramming)** và vũ khí cốt lõi đầu tiên của nó: **Macro khai báo (`macro_rules!`)**. Trong Rust, macro không phải là công cụ tìm-và-thay-thế chuỗi thô sơ như tiền xử lý `#define` của C/C++ (vốn rất dễ gây lỗi tràn số và xung đột tên biến). Macro trong Rust là một phần chính thức của trình biên dịch `rustc`, hoạt động trực tiếp trên các thẻ bài cú pháp (syntax tokens) và cây cú pháp trừu tượng (AST), đảm bảo an toàn tuyệt đối về mặt kiểu dữ liệu và bộ nhớ.
+Khả năng này mở ra cánh cửa cho phong cách thiết kế **Bộ kết hợp (Combinators)** trên `Option` và `Result`. Thay vì phải viết các cấu trúc `match` hoặc `if let` lồng nhau 5-7 tầng (thường được gọi là "Kim tự tháp tử thần" - *Pyramid of Doom*), bạn có thể xâu chuỗi toàn bộ logic xử lý và kiểm tra lỗi thành một đường ống (pipeline) mạch lạc, phẳng phiu và an toàn tuyệt đối.
 
 Mục tiêu học tập của chương này:
-- Hiểu rõ bản chất **Siêu lập trình (Metaprogramming)**: Viết mã nguồn để sinh ra mã nguồn tại thời điểm biên dịch (Compile-time).
-- Phân biệt sự khác nhau cốt lõi giữa **Hàm (`fn`)** thực thi lúc chạy (Runtime) và **Macro (`!`)** mở rộng lúc biên dịch (Compile-time).
-- Nhận biết hai phân loại Macro lớn trong Rust: **Macro khai báo (`macro_rules!`)** và **Macro thủ tục (Procedural Macros)**.
-- Làm chủ cú pháp định nghĩa `macro_rules!` và các **Bộ khớp cú pháp (Syntax Matchers / Designators)**: `$expr`, `$ident`, `$ty`, `$stmt`, `$path`, `$block`, `$literal`.
-- Sử dụng các macro tích hợp sẵn hỗ trợ gỡ lỗi: `stringify!`, `file!`, `line!`.
-- Biết cách dùng công cụ `cargo expand` để soi tận mắt đoạn mã máy tính thực sự nhìn thấy sau khi macro bung ra.
+- Nắm vững khái niệm **Hàm bậc cao (Higher-Order Functions)**: Nhận hàm làm tham số hoặc trả về hàm mới.
+- Phân biệt sự khác nhau giữa **Con trỏ hàm thuần túy (`fn`)** và **Giao ước Closure (`Fn`/`FnMut`/`FnOnce`)**.
+- Làm chủ kỹ thuật trả về closure từ hàm thông qua **`impl Fn(...)`** (phân phối tĩnh - static dispatch) và con trỏ thông minh (smart pointer) **`Box<dyn Fn(...)>`** (phân phối động - dynamic dispatch).
+- Xóa bỏ "Kim tự tháp tử thần" (*Pyramid of Doom*) bằng các phương thức Combinator trên `Option` và `Result`: **`map`**, **`and_then`**, **`or_else`**, **`unwrap_or_else`**.
+- Xây dựng các mẫu thiết kế thực chiến: Mẫu đóng gói đo lường (Decorator/Wrapper Pattern), Mẫu xưởng chế tạo bộ kiểm tra (Factory Pattern), và Chuỗi biến đổi xác thực (Validation Pipeline).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng giải mã khái niệm Siêu lập trình qua hai hình ảnh vô cùng sinh động trong đời thực:
+Để thấu cảm vẻ đẹp của Hàm bậc cao và Bộ kết hợp dữ liệu, hãy cùng quan sát hai hình tượng sống động trong thực tế:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG ĐỜI SỐNG: NGƯỜI THỢ THỦ CÔNG VS MÁY IN KHUÔN ĐÚC         │
+│              HÌNH TƯỢNG ĐỜI SỐNG: HÀM BẬC CAO VÀ DÂY CHUYỀN DOMINO               │
 ├────────────────────────────────────────┬─────────────────────────────────────────┤
-│        HÀM THÔNG THƯỜNG (FN)           │          MACRO TRONG RUST (!)           │
-│     "Người thợ làm bánh thủ công"      │      "Chiếc máy dập khuôn tự động"      │
+│    XƯỞNG LẮP RÁP CÁNH TAY ROBOT        │        HIỆU ỨNG DOMINO TỰ PHỤC HỒI      │
+│       (Higher-Order Functions)         │         (Combinators: and_then)         │
 │                                        │                                         │
-│ - Ngồi trực tiếp tại quầy lúc nửa đêm  │ - Trước khi mở cửa tiệm (Compile-time): │
-│ - Khi có khách gọi món (Runtime):      │   Chiếc máy dập tự động dập sẵn 1.000   │
-│   Mới bắt đầu đập trứng, nhào bột,     │   vỏ bánh hoàn hảo y như đúc!           │
-│   nướng bánh thủ công từng chiếc một.  │ - Khi khách đến mua lúc nửa đêm:        │
-│ - Tốn công sức và thời gian lúc chạy!  │   Chỉ việc lấy trao tay ngay lập tức!   │
-│                                        │ - Tốc độ ánh sáng, không trễ 1 giây nào!│
+│ - Nhà máy không đóng đinh 1 chức năng! │ ┌───┐  ┌───┐  ┌───┐  ┌───┐              │
+│ - Đầu chuyền là khung gầm xe rỗng      │ │ 1 │─►│ 2 │─►│ 3 │─►│ 4 │ (Đích đến)   │
+│ - Quản đốc lắp "Cánh tay robot hàn"    │ └───┘  └───┘  └───┘  └───┘              │
+│   -> Nhà máy biến thành xưởng hàn!     │                                         │
+│ - Hôm sau đổi thành "Robot phun sơn"   │ * QUY TẮC DÂY CHUYỀN AN TOÀN:           │
+│   -> Nhà máy biến thành xưởng sơn!     │ - Nếu quân số 2 bị đổ hỏng (None/Err):   │
+│ - Hàm bậc cao chính là nhà máy:        │   Quân số 3 và 4 lập tức đứng yên!      │
+│   Hành vi thực sự do công cụ đưa vào!  │ - Toàn bộ chuỗi dừng lại êm đẹp,        │
+│                                        │   không làm đổ vỡ đồ đạc xung quanh!    │
 └────────────────────────────────────────┴─────────────────────────────────────────┘
 ```
 
-### 1. Thợ làm bánh thủ công vs Máy dập khuôn công nghiệp
-- **Hàm thông thường (`fn`)**: Giống như người thợ làm bánh thủ công ngồi trực trong tiệm bánh:
-  - Khi chương trình đang chạy trên máy chủ (`Runtime`), có yêu cầu gửi tới, CPU mới bắt đầu nhảy vào hàm, thực hiện tuần tự từng phép tính, tiêu tốn xung nhịp CPU và chiếm dụng ngăn xếp bộ nhớ (Stack).
-- **Macro (`macro_rules!`)**: Giống như chiếc máy dập khuôn cơ khí được lập trình sẵn trước giờ mở cửa:
-  - Tại thời điểm biên dịch (`Compile-time`), chiếc máy dập đọc bản vẽ thiết kế của bạn và **dập sẵn toàn bộ mã nguồn cần thiết ra văn bản**.
-  - Khi chương trình thực sự chạy, toàn bộ mã đó đã được biên dịch thành mã máy tối ưu hóa cao nhất. Không có chi phí gọi hàm, không có độ trễ lúc chạy!
+### 1. Nhà máy lắp ráp với các cánh tay robot tháo rời (Hàm bậc cao)
+- Hãy tưởng tượng một nhà máy chế tạo hiện đại:
+  - Thay vì xây dựng 10 nhà máy riêng biệt: một nhà máy chỉ chuyên hàn, một nhà máy chỉ chuyên bắt ốc, một nhà máy chỉ chuyên dán nhãn...
+  - Chủ nhà máy xây dựng một **Khung chuyền vạn năng** (Hàm bậc cao). Khung chuyền này có một ổ cắm tiêu chuẩn.
+  - Khi cần hàn khung xe, người kỹ sư gắn chiếc đầu "Robot hàn" vào ổ cắm.
+  - Khi cần sơn bóng, người kỹ sư tháo đầu hàn ra và gắn đầu "Robot phun sơn" vào.
+- Trong lập trình, hàm bậc cao chính là chiếc khung chuyền vạn năng đó! Nó không tự quyết định làm gì cụ thể với dữ liệu, mà nó để **bạn truyền hành vi (hàm/closure con) vào** tại thời điểm gọi.
 
-### 2. Trò chơi Điền từ vào chỗ trống (Mad Libs)
-Hãy nhớ lại trò chơi điền từ vào chỗ trống thời thơ ấu:
-- Bạn có một câu chuyện mẫu: *"Hôm nay, bạn `[TÊN]` đã đi đến `[ĐỊA_DANH]` để mua `[SỐ_LƯỢNG]` quả `[TRÁI_CÂY]`."*
-- Các ô vuông `[TÊN]`, `[ĐỊA_DANH]`, `[SỐ_LƯỢNG]` chính là các **Bộ khớp cú pháp (Matchers)** trong Macro của Rust!
-- Khi bạn điền từ vào:
-  - Điền: An, Chợ Bến Thành, 5, Xoài.
-  - Macro lập tức ráp nối thành một câu hoàn chỉnh: *"Hôm nay, bạn An đã đi đến Chợ Bến Thành để mua 5 quả Xoài."*
+### 2. Trò chơi Domino dây chuyền tự phục hồi (Bộ kết hợp Combinators)
+- Bạn xếp một dãy 10 quân cờ Domino nối tiếp nhau trên sàn:
+  - Quân thứ nhất ngã sẽ chạm vào quân thứ hai, quân thứ hai chạm vào quân thứ ba (`.and_then()`).
+  - Nếu ở bước thứ hai, quân cờ bị gãy hoặc mất tích (đại diện cho trạng thái `None` hoặc lỗi `Err`), dây chuyền domino tự động dừng lại một cách văn minh.
+  - Bạn không cần phải cử một người đứng canh ở từng quân cờ để hô: "Nếu quân 1 ngã thì chạy sang quân 2, nếu quân 2 ngã thì chạy sang quân 3" (đó là cách viết `match` lồng nhau nhức đầu). Toàn bộ chuỗi tự động điều phối dòng chảy một cách trơn tru!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Vòng đời Biên dịch: Macro diễn ra ở đâu trong `rustc`?
+### 1. Phân biệt Con trỏ hàm (`fn`) và Giao ước Closure (`Fn`/`FnMut`/`FnOnce`)
 
-Để hiểu tại sao Macro lại có sức mạnh phi thường, hãy nhìn vào quy trình làm việc của trình biên dịch `rustc`:
+Trong Rust, có sự khác biệt tinh tế giữa con trỏ hàm thuần túy và closure:
 
-```
-Mã nguồn thô (.rs)
-      │
-      ▼
-[1. Bộ phân tích từ vựng (Lexer)] ──► Biến văn bản thành dòng Thẻ bài (TokenStream)
-      │
-      ▼
-[2. Mở rộng Macro (Macro Expansion)] ◄─── MACRO HOẠT ĐỘNG TẠI ĐÂY!
-      │                                   (Bung code mới trước khi kiểm tra kiểu)
-      ▼
-[3. Cây cú pháp trừu tượng (AST)]
-      │
-      ▼
-[4. Kiểm tra kiểu & Vay mượn (Type & Borrow Checker)] ──► Kiểm tra quyền sở hữu (ownership)
-      │
-      ▼
-[5. Trình sinh mã LLVM] ──► Tệp thực thi nhị phân (.exe / ELF)
-```
-
-Vì Macro được mở rộng ở **Giai đoạn 2** (ngay sau khi tách từ vựng):
-1. Macro có thể sinh ra các định nghĩa hàm mới, struct mới, hoặc cài đặt trait mới mà các dòng mã phía sau có thể sử dụng bình thường.
-2. Macro không bị ràng buộc bởi kiểu dữ liệu tại thời điểm viết, cho phép bạn truyền vào tên biến, tên kiểu, hoặc cả một khối lệnh.
-3. Toàn bộ mã do macro sinh ra vẫn phải bước qua bước kiểm tra nghiêm ngặt của Bộ kiểm tra mượn (Borrow Checker) ở Giai đoạn 4, đảm bảo an toàn tuyệt đối, không thể gây lỗi tràn bộ nhớ đệm (buffer) hay rò rỉ ô nhớ!
-
-### 2. Cấu trúc Cú pháp của `macro_rules!`
-
-Một macro khai báo được định nghĩa bằng cú pháp so khớp khuôn mẫu (Pattern Matching) tương tự như lệnh `match`:
+1. **Con trỏ hàm (`fn`)**:
+   - Viết bằng chữ thường `fn(...) -> ...`.
+   - Là một địa chỉ ô nhớ trỏ trực tiếp đến đoạn mã máy của một hàm độc lập khai báo bằng `fn`.
+   - **Không thể bắt giữ môi trường xung quanh!** Kích thước của nó trên thanh RAM luôn bằng đúng kích thước của một con trỏ (8 bytes trên hệ điều hành 64-bit).
+2. **Giao ước Closure (`Fn`, `FnMut`, `FnOnce`)**:
+   - Viết hoa chữ cái đầu: `F: Fn(...) -> ...`.
+   - Cho phép bắt giữ các biến xung quanh vào một `struct` nội bộ tự sinh.
+   - Bất kỳ con trỏ hàm `fn` nào cũng tự động thỏa mãn giao ước `Fn`, `FnMut`, và `FnOnce` (vì nó không bắt giữ gì, coi như struct rỗng).
 
 ```rust
-macro_rules! ten_macro {
-    // Nhánh 1: So khớp với khuôn mẫu A
-    ( khuôn_mau_A ) => {
-        // Đoạn mã sinh ra tương ứng
-    };
-    // Nhánh 2: So khớp với khuôn mẫu B
-    ( khuôn_mau_B ) => {
-        // Đoạn mã sinh ra tương ứng
-    };
+fn nhan_doi(x: i32) -> i32 { x * 2 }
+
+// Hàm bậc cao nhận con trỏ hàm fn thuần túy
+fn ap_dung_fn(con_tro: fn(i32) -> i32, gia_tri: i32) -> i32 {
+    con_tro(gia_tri)
+}
+
+// Hàm bậc cao nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
+fn ap_dung_generic<F: Fn(i32) -> i32>(hanh_dong: F, gia_tri: i32) -> i32 {
+    hanh_dong(gia_tri)
 }
 ```
 
-### 3. Bảng tra cứu các Bộ khớp cú pháp (Syntax Designators)
+*Quy tắc thực chiến*: Luôn ưu tiên viết hàm nhận `F: Fn(...)` (hoặc `FnMut`, `FnOnce`) vì nó linh hoạt gấp bội: Người dùng có thể truyền vào một hàm thông thường hoặc một closure đều được!
 
-Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Designator)**:
+### 2. Kỹ thuật trả về Closure từ Hàm
 
-| Bộ chỉ định | Tên tiếng Anh | Ý nghĩa trong cú pháp Rust | Ví dụ thực tế |
+Đôi khi bạn muốn viết một hàm đóng vai trò như một "nhà máy" sản xuất ra các closure theo yêu cầu (Factory Pattern):
+
+#### Cách 1: Phân phối tĩnh với `impl Fn(...)` (Static Dispatch - Không tốn chi phí)
+Nếu hàm của bạn chỉ trả về một loại closure duy nhất:
+```rust
+// Trả về một closure cụ thể, rustc tự xác định kiểu và kích thước trên Stack
+fn tao_bo_nhan(he_so: i32) -> impl Fn(i32) -> i32 {
+    move |x| x * he_so // Bắt buộc dùng move để đóng gói he_so vào closure
+}
+```
+
+#### Cách 2: Phân phối động với Con trỏ thông minh `Box<dyn Fn(...)>` (Dynamic Dispatch)
+Khi hàm của bạn có thể trả về **hai closure khác nhau** tùy theo điều kiện `if/else`:
+Vì mỗi closure trong Rust có một kiểu ẩn danh duy nhất không trùng lặp, bạn không thể dùng `impl Fn` trong hai nhánh `if/else` khác nhau. Lúc này, ta phải đóng gói chúng vào con trỏ thông minh (smart pointer) `Box` trên vùng nhớ Heap:
+```rust
+fn tao_bo_chuyen_doi(la_viet_hoa: bool) -> Box<dyn Fn(&str) -> String> {
+    if la_viet_hoa {
+        Box::new(|s| s.to_uppercase())
+    } else {
+        Box::new(|s| s.to_lowercase())
+    }
+}
+```
+
+### 3. Phá vỡ "Kim tự tháp tử thần" với Bộ kết hợp (Combinators)
+
+Hãy quan sát đoạn mã xử lý dữ liệu người dùng khi viết bằng `match` lồng nhau truyền thống:
+
+```rust
+// ❌ CÁCH VIẾT CỒNG KỀNH (Pyramid of Doom):
+fn phan_tich_tuoi_truyen_thong(chuoi: Option<&str>) -> Option<u32> {
+    match chuoi {
+        Some(s) => {
+            let cat_khoang_trang = s.trim();
+            if !cat_khoang_trang.is_empty() {
+                match cat_khoang_trang.parse::<u32>() {
+                    Ok(tuoi) => {
+                        if tuoi >= 18 { Some(tuoi) } else { None }
+                    },
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+```
+Khối mã trên lồng nhau 4 cấp, đọc rất mỏi mắt và rất dễ bỏ sót nhánh rẽ.
+
+Giờ hãy chiêm ngưỡng vẻ đẹp của **Bộ kết hợp Combinators** trong lập trình hàm:
+
+```rust
+// ✅ CÁCH VIẾT PHẲNG PHIU THEO PHONG CÁCH ĐƯỜNG ỐNG (FP Combinators):
+fn phan_tich_tuoi_chuyen_nghiep(chuoi: Option<&str>) -> Option<u32> {
+    chuoi
+        .map(|s| s.trim())                      // 1. Cắt tỉa khoảng trắng
+        .filter(|s| !s.is_empty())              // 2. Lọc chuỗi không rỗng
+        .and_then(|s| s.parse::<u32>().ok())   // 3. Phân tích chuỗi thành số (bỏ qua lỗi)
+        .filter(|&tuoi| tuoi >= 18)             // 4. Chỉ nhận người từ 18 tuổi trở lên
+}
+```
+Mã nguồn giờ đây chảy thẳng từ trên xuống dưới như một dòng suối tự nhiên. Mọi trường hợp `None` hay lỗi ngầm đều được Rust tự động xử lý và lan truyền ngắn mạch (short-circuiting)!
+
+---
+
+### 4. Đặt đúng tên cho `and_then`: đó là phép `bind`
+
+Trước khi đi tiếp, hãy ghi nhớ một điều sẽ được khai triển đầy đủ ở **Chương 19**:
+
+> Phương thức `and_then` mà bạn vừa dùng để "phá kim tự tháp tử thần" có một cái tên chính thức trong toàn bộ thế giới lập trình hàm: **`bind`**. Và `map` cộng `bind` chính là định nghĩa của một **Đơn nguyên (Monad)**.
+
+Quy tắc phân biệt chỉ gồm một câu:
+
+| Closure bạn truyền vào trả về gì? | Dùng cái gì |
+|---|---|
+| Giá trị **trần** (`A -> B`) | **`map`** |
+| Một **chiếc hộp mới** (`A -> Option<B>` hoặc `A -> Result<B,E>`) | **`and_then`** |
+
+Nếu chọn nhầm, trình biên dịch báo `Option<Option<T>>` — hộp lồng trong hộp. Đó là tín hiệu rõ ràng nhất rằng bạn cần `and_then` chứ không phải `map`.
+
+### 5. Lập trình hai đường ray (Railway-Oriented Programming)
+
+Đây là mô hình tinh thần giúp gắn tất cả các bộ kết hợp bạn vừa học thành **một bức tranh duy nhất**. Nó đến từ cuốn *Domain Modeling Made Functional*, và một khi đã thấy, bạn sẽ không bao giờ nhìn `Result` như cũ nữa.
+
+Hãy hình dung chương trình của bạn là một tuyến **đường sắt hai ray**:
+
+```
+                    ĐƯỜNG RAY THÀNH CÔNG (Ok)
+   ──────────●───────────────●───────────────●──────────────►  Ok(kết quả)
+             │ ↘             │ ↘             │ ↘
+             │  ↘ (rẽ ghi)   │  ↘            │  ↘
+             ▼   ↘           ▼   ↘           ▼   ↘
+   ──────────────────────────────────────────────────────────►  Err(lỗi)
+                    ĐƯỜNG RAY THẤT BẠI (Err)
+
+   · Đoàn tàu khởi hành trên ray THÀNH CÔNG.
+   · Mỗi bước xử lý là một "ghi tàu": hoặc đi thẳng, hoặc bẻ lái sang ray THẤT BẠI.
+   · Một khi đã sang ray thất bại, tàu CHẠY THẲNG tới đích, KHÔNG BƯỚC NÀO CÒN CHẠY NỮA.
+   · Đó chính xác là hành vi của toán tử `?` và của `and_then`.
+```
+
+Vấn đề thực tế: các hàm bạn có trong tay **không cùng một hình dạng**. Muốn nối chúng lên đường ray, phải "nâng cấp" từng loại. DMMF phân chúng thành bốn nhóm, và Rust có sẵn công cụ tương ứng cho mỗi nhóm:
+
+| Nhóm hàm | Hình dạng | Ví dụ | Công cụ để nối lên đường ray |
 |---|---|---|---|
-| **`$e:expr`** | Expression | Bất kỳ biểu thức nào sinh ra giá trị | `1 + 2`, `x * 5`, `String::new()` |
-| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `so_luong`, `NguoiDung`, `tinh_tong` |
-| **`$t:ty`** | Type | Một kiểu dữ liệu hợp lệ trong Rust | `i32`, `String`, `Vec<u8>`, `&str` |
-| **`$s:stmt`** | Statement | Một câu lệnh (thường kết thúc bằng dấu `;`) | `let x = 10;`, `dem += 1;` |
-| **`$p:path`** | Path | Đường dẫn định danh mô-đun hoặc kiểu dữ liệu | `std::collections::HashMap`, `crate::api` |
-| **`$b:block`** | Block | Một khối mã được bao bọc bởi cặp ngoặc `{}` | `{ let a = 1; a + 2 }` |
-| **`$lit:literal`** | Literal | Một hằng số nguyên bản | `42`, `"Xin chào"`, `true`, `'🦀'` |
-| **`$tt:tt`** | Token Tree | Một thẻ bài đơn lẻ hoặc một nhóm ngoặc `()` `[]` `{}` | Bất kỳ ký tự cú pháp hợp lệ nào |
+| **Hàm ghi tàu** (switch) | `A -> Result<B, E>` | `kiem_tra_email` | **`.and_then(f)`** — nối thẳng, đây là dạng chuẩn |
+| **Hàm một ray** (one-track) | `A -> B` | `s.to_uppercase()` | **`.map(f)`** — nâng lên ray thành công |
+| **Hàm cụt** (dead-end) | `&A -> ()` | `ghi_nhat_ky(&don)` | **`.inspect(f)`** — chạy tác dụng phụ rồi trả nguyên giá trị |
+| **Hàm có thể panic** | `A -> B` (nhưng sập được) | thư viện C qua FFI | `std::panic::catch_unwind` rồi `.map_err(...)` |
 
-### 4. Công cụ Ma thuật: `stringify!` và `cargo expand`
+Và hai công cụ nữa để làm việc với **ray thất bại**:
+- **`.map_err(f)`** — đổi *kiểu* lỗi khi đi từ tầng dưới lên tầng trên (đây là "chân thứ hai" của Bifunctor, Chương 19).
+- **`.or_else(f)`** — thử **quay lại ray thành công**: dùng cho cơ chế dự phòng (đọc bộ nhớ đệm hỏng thì đọc cơ sở dữ liệu).
 
-- **`stringify!($e)`**: Chuyển đổi trực tiếp đoạn mã nguồn thành một chuỗi ký tự `&str` ngay lúc biên dịch mà không cần tính toán giá trị của nó.
-  - Ví dụ: `stringify!(1 + 1)` sẽ sinh ra chuỗi `"1 + 1"`, chứ không phải `"2"`!
-- **`cargo expand`**: Công cụ dòng lệnh cài đặt qua `cargo install cargo-expand`. Nó cho phép bạn in toàn bộ mã nguồn của dự án ra màn hình sau khi tất cả các macro đã được bung ra hoàn toàn. Đây là chiếc "kính lúp soi macro" không thể thiếu của mọi lập trình viên Rust chuyên nghiệp.
+Ví dụ hoàn chỉnh — một đường ray đọc và xử lý cấu hình:
+
+```rust
+fn xu_ly(tho: &str) -> Result<u16, LoiCauHinh> {
+    doc_gia_tri(tho)                                    // A -> Result<B,E>  : and_then dạng gốc
+        .map(|s| s.trim().to_string())                  // hàm MỘT RAY       : map
+        .and_then(|s| phan_tich_cong(&s))               // hàm GHI TÀU       : and_then
+        .inspect(|cong| println!("Cổng hợp lệ: {}", cong)) // hàm CỤT        : inspect
+        .map_err(LoiCauHinh::tu_loi_doc)                // đổi kiểu lỗi      : map_err
+        .or_else(|_| Ok(8080))                          // phương án dự phòng: or_else
+}
+```
+
+Toàn bộ đường ống này **phẳng phiu, đọc từ trên xuống**, không một tầng lồng nhau nào — trong khi vẫn xử lý đầy đủ mọi nhánh lỗi.
+
+> **Vì sao mô hình này quan trọng?** Vì nó cho bạn một câu hỏi duy nhất để tự hỏi mỗi khi bí: *"Hàm tiếp theo của tôi thuộc nhóm nào trong bốn nhóm trên?"* Trả lời được câu đó là biết ngay phải dùng `map`, `and_then`, `inspect` hay `map_err`. Đây là chỗ lý thuyết ở Chương 19 gặp thực chiến ở Chương 20.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Chương trình hoàn chỉnh dưới đây xây dựng một **Bộ công cụ Siêu lập trình Tiện ích (Metaprogramming Utility Toolkit)** gồm 3 macro thực chiến:
-1. `tao_ban_do!`: Macro tạo nhanh `HashMap` theo phong cách từ điển JSON trực quan.
-2. `kiem_toan_bien!`: Macro soi sáng thông tin nội bộ của biến (tên biến, giá trị, tệp tin, dòng mã).
-3. `do_luong_thoi_gian!`: Macro bọc một khối lệnh bất kỳ để đo thời gian thực thi của nó.
+Dưới đây là một chương trình hoàn chỉnh xây dựng **Hệ thống Xác thực & Kiểm tra Hồ sơ Người Dùng (User Profile Sanitization & Validation Engine)**. Chương trình kết hợp:
+1. Hàm bậc cao đo lường thời gian thực thi (Decorator Pattern).
+2. Hàm xưởng sản xuất bộ lọc tùy biến (Closure Factory).
+3. Chuỗi xử lý đường ống combinators trên `Option` và `Result` phẳng phiu, an toàn tuyệt đối.
 
 ```rust
 // Tệp: src/main.rs
-// Chương trình thực chiến làm chủ macro_rules! và Bộ khớp cú pháp trong Rust
+// Chương trình thực chiến làm chủ Higher-Order Functions & Functional Patterns trong Rust
 
-use std::collections::HashMap;
 use std::time::Instant;
 
 // ============================================================================
-// 1. MACRO TẠO NHANH HASHMAP VỚI CÚ PHÁP TỪ ĐIỂN: tao_ban_do!
+// ĐỊNH NGHĨA DỮ LIỆU ĐẦU VÀO VÀ ĐẦU RA
 // ============================================================================
 
-/// Macro nhận vào các cặp $khoa => $gia_tri cách nhau bởi dấu phẩy
-/// Hỗ trợ dấu phẩy tùy chọn ở cuối cùng $(,)?
-macro_rules! tao_ban_do {
-    // Nhánh xử lý: $( $khoa:expr => $gia_tri:expr ),*
-    ( $( $khoa:expr => $gia_tri:expr ),* $(,)? ) => {
-        {
-            let mut ban_do = HashMap::new();
-            $(
-                ban_do.insert($khoa, $gia_tri);
-            )*
-            ban_do
-        }
-    };
+#[derive(Debug, Clone, PartialEq)]
+pub struct HoSoTho {
+    pub ten_dang_nhap: Option<String>,
+    pub email: Option<String>,
+    pub tuoi_chuoi: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HoSoHopLe {
+    pub ten_dang_nhap: String,
+    pub email: String,
+    pub tuoi: u32,
 }
 
 // ============================================================================
-// 2. MACRO SOI SÁNG VÀ KIỂM TOÁN BIẾN: kiem_toan_bien!
+// 1. HÀM BẬC CAO: ĐO LƯỜNG THỜI GIAN VÀ GHI NHẬT KÝ KIỂM TOÁN (WRAPPER PATTERN)
 // ============================================================================
 
-/// Macro sử dụng $i:ident và $e:expr kết hợp với stringify!, file!, line!
-/// Giúp lập trình viên gỡ lỗi với thông tin vị trí mã nguồn cực kỳ chi tiết
-macro_rules! kiem_toan_bien {
-    ( $ten_bien:ident ) => {
-        println!(
-            "[KIỂM TOÁN] Biến `{}` = {:?} (Tại tệp: {}, Dòng: {})",
-            stringify!($ten_bien),
-            $ten_bien,
-            file!(),
-            line!()
-        );
-    };
-    ( $nhan_dan:expr, $bieu_thuc:expr ) => {
-        println!(
-            "[KIỂM TOÁN: {}] Biểu thức `{}` có giá trị = {:?} (Dòng: {})",
-            $nhan_dan,
-            stringify!($bieu_thuc),
-            $bieu_thuc,
-            line!()
-        );
-    };
+/// Hàm bậc cao nhận vào tên tác vụ và một hành động F bất kỳ
+/// Thực hiện đo thời gian thực thi của hành động đó và trả về kết quả nguyên bản
+///
+/// LƯU Ý VỀ TÍNH THUẦN TÚY: bản thân hàm này KHÔNG thuần túy — nó đọc đồng hồ
+/// hệ thống (`Instant::now()`) và in ra màn hình, nên gọi hai lần cho hai kết quả
+/// khác nhau. Đó là chủ ý: đo lường và ghi nhật ký là tác dụng phụ chính đáng,
+/// nhưng chúng phải nằm ở TẦNG VỎ, bao bên ngoài phần lõi thuần túy.
+/// Đây chính là kiến trúc "lõi thuần túy - vỏ mệnh lệnh" sẽ học kỹ ở Chương 20.
+pub fn do_thoi_gian_thuc_thi<F, T>(ten_tac_vu: &str, hanh_dong: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    println!(">>> [KIỂM TOÁN] Bắt đầu thực thi: {}", ten_tac_vu);
+    let thoi_diem_bat_dau = Instant::now();
+    
+    // Gọi hàm/closure được truyền vào
+    let ket_qua = hanh_dong();
+    
+    let khoang_thoi_gian = thoi_diem_bat_dau.elapsed();
+    println!(">>> [KIỂM TOÁN] Hoàn thành '{}' trong: {:?}", ten_tac_vu, khoang_thoi_gian);
+    ket_qua
 }
 
 // ============================================================================
-// 3. MACRO ĐO THỜI GIAN KHỐI LỆNH: do_luong_thoi_gian!
+// 2. HÀM XƯỞNG SẢN XUẤT CLOSURE (FACTORY PATTERN)
 // ============================================================================
 
-/// Macro nhận một nhãn mô tả $ten:expr và một khối mã $khoi:block
-/// Trả về trực tiếp kết quả của khối mã đó!
-macro_rules! do_luong_thoi_gian {
-    ( $ten:expr, $khoi:block ) => {
-        {
-            println!(">>> [BẮT ĐẦU ĐO] {}", $ten);
-            let bat_dau = Instant::now();
-            let ket_qua = $khoi; // Thực thi khối lệnh
-            let thoi_gian = bat_dau.elapsed();
-            println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $ten, thoi_gian);
-            ket_qua // Trả kết quả của khối lệnh về phía người gọi
-        }
-    };
+/// Tạo ra một closure kiểm tra xem một chuỗi có chứa từ cấm hay không
+/// Sử dụng `move` để đóng gói danh sách từ cấm vào struct vô danh của closure
+pub fn tao_bo_loc_tu_cam(danh_sach_tu_cam: Vec<&'static str>) -> impl Fn(&str) -> bool {
+    move |van_ban: &str| {
+        let chu_thuong = van_ban.to_lowercase();
+        // Trả về true nếu KHÔNG chứa bất kỳ từ cấm nào
+        !danh_sach_tu_cam.iter().any(|&tu| chu_thuong.contains(tu))
+    }
+}
+
+/// Tạo ra một closure kiểm tra độ dài tối thiểu và tối đa của chuỗi
+pub fn tao_bo_kiem_tra_do_dai(min: usize, max: usize) -> impl Fn(&str) -> bool {
+    move |van_ban: &str| {
+        let do_dai = van_ban.trim().chars().count();
+        do_dai >= min && do_dai <= max
+    }
+}
+
+// ============================================================================
+// 3. ĐƯỜNG ỐNG XÁC THỰC BẰNG BỘ KẾT HỢP COMBINATORS (PIPELINE PATTERN)
+// ============================================================================
+
+pub fn xac_thuc_ho_so(
+    ho_so: &HoSoTho,
+    kiem_tra_ten: &impl Fn(&str) -> bool,
+    kiem_tra_tu_cam: &impl Fn(&str) -> bool,
+) -> Result<HoSoHopLe, &'static str> {
+    // 1. Xác thực và chuẩn hóa Tên đăng nhập bằng chuỗi combinators
+    let ten_hop_le = ho_so
+        .ten_dang_nhap
+        .as_deref()                                   // Option<String> -> Option<&str>
+        .map(|s| s.trim())                            // Cắt khoảng trắng
+        .filter(|s| kiem_tra_ten(s))                  // Kiểm tra độ dài hợp lệ
+        .filter(|s| kiem_tra_tu_cam(s))              // Kiểm tra từ cấm
+        .map(|s| s.to_string())
+        .ok_or("Tên đăng nhập không hợp lệ hoặc chứa từ cấm!")?; // Lan truyền lỗi phẳng phiu
+
+    // 2. Xác thực và chuẩn hóa Email
+    let email_hop_le = ho_so
+        .email
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| s.contains('@') && s.contains('.')) // Điều kiện email cơ bản
+        .map(|s| s.to_lowercase())                      // Viết thường toàn bộ email
+        .ok_or("Địa chỉ Email sai định dạng!")?;
+
+    // 3. Xác thực và chuẩn hóa Tuổi
+    let tuoi_hop_le = ho_so
+        .tuoi_chuoi
+        .as_deref()
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<u32>().ok())           // Phân tích chuỗi sang u32
+        .filter(|&tuoi| (16..=100).contains(&tuoi))    // Giới hạn độ tuổi từ 16 đến 100
+        .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
+
+    // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
+    Ok(HoSoHopLe {
+        ten_dang_nhap: ten_hop_le,
+        email: email_hop_le,
+        tuoi: tuoi_hop_le,
+    })
 }
 
 // ============================================================================
@@ -213,55 +358,56 @@ macro_rules! do_luong_thoi_gian {
 
 fn main() {
     println!("============================================================");
-    println!("     BỘ CÔNG CỤ SIÊU LẬP TRÌNH: DECLARATIVE MACRO RULES     ");
+    println!("   HỆ THỐNG XÁC THỰC HỒ SƠ: HÀM BẬC CAO & COMBINATORS FP    ");
     println!("============================================================");
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 1: Sử dụng macro tao_ban_do! tạo cấu hình hệ thống
-    // ------------------------------------------------------------------------
-    println!("\n1. Khởi tạo Bản đồ thông số máy chủ bằng cú pháp trực quan:");
-    let thong_so_may_chu = tao_ban_do! {
-        "cong_mang" => "8080",
-        "dia_chi_ip" => "192.168.1.100",
-        "moi_truong" => "SanXuat",
-        "trang_thai" => "KichHoat", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
+    // Khởi tạo các cỗ máy kiểm tra từ xưởng Factory
+    let kiem_tra_do_dai_ten = tao_bo_kiem_tra_do_dai(4, 15);
+    let kiem_tra_tu_cam = tao_bo_loc_tu_cam(vec!["admin", "root", "lua_dao"]);
+
+    // Dữ liệu mẫu 1: Hồ sơ chuẩn mực hoàn hảo
+    let ho_so_chuan = HoSoTho {
+        ten_dang_nhap: Some(String::from("  nguyen_an  ")),
+        email: Some(String::from("An.Nguyen@EXAMPLE.COM  ")),
+        tuoi_chuoi: Some(String::from("  22  ")),
     };
 
-    for (khoa, gia_tri) in &thong_so_may_chu {
-        println!("  - Tham số `{}`: {}", khoa, gia_tri);
-    }
+    // Dữ liệu mẫu 2: Hồ sơ lỗi chứa từ cấm và email hỏng
+    let ho_so_loi = HoSoTho {
+        ten_dang_nhap: Some(String::from("super_admin")), // Chứa từ cấm 'admin'
+        email: Some(String::from("email_khong_hop_le")),
+        tuoi_chuoi: Some(String::from("12")),             // Dưới 16 tuổi
+    };
 
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 2: Sử dụng macro kiem_toan_bien! để soi dữ liệu
-    // ------------------------------------------------------------------------
-    println!("\n2. Soi sáng biến số và biểu thức bằng siêu lập trình:");
-    let diem_trung_binh = 8.75;
-    let danh_sach_lop = vec!["An", "Bình", "Cường"];
-
-    // Gỡ lỗi biến đơn lẻ qua $ident
-    kiem_toan_bien!(diem_trung_binh);
-    kiem_toan_bien!(danh_sach_lop);
-
-    // Gỡ lỗi biểu thức phức tạp qua $expr
-    kiem_toan_bien!("Tính toán điểm cộng", diem_trung_binh + 1.25);
-
-    // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 3: Đo lường khối lệnh tính toán qua do_luong_thoi_gian!
-    // ------------------------------------------------------------------------
-    println!("\n3. Đo lường hiệu năng của một khối thuật toán:");
-    
-    let tong_tich_luy = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
-        let mut tong: u64 = 0;
-        for i in 1..=1_000_000 {
-            tong += i;
-        }
-        tong // Giá trị trả về từ khối block
+    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
+    println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
+    let ket_qua_1 = do_thoi_gian_thuc_thi("Xử lý Hồ sơ Hợp lệ", || {
+        xac_thuc_ho_so(&ho_so_chuan, &kiem_tra_do_dai_ten, &kiem_tra_tu_cam)
     });
 
-    println!("-> Kết quả tính được từ khối mã: {}", tong_tich_luy);
+    match ket_qua_1 {
+        Ok(ho_so) => {
+            println!("[THÀNH CÔNG] Dữ liệu sau khi làm sạch:");
+            println!("  - Tên đăng nhập: {}", ho_so.ten_dang_nhap);
+            println!("  - Email hợp chuẩn: {}", ho_so.email);
+            println!("  - Tuổi: {}", ho_so.tuoi);
+        }
+        Err(loi) => println!("[THẤT BẠI] Lỗi: {}", loi),
+    }
+
+    // 2. Kiểm tra hồ sơ lỗi
+    println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ HAI (CÓ LỖI) ---");
+    let ket_qua_2 = do_thoi_gian_thuc_thi("Xử lý Hồ sơ Vi phạm", || {
+        xac_thuc_ho_so(&ho_so_loi, &kiem_tra_do_dai_ten, &kiem_tra_tu_cam)
+    });
+
+    match ket_qua_2 {
+        Ok(_) => println!("[LỖI KHÔNG MONG MUỐN] Hồ sơ vi phạm lại lọt qua!"),
+        Err(ly_do) => println!("[CHẶN THÀNH CÔNG] Hệ thống từ chối vì: '{}'", ly_do),
+    }
 
     println!("\n============================================================");
-    println!("     XÁC THỰC CÁC MACRO KHAI BÁO HOÀN THÀNH AN TOÀN TUYỆT ĐỐI");
+    println!("     XÂY DỰNG PIPELINE HÀM BẬC CAO HOÀN THÀNH XUẤT SẮC      ");
     println!("============================================================");
 }
 ```
@@ -270,36 +416,38 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Khi bắt đầu viết macro với `macro_rules!`, bạn sẽ gặp những lỗi biên dịch rất đặc thù của bộ phân tích cú pháp:
+Khi thiết kế các hàm bậc cao và chuỗi combinators trong Rust, lập trình viên thường bắt gặp các lỗi biên dịch về kiểu dữ liệu và kích thước bộ nhớ:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0423** | `expected value, found macro '...'` | Bạn gọi một macro nhưng quên viết dấu chấm than `!` ở phía sau tên macro (ví dụ viết `println("...")` thay vì `println!("...")`). | Thêm dấu chấm than `!` ngay sau tên macro: `ten_macro!(...)`. |
-| **Lỗi cú pháp** | `no rules expected the token '...'` | Tham số bạn truyền vào khi gọi macro không khớp với bất kỳ nhánh so khớp nào đã được định nghĩa trong `macro_rules!`. | Kiểm tra lại khuôn mẫu ở vế trái: dấu ngăn cách (dấu phẩy, dấu mũi tên `=>`), kiểu dữ liệu của matcher, hoặc bổ sung thêm nhánh so khớp mới. |
-| **Lỗi cú pháp** | `$e:expr is followed by '...', which is not allowed for expr fragments` | Quy tắc an toàn cú pháp của Rust: Sau một biểu thức `$e:expr`, bạn chỉ được phép đặt các ký tự phân cách an toàn như `,`, `;`, hoặc `=>`. Bạn không thể đặt ngay một định danh khác liền kề vì trình biên dịch sẽ bị nhập nhằng cú pháp. | Đặt dấu phẩy `,` hoặc dấu chấm phẩy `;` ngăn cách giữa các matcher. |
-| **E0425** | `cannot find value '...' in this scope` | Mã bên trong thân macro tham chiếu đến một biến hoặc hàm mà ở phạm vi người gọi macro không tồn tại. | Đảm bảo các biến cần thiết được truyền trực tiếp vào macro qua tham số, hoặc sử dụng đường dẫn đầy đủ dạng `std::...` hoặc `$crate::...`. |
+| **E0308** | `mismatched types: expected closure, found a different closure` | Trong Rust, mỗi closure có một kiểu vô danh độc nhất vô nhị. Dù hai closure có cùng chữ ký `|x| x + 1`, chúng vẫn là 2 kiểu khác nhau. Bạn không thể gán chúng cho cùng một biến mà không dùng Box. | Sử dụng con trỏ thông minh (smart pointer) `Box<dyn Fn(...)>` nếu cần chứa các closure khác nhau vào cùng một tập hợp hoặc nhánh rẽ `if/else`. |
+| **E0277** | `the size for values of type 'dyn Fn()' cannot be known at compilation time` | Bạn cố gắng trả về `dyn Fn()` trực tiếp hoặc lưu nó trên Stack. Kiểu Trait Object không có kích thước cố định lúc biên dịch. | Bọc Trait Object vào con trỏ thông minh: `Box<dyn Fn()>` hoặc dùng tham chiếu `&dyn Fn()`. |
+| **E0562** | `'impl Trait' is not allowed in this position` | Bạn cố tình dùng cú pháp `impl Fn(...)` làm trường dữ liệu (field) của một `struct` hoặc bí danh kiểu (`type`). `impl Trait` chỉ được hỗ trợ ở vị trí tham số hàm và kiểu trả về của hàm. | Chuyển sang sử dụng tham số Generic trên struct (`struct MyStruct<F: Fn()> { f: F }`) hoặc dùng `Box<dyn Fn()>`. |
+| **E0599** | `no method named 'and_then' found for type 'Option<...>'` | Bạn gọi `.and_then(...)` nhưng closure bên trong lại trả về một giá trị trần `T` thay vì bọc trong `Option<T>` (hoặc ngược lại với `.map()`). | Nếu closure trả về giá trị trần, dùng `.map()`. Nếu closure trả về một `Option` mới, dùng `.and_then()`. |
 
-### Phân tích lỗi thực tế "No rules expected the token":
+### Phân tích lỗi thực tế `E0308` (Bất đồng kiểu giữa hai Closure):
 
 ```rust
-// Định nghĩa macro chỉ nhận 1 biểu thức:
-macro_rules! in_gap_doi {
-    ( $x:expr ) => {
-        println!("{}", $x * 2);
+// Đoạn mã lỗi minh họa:
+fn thu_nghiem_loi_closure(dieu_kien: bool) {
+    // LỖI E0308: Hai nhánh if và else trả về hai kiểu closure ẩn danh khác nhau!
+    /*
+    let bo_xu_ly = if dieu_kien {
+        |x: i32| x + 1
+    } else {
+        |x: i32| x * 2
     };
+    */
 }
 
-fn thu_nghiem_loi_macro() {
-    in_gap_doi!(10); // Hợp lệ!
-
-    // LỖI: no rules expected the token `,`
-    // in_gap_doi!(10, 20); // Sai vì macro không có nhánh nhận 2 tham số!
-}
-
-// Cách sửa chữa: Bổ sung nhánh nhận 2 tham số hoặc dùng cú pháp lặp $(,)*
-macro_rules! in_gap_doi_sua {
-    ( $x:expr ) => { println!("{}", $x * 2); };
-    ( $x:expr, $y:expr ) => { println!("{} và {}", $x * 2, $y * 2); };
+// Cách sửa chữa đúng chuẩn: Bọc qua Box<dyn Fn>
+fn thu_nghiem_dung_closure(dieu_kien: bool) {
+    let bo_xu_ly: Box<dyn Fn(i32) -> i32> = if dieu_kien {
+        Box::new(|x: i32| x + 1)
+    } else {
+        Box::new(|x: i32| x * 2)
+    };
+    println!("Kết quả: {}", bo_xu_ly(10));
 }
 ```
 
@@ -308,17 +456,113 @@ macro_rules! in_gap_doi_sua {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Bản chất Siêu lập trình**: Code sinh ra code tại thời điểm biên dịch (Compile-time), không gây ra bất kỳ chi phí trễ nào lúc chạy (Zero Runtime Overhead).
-2. **Sức mạnh vượt trội so với Hàm**: Macro chấp nhận số lượng tham số linh hoạt, có thể nhận cả định danh và kiểu dữ liệu, cho phép sáng tạo cú pháp mới (DSL).
-3. **Bộ khớp cú pháp (Matchers)**: Sử dụng các designator chuẩn xác (`$expr`, `$ident`, `$ty`, `$block`) để định hình khung mẫu tiếp nhận mã nguồn.
-4. **Vũ khí gỡ lỗi**: Khai thác sức mạnh của `stringify!`, `file!`, `line!`, và công cụ `cargo expand` để thấu suốt bản chất mã nguồn sau khi được bung ra.
+1. **Hàm là Công dân hạng nhất**: Rust cho phép truyền hàm và closure như tham số, trả về hàm mới từ hàm khác, mở ra tư duy thiết kế kiến trúc dạng khối lắp ghép linh hoạt.
+2. **`impl Fn` vs `Box<dyn Fn>`**:
+   - `impl Fn`: Dành cho phân phối tĩnh, siêu tốc độ, không cấp phát bộ nhớ động trên Heap.
+   - `Box<dyn Fn>`: Dành cho phân phối động, cho phép trả về nhiều closure khác nhau tùy điều kiện lúc chạy.
+3. **Bộ kết hợp Combinators**: Thay thế triệt để các khối `match` lồng nhau sâu dòng bằng chuỗi đường ống (`.map()`, `.and_then()`, `.filter()`, `.or_else()`).
+4. **Lan truyền lỗi phẳng phiu**: Kết hợp toán tử `?` với `.ok_or()` để chuyển đổi tự nhiên giữa `Option` và `Result`, giữ cho luồng nghiệp vụ luôn trong sáng và gọn gàng.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Macro Hoán đổi Biến)**:  
-   Hãy viết một macro mang tên `hoan_doi!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
+1. **Bài tập 1 (Hàm bậc cao lọc mảng)**:  
+   Viết một hàm bậc cao `dem_thoa_man<T, F>(danh_sach: &[T], dieu_kien: F) -> usize` với `F: Fn(&T) -> bool`. Dùng hàm này để đếm xem trong một danh sách chuỗi ký tự có bao nhiêu từ có độ dài lớn hơn 5 ký tự.
 
-2. **Bài tập 2 (Macro So sánh Giá trị Lớn nhất)**:  
-   Viết một macro `tim_max!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.
+   <details>
+   <summary><b>Gợi ý</b></summary>
 
-3. **Bài tập 3 (Tư duy thiết kế Macro vs Hàm)**:  
-   Khi nào bạn nên viết một hàm bình thường `fn`, và khi nào bạn thực sự bắt buộc phải dùng `macro_rules!`? Hãy liệt kê 3 trường hợp mà hàm thông thường hoàn toàn bất lực không thể giải quyết được.
+   Thân hàm chỉ cần một đường ống `.iter().filter(...).count()`. Với chuỗi tiếng Việt, hãy dùng `.chars().count()` chứ **không** dùng `.len()` — `.len()` đếm byte, còn chữ có dấu chiếm 2–3 byte (xem Chương 05).
+   </details>
+
+   <details>
+   <summary><b>Lời giải</b></summary>
+
+   ```rust
+   pub fn dem_thoa_man<T, F>(danh_sach: &[T], dieu_kien: F) -> usize
+   where
+       F: Fn(&T) -> bool,
+   {
+       danh_sach.iter().filter(|x| dieu_kien(x)).count()
+   }
+
+   fn main() {
+       let tu = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
+
+       // Đếm theo SỐ CHỮ CÁI, không phải số byte
+       let dai = dem_thoa_man(&tu, |s: &&str| s.chars().count() > 5);
+       assert_eq!(dai, 3); // "an toàn", "đồng thời", "bộ nhớ"
+
+       // Cùng một hàm, đổi closure là đổi hẳn câu hỏi:
+       let so_nguyen = [3, 8, 12, 5, 20];
+       assert_eq!(dem_thoa_man(&so_nguyen, |&n| n > 6), 3);
+
+       println!("Từ dài hơn 5 ký tự: {}", dai);
+   }
+   ```
+
+   Thử dùng `.len()` thay cho `.chars().count()` và bạn sẽ nhận kết quả `4` — sai, vì `"nhanh"` chỉ có 5 chữ nhưng `"bộ nhớ"` thì `.len()` đếm ra tận 9 byte. Đây là lỗi kinh điển khi xử lý tiếng Việt.
+   </details>
+
+2. **Bài tập 2 (Xây dựng Bộ kết hợp tính toán an toàn)**:  
+   Cho một chuỗi đầu vào tùy ý `let dau_vao: Option<&str> = Some(" 50 ");`.  
+   Dùng chuỗi combinators (`map`, `and_then`) để:
+   - Cắt tỉa khoảng trắng.
+   - Chuyển thành số nguyên `i32`.
+   - Nhân số đó với 2 nếu số đó dương.
+   - Trả về giá trị mặc định là `0` nếu đầu vào là `None` hoặc chuỗi không thể phân tích thành số (sử dụng `.unwrap_or(...)`).
+
+   <details>
+   <summary><b>Gợi ý</b></summary>
+
+   Áp dụng đúng quy tắc ở mục 4: closure trả về **giá trị trần** thì dùng `map`; closure trả về **một chiếc hộp** (`Option`) thì dùng `and_then`. Bước "chuyển thành số" và bước "chỉ nhân nếu dương" đều có thể thất bại — chúng thuộc nhóm nào?
+   </details>
+
+   <details>
+   <summary><b>Lời giải</b></summary>
+
+   ```rust
+   fn xu_ly(dau_vao: Option<&str>) -> i32 {
+       dau_vao
+           .map(|s| s.trim())                              // &str -> &str      : trần  -> map
+           .and_then(|s| s.parse::<i32>().ok())            // &str -> Option<i32>: hộp  -> and_then
+           .filter(|&n| n > 0)                             // chỉ giữ số dương
+           .map(|n| n * 2)                                 // i32 -> i32        : trần  -> map
+           .unwrap_or(0)                                   // giá trị dự phòng
+   }
+
+   fn main() {
+       assert_eq!(xu_ly(Some(" 50 ")), 100);
+       assert_eq!(xu_ly(Some(" -7 ")), 0);   // bị `filter` loại
+       assert_eq!(xu_ly(Some("abc")), 0);    // `parse` hỏng
+       assert_eq!(xu_ly(None), 0);           // không có gì để xử lý
+       println!("{} {} {} {}", xu_ly(Some(" 50 ")), xu_ly(Some(" -7 ")),
+                               xu_ly(Some("abc")), xu_ly(None));
+   }
+   ```
+
+   Bốn tình huống hoàn toàn khác nhau, **một** đường ống phẳng phiu xử lý hết — không một dòng `match` lồng nhau nào. Đây chính là "đường ray thành công" ở mục 5: chỉ cần một bước bẻ ghi là tàu chạy thẳng tới `unwrap_or(0)`.
+   </details>
+
+3. **Bài tập 3 (Tư duy kiến trúc)**:  
+   Tại sao việc sử dụng con trỏ thông minh (smart pointer) `Box<dyn Fn()>` lại có chi phí thực thi **cao hơn** so với `impl Fn()`? Hãy nêu **ba** nguồn chi phí cụ thể, liên hệ kiến thức về bảng tra cứu hàm ảo (vtable) và việc cấp phát bộ nhớ Heap. Sau đó chỉ ra **một tình huống** mà bạn vẫn buộc phải chọn `Box<dyn Fn()>` dù nó đắt hơn.
+
+   <details>
+   <summary><b>Gợi ý</b></summary>
+
+   Hãy đặt câu hỏi cho từng giai đoạn: lúc *tạo* closure có xin thêm bộ nhớ không? Lúc *gọi* closure, CPU có biết trước địa chỉ hàm cần nhảy tới không? Và trình tối ưu hóa LLVM có nội tuyến hóa (inline) được một lời gọi mà nó không biết đích đến hay không?
+   </details>
+
+   <details>
+   <summary><b>Lời giải tham khảo</b></summary>
+
+   **Ba nguồn chi phí của `Box<dyn Fn()>`:**
+   1. **Cấp phát Heap**: `Box::new(...)` xin một vùng nhớ trên Heap và giải phóng nó khi `Box` bị hủy. `impl Fn` thì nằm trọn trên Stack, không tốn lần cấp phát nào.
+   2. **Gọi gián tiếp qua vtable**: `dyn Fn` là một *đối tượng trait*, được biểu diễn bằng **con trỏ béo** 16 byte (con trỏ dữ liệu + con trỏ vtable). Mỗi lần gọi, CPU phải đọc vtable để biết nhảy đi đâu — một phép truy cập bộ nhớ phụ và một lệnh nhảy gián tiếp mà bộ dự đoán rẽ nhánh khó đoán trước.
+   3. **Mất khả năng nội tuyến hóa**: vì đích đến chỉ biết lúc chạy, LLVM không thể chèn thẳng thân closure vào chỗ gọi. Với `impl Fn`, nhờ cơ chế đơn hình hóa (Chương 12), lời gọi thường được inline hoàn toàn và chi phí trừu tượng về đúng bằng **không**.
+
+   **Khi nào vẫn phải chọn `Box<dyn Fn()>`?**
+   - Khi cần chứa **nhiều closure khác kiểu nhau trong cùng một tập hợp**: `Vec<Box<dyn Fn()>>` (mỗi closure có một kiểu ẩn danh riêng, `impl Fn` không làm được).
+   - Khi hàm phải **trả về closure khác nhau tùy nhánh `if/else`**.
+   - Khi closure được lưu làm **trường của struct** mà bạn không muốn struct đó trở thành generic lan khắp chương trình.
+
+   Nói gọn: `impl Fn` cho tốc độ, `Box<dyn Fn>` cho tính linh hoạt. Hãy mặc định chọn `impl Fn` và chỉ chuyển sang `Box<dyn Fn>` khi trình biên dịch cho thấy bạn thực sự cần.
+   </details>

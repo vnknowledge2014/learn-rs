@@ -123,7 +123,7 @@ Khi phát triển phần mềm bằng Rust, bạn sẽ liên tục sử dụng 4
    - Một lệnh "hai trong một": nếu bạn vừa sửa code, nó sẽ tự động biên dịch rồi lập tức khởi chạy chương trình để bạn xem kết quả trên màn hình.
 4. **`cargo build --release` (Biên dịch xuất xưởng)**:
    - Bình thường khi gõ `cargo build`, chương trình ở chế độ **Debug**: trình biên dịch giữ lại nhiều thông tin gỡ lỗi để lập trình viên dễ sửa chữa, khiến chương trình chạy chậm hơn.
-   - Khi phần mềm đã hoàn thiện và muốn gửi cho người dùng cuối, bạn dùng cờ `--release`. Trình biên dịch sẽ bật toàn bộ các thuật toán tối ưu hóa cấp cao nhất (LLVM Optimizations), loại bỏ các thông tin thừa. Chương trình tạo ra trong `target/release/` sẽ chạy nhanh gấp từ 10 đến 100 lần!
+   - Khi phần mềm đã hoàn thiện và muốn gửi cho người dùng cuối, bạn dùng cờ `--release`. Trình biên dịch sẽ bật toàn bộ các thuật toán tối ưu hóa cấp cao nhất (LLVM Optimizations), loại bỏ các thông tin thừa. Chương trình tạo ra trong `target/release/` thường chạy nhanh hơn bản Debug rất nhiều — điển hình từ **2 đến 20 lần**, và với những đoạn mã nặng tính toán (nhiều vòng lặp, nhiều phép toán trên `Vec`) mức chênh lệch có thể còn lớn hơn nữa. Con số cụ thể phụ thuộc vào từng chương trình, hãy tự đo bằng `cargo build --release` rồi so sánh!
 
 ### 4. Tại sao lại có dấu chấm than trong `println!`?
 
@@ -133,7 +133,7 @@ Trong Rust:
 - `ten_ham()`: Là một **Hàm thông thường (Function)**.
 - `ten_macro!()`: Là một **Khai báo vĩ mô (Macro)**.
 
-Hàm thông thường chỉ có thể nhận một số lượng tham số cố định và mọi kiểm tra diễn ra lúc chạy. Trong khi đó, Macro `println!` là một "cỗ máy sinh mã tự động" hoạt động ngay trong lúc biên dịch:
+Trong Rust, **cả hàm lẫn macro đều được kiểm tra chặt chẽ ngay lúc biên dịch** — điểm khác biệt nằm ở chỗ khác: một hàm thông thường phải có số lượng tham số cố định và kiểu dữ liệu cố định, trong khi Macro `println!` là một "cỗ máy sinh mã tự động" chạy ngay trong lúc biên dịch nên linh hoạt hơn hẳn:
 - Nó cho phép bạn truyền vào số lượng tham số tùy ý (1, 2, 5 hay 10 biến đều được).
 - Nó kiểm tra chặt chẽ xem số lượng dấu ngoặc nhọn `{}` có khớp chính xác với số lượng biến bạn muốn in ra hay không. Nếu lệch, trình biên dịch sẽ báo lỗi ngay từ trước khi chương trình được tạo ra, triệt tiêu hoàn toàn các lỗi sập ứng dụng ngớ ngẩn lúc đang chạy!
 

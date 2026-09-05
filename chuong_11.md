@@ -68,7 +68,7 @@ Khi macro `panic!("Thông điệp lỗi")` được gọi, Rust không đơn thu
 
 > **Mẹo kỹ thuật chuyên sâu**: Khi chương trình bị panic, bạn có thể chạy ứng dụng với biến môi trường:
 > `RUST_BACKTRACE=1 cargo run`
-> Trình biên dịch sẽ in ra một bản đồ chi tiết từng dòng lệnh, từng tệp mã nguồn từ khi chương trình khởi động đến đúng nơi phát sinh sự cố, giúp bạn tìm ra nguyên nhân gốc rễ chỉ trong vài giây!
+> **Chương trình đang chạy** (chứ không phải trình biên dịch) sẽ in ra một bản đồ chi tiết từng lời gọi hàm, từng tệp mã nguồn từ khi chương trình khởi động đến đúng nơi phát sinh sự cố, giúp bạn tìm ra nguyên nhân gốc rễ chỉ trong vài giây! (`RUST_BACKTRACE` là biến môi trường lúc chạy, không liên quan gì tới lúc biên dịch.)
 
 ### 2. Định nghĩa kiểu `Result<T, E>` và Cảnh báo `#[must_use]`
 
@@ -110,6 +110,41 @@ let du_lieu = match doc_du_lieu_tu_mang() {
 };
 ```
 Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu trả về là `Result` hoặc `Option`.
+
+> **Chi tiết ít người để ý nhưng cực kỳ quan trọng — `?` tự động gọi `From::from`:**
+> Hãy nhìn kỹ dòng `return Err(From::from(err))` ở trên. Toán tử `?` **không** chỉ trả lỗi ra ngoài — nó còn *chuyển đổi kiểu lỗi* trên đường đi.
+>
+> Nhờ vậy, một hàm có thể gọi nhiều thư viện khác nhau (mỗi thư viện một kiểu lỗi riêng) mà vẫn gom hết về **một kiểu lỗi thống nhất** của bạn:
+>
+> ```rust
+> #[derive(Debug)]
+> enum LoiUngDung {
+>     DocTep(std::io::Error),
+>     PhanTichSo(std::num::ParseIntError),
+> }
+>
+> // Hai cây cầu cho `?` đi qua:
+> impl From<std::io::Error> for LoiUngDung {
+>     fn from(e: std::io::Error) -> Self { LoiUngDung::DocTep(e) }
+> }
+> impl From<std::num::ParseIntError> for LoiUngDung {
+>     fn from(e: std::num::ParseIntError) -> Self { LoiUngDung::PhanTichSo(e) }
+> }
+>
+> fn doc_cau_hinh(duong_dan: &str) -> Result<u16, LoiUngDung> {
+>     let noi_dung = std::fs::read_to_string(duong_dan)?;  // io::Error  -> LoiUngDung
+>     let cong: u16 = noi_dung.trim().parse()?;            // ParseIntError -> LoiUngDung
+>     Ok(cong)
+> }
+> ```
+>
+> Nếu chưa có `impl From<...>`, trình biên dịch sẽ báo lỗi *"`?` couldn't convert the error"*. Khi đó bạn có hai lựa chọn: cài `From`, hoặc chuyển thủ công ngay tại chỗ bằng **`.map_err(...)`** trước dấu `?`:
+>
+> ```rust
+> let cong: u16 = noi_dung.trim().parse().map_err(LoiUngDung::PhanTichSo)?;
+> ```
+>
+> Chúng ta sẽ gặp lại `map_err` ở **Chương 17** dưới cái tên "bẻ ghi sang đường ray thất bại", và ở **Chương 19** với tên chính thức của nó: *Bifunctor*.
 
 ---
 

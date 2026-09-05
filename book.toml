@@ -1,0 +1,32 @@
+# Cấu hình mdBook cho giáo trình Rust Masterclass.
+#
+#   cargo install mdbook          # cài đặt một lần
+#   mdbook serve --open           # mở sách trong trình duyệt, tự tải lại khi sửa
+#   mdbook build                  # xuất bản HTML tĩnh vào thư mục book/
+#
+# Tùy chọn — sơ đồ tương tác về quyền sở hữu/vay mượn (dùng cho Chương 06-08, 15, 16):
+#   cargo install mdbook-aquascope --locked
+#   rustup toolchain install nightly -c rust-src -c rustc-dev -c llvm-tools-preview -c miri
+# rồi bỏ chú thích dòng [preprocessor.aquascope] ở cuối tệp này.
+
+[book]
+title = "Rust Masterclass: Hành Trình Từ Con Số 0 Đến System Design"
+description = "Giáo trình Rust toàn diện bằng tiếng Việt, 54 chương, dành cho người chưa từng lập trình."
+authors = ["Rust Masterclass"]
+language = "vi"
+src = "."
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = ""
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+
+# [preprocessor.aquascope]

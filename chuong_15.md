@@ -1,268 +1,290 @@
-# Chương 15: Vòng lặp lười biếng & Bộ chuyển đổi dòng chảy: map, filter, fold, collect (Iterators & Consumers: map, filter, fold, collect)
+# Chương 15: Hàm ẩn danh: Các chế độ bắt giữ giá trị Fn, FnMut, FnOnce (Closures & Capturing Traits: Fn, FnMut, FnOnce)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong lập trình truyền thống, vòng lặp `for` và `while` là những công cụ quen thuộc nhất để duyệt qua một danh sách. Tuy nhiên, cách tiếp cận này buộc lập trình viên phải tự quản lý chỉ số (index), tự kiểm soát điều kiện dừng, và tự tạo các vùng nhớ đệm (buffer) trung gian để chứa kết quả lọc tạm thời. Điều này không chỉ khiến mã nguồn trở nên rối rắm mà còn tiềm ẩn nguy cơ lỗi truy cập bộ nhớ ngoài biên (out-of-bounds error).
+Trong Chương 13, chúng ta đã tiếp cận tư duy đường ống (pipeline) của lập trình hàm (functional programming) và thấy được sự thanh thoát khi loại bỏ các biến tạm thay đổi liên tục. Bạn đã thấy những biểu thức ngắn gọn như `|hang| tinh_thanh_tien(hang)` xuất hiện bên trong các phương thức `.map()` hay `.filter()`. Đó chính là **Hàm ẩn danh (Closures)** — một trong những vũ khí lợi hại bậc nhất của Rust.
 
-Rust giải quyết triệt để vấn đề này bằng một mẫu thiết kế đỉnh cao: **Bộ lặp duyệt dữ liệu (Iterator Pattern)**. Trong Rust, Iterator không đơn thuần là một công cụ duyệt danh sách thông thường, mà là một cỗ máy xử lý dòng dữ liệu sở hữu tính chất **Đánh giá lười biếng (Lazy Evaluation)** và cam kết **Trừu tượng hóa không chi phí (Zero-Cost Abstraction)**. Bạn có thể ghép nối hàng chục phép biến đổi liên tiếp (`map`, `filter`, `take`, `zip`) mà không làm tiêu tốn thêm bất kỳ byte bộ nhớ RAM trung gian nào, đồng thời tốc độ thực thi cuối cùng trên CPU nhanh tương đương hoặc thậm chí vượt trội hơn vòng lặp C viết tay!
+Trong các ngôn ngữ có bộ gom rác (Garbage Collector) như JavaScript hay Python, bạn có thể tạo một hàm ẩn danh ở bất kỳ đâu và thoải mái dùng chung biến số mà không cần bận tâm biến đó được lưu trữ ở đâu trên thanh RAM hay sống được bao lâu. Nhưng trong Rust, với các nguyên tắc sắt đá về quyền sở hữu (ownership), vay mượn (borrow), và thời gian sống (lifetime), một câu hỏi hóc búa được đặt ra:
+- *Khi một hàm ẩn danh sử dụng các biến ở môi trường xung quanh, nó đang mượn đọc, mượn sửa, hay đoạt đứt quyền sở hữu của biến đó?*
+- *Làm sao trình biên dịch đảm bảo hàm ẩn danh không vô tình dùng một biến đã bị giải phóng khỏi bộ nhớ?*
+
+Rust giải quyết bài toán này một cách tuyệt mỹ thông qua bộ ba Trait bắt giữ môi trường: **`Fn`**, **`FnMut`**, và **`FnOnce`**. Đây là chìa khóa then chốt giúp bạn viết mã nguồn linh hoạt nhưng vẫn an toàn tuyệt đối ở tốc độ phần cứng cao nhất.
 
 Mục tiêu học tập của chương này:
-- Nắm vững cấu tạo cốt lõi của Trait **`Iterator`**, kiểu dữ liệu liên kết **`type Item`**, và phương thức then chốt **`next(&mut self)`**.
-- Thấu hiểu cơ chế **Đánh giá lười biếng (Lazy Evaluation)**: Vì sao một chuỗi adapter không hề tốn điện năng hay xung nhịp CPU cho đến khi có một hàm tiêu thụ (consumer) kích hoạt.
-- Phân biệt 3 phương thức tạo Iterator trên một tập hợp dữ liệu:
-  - **`.iter()`**: Mượn đọc từng phần tử (`&T`) theo cơ chế vay mượn (borrow).
-  - **`.iter_mut()`**: Mượn sửa từng phần tử (`&mut T`).
-  - **`.into_iter()`**: Đoạt quyền sở hữu (ownership) và tiêu thụ toàn bộ tập hợp (`T`).
-- Thành thạo các bộ điều hợp trung gian phổ biến: **`map`**, **`filter`**, **`enumerate`**, **`take`**, **`zip`**.
-- Làm chủ các hàm tiêu thụ kết thúc: **`collect`**, **`fold`**, **`sum`**, **`find`**, **`any`**, **`all`**.
-- Khám phá bí quyết biên dịch tối ưu hóa của LLVM giúp Iterator đạt hiệu năng siêu đỉnh.
+- Nắm vững cú pháp khai báo **Closure (`|tham_so| { than_ham }`)** và khả năng tự động suy luận kiểu dữ liệu của `rustc`.
+- Thấu hiểu cơ chế **Đóng gói môi trường (Environment Capturing)**: Bản chất Closure trong Rust là một struct vô danh tự động sinh ra trên bộ nhớ ngăn xếp (stack) hoặc vùng nhớ tự do (heap).
+- Phân biệt rạch ròi 3 cấp độ bắt giữ môi trường:
+  - **`Fn`**: Bắt giữ bằng tham chiếu đọc bất biến (`&T`).
+  - **`FnMut`**: Bắt giữ bằng tham chiếu sửa đổi khả biến (`&mut T`).
+  - **`FnOnce`**: Đoạt quyền sở hữu giá trị (`T`), tiêu thụ môi trường và chỉ gọi được đúng một lần duy nhất.
+- Làm chủ từ khóa **`move`** để cưỡng chế chuyển quyền sở hữu vào trong closure.
+- Biết cách truyền closure vào hàm thông qua Ràng buộc Trait (Trait Bounds) hoặc con trỏ thông minh (smart pointer) `Box<dyn Fn()>`.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy tưởng tượng bạn đang tham quan một **Nhà máy chế biến bánh kẹo tự động hiện đại** với dây chuyền băng chuyền thông minh:
+Để xóa tan sự khó hiểu về ba cái tên `Fn`, `FnMut`, và `FnOnce`, hãy tưởng tượng bạn là một giám đốc bận rộn và bạn thuê **3 người trợ lý bỏ túi** với 3 tấm thẻ quyền hạn khác nhau:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│             HÌNH TƯỢNG ĐỜI SỐNG: DÂY CHUYỀN BĂNG CHUYỀN NHÀ MÁY THÔNG MINH       │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│   [Kho bánh mộc] ──► [Máy phết bơ] ──► [Máy sàng lọc] ──► [Thùng đóng gói]       │
-│        (Data)            (map)            (filter)            (collect)          │
-│                                                                                  │
-│   - Trạng thái 1: KHI CHƯA CÓ NGƯỜI ĐẶT THÙNG Ở ĐẦU RA (LAZY EVALUATION)        │
-│     Băng chuyền đứng im hoàn toàn! Cọ phết bơ không quẹt, rây lọc không rung.    │
-│     Không tốn 1 watt điện nào dù bạn đã lắp ráp 10 chiếc máy vào dây chuyền!    │
-│                                                                                  │
-│   - Trạng thái 2: QUẢN ĐỐC ĐẶT THÙNG HÀNG VÀ BẤM NÚT (CONSUMER: COLLECT/FOLD)    │
-│     Chiếc thùng đầu ra kéo một cái: Bánh mộc chạy qua, được phết bơ, lọc bánh vỡ │
-│     và rơi ngay ngắn vào thùng. Bánh làm đến đâu đóng thùng đến đó!              │
-└──────────────────────────────────────────────────────────────────────────────────┘
+│             HÌNH TƯỢNG ĐỜI SỐNG: BA NGƯỜI TRỢ LÝ BỎ TÚI (Fn, FnMut, FnOnce)      │
+├─────────────────────────┬───────────────────────────────┬────────────────────────┤
+│    TRỢ LÝ 1: THẺ VÀNG   │      TRỢ LÝ 2: THẺ XANH       │   TRỢ LÝ 3: THẺ ĐỎ     │
+│          (Fn)           │           (FnMut)             │       (FnOnce)         │
+│                         │                               │                        │
+│ - Chỉ được ngắm nhìn đồ │ - Cầm bút chì ghi chép thêm   │ - Đóng gói toàn bộ đồ  │
+│   vật trong văn phòng   │   vào cuốn sổ tay công tác    │   đạc trên bàn vào hộp │
+│ - Không xê dịch, không  │ - Làm thay đổi dữ liệu trong  │ - Đem gửi xe tải đi    │
+│   sửa chữa bất cứ thứ gì│   sổ sau mỗi lần gọi          │ - Bàn làm việc sạch trơn│
+│ - Có thể gọi ngắm đi    │ - Có thể gọi ghi chép thêm    │ - Chỉ làm được ĐÚNG    │
+│   ngắm lại 1.000 lần!   │   vô số lần liên tục!         │   1 LẦN DUY NHẤT!      │
+└─────────────────────────┴───────────────────────────────┴────────────────────────┘
 ```
 
-### 1. Băng chuyền ngủ đông (Tính lười biếng - Lazy Evaluation)
-- Khi bạn viết `danh_sach.iter().map(...).filter(...)`, bạn mới chỉ đang **lắp ráp các cỗ máy lên khung băng chuyền**.
-- Toàn bộ hệ thống vẫn đang trong trạng thái "ngủ đông". Băng chuyền chưa hề quay một milimét nào, chưa có một hạt bụi nào bị lọc, chưa có phép tính nào được thực hiện.
-- Chỉ đến khi bạn gọi một hàm tiêu thụ như `.collect()` hay `.fold()` (hành động người công nhân đặt thùng carton ở cuối băng chuyền và bấm nút kéo hàng), dòng dữ liệu mới bắt đầu dịch chuyển từng phần tử một qua các khâu xử lý.
+### 1. Trợ lý Thẻ Vàng (Giao ước `Fn` - Chỉ đọc)
+- Người trợ lý này bước vào phòng làm việc của bạn. Họ chỉ dùng mắt để quan sát bức tranh phong cảnh treo tường và đọc bảng số liệu dự án dán trên bảng thông báo (`&T`).
+- Họ không chạm tay vào hiện vật, không xóa sửa bất cứ chữ nào.
+- Vì đồ đạc trong phòng vẫn nguyên vẹn 100%, bạn có thể bấm chuông gọi người trợ lý này bước vào đọc báo cáo bao nhiêu lần tùy thích mà không sợ hỏng phòng.
 
-### 2. Cọ quét bơ (`map`)
-- Mỗi chiếc bánh đi qua khay sẽ được cây cọ quét thêm một lớp bơ sữa thơm ngon.
-- `.map()` nhận từng phần tử đầu vào, biến đổi nó theo một công thức toán học hoặc quy tắc nghiệp vụ, và đưa ra một phần tử có hình thái mới ở đầu ra. Số lượng bánh trước và sau khi qua cọ quét là hoàn toàn bằng nhau.
+### 2. Trợ lý Thẻ Xanh (Giao ước `FnMut` - Đọc và Sửa đổi)
+- Người trợ lý này được cấp thêm một cây bút chì và chiếc thước kẻ (`&mut T`). Họ bước vào phòng để ghi thêm số đếm khách hàng vào cuốn sổ tay tích lũy đặt trên bàn làm việc của bạn.
+- Mỗi lần người trợ lý này được gọi (`invoke`), con số trong cuốn sổ tay lại tăng thêm một nấc. Trạng thái căn phòng bị thay đổi!
+- Tuy vậy, cuốn sổ tay vẫn còn nằm nguyên trên bàn của bạn. Bạn vẫn có thể gọi người trợ lý này nhiều lần tiếp theo để ghi chép bổ sung.
 
-### 3. Chiếc rây sàng gạo (`filter`)
-- Những chiếc bánh đạt chuẩn kích thước sẽ lọt qua mắt rây để đi tiếp. Những chiếc bánh bị vỡ vụn hoặc méo mó sẽ bị giữ lại và loại bỏ.
-- `.filter()` chỉ giữ lại những phần tử thỏa mãn một điều kiện đúng (`true`), loại bỏ tất cả những phần tử không đạt chuẩn.
-
-### 4. Nồi nấu cao cô đặc (`fold`)
-- Thay vì lấy từng chiếc bánh riêng lẻ ra thùng, bạn gom toàn bộ nguyên liệu trên băng chuyền bỏ vào một chiếc nồi lớn, đun lửa chậm và cô đặc chúng lại thành một thỏi sô-cô-la duy nhất.
-- `.fold()` nhận một giá trị khởi tạo ban đầu, sau đó kết hợp tuần tự từng phần tử trong danh sách với biến tích lũy để tạo ra duy nhất **một kết quả tổng hợp** (như tính tổng, tính giá trị trung bình, hoặc xây dựng một cây dữ liệu phức tạp).
+### 3. Trợ lý Thẻ Đỏ (Giao ước `FnOnce` - Tiêu thụ và Đoạt quyền)
+- Người trợ lý này mang theo băng keo và thùng carton niêm phong. Khi bạn gọi, họ thu gom chiếc chìa khóa két sắt quý giá trên bàn, bỏ vào thùng và chuyển phát nhanh sang chi nhánh nước ngoài (`move / T`).
+- Sau khi hành động đó diễn ra, chiếc chìa khóa trên bàn làm việc của bạn đã biến mất hoàn toàn!
+- Do vật phẩm đã bị "tiêu thụ" (consumed), bạn **không thể yêu cầu người trợ lý làm lại hành động đó lần thứ hai**. Lệnh này chỉ thực hiện được duy nhất một lần trong đời (`FnOnce`).
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Giải phẫu Trait `Iterator`: Phương thức `next()`
+### 1. Cú pháp Closure và Khả năng Tự suy luận kiểu (Type Inference)
 
-Tất cả các bộ lặp trong Rust đều phải hiện thực Trait `Iterator` được định nghĩa sẵn trong thư viện chuẩn `core::iter::Iterator`:
+Hàm thông thường (`fn`) trong Rust luôn bắt buộc bạn phải chú thích kiểu tường minh cho tất cả tham số và giá trị trả về. Ngược lại, Closure (`|...|`) được thiết kế cho các tác vụ cục bộ ngắn gọn nên trình biên dịch `rustc` có khả năng **tự suy luận kiểu dữ liệu cực kỳ mạnh mẽ**:
 
 ```rust
-pub trait Iterator {
-    type Item; // Kiểu dữ liệu của từng phần tử mà bộ lặp sẽ nhả ra
+// 1. Hàm thông thường: Bắt buộc kiểu tường minh
+fn cong_mot_v1(x: i32) -> i32 { x + 1 }
 
-    // Phương thức cốt lõi duy nhất bắt buộc phải tự cài đặt:
-    fn next(&mut self) -> Option<Self::Item>;
+// 2. Closure đầy đủ chú thích kiểu
+let cong_mot_v2 = |x: i32| -> i32 { x + 1 };
 
-    // Hàng chục phương thức tiện ích khác (map, filter, fold...) 
-    // đã được cài đặt sẵn mặc định (default methods) dựa trên next()!
+// 3. Closure rút gọn: rustc tự suy luận kiểu dựa trên ngữ cảnh gọi đầu tiên
+let cong_mot_v3 = |x| x + 1;
+```
+
+*Lưu ý quan trọng*: Một closure chỉ có thể suy luận kiểu duy nhất một lần. Nếu dòng đầu tiên bạn gọi `cong_mot_v3(5)` (truyền số `i32`), thì closure đó vĩnh viễn khóa cứng với kiểu `i32`. Nếu dòng tiếp theo bạn gọi `cong_mot_v3(5.5)` (số thực `f64`), trình biên dịch sẽ báo lỗi bất đồng kiểu dữ liệu ngay lập tức!
+
+### 2. Bản chất bên dưới nắp ca-pô: Closure thực chất là một Struct vô danh!
+
+Khi bạn viết một closure bắt giữ các biến xung quanh, trình biên dịch Rust thực sự làm gì?
+Rust **không hề dùng con trỏ hàm chậm chạp hay bộ nhớ động dư thừa**. Thay vào đó, `rustc` tự động tạo ra một `struct` ẩn giấu với tên gọi nội bộ duy nhất (ví dụ: `Closure$1234`), trong đó các trường (fields) chính là các biến được bắt giữ:
+
+```rust
+let ten = String::from("Rust");
+let in_ten = || println!("{}", ten);
+```
+
+Bên dưới tầng mã máy, Rust chuyển đoạn mã trên thành cấu trúc tương đương:
+```rust
+// [Mã do rustc tự sinh ngầm bên dưới]
+struct KhungMoiTruong<'a> {
+    ten: &'a String, // Trường dữ liệu mượn đọc
+}
+
+impl<'a> Fn<()> for KhungMoiTruong<'a> {
+    extern "rust-call" fn call(&self, _args: ()) {
+        println!("{}", *self.ten);
+    }
 }
 ```
+> **⚠️ Lưu ý quan trọng — đoạn mã trên là MÔ PHỎNG KHÁI NIỆM, không phải mã hợp lệ.**
+> Trait `Fn` cùng cú pháp `Fn<Args>` và ABI `extern "rust-call"` đều là tính năng **chưa ổn định** của Rust
+> (`unboxed_closures`, `fn_traits`). Bạn **không thể** tự tay `impl Fn for` một struct trên Rust bản ổn định —
+> gõ thử sẽ nhận lỗi `E0658: the extern "rust-call" ABI is experimental`.
+> Chỉ có bản thân trình biên dịch mới sinh ra được các cài đặt đó. Đoạn mã trên chỉ nhằm cho bạn thấy
+> *hình dung* về thứ `rustc` tạo ra sau lưng bạn.
 
-Mỗi lần phương thức `next()` được gọi:
-- Nếu vẫn còn dữ liệu, nó nhả ra `Some(gia_tri)`.
-- Khi đã duyệt hết phần tử cuối cùng, nó nhả ra `None` để báo hiệu kết thúc dòng chảy.
+Nhờ cơ chế biến closure thành struct này, Rust đạt được hiệu năng **Trừu tượng hóa không chi phí (Zero-Cost Abstraction)**: Closure được cấp phát trực tiếp trên Stack, không tốn một byte rác nào trên Heap, và có thể được mở rộng nội tuyến (inline) thẳng vào mã máy CPU!
 
-```rust
-let danh_sach = vec![10, 20];
-let mut bo_lap = danh_sach.iter(); // bo_lap phải là mut vì vị trí con trỏ dịch chuyển
+### 3. Phân cấp Kế thừa giữa 3 Trait: `FnOnce` là Gốc rễ
 
-assert_eq!(bo_lap.next(), Some(&10));
-assert_eq!(bo_lap.next(), Some(&20));
-assert_eq!(bo_lap.next(), None); // Đã cạn kiệt phần tử
+Trong thư viện chuẩn của Rust, 3 trait này có mối quan hệ phụ thuộc chặt chẽ (Sub-traits):
+
+```
+       FnOnce (Đoạt quyền sở hữu, gọi ít nhất 1 lần)
+          ▲
+          │  (Mọi FnMut đều tự động là FnOnce)
+        FnMut (Sửa đổi trạng thái, gọi nhiều lần)
+          ▲
+          │  (Mọi Fn đều tự động là FnMut)
+          Fn (Chỉ đọc, gọi nhiều lần vô hạn)
 ```
 
-### 2. Ba phương thức khởi tạo Iterator: Mượn đọc vs Mượn sửa vs Tiêu thụ
+- **`FnOnce`**: Trait rộng nhất. Mọi closure trong Rust đều tự động triển khai `FnOnce`, bởi vì nếu bạn có thể gọi một hàm nhiều lần, bạn chắc chắn có thể gọi nó ít nhất một lần. Phương thức của nó nhận `self` theo giá trị:
+  ```rust
+  pub trait FnOnce<Args> {
+      type Output;
+      extern "rust-call" fn call_once(self, args: Args) -> Self::Output;
+  }
+  ```
+- **`FnMut`**: Đòi hỏi quyền mượn sửa `&mut self`. Cho phép closure thay đổi các trường dữ liệu nội bộ được đóng gói:
+  ```rust
+  pub trait FnMut<Args>: FnOnce<Args> {
+      extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output;
+  }
+  ```
+- **`Fn`**: Đòi hỏi quyền mượn đọc bất biến `&self`. Tuyệt đối an toàn để chia sẻ giữa nhiều luồng hoặc gọi liên tục:
+  ```rust
+  pub trait Fn<Args>: FnMut<Args> {
+      extern "rust-call" fn call(&self, args: Args) -> Self::Output;
+  }
+  ```
 
-Tùy theo mục đích sử dụng bộ nhớ và quyền sở hữu (ownership), Rust cung cấp 3 cách lấy bộ lặp từ một tập hợp (như `Vec<T>`):
+### 4. Từ khóa `move` và Cưỡng chế Quyền sở hữu
 
-| Phương thức | Chữ ký phương thức | Kiểu phần tử sinh ra (`Item`) | Tác động lên tập hợp gốc |
-|---|---|---|---|
-| **`.iter()`** | `fn iter(&self) -> Iter<'_, T>` | Tham chiếu bất biến `&T` | Tập hợp gốc nguyên vẹn, chỉ đọc, có thể gọi nhiều lần. |
-| **`.iter_mut()`** | `fn iter_mut(&mut self) -> IterMut<'_, T>` | Tham chiếu khả biến `&mut T` | Cho phép sửa đổi trực tiếp dữ liệu gốc tại chỗ trên bộ nhớ. |
-| **`.into_iter()`** | `fn into_iter(self) -> IntoIter<T>` | Giá trị sở hữu `T` | Tập hợp gốc bị tiêu thụ (Move), biến gốc không thể dùng lại! |
+Mặc định, Rust sẽ tự động chọn chế độ bắt giữ "nhẹ nhàng nhất có thể" (ưu tiên mượn đọc `&T`, rồi đến mượn sửa `&mut T`, cuối cùng mới đến lấy giá trị `T`).
+Tuy nhiên, khi bạn muốn chuyển một closure sang một luồng tiến trình độc lập (thread) hoặc lưu trữ nó trong một cấu trúc dữ liệu sống lâu hơn hàm hiện tại, bạn phải thêm từ khóa **`move`**:
 
-### 3. Phân biệt Bộ điều hợp (Adapters) và Hàm tiêu thụ (Consumers)
-
-- **Bộ điều hợp trung gian (Iterator Adapters)**:
-  - Đặc điểm: Biến đổi một bộ lặp thành một bộ lặp mới.
-  - Các hàm tiêu biểu: `.map()`, `.filter()`, `.take(n)`, `.skip(n)`, `.enumerate()`, `.zip()`.
-  - Tính chất: **Luôn lười biếng (Lazy)**. Nếu bạn viết `danh_sach.iter().map(|x| x * 2);` mà không hứng kết quả bằng một consumer, trình biên dịch `rustc` sẽ cảnh báo: *warning: unused `Map` that must be used*.
-- **Hàm tiêu thụ kết thúc (Consumers)**:
-  - Đặc điểm: Chủ động gọi liên tục phương thức `next()` cho đến khi nhận được `None`, tổng hợp dữ liệu thành kết quả cụ thể.
-  - Các hàm tiêu biểu: `.collect()`, `.fold()`, `.sum()`, `.count()`, `.find()`, `.any()`, `.all()`.
-
-### 4. Bí mật Tốc độ: Tại sao Iterator chạy nhanh hơn Vòng lặp thủ công?
-
-Nhiều lập trình viên từ các ngôn ngữ khác e ngại rằng việc bọc dữ liệu qua hàng loạt struct (`Map<Filter<Iter<...>>>`) sẽ làm chậm chương trình do chi phí gọi hàm ảo (virtual call overhead). Nhưng trong Rust:
-1. **Đơn hình hóa và Nội tuyến (Monomorphization & Inlining)**: Trình biên dịch bung toàn bộ chuỗi adapter thành một cấu trúc phẳng duy nhất lúc biên dịch.
-2. **Triệt tiêu kiểm tra biên giới hạn (Bounds Check Elimination)**: Trong vòng lặp `for i in 0..len` truyền thống, CPU phải so sánh `i < len` ở mỗi chu kỳ để tránh tràn ô nhớ. Với Iterator, Rust kiểm soát chặt chẽ điểm đầu và điểm cuối, cho phép trình tối ưu LLVM loại bỏ hoàn toàn các lệnh rẽ nhánh kiểm tra biên, đồng thời tự động vector hóa mã máy bằng các lệnh SIMD siêu tốc trên CPU hiện đại!
+```rust
+let loi_chao = String::from("Xin chào");
+// move ép buộc closure đoạt quyền sở hữu loi_chao vào struct nội bộ của nó
+let closure_chuyen_quyen = move || {
+    println!("{}", loi_chao);
+};
+// loi_chao không còn sử dụng được ở đây nữa vì đã bị move!
+```
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là chương trình hoàn chỉnh xây dựng **Hệ thống Phân tích Dữ liệu Cảm biến Nhà máy Thông minh (Industrial IoT Telemetry Pipeline)**. Chương trình sử dụng đầy đủ `.iter()`, `.iter_mut()`, `.into_iter()`, kết hợp các bộ điều hợp `filter`, `map`, `enumerate` và các hàm tiêu thụ `fold`, `sum`, `collect`.
+Chương trình hoàn chỉnh dưới đây xây dựng một **Hệ thống Quản lý Tác vụ Sự kiện (Event-Driven Task Dispatcher)**, minh họa chi tiết cả ba chế độ bắt giữ `Fn`, `FnMut`, và `FnOnce`, cũng như kỹ thuật truyền closure vào hàm thông qua Generics và con trỏ thông minh (smart pointer) `Box<dyn Fn()>`.
 
 ```rust
 // Tệp: src/main.rs
-// Chương trình thực chiến làm chủ Iterator: map, filter, fold, collect trong Rust
+// Chương trình thực chiến làm chủ Closures: Fn, FnMut, và FnOnce trong Rust
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct BanGhiCamBien {
-    pub ma_cam_bien: String,
-    pub nhiet_do_c: f64,
-    pub ap_suat_bar: f64,
-    pub hop_le: bool,
+// ============================================================================
+// CÁC HÀM NHẬN CLOSURE LÀM THAM SỐ VỚI RÀNG BUỘC TRAIT (TRAIT BOUNDS)
+// ============================================================================
+
+/// Hàm 1: Nhận closure thực hiện giao ước Fn (Chỉ đọc môi trường)
+/// Có thể gọi closure này nhiều lần liên tiếp một cách an toàn tuyệt đối
+pub fn thuc_thi_doc<F>(ten_tac_vu: &str, hanh_dong: F)
+where
+    F: Fn(),
+{
+    println!("--- BẮT ĐẦU TÁC VỤ CHỈ ĐỌC: [{}] ---", ten_tac_vu);
+    hanh_dong(); // Gọi lần 1
+    hanh_dong(); // Gọi lần 2
+    println!("--- HOÀN THÀNH TÁC VỤ CHỈ ĐỌC ---");
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ThongBaoNguyHiem {
-    pub thu_tu_ghi_nhan: usize,
-    pub noi_dung: String,
-    pub muc_do: String,
+/// Hàm 2: Nhận closure thực hiện giao ước FnMut (Sửa đổi môi trường)
+/// Bắt buộc tham số hanh_dong phải mang từ khóa mut vì trạng thái nội bộ thay đổi
+pub fn thuc_thi_sua_doi<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
+where
+    F: FnMut(usize),
+{
+    println!("\n--- BẮT ĐẦU TÁC VỤ SỬA ĐỔI TRẠNG THÁI: [{}] ---", ten_tac_vu);
+    for buoc in 1..=so_vong_lap {
+        hanh_dong(buoc); // Gọi nhiều lần, mỗi lần biến nội bộ bên ngoài sẽ biến đổi
+    }
+    println!("--- HOÀN THÀNH TÁC VỤ SỬA ĐỔI TRẠNG THÁI ---");
 }
+
+/// Hàm 3: Nhận closure thực hiện giao ước FnOnce (Tiêu thụ tài nguyên)
+/// Closure này tự hủy ngay sau khi được gọi vì quyền sở hữu đã bị đoạt lấy
+pub fn thuc_thi_tieu_thu<F>(ten_tac_vu: &str, hanh_dong: F)
+where
+    F: FnOnce() -> String,
+{
+    println!("\n--- BẮT ĐẦU TÁC VỤ TIÊU THỤ MỘT LẦN: [{}] ---", ten_tac_vu);
+    let ket_qua = hanh_dong(); // Gọi DUY NHẤT một lần tại đây
+    // hanh_dong(); // Nếu bỏ dấu chú thích dòng này, rustc sẽ chặn ngay lập tức!
+    println!("Kết quả nhận được sau khi tiêu thụ: {}", ket_qua);
+    println!("--- TÀI NGUYÊN ĐÃ ĐƯỢC GIẢI PHÓNG TOÀN DIỆN ---");
+}
+
+// ============================================================================
+// CHƯƠNG TRÌNH ĐIỀU HÀNH CHÍNH
+// ============================================================================
 
 fn main() {
     println!("============================================================");
-    println!("   HỆ THỐNG XỬ LÝ DÒNG DỮ LIỆU CẢM BIẾN NHÀ MÁY (IOT FP)   ");
+    println!("      HỆ THỐNG ĐIỀU PHỐI TÁC VỤ SỰ KIỆN: FN, FNMUT, FNONCE  ");
     println!("============================================================");
 
-    // 1. Khởi tạo danh sách dữ liệu cảm biến thô ban đầu
-    let mut du_lieu_tho: Vec<BanGhiCamBien> = vec![
-        BanGhiCamBien {
-            ma_cam_bien: String::from("CB-LO-01"),
-            nhiet_do_c: 85.5,
-            ap_suat_bar: 3.2,
-            hop_le: true,
-        },
-        BanGhiCamBien {
-            ma_cam_bien: String::from("CB-LO-02"),
-            nhiet_do_c: -999.0, // Dữ liệu lỗi do đứt dây cáp
-            ap_suat_bar: 0.0,
-            hop_le: false,
-        },
-        BanGhiCamBien {
-            ma_cam_bien: String::from("CB-LO-03"),
-            nhiet_do_c: 125.0, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
-            ap_suat_bar: 4.8,
-            hop_le: true,
-        },
-        BanGhiCamBien {
-            ma_cam_bien: String::from("CB-LO-04"),
-            nhiet_do_c: 72.0,
-            ap_suat_bar: 2.9,
-            hop_le: true,
-        },
-        BanGhiCamBien {
-            ma_cam_bien: String::from("CB-LO-05"),
-            nhiet_do_c: 110.5, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
-            ap_suat_bar: 5.1,
-            hop_le: true,
-        },
-    ];
+    // ------------------------------------------------------------------------
+    // TÌNH HUỐNG 1: Giao ước Fn - Bắt giữ tham chiếu chỉ đọc (&T)
+    // ------------------------------------------------------------------------
+    let thong_tin_he_thong = String::from("Máy chủ Cổng thanh toán (Gateway-01)");
+    
+    // Closure in_thong_tin chỉ mượn đọc thong_tin_he_thong
+    let in_thong_tin = || {
+        println!("[GIÁM SÁT] Trạng thái hiện tại của: {}", thong_tin_he_thong);
+    };
 
-    println!("Số lượng bản ghi thu thập được: {}", du_lieu_tho.len());
+    // Truyền closure vào hàm thuc_thi_doc (chứng minh gọi được nhiều lần)
+    thuc_thi_doc("Kiểm tra sức khỏe định kỳ", in_thong_tin);
+    // Biến thong_tin_he_thong vẫn hoàn toàn nguyên vẹn ở phạm vi ngoài:
+    println!("Biến gốc bên ngoài vẫn truy cập bình thường: {}", thong_tin_he_thong);
 
     // ------------------------------------------------------------------------
-    // KỸ THUẬT 1: Dùng .iter_mut() để hiệu chỉnh dữ liệu trực tiếp tại chỗ
-    // Giả sử cảm biến có sai số cố định +0.5°C cần được bù trừ
+    // TÌNH HUỐNG 2: Giao ước FnMut - Bắt giữ tham chiếu sửa đổi (&mut T)
     // ------------------------------------------------------------------------
-    println!("\n1. Tiến hành bù trừ sai số thiết bị qua .iter_mut():");
-    du_lieu_tho
-        .iter_mut()
-        .filter(|ban_ghi| ban_ghi.hop_le)
-        .for_each(|ban_ghi| {
-            ban_ghi.nhiet_do_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
-        });
-    println!("-> Đã hiệu chỉnh sai số cho tất cả cảm biến hợp lệ thành công.");
+    let mut tong_luong_truy_cap: usize = 0;
+    let mut nhat_ky_hoat_dong: Vec<String> = Vec::new();
+
+    // Closure tang_truy_cap mượn sửa đổi biến tong_luong_truy_cap và nhat_ky_hoat_dong
+    let ghi_nhan_luot_xem = |lan_lap: usize| {
+        tong_luong_truy_cap += 10;
+        nhat_ky_hoat_dong.push(format!("Đợt ghi nhận #{}: +10 yêu cầu", lan_lap));
+        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", tong_luong_truy_cap);
+    };
+
+    // Thực thi 3 vòng lặp tích lũy
+    thuc_thi_sua_doi("Bộ đếm lưu lượng mạng", ghi_nhan_luot_xem, 3);
+    println!("Kết quả sau khi kết thúc FnMut:");
+    println!("- Tổng lưu lượng cuối cùng: {}", tong_luong_truy_cap);
+    println!("- Chi tiết nhật ký: {:?}", nhat_ky_hoat_dong);
 
     // ------------------------------------------------------------------------
-    // KỸ THUẬT 2: Dùng .iter(), .filter(), .map() xây dựng đường ống lọc & trích xuất
-    // Lấy danh sách nhiệt độ của các cảm biến an toàn (nhiệt độ <= 100°C)
+    // TÌNH HUỐNG 3: Giao ước FnOnce - Đoạt quyền sở hữu (Move)
     // ------------------------------------------------------------------------
-    println!("\n2. Trích xuất danh sách nhiệt độ hoạt động an toàn (<= 100°C):");
-    let nhiet_do_an_toan: Vec<f64> = du_lieu_tho
-        .iter()
-        .filter(|bg| bg.hop_le)                  // Lọc bỏ cảm biến hỏng
-        .filter(|bg| bg.nhiet_do_c <= 100.0)     // Lọc cảm biến trong ngưỡng an toàn
-        .map(|bg| bg.nhiet_do_c)                 // Chỉ trích xuất lấy số đo nhiệt độ
-        .collect();                              // Gom tụ thành Vector mới
+    // Giả lập một khóa bảo mật phiên đăng nhập chỉ dùng một lần (One-Time Token)
+    let khoa_bao_mat = String::from("SEC-TOKEN-XYZ-9999-SECRET");
 
-    println!("-> Các mức nhiệt độ an toàn: {:?}", nhiet_do_an_toan);
+    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của khoa_bao_mat
+    let huy_phien_lam_viec = move || {
+        // Biến khoa_bao_mat bị di chuyển vào đây và tiêu thụ
+        let thong_bao = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", khoa_bao_mat);
+        thong_bao // Trả về chuỗi thông báo, khoa_bao_mat bị Drop tại đây
+    };
+
+    thuc_thi_tieu_thu("Tiêu hủy phiên bảo mật", huy_phien_lam_viec);
+    // println!("{}", khoa_bao_mat); // LỖI: value borrowed here after move!
 
     // ------------------------------------------------------------------------
-    // KỸ THUẬT 3: Dùng .fold() để tổng hợp thống kê phức tạp trong một lượt duyệt duy nhất
-    // Tính tổng nhiệt độ và đếm số lượng cảm biến an toàn để tính trung bình
+    // TÌNH HUỐNG 4: Lưu trữ danh sách Closure trong Vector với Box<dyn Fn()>
     // ------------------------------------------------------------------------
-    println!("\n3. Tính nhiệt độ trung bình của phân xưởng qua .fold():");
-    let (tong_nhiet, so_luong) = du_lieu_tho
-        .iter()
-        .filter(|bg| bg.hop_le)
-        .fold((0.0, 0usize), |(tong, dem), bg| {
-            (tong + bg.nhiet_do_c, dem + 1)
-        });
+    println!("\n--- QUẢN LÝ DANH SÁCH BỘ ĐIỀU HƯỚNG VỚI BOX<DYN FN()> ---");
+    let mut danh_sach_su_kien: Vec<Box<dyn Fn()>> = Vec::new();
 
-    if so_luong > 0 {
-        let trung_binh = tong_nhiet / (so_luong as f64);
-        println!("-> Tổng nhiệt độ: {:.2}°C trên {} cảm biến.", tong_nhiet, so_luong);
-        println!("-> Nhiệt độ trung bình toàn xưởng: {:.2}°C", trung_binh);
+    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện A: Khởi động quạt làm mát")));
+    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện B: Đèn LED chuyển màu xanh")));
+
+    for (stt, su_kien) in danh_sach_su_kien.iter().enumerate() {
+        print!("Kích hoạt sự kiện #{}: ", stt + 1);
+        su_kien(); // Gọi từng closure qua con trỏ Trait Object
     }
-
-    // ------------------------------------------------------------------------
-    // KỸ THUẬT 4: Kết hợp .enumerate(), .filter(), và .collect()
-    // Tạo danh sách cảnh báo khẩn cấp cho các cảm biến vượt ngưỡng (> 100°C)
-    // ------------------------------------------------------------------------
-    println!("\n4. Phát hiện nguy cơ và tổng hợp danh sách cảnh báo khẩn cấp:");
-    let danh_sach_canh_bao: Vec<ThongBaoNguyHiem> = du_lieu_tho
-        .iter()
-        .enumerate() // Cung cấp chỉ số thứ tự (0, 1, 2...) đi kèm với phần tử
-        .filter(|(_, bg)| bg.hop_le && bg.nhiet_do_c > 100.0)
-        .map(|(chi_so, bg)| ThongBaoNguyHiem {
-            thu_tu_ghi_nhan: chi_so + 1,
-            noi_dung: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.nhiet_do_c),
-            muc_do: String::from("KHẨN CẤP"),
-        })
-        .collect();
-
-    for cb in &danh_sach_canh_bao {
-        println!("  [!] Vị trí #{}: {} (Mức độ: {})", 
-                 cb.thu_tu_ghi_nhan, cb.noi_dung, cb.muc_do);
-    }
-
-    // ------------------------------------------------------------------------
-    // KỸ THUẬT 5: Dùng .into_iter() để tiêu thụ toàn bộ dữ liệu và giải phóng bộ nhớ
-    // ------------------------------------------------------------------------
-    println!("\n5. Di chuyển quyền sở hữu toàn bộ qua .into_iter():");
-    let ma_tat_ca_cam_bien: Vec<String> = du_lieu_tho
-        .into_iter()
-        .map(|bg| bg.ma_cam_bien) // Đoạt quyền sở hữu trường String mà không cần clone!
-        .collect();
-
-    println!("-> Danh sách mã thiết bị sau khi thu hồi: {:?}", ma_tat_ca_cam_bien);
-    // du_lieu_tho đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
 
     println!("\n============================================================");
-    println!("     XỬ LÝ TOÀN BỘ ĐƯỜNG ỐNG ITERATOR THÀNH CÔNG RỰC RỠ     ");
+    println!("     HOÀN TẤT XÁC THỰC CƠ CHẾ BẮT GIỮ MÔI TRƯỜNG CỦA RUST   ");
     println!("============================================================");
 }
 ```
@@ -271,34 +293,37 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Các lỗi biên dịch phổ biến nhất khi làm việc với Iterator trong Rust:
+Khi làm việc với Closure trong Rust, người lập trình thường vấp phải các thông báo lỗi đặc trưng liên quan đến việc mượn quyền và quyền sở hữu (ownership):
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0282** | `type annotations needed for 'Vec<_>'` | Bạn gọi `.collect()` nhưng không ghi rõ kiểu dữ liệu mong muốn nhận về. Trình biên dịch không biết bạn muốn gom dữ liệu thành `Vec`, `HashSet` hay kiểu tập hợp nào. | Chú thích kiểu tường minh ở biến hứng: `let res: Vec<i32> = ...;` hoặc dùng cú pháp Turbofish: `.collect::<Vec<_>>()`. |
-| **E0507** | `cannot move out of '...' which is behind a shared reference` | Bạn đang dùng `.iter()` (chỉ mượn tham chiếu `&T`) nhưng trong closure của `.map()` bạn lại cố lấy quyền sở hữu của phần tử không có thuộc tính `Copy` (như `String`). | Đổi sang `.into_iter()` nếu muốn lấy quyền sở hữu, hoặc gọi `.clone()`, hoặc chỉ thao tác trên tham chiếu `&`. |
-| **E0277** | `the trait bound '...: Iterator' is not satisfied` | Bạn cố gọi một phương thức iterator (như `.map()`) trực tiếp trên một tập hợp mà quên chưa biến nó thành bộ lặp qua `.iter()`. | Gọi phương thức `.iter()`, `.iter_mut()`, hoặc `.into_iter()` trước khi gọi các adapter. |
-| **E0308** | `mismatched types in closure of fold` | Trong hàm `.fold(khoi_tao, |tich_luy, item| ...)`, giá trị trả về của closure không khớp với kiểu của biến tích lũy `khoi_tao`. | Kiểm tra lại kiểu của biểu thức cuối cùng trong thân closure của `.fold()`, đảm bảo nó khớp chính xác với kiểu khởi tạo. |
+| **E0525** | `expected a closure that implements the 'Fn' trait, but this closure only implements 'FnMut'` | Hàm của bạn đòi hỏi tham số dạng `F: Fn()` (chỉ đọc), nhưng bên trong thân closure bạn lại thay đổi một biến môi trường, khiến nó bị hạ cấp xuống thành `FnMut`. | Đổi ràng buộc của hàm nhận tham số thành `F: FnMut()`, hoặc tái cấu trúc logic bên trong closure để không thay đổi biến ngoài. |
+| **E0507** | `cannot move out of '...', a captured variable in an 'FnMut' closure` | Trong closure dạng `FnMut` (được gọi nhiều lần), bạn lại thực hiện hành động chuyển quyền sở hữu (move) một giá trị ra ngoài. Vì hàm chạy nhiều lần, lần chạy thứ hai biến đó đã mất! | Mượn tham chiếu `&` thay vì lấy quyền sở hữu, hoặc nhân bản giá trị bằng `.clone()` trước khi di chuyển. |
+| **E0382** | `use of moved value: '...'` | Bạn đã dùng từ khóa `move ||` khiến biến bị đoạt quyền sở hữu vào trong closure, sau đó bạn lại cố dùng tiếp biến đó ở phạm vi bên ngoài. | Không dùng từ khóa `move` nếu chỉ cần mượn đọc, hoặc gọi phương thức `.clone()` để tạo bản sao trước khi chuyển vào closure. |
+| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn gọi một closure có tính chất `FnMut` nhưng biến lưu closure đó không được đánh dấu bằng từ khóa `mut`. | Thêm từ khóa `mut` vào biến lưu closure: `let mut my_closure = ...;`. |
 
-### Phân tích lỗi thực tế `E0282` (Thiếu chú thích kiểu khi gọi `collect`):
+### Phân tích lỗi thực tế `E0525`:
 
 ```rust
-// Đoạn mã lỗi minh họa:
-fn thu_nghiem_loi_collect() {
-    let mang = vec![1, 2, 3];
-    // LỖI E0282: rustc không biết gom thành kiểu gì
-    // let ket_qua = mang.iter().map(|x| x * 2).collect(); 
+// Đoạn mã lỗi minh họa E0525:
+fn goi_hai_lan<F: Fn()>(f: F) {
+    f();
+    f();
 }
 
-// Cách sửa chữa chuẩn mực:
-fn thu_nghiem_dung() {
-    let mang = vec![1, 2, 3];
-    // Cách A: Chú thích kiểu ở phía biến
-    let ket_qua_a: Vec<i32> = mang.iter().map(|x| x * 2).collect();
+fn thu_nghiem_loi() {
+    let mut dem = 0;
+    // Closure này sửa biến dem nên nó là FnMut, không thỏa mãn Fn
+    let closure_loi = || { 
+        dem += 1; 
+    };
+    // goi_hai_lan(closure_loi); // LỖI E0525: closure chỉ cài đặt FnMut, không phải Fn!
+}
 
-    // Cách B: Sử dụng cú pháp cá voi Turbofish ::<Vec<_>>()
-    let ket_qua_b = mang.iter().map(|x| x * 2).collect::<Vec<_>>();
-    println!("{:?} - {:?}", ket_qua_a, ket_qua_b);
+// Cách sửa chữa:
+fn goi_hai_lan_sua<F: FnMut()>(mut f: F) {
+    f();
+    f();
 }
 ```
 
@@ -307,24 +332,134 @@ fn thu_nghiem_dung() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Bản chất Trait `Iterator`**: Chỉ cần cài đặt duy nhất một phương thức `fn next(&mut self) -> Option<Self::Item>`, bạn lập tức sở hữu miễn phí hàng chục phương thức biến đổi dữ liệu cao cấp.
-2. **Tính lười biếng (Lazy Evaluation)**: Chuỗi adapter không thực thi bất kỳ phép tính nào cho đến khi hàm tiêu thụ (consumer) như `collect` hay `fold` yêu cầu kết quả.
-3. **Ba chế độ duyệt**:
-   - `.iter()`: Mượn đọc (`&T`).
-   - `.iter_mut()`: Mượn sửa trực tiếp (`&mut T`).
-   - `.into_iter()`: Đoạt quyền sở hữu (`T`) và tiêu thụ tập hợp gốc.
-4. **Hiệu năng Zero-Cost**: Không tốn chi phí gọi hàm trung gian nhờ cơ chế Monomorphization và tối ưu hóa loại bỏ kiểm tra biên giới hạn của LLVM.
+1. **Closure là Struct vô danh**: Trình biên dịch tự động tạo cấu trúc dữ liệu lưu trữ các biến được bắt giữ trên Stack, đem lại hiệu năng tối đa (Zero-Cost Abstraction).
+2. **Ba cấp độ bắt giữ**:
+   - `Fn`: Bắt giữ tham chiếu đọc `&T`, gọi nhiều lần, không làm biến đổi môi trường.
+   - `FnMut`: Bắt giữ tham chiếu sửa đổi `&mut T`, gọi nhiều lần, thay đổi trạng thái nội bộ.
+   - `FnOnce`: Đoạt quyền sở hữu `T`, tiêu thụ tài nguyên và chỉ gọi được đúng một lần duy nhất.
+3. **Từ khóa `move`**: Ép buộc closure đoạt quyền sở hữu toàn bộ các biến môi trường được sử dụng, rất quan trọng khi truyền closure sang luồng mới hoặc trả về từ hàm.
+4. **Linh hoạt đa hình**: Có thể truyền closure tĩnh thông qua Generics `<F: Fn()>` để tối ưu hóa mã máy, hoặc truyền động thông qua Trait Object `Box<dyn Fn()>`.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Phân tách Chẵn - Lẻ qua Iterator)**:  
-   Cho một danh sách số nguyên: `let so = vec![12, 7, 19, 24, 30, 5, 8];`.  
-   Hãy dùng đường ống Iterator để:
-   - Lọc ra các số chẵn.
-   - Bình phương từng số chẵn đó.
-   - Thu gom vào một `Vec<i32>` mới bằng `.collect()`.
+1. **Bài tập 1 (Phán đoán loại Trait)**:  
+   Xem xét đoạn mã sau và phán đoán xem closure `xu_ly` sẽ tự động thực hiện các Trait nào (`Fn`, `FnMut`, hay `FnOnce`):
+   ```rust
+   let danh_sach = vec![1, 2, 3];
+   let xu_ly = || {
+       println!("Độ dài danh sách: {}", danh_sach.len());
+   };
+   ```
+   Hãy viết mã nguồn kiểm chứng bằng cách truyền `xu_ly` vào hàm đòi hỏi `Fn`.
 
-2. **Bài tập 2 (Xây dựng Bộ tính toán với `.fold()`)**:  
-   Dùng phương thức `.fold()` để tìm giá trị lớn nhất trong một lát cắt số nguyên `&[i32]` mà không sử dụng phương thức `.max()` có sẵn của Rust. Khởi tạo giá trị ban đầu một cách khéo léo để chương trình hoạt động chính xác.
+2. **Bài tập 2 (Thiết kế Bộ lọc Tùy biến với Fn)**:  
+   Viết một hàm `loc_du_lieu<F>(danh_sach: &[i32], dieu_kien: F) -> Vec<i32>` trong đó `dieu_kien` là một closure có chữ ký `Fn(&i32) -> bool`. Dùng hàm này để lọc ra các số chẵn lớn hơn 10 từ một mảng số nguyên bất kỳ.
 
-3. **Bài tập 3 (Tự tạo Trait Iterator đơn giản)**:  
-   Tạo một struct mang tên `BoDemNguoc { hien_tai: u32 }`. Triển khai Trait `Iterator` cho struct này sao cho mỗi lần gọi `.next()`, nó đếm lùi từ một con số cho trước về `1`, và trả về `None` khi số hiện tại chạm mốc `0`. Kiểm tra hoạt động của nó với vòng lặp `for`.
+3. **Bài tập 3 (Sử dụng FnMut làm Bộ tích lũy)**:  
+   Viết một closure `tich_luy` sử dụng tính chất `FnMut` để cộng dồn điểm số của học sinh qua từng môn học. Mỗi lần gọi `tich_luy(diem)`, điểm số mới được cộng thêm và in ra màn hình điểm trung bình tạm thời sau mỗi môn thi.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Hãy hỏi: closure này **làm gì** với `danh_sach`? Nó gọi `.len()` — chỉ đọc. Không sửa, không tiêu thụ. Vậy chế độ bắt giữ "nhẹ nhàng nhất" mà Rust chọn là gì?
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Closure `xu_ly` chỉ **mượn đọc** `danh_sach` (`&Vec<i32>`), nên nó cài đặt **cả ba** trait: `Fn`, `FnMut` và `FnOnce`. Nhớ phân cấp ở mục 3: `Fn` là hẹp nhất và tự động thỏa mãn hai trait còn lại.
+
+```rust
+fn goi_ba_lan<F: Fn()>(f: F) {
+    f();
+    f();
+    f();   // gọi được nhiều lần -> chứng minh nó đúng là `Fn`
+}
+
+fn main() {
+    let danh_sach = vec![1, 2, 3];
+    let xu_ly = || println!("Độ dài danh sách: {}", danh_sach.len());
+
+    goi_ba_lan(xu_ly);
+
+    // danh_sach VẪN dùng được vì closure chỉ mượn đọc, không đoạt quyền sở hữu:
+    println!("Danh sách gốc vẫn nguyên vẹn: {:?}", danh_sach);
+}
+```
+
+Thử nghiệm đáng làm: thêm `danh_sach.push(4);` vào thân closure. Nó lập tức bị hạ cấp xuống `FnMut` và `goi_ba_lan` sẽ từ chối biên dịch với lỗi **E0525**.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Ràng buộc `F: Fn(&i32) -> bool` khớp chính xác với thứ mà `.filter()` cần. Vì `.iter()` cho ra `&i32` còn bạn muốn trả `Vec<i32>`, hãy dùng `.copied()` (hoặc `.cloned()`) để bóc một lớp tham chiếu trước khi `.collect()`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+pub fn loc_du_lieu<F>(danh_sach: &[i32], dieu_kien: F) -> Vec<i32>
+where
+    F: Fn(&i32) -> bool,
+{
+    danh_sach.iter().filter(|x| dieu_kien(x)).copied().collect()
+}
+
+fn main() {
+    let so = [4, 12, 7, 20, 30, 9, 16];
+
+    let chan_lon_hon_10 = loc_du_lieu(&so, |&x| x % 2 == 0 && x > 10);
+    assert_eq!(chan_lon_hon_10, vec![12, 20, 30, 16]);
+
+    // Cùng một hàm, đổi closure là đổi hẳn hành vi — đó là sức mạnh của hàm bậc cao:
+    let so_le = loc_du_lieu(&so, |&x| x % 2 != 0);
+    println!("Chẵn > 10: {:?}\nLẻ      : {:?}", chan_lon_hon_10, so_le);
+}
+```
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Closure cần nhớ **hai** thứ giữa các lần gọi: tổng điểm và số môn đã thi. Cả hai đều bị bắt giữ theo `&mut`, nên closure sẽ là `FnMut` — và biến chứa nó bắt buộc phải khai báo `let mut`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    let mut tong: f64 = 0.0;
+    let mut so_mon: u32 = 0;
+
+    // Closure này SỬA hai biến ngoài -> nó là FnMut -> biến chứa nó phải `mut`.
+    let mut tich_luy = |diem: f64| {
+        tong += diem;
+        so_mon += 1;
+        let trung_binh = tong / so_mon as f64;
+        println!("  Môn thứ {}: {:.1} điểm | Trung bình tạm thời: {:.2}",
+                 so_mon, diem, trung_binh);
+        trung_binh
+    };
+
+    println!("Bảng điểm học kỳ:");
+    tich_luy(8.0);
+    tich_luy(6.5);
+    tich_luy(9.0);
+    let cuoi_cung = tich_luy(7.5);
+
+    // Closure phải kết thúc vòng đời (ra khỏi phạm vi mượn) thì mới đọc lại được biến gốc.
+    drop(tich_luy);
+    println!("Điểm trung bình cuối: {:.2} trên {} môn", cuoi_cung, so_mon);
+}
+```
+
+Hai điểm dễ sai:
+- Quên `let mut tich_luy` → lỗi **E0596** (`cannot borrow as mutable`).
+- Cố đọc `tong` khi closure vẫn còn sống → lỗi **E0502**, vì closure đang giữ quyền mượn sửa. Gọi `drop(tich_luy)` (hoặc đặt closure trong một khối `{ }`) để trả quyền mượn lại.
+</details>

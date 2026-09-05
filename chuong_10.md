@@ -83,13 +83,103 @@ Vì kiểu `Option<String>` và kiểu `String` là hai kiểu dữ liệu hoàn
 
 Dưới góc nhìn phần cứng, Rust bố trí một `enum` trên RAM như thế nào?
 - **Thẻ định danh (Discriminant / Tag)**: 1 byte nhỏ dùng để đánh dấu xem nhánh nào đang hoạt động (nhánh 0, 1 hay 2).
-- **Vùng chứa dữ liệu (Payload)**: Rust sẽ đo kích thước của nhánh lớn nhất trong enum, và dành ra một khoảng nhớ Heap/Stack vừa đủ bằng nhánh lớn nhất đó.
+- **Vùng chứa dữ liệu (Payload)**: Rust đo kích thước của nhánh lớn nhất trong enum rồi dành ra một vùng vừa đủ bằng nhánh lớn nhất đó. Vùng này nằm **ngay tại chỗ enum được lưu** (trên Stack nếu biến nằm trên Stack, bên trong `Box` nếu enum nằm trong `Box`) — bản thân `enum` **không bao giờ tự cấp phát thêm bộ nhớ Heap**.
 
 > **Kỹ thuật tối ưu hóa con trỏ rỗng (Null Pointer Optimization - NPO)**:
 > Khi bạn sử dụng `Option<&T>` hoặc `Option<Box<T>>` (con trỏ tham chiếu), Rust biết rằng một con trỏ hợp lệ trên RAM không bao giờ mang địa chỉ `0x0`.
 > Do đó, Rust gán giá trị `None` chính là địa chỉ `0x0`, còn `Some(&T)` là địa chỉ thực tế của đối tượng! Kết quả là: `Option<&T>` chiếm đúng **8 bytes** trên RAM — **hoàn toàn không tốn thêm 1 bit nào** so với một con trỏ thông thường!
 
-### 3. Quy tắc bắt buộc Vét cạn của `match` (Exhaustiveness)
+### 3. Vì sao gọi là "ĐẠI SỐ"? Kiểu tích và kiểu tổng
+
+Cụm từ *Kiểu dữ liệu đại số* nghe rất kêu, nhưng ý nghĩa của nó thì đơn giản đến bất ngờ: **hãy đếm số trạng thái mà một kiểu có thể mang**.
+
+| Kiểu | Số giá trị có thể | Phép toán |
+|---|---|---|
+| `bool` | 2 | |
+| `()` | 1 | |
+| `(bool, bool)` — **struct** | 2 × 2 = **4** | **NHÂN** → gọi là *kiểu tích* (product type) |
+| `enum { A, B, C }` — **enum** | 1 + 1 + 1 = **3** | **CỘNG** → gọi là *kiểu tổng* (sum type) |
+| `Option<bool>` | 1 + 2 = **3** | `None` + `Some(true)` + `Some(false)` |
+
+- **`struct` là kiểu TÍCH**: nó chứa trường A **VÀ** trường B cùng lúc, nên số tổ hợp là tích: `|A × B| = |A| · |B|`.
+- **`enum` là kiểu TỔNG**: nó là nhánh A **HOẶC** nhánh B, nên số tổ hợp là tổng: `|A + B| = |A| + |B|`.
+
+Đây không phải trò chơi chữ — nó là **công cụ thiết kế**. Quy tắc vàng:
+
+> Kiểu tốt nhất là kiểu biểu diễn được **đúng bằng** số trạng thái hợp lệ trong nghiệp vụ. Mỗi trạng thái dư ra là một lỗi đang chờ xảy ra.
+
+```rust
+// ❌ Kiểu TÍCH: có 2 tổ hợp VÔ NGHĨA
+struct DonHang { da_thanh_toan: bool, ma_giao_dich: Option<String> }
+//   (true, None)      -> đã trả tiền mà không có mã giao dịch?!
+//   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
+
+// ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
+enum TrangThaiThanhToan { ChuaTra, DaTra { ma_giao_dich: String } }
+```
+
+Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** để loại bỏ cả một lớp lỗi khỏi chương trình.
+
+### 4. Bộ công cụ so khớp mẫu đầy đủ
+
+`match` của Rust mạnh hơn nhiều so với `switch` của các ngôn ngữ khác. Đây là những dạng mẫu bạn sẽ dùng thường xuyên:
+
+```rust
+let diem = 85;
+let so = Some(7);
+let mang = [1, 2, 3, 4, 5];
+
+// 1) MẪU KHOẢNG (range pattern)
+let xep_loai = match diem {
+    90..=100 => "Xuất sắc",
+    80..=89  => "Giỏi",
+    50..=79  => "Đạt",
+    _        => "Chưa đạt",
+};
+
+// 2) MẪU HOẶC `|` — gộp nhiều nhánh
+let la_cuoi_tuan = match "Thứ 7" {
+    "Thứ 7" | "Chủ nhật" => true,
+    _ => false,
+};
+
+// 3) ĐIỀU KIỆN BẢO VỆ (match guard) — thêm `if` vào nhánh
+let mo_ta = match so {
+    Some(n) if n % 2 == 0 => "số chẵn",
+    Some(n) if n > 5      => "số lẻ lớn",
+    Some(_)               => "số lẻ nhỏ",
+    None                  => "không có gì",
+};
+
+// 4) RÀNG BUỘC `@` — vừa kiểm tra vừa GIỮ LẠI giá trị
+let thong_bao = match so {
+    Some(n @ 1..=9) => format!("Chữ số đơn: {}", n),  // n vẫn dùng được!
+    Some(n)         => format!("Số lớn: {}", n),
+    None            => "Rỗng".to_string(),
+};
+
+// 5) MẪU LÁT CẮT — bóc tách mảng
+let tom_tat = match &mang[..] {
+    []              => "rỗng".to_string(),
+    [x]             => format!("một phần tử: {}", x),
+    [dau, .., cuoi] => format!("từ {} đến {}", dau, cuoi),
+};
+
+// 6) `matches!` — kiểm tra nhanh, trả về bool
+let co_gia_tri = matches!(so, Some(_));
+
+// 7) `let ... else` — bóc tách hoặc THOÁT SỚM, giữ mã phẳng phiu
+fn xu_ly(dau_vao: Option<i32>) -> i32 {
+    let Some(n) = dau_vao else {
+        return 0;   // bắt buộc phải thoát khỏi phạm vi
+    };
+    n * 2           // từ đây trở đi, n dùng như biến bình thường
+}
+```
+
+> **`let ... else` là công cụ chống thụt lề tuyệt vời**: thay vì bọc toàn bộ phần còn lại của hàm trong `if let Some(n) = ... { ... }`, bạn xử lý trường hợp xấu trước rồi thoát, giữ luồng chính luôn nằm ở mức thụt lề ngoài cùng.
+
+### 5. Quy tắc bắt buộc Vét cạn của `match` (Exhaustiveness)
 
 Khi bạn so khớp một biểu thức với `match`, Rust bắt buộc bạn phải liệt kê **đầy đủ tất cả các trường hợp có thể xảy ra**.
 Nếu bạn quên một nhánh, trình biên dịch sẽ từ chối dịch mã với lỗi `E0004`:

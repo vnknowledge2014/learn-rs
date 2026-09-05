@@ -1,349 +1,228 @@
-# Chương 43: Dự Án Thực Chiến: Xây Dựng Công Cụ CLI Chuẩn Sản Xuất Bằng Vibe Coding (Capstone Project: AI-Assisted Production CLI Tool)
+# Chương 43: Tư Duy Vibe Coding: Từ Thợ Gõ Cú Pháp Thành Tổng Đạo Diễn Kiến Trúc (The Vibe Coding Paradigm: System Architect vs Syntax Typist)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn đến với chương đỉnh cao của Chủ đề 8: **Đại dự án tốt nghiệp Vibe Coding (Capstone Project)**!
+Chào mừng bạn đến với Chủ đề 8 — một bước ngoặt mang tính cách mạng trong giáo trình Rust Masterclass: **Lập trình hiện đại cùng AI (Vibe Coding)**.
 
-Trải qua 4 chương vừa qua, chúng ta đã được trang bị đầy đủ các trụ cột tri thức hiện đại nhất:
-- Thấu hiểu vị thế của **Tổng đạo diễn kiến trúc (System Architect)** ở Chương 39.
-- Làm chủ kỹ thuật **Prompt hệ thống và Quản lý cửa sổ ngữ cảnh (Context Window)** ở Chương 40.
-- Thực hành thuần thục quy trình **Spec-Driven Development (SDD) và AI-Assisted TDD** ở Chương 41.
-- Tận dụng **Trình biên dịch Rust làm Trọng tài Tối cao** để tự sửa lỗi và tái cấu trúc mã nguồn ở Chương 42.
+Trong các thập kỷ trước, một lập trình viên thường được đo lường bằng tốc độ gõ phím, khả năng ghi nhớ từng tên hàm trong thư viện chuẩn, và việc nhớ chính xác vị trí của từng dấu chấm phẩy, dấu ngoặc nhọn. Người ta gọi đó là thời kỳ của những "thợ gõ cú pháp" (syntax typists). Tuy nhiên, sự xuất hiện của các mô hình ngôn ngữ lớn (LLM) và các trợ lý lập trình trí tuệ nhân tạo (AI coding assistants) đã thay đổi hoàn toàn cuộc chơi.
 
-Giờ là lúc chúng ta ghép nối tất cả các mảnh ghép đó lại với nhau để thực hiện một kỳ tích: **Xây dựng một công cụ dòng lệnh (CLI Tool) hoàn chỉnh, đạt chuẩn mực thương mại và hiệu năng cao trong vòng chưa đầy 30 phút bằng phương pháp Vibe Coding!**
+Khái niệm **Vibe Coding** đại diện cho sự dịch chuyển mô hình tư duy: Lập trình viên không còn phải vật lộn với những chi tiết lặp đi lặp lại của cú pháp bề mặt, mà nâng tầm vị thế thành một **Tổng đạo diễn kiến trúc (System Architect)**. Bạn tập trung 90% năng lượng trí tuệ vào việc thiết kế cấu trúc dữ liệu, xác định ranh giới hệ thống, quy định các giao ước hành vi (traits), bảo vệ tính bất biến của nghiệp vụ, và đóng vai trò thẩm định viên chất lượng tối cao.
 
-Dự án chúng ta sẽ cùng xây dựng có tên là **LogPulse** — một công cụ dòng lệnh chuyên dụng dành cho các kỹ sư DevOps và quản trị hệ thống:
-- Đọc và phân tích hàng triệu dòng nhật ký máy chủ web (Web Access Logs).
-- Phân tích cờ dòng lệnh (CLI flags & options) linh hoạt.
-- Tự động thống kê số lượng truy cập, tỷ lệ mã lỗi (4xx, 5xx), tổng dung lượng dữ liệu truyền tải thông qua bộ nhớ đệm (buffer), và nhận diện địa chỉ IP gửi nhiều yêu cầu nhất.
-- Xuất báo cáo dạng bảng trực quan ngay trên terminal với mã thoát POSIX chuẩn mực (Exit Codes).
+Điều tuyệt vời nhất là: **Rust chính là ngôn ngữ lập trình hoàn hảo nhất hành tinh để thực hành Vibe Coding**. Trong các ngôn ngữ động như Python hay JavaScript, khi AI sinh mã sai lệch về kiểu dữ liệu hay bỏ quên trường hợp rỗng, chương trình vẫn có thể chạy và chỉ nổ tung lúc nửa đêm khi khách hàng bấm nút thanh toán. Nhưng trong Rust, trình biên dịch `rustc` cực kỳ nghiêm khắc. Trình biên dịch sẽ ngay lập tức "bắt lỗi" bất kỳ ảo giác (hallucination) nào của AI về kiểu dữ liệu, vi phạm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), hay xung đột đa luồng.
 
 Mục tiêu học tập của chương:
-- Trực tiếp áp dụng quy trình Vibe Coding end-to-end từ đặc tả kỹ thuật đến sản phẩm thực tế có thể chạy được.
-- Nắm vững kiến trúc phần mềm của một công cụ CLI chuẩn sản xuất: Phân tích tham số, luồng nhập xuất an toàn, định dạng bảng hiển thị và xử lý lỗi không bao giờ để ứng dụng bị hoảng loạn (panic).
-- Củng cố triệt để các nguyên lý của Rust về quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), và áp dụng con trỏ thông minh (smart pointer) khi quản lý dữ liệu lớn.
-- Trải nghiệm cảm giác làm chủ công nghệ: Tốc độ x10 của AI kết hợp với độ tin cậy tuyệt đối của Rust!
+- Thấu hiểu bản chất và triết lý của làn sóng **Vibe Coding** trong kỷ nguyên AI.
+- Định vị rõ ràng vai trò: Việc gì giao cho AI thực hiện, việc gì con người bắt buộc phải nắm quyền kiểm soát kiến trúc (system architecture).
+- Nắm vững phương pháp thiết kế Hợp đồng giao ước trước (Contract-First Design) bằng Trait và Enum trong Rust để hướng dẫn AI sinh mã chuẩn xác.
+- Nhận diện cách hệ thống kiểm tra kiểu tĩnh và quản lý bộ nhớ của Rust trở thành "tấm lá chắn" biến AI thành cộng sự đắc lực thay vì hiểm họa.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-### Xưởng chế tạo Dao đa năng Thụy Sĩ công nghệ cao
+Hãy tưởng tượng bạn đang chuẩn bị quay một bộ phim hành động bom tấn chiếu rạp.
 
-Hãy tưởng tượng bạn muốn tạo ra một chiếc **Dao đa năng Thụy Sĩ (Swiss Army Knife)** cao cấp gồm: Lưỡi dao sắc bén, kéo cắt tỉa, tuốc-nơ-vít, và đồ khui nút chai.
+### Trường hợp 1: Người thợ gõ cú pháp (The Syntax Typist)
+Người này giống như một người làm phim nghiệp dư muốn tự mình làm tất cả:
+- Tự tay trèo lên trần nhà mắc từng bóng đèn.
+- Tự tay may từng chiếc cúc áo cho diễn viên.
+- Tự tay cầm cọ vẽ từng khung hình hoạt họa 24 hình/giây.
+- Tự tay vác máy quay chạy vòng quanh sân khấu.
 
-#### Phương pháp thủ công (Trước kỷ nguyên Vibe Coding):
-- Bạn phải tự mình đi vào rừng đốn gỗ làm cán dao, đào quặng sắt, nung lò rèn đập từng chiếc lò xo, tự mài giũa từng con ốc vít.
-- Bạn mất 6 tháng ròng rã chỉ để chế tạo xong một chiếc dao đơn giản, và nếu một chiếc lò xo bị lệch 1 milimet, toàn bộ con dao sẽ bị kẹt không thể mở ra.
+Hậu quả là gì? Anh ta kiệt sức vì những chi tiết vụn vặt. Vì quá mải mê khâu chiếc cúc áo, anh ta quên mất kịch bản tổng thể có logic hay không. Cốt truyện trở nên rời rạc, cảnh quay sau mâu thuẫn với cảnh quay trước, và bộ phim thất bại thảm hại.
 
-#### Phương pháp Vibe Coding hiện đại:
-- Bạn là **Tổng công trình sư thiết kế**: Bạn có sẵn một bản thiết kế 3D chính xác đến từng micromet (Bản đặc tả `SPEC.md`).
-- Bạn bước vào một **Xưởng in 3D laser và cánh tay robot thông minh (Trợ lý AI)**:
-  - Bạn nạp bản thiết kế vào máy: *"Tôi cần chế tạo chiếc dao đa năng Thụy Sĩ bằng thép không gỉ. Mô-đun 1 là lưỡi dao, mô-đun 2 là tuốc-nơ-vít, các khớp nối phải gập 90 độ mượt mà, chịu lực 20kg"*.
-  - Cánh tay robot (AI) hoạt động với tốc độ ánh sáng, cắt gọt và lắp ráp các linh kiện chuẩn xác theo hợp đồng trong vòng 15 phút.
-- **Thanh tra chất lượng Thụy Sĩ (Trình biên dịch `rustc`)** đứng bên cạnh dùng kính hiển vi điện tử soi từng mối nối:
-  - Nếu có một khớp nối bị lỏng (lỗi an toàn bộ nhớ), thanh tra yêu cầu robot sửa lại ngay lập tức.
-- Kết quả: Sau 30 phút, bạn cầm trên tay một chiếc dao Thụy Sĩ hoàn mỹ, bóng bẩy, sắc bén phi thường và hoạt động bền bỉ suốt 50 năm!
+### Trường hợp 2: Tổng đạo diễn kiến trúc trong Vibe Coding (The System Architect)
+Ngược lại, một Tổng đạo diễn tài hoa làm việc hoàn toàn khác:
+- Đạo diễn nắm giữ tầm nhìn: Kịch bản phân cảnh (Storyboard), tính cách từng nhân vật, thông điệp cần truyền tải, và giới hạn ngân sách.
+- Đạo diễn không tự diễn cảnh nguy hiểm, mà giao việc đó cho một **đoàn đóng thế chuyên nghiệp siêu tốc (AI)**: *"Tôi cần cảnh một chiếc xe cảnh sát rượt đuổi qua ngã tư lúc trời mưa, tông vào thùng rác nhưng tuyệt đối không được đâm vào cột đèn!"*.
+- Đoàn diễn viên đóng thế (AI) có thể thực hiện cảnh quay đó trong tích tắc với 5 phương án khác nhau.
+- Sau khi đoàn quay xong, Tổng đạo diễn ngồi trước màn hình giám sát, xem lại từng thước phim và hô: *"Cắt! Cảnh này góc quay bị lệch, làm lại góc nghiêng 45 độ!"*.
 
-Công cụ CLI **LogPulse** của chúng ta cũng được tạo ra theo đúng tinh thần đó: Bạn làm chủ thiết kế, AI tăng tốc triển khai, và Rust bảo chứng chất lượng!
+Trong lập trình Rust cùng AI:
+- Bạn là **Tổng đạo diễn kiến trúc (System Architect)**: Bạn vẽ ra bản vẽ hệ thống, xác định dữ liệu đầu vào, kết quả đầu ra, và các quy tắc nghiệp vụ bất khả xâm phạm.
+- AI là **đoàn đóng thế siêu tốc**: Viết các đoạn mã lặp lại, dựng khung mã giả, sinh dữ liệu mẫu, và triển khai các hàm chi tiết theo hợp đồng bạn đã đặt ra.
+- Trình biên dịch `rustc` là **Trưởng ban kiểm định an toàn phim trường**: Bất kỳ dây cáp bảo hiểm nào bị lỏng (lỗi vi phạm thời gian sống lifetime, rò rỉ vùng nhớ, hoặc dữ liệu bị mượn borrow sai quy tắc) đều bị đình chỉ quay ngay lập tức!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
-### 1. Kiến trúc phân tầng của một Công cụ CLI chuyên nghiệp
-Một công cụ dòng lệnh chuẩn sản xuất (Production-Grade CLI Tool) trong Rust không đơn thuần là một tệp `main.rs` dài 500 dòng lộn xộn. Nó được cấu trúc thành 4 tầng ranh giới rõ rệt:
+### 1. Sự dịch chuyển từ Gõ mã sang Điều phối kiến trúc
+Khi làm việc với các công cụ lập trình hỗ trợ bởi trí tuệ nhân tạo (AI), hiệu suất của bạn không còn bị nghẽn bởi tốc độ gõ bàn phím (WPM - Words Per Minute), mà bị nghẽn bởi **khả năng diễn đạt đặc tả kiến trúc (Specification Expressiveness)**.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. CLI INTERFACE LAYER (std::env::args, Flags, Help Menu)   │
-├─────────────────────────────────────────────────────────────┤
-│ 2. STREAMING I/O & BUFFER LAYER (BufRead, Zero-Copy Parser) │
-├─────────────────────────────────────────────────────────────┤
-│ 3. CORE ANALYTICS ENGINE (Metrics, HashMaps, Aggregation)    │
-├─────────────────────────────────────────────────────────────┤
-│ 4. PRESENTATION & FORMATTING (ASCII Tables, Exit Codes)     │
-└─────────────────────────────────────────────────────────────┘
-```
+Nếu bạn đưa cho AI một yêu cầu mập mờ:
+> *"Hãy viết cho tôi một hàm xử lý thanh toán"*
 
-1. **Tầng giao diện dòng lệnh (CLI Interface Layer)**:
-   - Tiếp nhận tham số người dùng nhập từ bàn phím.
-   - Nhận diện các cờ (flags) như `--verbose`, `--threshold`, hoặc tên đường dẫn tệp tin nhật ký.
-   - Tự động hiển thị thực đơn hướng dẫn sử dụng (`--help`) khi người dùng nhập sai tham số.
-2. **Tầng xử lý dữ liệu và Bộ nhớ đệm (I/O & Buffer Layer)**:
-   - Khi xử lý tệp nhật ký dung lượng lớn (hàng Gigabytes), tuyệt đối không bao giờ nạp toàn bộ tệp vào RAM bằng `fs::read_to_string`.
-   - Sử dụng cơ chế đọc theo dòng qua bộ nhớ đệm (buffer) để giữ mức tiêu thụ RAM luôn cố định ở vài Megabytes, bất kể tệp lớn đến đâu.
-   - Sử dụng các lát cắt chuỗi `&str` để phân tích cú pháp (parsing) mà không cấp phát bộ nhớ mới (Zero-Copy Parsing).
-3. **Động cơ phân tích cốt lõi (Core Analytics Engine)**:
-   - Tính toán các chỉ số nghiệp vụ: Tổng số yêu cầu, phân loại mã trạng thái HTTP (2xx Thành công, 4xx Lỗi phía khách hàng, 5xx Lỗi máy chủ).
-   - Tận dụng cấu trúc bảng băm `HashMap` để đếm tần suất xuất hiện của từng địa chỉ IP người dùng.
-4. **Tầng trình diễn & Mã thoát POSIX (Presentation & Exit Codes)**:
-   - In kết quả ra màn hình dưới dạng bảng ASCII phân chia cột ngay ngắn, dễ đọc cho mắt người.
-   - Trả về mã thoát chuẩn POSIX: Trả về mã `0` khi phân tích thành công; trả về mã khác `0` (ví dụ: `1` hoặc `2`) khi gặp lỗi để các script tự động hóa (CI/CD) có thể phát hiện sự cố.
+AI sẽ tự suy diễn theo hàng triệu dòng mã trôi nổi trên Internet: Có thể dùng số thực `f64` để lưu tiền tệ (dẫn tới sai số làm tròn tài chính), có thể nuốt lỗi bằng `unwrap()`, hoặc bỏ qua việc ghi nhật ký kiểm toán.
 
-### 2. Các bước triển khai Vibe Coding thực tế
-Trong dự án này, chúng ta tiến hành tuần tự 4 bước phối hợp cùng AI:
-- **Bước 1**: Phác thảo cấu trúc cấu hình `CliConfig` và bộ dữ liệu `LogEntry`.
-- **Bước 2**: Định nghĩa các trạng thái lỗi trong `LogCliError` và yêu cầu AI viết các bài test kiểm chứng việc phân tích dòng log.
-- **Bước 3**: Nhờ AI sinh mã cho bộ phân tích `LogAnalyzer` với các đường ống hàm Iterator.
-- **Bước 4**: Ghép nối vào hàm `main()` có bắt lỗi hoàn chỉnh, sử dụng Trình biên dịch Rust làm Trọng tài tối cao để triệt tiêu mọi cảnh báo và lỗi cú pháp.
+Nhưng khi bạn tiếp cận theo tư duy kiến trúc sư hệ thống:
+1. Bạn xác định kiểu dữ liệu bất biến: Tiền tệ phải là số nguyên dương tính theo đơn vị nhỏ nhất (ví dụ: `u64` xu/cents), không dùng số thực.
+2. Bạn định nghĩa Enum liệt kê đầy đủ mọi trạng thái lỗi có thể xảy ra (`InsufficientFunds`, `NetworkTimeout`, `InvalidCurrency`).
+3. Bạn thiết lập Trait quy định giao ước tương tác giữa các mô-đun.
+
+Khi khung kiến trúc vững như bàn thạch, AI chỉ việc điền phần logic bên trong thân hàm. Khả năng phát sinh lỗi gần như bị triệt tiêu hoàn toàn.
+
+### 2. Vì sao Rust là "Cặp bài trùng" vĩ đại nhất với AI?
+Các nhà nghiên cứu công nghệ thường nhận định: *"Ngôn ngữ lập trình càng dễ dãi thì càng nguy hiểm khi kết hợp với AI; ngôn ngữ càng khắt khe thì AI càng phát huy sức mạnh tối thượng"*.
+
+| Tiêu chí | Ngôn ngữ thông dịch/Động (Python, JS) | Rust (Hệ thống kiểu tĩnh & Trình biên dịch khắt khe) |
+| :--- | :--- | :--- |
+| **Hành vi khi AI suy đoán sai kiểu** | Chương trình vẫn khởi động bình thường. Lỗi kiểu dữ liệu (TypeError) chỉ phát tác khi người dùng chạm vào nhánh code đó. | `rustc` báo lỗi ngay lập tức lúc biên dịch với mã lỗi cụ thể (ví dụ: `E0308`). Mã không thể chạy nếu chưa đúng kiểu 100%. |
+| **Quản lý tài nguyên & Bộ nhớ** | Phụ thuộc bộ thu gom rác (Garbage Collector) hoặc giải phóng thủ công. AI dễ tạo ra rò rỉ bộ nhớ (Memory Leak) âm thầm. | Hệ thống quyền sở hữu (ownership), quy tắc mượn (borrow), và thời gian sống (lifetime) đảm bảo an toàn bộ nhớ tuyệt đối mà không cần GC. |
+| **Cạnh tranh dữ liệu (Data Race)** | Rất khó phát hiện lỗi đa luồng do AI viết thiếu cơ chế đồng bộ hóa. | Quy tắc Send/Sync của Rust ngăn chặn Data Race ngay tại thời điểm biên dịch. |
+| **Phản hồi lỗi để AI tự sửa** | Thông báo lỗi runtime thường chung chung, không kèm giải pháp. | Báo cáo lỗi của Rust cực kỳ chi tiết, kèm vị trí dòng, giải thích lý do, và đề xuất sửa chữa (`help:`). |
+
+### 3. Phương pháp tiếp cận Hợp đồng giao ước trước (Contract-First Architecture)
+Để làm chủ Vibe Coding trong Rust, bạn cần thành thạo quy trình 3 bước:
+1. **Domain Modeling (Mô hình hóa nghiệp vụ)**: Dùng `struct` và `enum` để mô tả thế giới thực. Biến các trạng thái bất hợp pháp thành những kiểu dữ liệu không thể biểu diễn được trong mã nguồn (Make illegal states unrepresentable).
+2. **Behavior Contracts (Giao ước hành vi)**: Dùng `trait` để định nghĩa những gì hệ thống có thể làm, phân tách hoàn toàn giữa "Cái gì cần làm" (Interface) và "Làm như thế nào" (Implementation).
+3. **Safe Composition (Lắp ghép an toàn)**: Nhờ AI hiện thực hóa các `impl`, sử dụng con trỏ thông minh (smart pointer) như `Box`, `Rc` hoặc tham chiếu mượn an toàn khi cần thiết, và sử dụng bộ nhớ đệm (buffer) để tối ưu hóa hiệu năng nhập xuất dữ liệu.
 
 ---
 
 ## Mã nguồn minh họa thực chiến
 
-Dưới đây là mã nguồn hoàn chỉnh của công cụ **LogPulse CLI** viết bằng 100% Rust thuần (Pure Rust Standard Library), không phụ thuộc vào bất kỳ thư viện bên ngoài nào, sẵn sàng biên dịch bằng `rustc --edition=2021` và chạy ngay lập tức.
+Dưới đây là một ví dụ hoàn chỉnh, có thể biên dịch và thực thi trực tiếp bằng `rustc --edition=2021`, minh họa cách một Kiến trúc sư Hệ thống định hình hợp đồng thanh toán thương mại điện tử bằng Trait và Enum, sau đó để AI hiện thực hóa các cổng thanh toán giả lập và động cơ xử lý đơn hàng an toàn.
 
 ```rust
 // ============================================================================
-// CHƯƠNG 43: ĐẠI DỰ ÁN CAPSTONE - CÔNG CỤ CLI LOGPULSE CHUẨN SẢN XUẤT
-// Phương pháp: Vibe Coding (Kiến Trúc Sư Hệ Thống + Trợ Lý AI)
+// CHƯƠNG 39: MINH HỌA TƯ DUY VIBE CODING & KIẾN TRÚC HỢP ĐỒNG GIAO ƯỚC (CONTRACT)
+// Tác giả: Tổng Đạo Diễn Kiến Trúc Rust (System Architect)
 // ============================================================================
 
-use std::collections::HashMap;
-
-// ----------------------------------------------------------------------------
-// 1. MÔ HÌNH DỮ LIỆU & ĐỊNH NGHĨA KIỂU NGHIỆP VỤ (DOMAIN MODELING)
-// ----------------------------------------------------------------------------
-
+// 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU NGHIỆP VỤ (DOMAIN MODELING)
+// Sử dụng Enum để quản lý các trạng thái đơn hàng một cách tường minh.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HttpMethod {
-    Get,
-    Post,
-    Put,
-    Delete,
-    Other(String),
+pub enum OrderStatus {
+    Created,
+    Paid { transaction_id: String },
+    Failed { reason: String },
 }
 
-impl HttpMethod {
-    pub fn from_str_slice(s: &str) -> Self {
-        match s.to_ascii_uppercase().as_str() {
-            "GET" => HttpMethod::Get,
-            "POST" => HttpMethod::Post,
-            "PUT" => HttpMethod::Put,
-            "DELETE" => HttpMethod::Delete,
-            other => HttpMethod::Other(other.to_string()),
-        }
-    }
-}
-
-// Cấu trúc một dòng nhật ký máy chủ web đã được bóc tách
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogEntry {
-    pub client_ip: String,
-    pub method: HttpMethod,
-    pub path: String,
-    pub status_code: u16,
-    pub response_bytes: u64,
-}
-
-// Cấu hình tham số dòng lệnh (CLI Options)
+// Cấu trúc đơn hàng với nguyên tắc: Số tiền luôn dùng số nguyên u64 (cents/xu)
+// để loại bỏ triệt để sai số làm tròn số thực của máy tính.
 #[derive(Debug, Clone)]
-pub struct CliConfig {
-    pub target_file: String,
-    pub verbose: bool,
-    pub error_only: bool,
+pub struct Order {
+    pub id: u64,
+    pub customer_name: String,
+    pub amount_cents: u64,
+    pub status: OrderStatus,
 }
 
-impl CliConfig {
-    // Phân tích danh sách đối số dòng lệnh an toàn, không làm văng panic
-    // Nhận tham chiếu mượn (borrow) lát cắt &[String]
-    pub fn parse_from_args(args: &[String]) -> Result<Self, String> {
-        if args.len() < 2 {
-            return Err("Sử dụng: logpulse <file_path> [--verbose] [--error-only]".to_string());
-        }
-
-        let target_file = args[1].clone();
-        let mut verbose = false;
-        let mut error_only = false;
-
-        for arg in &args[2..] {
-            match arg.as_str() {
-                "--verbose" | "-v" => verbose = true,
-                "--error-only" | "-e" => error_only = true,
-                unknown => return Err(format!("Cờ dòng lệnh không xác định: {}", unknown)),
-            }
-        }
-
-        Ok(CliConfig {
-            target_file,
-            verbose,
-            error_only,
-        })
-    }
-}
-
-// ----------------------------------------------------------------------------
-// 2. ĐỘNG CƠ PHÂN TÍCH NHẬT KÝ (LOG ANALYZER ENGINE)
-// Áp dụng quyền sở hữu (ownership) và mượn tham chiếu an toàn tuyệt đối
-// ----------------------------------------------------------------------------
-
-pub struct LogAnalyzer {
-    entries: Vec<LogEntry>,
-}
-
-impl LogAnalyzer {
-    pub fn new() -> Self {
+impl Order {
+    pub fn new(id: u64, customer_name: &str, amount_cents: u64) -> Self {
         Self {
-            entries: Vec::new(),
+            id,
+            customer_name: customer_name.to_string(),
+            amount_cents,
+            status: OrderStatus::Created,
         }
     }
+}
 
-    // Bóc tách một dòng văn bản thô theo định dạng chuẩn: "IP METHOD PATH STATUS BYTES"
-    // Ví dụ: "192.168.1.1 GET /api/v1/users 200 1024"
-    pub fn parse_line(line: &str) -> Option<LogEntry> {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 5 {
-            return None; // Dòng không hợp lệ hoặc bị lỗi định dạng
+// 2. ĐỊNH NGHĨA TRẠNG THÁI LỖI TƯỜNG MINH (ERROR DOMAIN)
+// Không bao giờ dùng chuỗi thô để mô tả lỗi; phân loại rõ ràng giúp hệ thống tự phục hồi.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentError {
+    InsufficientFunds { available: u64, required: u64 },
+    NetworkTimeout(String),
+    InvalidCurrency(String),
+    CardExpired,
+}
+
+// 3. GIAO ƯỚC HÀNH VI (CONTRACT TRAIT)
+// Kiến trúc sư định nghĩa bản thiết kế: Bất kỳ cổng thanh toán nào cũng phải tuân thủ trait này.
+pub trait PaymentGateway {
+    fn process_payment(&self, account_id: &str, amount_cents: u64) -> Result<String, PaymentError>;
+}
+
+// 4. HIỆN THỰC HÓA BỞI AI: CỔNG THANH TOÁN THỬ NGHIỆM (MOCK PAYMENT GATEWAY)
+// Phần mã chi tiết này do trợ lý AI sinh ra dựa trên bản thiết kế Trait ở trên.
+pub struct MockBankingGateway {
+    pub mock_balance_cents: u64,
+}
+
+impl PaymentGateway for MockBankingGateway {
+    fn process_payment(&self, account_id: &str, amount_cents: u64) -> Result<String, PaymentError> {
+        // Kiểm tra dữ liệu đầu vào: tài khoản không được để trống
+        if account_id.is_empty() {
+            return Err(PaymentError::NetworkTimeout("Mã định danh tài khoản không hợp lệ".to_string()));
         }
 
-        let client_ip = parts[0].to_string();
-        let method = HttpMethod::from_str_slice(parts[1]);
-        let path = parts[2].to_string();
-        let status_code = parts[3].parse::<u16>().ok()?;
-        let response_bytes = parts[4].parse::<u64>().ok()?;
+        // Kiểm tra số dư khả dụng
+        if self.mock_balance_cents < amount_cents {
+            return Err(PaymentError::InsufficientFunds {
+                available: self.mock_balance_cents,
+                required: amount_cents,
+            });
+        }
 
-        Some(LogEntry {
-            client_ip,
-            method,
-            path,
-            status_code,
-            response_bytes,
-        })
+        // Sinh mã giao dịch thành công duy nhất
+        let tx_id = format!("TXN-{}-OK", amount_cents);
+        Ok(tx_id)
+    }
+}
+
+// 5. BỘ ĐIỀU PHỐI ĐƠN HÀNG (ORDER PROCESSOR)
+// Kiến trúc sư thiết kế bộ điều phối nhận vào một tham chiếu mượn (borrow) cổng thanh toán,
+// tuân thủ nghiêm ngặt quyền sở hữu (ownership) và không làm sao chép dữ liệu thừa.
+pub struct OrderProcessor<'a, G: PaymentGateway> {
+    gateway: &'a G,
+}
+
+impl<'a, G: PaymentGateway> OrderProcessor<'a, G> {
+    pub fn new(gateway: &'a G) -> Self {
+        Self { gateway }
     }
 
-    // Nạp toàn bộ dữ liệu mẫu (hoặc nội dung đọc từ buffer) vào bộ nhớ
-    pub fn load_from_raw_text(&mut self, text: &str) {
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                if let Some(entry) = Self::parse_line(trimmed) {
-                    self.entries.push(entry);
-                }
+    // Xử lý đơn hàng: Mượn khả biến (&mut) đơn hàng để cập nhật trạng thái
+    pub fn checkout(&self, order: &mut Order, account_id: &str) -> Result<(), PaymentError> {
+        println!("[Hệ thống] Bắt đầu thanh toán đơn hàng #{} cho khách hàng: {}", order.id, order.customer_name);
+
+        match self.gateway.process_payment(account_id, order.amount_cents) {
+            Ok(tx_id) => {
+                println!("[Hệ thống] Thanh toán thành công! Mã giao dịch: {}", tx_id);
+                order.status = OrderStatus::Paid { transaction_id: tx_id };
+                Ok(())
+            }
+            Err(err) => {
+                println!("[Cảnh báo] Thanh toán thất bại: {:?}", err);
+                order.status = OrderStatus::Failed {
+                    reason: format!("{:?}", err),
+                };
+                Err(err)
             }
         }
     }
-
-    // Đếm tổng số lượng yêu cầu
-    pub fn total_requests(&self) -> usize {
-        self.entries.len()
-    }
-
-    // Đếm số lượng lỗi máy chủ (Mã 5xx)
-    pub fn count_server_errors(&self) -> usize {
-        self.entries
-            .iter()
-            .filter(|e| e.status_code >= 500 && e.status_code < 600)
-            .count()
-    }
-
-    // Đếm số lượng lỗi phía khách hàng (Mã 4xx)
-    pub fn count_client_errors(&self) -> usize {
-        self.entries
-            .iter()
-            .filter(|e| e.status_code >= 400 && e.status_code < 500)
-            .count()
-    }
-
-    // Tính tổng số byte dữ liệu máy chủ đã truyền tải
-    pub fn total_data_transferred_bytes(&self) -> u64 {
-        self.entries.iter().map(|e| e.response_bytes).sum()
-    }
-
-    // Tìm địa chỉ IP gửi nhiều yêu cầu nhất thông qua bảng băm HashMap
-    pub fn find_top_client_ip(&self) -> Option<(String, usize)> {
-        let mut frequency_map: HashMap<&str, usize> = HashMap::new();
-
-        for entry in &self.entries {
-            *frequency_map.entry(entry.client_ip.as_str()).or_insert(0) += 1;
-        }
-
-        frequency_map
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(ip, count)| (ip.to_string(), count))
-    }
 }
 
-// ----------------------------------------------------------------------------
-// 3. TẦNG ĐỊNH DẠNG BẢNG BÁO CÁO (PRESENTATION LAYER)
-// ----------------------------------------------------------------------------
-
-pub struct ReportPrinter;
-
-impl ReportPrinter {
-    // In báo cáo định dạng bảng ASCII sắc nét, chuyên nghiệp
-    pub fn print_summary(analyzer: &LogAnalyzer, config: &CliConfig) {
-        println!("+-------------------------------------------------------------+");
-        println!("|            LOGPULSE - BÁO CÁO PHÂN TÍCH NHẬT KÝ MÁY CHỦ    |");
-        println!("+-------------------------------------------------------------+");
-        println!("| Tệp tin mục tiêu       : {:<34} |", config.target_file);
-        println!("| Tổng số lượt yêu cầu   : {:<34} |", analyzer.total_requests());
-        println!("| Lỗi máy chủ (5xx)      : {:<34} |", analyzer.count_server_errors());
-        println!("| Lỗi người dùng (4xx)   : {:<34} |", analyzer.count_client_errors());
-
-        let total_kb = analyzer.total_data_transferred_bytes() as f64 / 1024.0;
-        println!("| Tổng dung lượng truyền : {:<31.2} KB |", total_kb);
-
-        if let Some((top_ip, count)) = analyzer.find_top_client_ip() {
-            let ip_summary = format!("{} ({} lần)", top_ip, count);
-            println!("| Địa chỉ IP truy cập top: {:<34} |", ip_summary);
-        }
-        println!("+-------------------------------------------------------------+");
-    }
-}
-
-// ----------------------------------------------------------------------------
-// 4. HÀM MAIN: KỊCH BẢN THỰC THI TOÀN DIỆN
-// ----------------------------------------------------------------------------
-
+// 6. HÀM MAIN KIỂM CHỨNG TOÀN BỘ LUỒNG HOẠT ĐỘNG
 fn main() {
-    println!("=== KHỞI ĐỘNG DỰ ÁN CAPSTONE: CÔNG CỤ LOGPULSE CLI (VIBE CODING) ===\n");
+    println!("=== DEMO VIBE CODING PARADIGM: KIẾN TRÚC SƯ & HỆ THỐNG GIAO ƯỚC ===");
 
-    // Giả lập đối số dòng lệnh mà người dùng nhập vào terminal
-    let simulated_cli_args = vec![
-        "logpulse".to_string(),
-        "/var/log/nginx/access.log".to_string(),
-        "--verbose".to_string(),
-    ];
-
-    // 1. Phân tích cờ dòng lệnh
-    let config = match CliConfig::parse_from_args(&simulated_cli_args) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            eprintln!("[Lỗi tham số] {}", err);
-            std::process::exit(1);
-        }
+    // Tạo cổng thanh toán giả lập với số dư 50,000 xu (500 USD)
+    let mock_gateway = MockBankingGateway {
+        mock_balance_cents: 50_000,
     };
 
-    println!("[Khởi tạo] Đang phân tích tệp: {} (Verbose: {})", config.target_file, config.verbose);
+    // Khởi tạo bộ xử lý đơn hàng
+    let processor = OrderProcessor::new(&mock_gateway);
 
-    // 2. Dữ liệu nhật ký mẫu mô phỏng dữ liệu đọc từ bộ nhớ đệm (buffer)
-    let sample_access_log = r#"
-        192.168.1.100 GET /index.html 200 4096
-        192.168.1.101 POST /api/v1/auth/login 200 1024
-        192.168.1.102 GET /secret/admin 403 512
-        192.168.1.100 GET /images/logo.png 200 12048
-        10.0.0.50 POST /api/v1/payment/checkout 500 256
-        192.168.1.100 POST /api/v1/comments 201 1024
-        10.0.0.51 GET /non-existent-page 404 128
-        10.0.0.50 POST /api/v1/payment/checkout 503 256
-    "#;
+    // Kịch bản 1: Đơn hàng hợp lệ (30,000 xu <= 50,000 xu)
+    let mut order_1 = Order::new(101, "Nguyễn Văn An", 30_000);
+    println!("Trạng thái ban đầu đơn #101: {:?}", order_1.status);
+    let result_1 = processor.checkout(&mut order_1, "ACC-USER-888");
+    assert!(result_1.is_ok());
+    println!("Trạng thái sau thanh toán đơn #101: {:?}\n", order_1.status);
 
-    // 3. Nạp dữ liệu vào Động cơ phân tích
-    let mut analyzer = LogAnalyzer::new();
-    analyzer.load_from_raw_text(sample_access_log);
+    // Kịch bản 2: Đơn hàng vượt hạn mức (80,000 xu > 50,000 xu)
+    let mut order_2 = Order::new(102, "Trần Thị Bình", 80_000);
+    println!("Trạng thái ban đầu đơn #102: {:?}", order_2.status);
+    let result_2 = processor.checkout(&mut order_2, "ACC-USER-999");
+    assert!(result_2.is_err());
+    println!("Trạng thái sau thanh toán đơn #102: {:?}", order_2.status);
 
-    // 4. In bảng báo cáo tổng kết ra màn hình
-    ReportPrinter::print_summary(&analyzer, &config);
-
-    // 5. Kiểm chứng tính toàn vẹn của kết quả phân tích
-    assert_eq!(analyzer.total_requests(), 8);
-    assert_eq!(analyzer.count_server_errors(), 2); // Mã 500 và 503
-    assert_eq!(analyzer.count_client_errors(), 2); // Mã 403 và 404
-    assert_eq!(analyzer.find_top_client_ip(), Some(("192.168.1.100".to_string(), 3)));
-
-    println!("\n[Thành công] Công cụ CLI đã thực thi hoàn hảo, kiểm tra Assertions vượt qua 100%!");
+    println!("\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!");
 }
 ```
 
@@ -351,42 +230,47 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng công cụ dòng lệnh cùng trợ lý AI:
+Khi lập trình cùng trợ lý AI, AI có thể vô tình sinh ra mã vi phạm các quy tắc khắt khe của Rust. Dưới đây là bảng tra cứu các lỗi biên dịch điển hình nhất kèm giải pháp xử lý:
 
-| Mã lỗi `rustc` | Nguyên nhân gốc rễ khi viết công cụ CLI | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh chuẩn kiến trúc |
+| Mã lỗi `rustc` | Tên lỗi & Nguyên nhân điển hình do AI tạo ra | Đoạn mã vi phạm mẫu | Cách khắc phục chuẩn kiến trúc |
 | :--- | :--- | :--- | :--- |
-| **`E0061`** | **This function takes X arguments but Y were supplied**<br>AI gọi hàm phân tích tham số nhưng quên truyền lát cắt đối số hoặc truyền sai số lượng. | ```rust // compile-fail\nCliConfig::parse_from_args();``` | Kiểm tra chữ ký hàm: `parse_from_args(args: &[String])` và truyền đúng tham chiếu lát cắt `&args`. |
-| **`E0382`** | **Use of moved value in argument loop**<br>AI lặp qua danh sách `args` bằng vòng lặp `for arg in args` (tiêu thụ quyền sở hữu) thay vì mượn tham chiếu. | ```rust // compile-fail\nlet args = vec!["a".to_string()];\nfor x in args {}\nprintln!("{:?}", args);``` | Mượn tham chiếu `for arg in &args` để không làm mất quyền sở hữu của danh sách đối số ban đầu. |
-| **`E0599`** | **No method named `parse` found for type `&str`**<br>AI ép kiểu chuỗi nhưng không cung cấp chỉ định kiểu dữ liệu đích cần chuyển đổi. | ```rust // compile-fail\nlet n = "123".parse().unwrap();``` | Khai báo rõ kiểu dữ liệu đích cần parse: `"123".parse::<u64>()` hoặc chỉ định kiểu biến `let n: u64 = ...`. |
-| **`E0308`** | **Mismatched types in CLI match expression**<br>Nhánh kiểm tra cờ dòng lệnh trả về chuỗi `String` trong khi một nhánh khác lại trả về lát cắt tĩnh `&'static str`. | ```rust // compile-fail\nlet s = if true { "a" } else { String::from("b") };``` | Thống nhất kiểu dữ liệu của tất cả các nhánh trong biểu thức điều kiện (chuyển tất cả về `String` bằng `.to_string()`). |
+| **`E0308`** | **Mismatched types (Không khớp kiểu dữ liệu)**<br>AI thường nhầm lẫn giữa chuỗi mượn `&str` và chuỗi cấp phát `String`, hoặc nhầm giữa số nguyên `u64` và số thực `f64`. | ```rust // compile-fail\nlet s: String = "xin chào";``` | Dùng `.to_string()` hoặc `String::from("...")` để chuyển từ `&str` sang `String`. |
+| **`E0382`** | **Use of moved value (Sử dụng giá trị đã bị chuyển quyền sở hữu)**<br>AI quen tư duy Python/JS nên dùng lại biến sau khi đã chuyển quyền sở hữu (ownership) vào hàm khác. | ```rust // compile-fail\nlet s = String::from("Rust");\nlet s2 = s;\nprintln!("{}", s);``` | Truyền tham chiếu mượn (borrow) `&s` thay vì chuyển giao quyền sở hữu, hoặc dùng `.clone()` nếu thực sự cần nhân bản. |
+| **`E0599`** | **No method named found for type (Không tìm thấy phương thức)**<br>AI tự "bịa" (hallucinate) ra một phương thức không có thật, hoặc quên chưa `use` Trait chứa phương thức đó vào phạm vi. | ```rust // compile-fail\nlet v = vec![1, 2, 3];\nv.sort_descending();``` | Kiểm tra tài liệu chuẩn của thư viện. Đưa Trait vào phạm vi (`use crate::...`) hoặc tự định nghĩa phương thức trong Trait tương ứng. |
+| **`E0061`** | **This function takes X arguments but Y arguments were supplied**<br>AI gọi hàm nhưng cung cấp thiếu hoặc thừa đối số do nhớ sai phiên bản API cũ. | ```rust // compile-fail\nfn add(a: i32, b: i32) -> i32 { a + b }\nadd(10);``` | Kiểm tra chữ ký hàm (function signature) trong mã nguồn và truyền đúng số lượng kiểu tham số theo yêu cầu. |
 
 ---
 
 ## Tóm tắt chương & Bài tập rèn luyện
 
 ### 4 Điểm cốt lõi cần ghi nhớ
-1. **Kiến trúc phân tầng bảo vệ công cụ CLI**: Tách bạch tuyệt đối giữa Tầng giao diện cờ dòng lệnh, Tầng đọc dữ liệu qua bộ nhớ đệm (buffer), Tầng tính toán logic, và Tầng định dạng bảng xuất ra màn hình.
-2. **Triệt tiêu lỗi hoảng loạn (Zero Panic)**: Một công cụ CLI đạt chuẩn sản xuất không bao giờ được phép `panic!` khi người dùng nhập sai tham số; hãy luôn dùng `Result<T, E>` để hiển thị thông báo hướng dẫn sử dụng thân thiện.
-3. **Hiệu năng xử lý dữ liệu lớn**: Đọc dữ liệu theo dòng thông qua bộ nhớ đệm giúp ứng dụng có thể xử lý tệp nhật ký hàng chục Gigabytes với lượng tiêu thụ RAM cực kỳ khiêm tốn.
-4. **Vibe Coding biến ý tưởng thành sản phẩm thực tế**: Khi kết hợp tư duy thiết kế hệ thống chặt chẽ với sự hỗ trợ sinh mã của AI và sự giám sát nghiêm khắc của Trình biên dịch Rust, bạn có thể tạo ra các công cụ phần mềm đỉnh cao với tốc độ không tưởng!
+1. **Vibe Coding không phải là lập trình cẩu thả**: Đó là sự thăng hoa của tư duy kiến trúc, giải phóng kỹ sư khỏi việc gõ cú pháp để tập trung vào thiết kế hệ thống, xác định ranh giới và mô hình hóa nghiệp vụ.
+2. **Rust là đối tác hoàn hảo nhất của AI**: Trình biên dịch `rustc` đóng vai trò người gác cổng an toàn tối cao, tự động phát hiện và chặn đứng mọi ảo giác, lỗi kiểu dữ liệu và vi phạm an toàn bộ nhớ.
+3. **Nguyên tắc Hợp đồng trước (Contract-First)**: Luôn phác thảo `struct`, `enum`, và `trait` trước khi yêu cầu AI sinh mã chi tiết. Bản thiết kế càng chặt chẽ thì mã AI sinh ra càng hoàn hảo.
+4. **Quyền sở hữu và mượn tham chiếu**: Sử dụng tham chiếu mượn (borrow) hợp lý giúp mã nguồn tinh gọn, hiệu năng cao và tránh cấp phát bộ nhớ lãng phí.
 
 ### Bài tập rèn luyện tư duy
 
-**Bài tập 1 (Nâng cấp Cờ dòng lệnh cho LogPulse)**:
-Hãy bổ sung thêm cờ `--ip-filter <IP_ADDRESS>` vào cấu trúc `CliConfig`.
-Khi cờ này được kích hoạt, công cụ sẽ chỉ lọc và phân tích các yêu cầu xuất phát từ đúng địa chỉ IP được chỉ định. Hãy mô tả các bước bạn sẽ yêu cầu trợ lý AI hỗ trợ bạn triển khai tính năng này.
+**Bài tập 1 (Phân định vai trò Đạo diễn - Diễn viên)**:
+Hãy liệt kê 3 nhiệm vụ trong một dự án phần mềm bạn sẽ ủy thác 100% cho trợ lý AI thực hiện, và 3 nhiệm vụ bạn bắt buộc phải tự mình quyết định và kiểm soát chặt chẽ với tư cách là Kiến trúc sư Hệ thống.
 
-**Bài tập 2 (Xuất báo cáo định dạng JSON)**:
-Người dùng muốn công cụ CLI hỗ trợ thêm cờ `--json` để xuất kết quả ra dạng chuỗi JSON thay vì bảng ASCII (giúp tích hợp vào hệ thống giám sát tự động).
-Không dùng thư viện bên ngoài `serde`, hãy thiết kế một hàm `to_json_string(&self) -> String` thủ công trong `LogAnalyzer` để xuất ra chuỗi JSON hợp lệ.
+**Bài tập 2 (Thiết kế Hợp đồng Kho Hàng)**:
+Không cần viết thuật toán phức tạp, hãy sử dụng `struct` và `trait` của Rust để phác thảo hợp đồng cho một hệ thống Quản lý kho hàng (Warehouse Inventory). Hợp đồng cần định nghĩa:
+- Một `struct Item` gồm mã sản phẩm, tên, và số lượng còn trong kho.
+- Một `enum InventoryError` gồm các lỗi: `OutOfStock`, `ItemNotFound`.
+- Một `trait InventoryService` có 2 phương thức: `add_stock` và `deduct_stock`.
 
-**Bài tập 3 (Sửa lỗi phân tích chuỗi an toàn của AI)**:
-Đoạn mã phân tích thời gian phản hồi sau do AI viết bị lỗi hoảng loạn (panic) khi dòng log chứa ký tự lạ:
+**Bài tập 3 (Sửa lỗi quyền sở hữu của AI)**:
+Đoạn mã sau do AI sinh ra bị lỗi biên dịch `E0382`. Dựa trên kiến thức về quyền sở hữu (ownership) và mượn (borrow), hãy giải thích nguyên nhân và sửa lại cho đúng:
 ```rust
-fn parse_response_time(raw_text: &str) -> u32 {
-    // Nếu raw_text = "N/A" hoặc bị rỗng, dòng sau sẽ làm sập chương trình!
-    raw_text.parse::<u32>().unwrap()
+fn print_message(msg: String) {
+    println!("Tin nhắn: {}", msg);
+}
+
+fn main() {
+    let greeting = String::from("Chào mừng đến với Rust Vibe Coding!");
+    print_message(greeting);
+    println!("Độ dài tin nhắn ban đầu: {}", greeting.len());
 }
 ```
-Hãy viết lại hàm trên theo phong cách an toàn, trả về kiểu `Option<u32>` hoặc `Result<u32, &'static str>` để bảo vệ công cụ CLI không bao giờ bị dừng đột ngột.
-*(Gợi ý: Dùng `raw_text.parse::<u32>().ok()`)*.
+*(Gợi ý: Hãy thay đổi chữ ký của hàm `print_message` để mượn lát cắt chuỗi `&str` thay vì chiếm đoạt quyền sở hữu toàn bộ `String`)*.
