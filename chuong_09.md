@@ -64,7 +64,7 @@ Khi bạn định nghĩa một Struct:
 ```rust
 struct GoiHang {
     dang_giao: bool, // 1 byte
-    khoi_luong: f64, // 8 bytes
+    quantity: f64, // 8 bytes
     ma_so: u8,       // 1 byte
 }
 ```
@@ -79,16 +79,16 @@ Nếu các trường dữ liệu nằm lệch nhịp bộ nhớ, CPU sẽ phải
 Trong khối `impl TenStruct`, các hàm có tham số đầu tiên là `self` được gọi là **Phương thức (Methods)**:
 
 ```rust
-impl TaiKhoan {
+impl Account {
     // 1. Tham chiếu bất biến: Chỉ đọc dữ liệu (Borrow immutable)
-    fn xem_so_du(&self) -> f64 { self.so_du }
+    fn xem_so_du(&self) -> f64 { self.balance }
 
     // 2. Tham chiếu khả biến: Cho phép chỉnh sửa trạng thái (Borrow mutable)
-    fn nap_tien(&mut self, tien: f64) { self.so_du += tien; }
+    fn nap_tien(&mut self, tien: f64) { self.balance += tien; }
 
     // 3. Quyền sở hữu độc quyền: Tiêu thụ và hủy đối tượng (Take ownership & Drop)
     fn dong_tai_khoan(self) {
-        println!("Tài khoản của {} đã chính thức bị đóng vĩnh viễn!", self.ten);
+        println!("Tài khoản của {} đã chính thức bị đóng vĩnh viễn!", self.name);
         // Khi hàm này kết thúc, self đi ra khỏi scope và bị giải phóng!
     }
 }
@@ -105,13 +105,13 @@ Nếu một hàm nằm trong khối `impl` nhưng **không có tham số `self`*
 
 - **Khởi tạo rút gọn (Field Init Shorthand)**: Khi tên biến trùng với tên trường của struct:
   ```rust
-  let ten = String::from("An");
-  let tk = TaiKhoan { ten, so_du: 100.0 }; // Thay vì phải viết ten: ten
+  let name = String::from("An");
+  let account = Account { name, balance: 100.0 }; // Thay vì phải viết ten: ten
   ```
 - **Cập nhật Struct (Struct Update Syntax `..`)**: Tạo một struct mới dựa trên struct cũ và chỉ thay đổi một vài trường:
   ```rust
-  let tk2 = TaiKhoan {
-      so_du: 500.0,
+  let tk2 = Account {
+      balance: 500.0,
       ..tk1 // Tất cả các trường còn lại sao chép hoặc move từ tk1!
   };
   ```
@@ -127,39 +127,39 @@ Chương trình hoàn chỉnh dưới đây mô phỏng một hệ thống quả
 // Chương trình làm chủ Structs, Tuples & Phương thức trong Rust
 
 // 1. Tuple Struct: Biểu diễn tọa độ GPS của trụ sở ngân hàng (Kinh độ, Vĩ độ)
-struct ToaDoGps(f64, f64);
+struct GpsCoord(f64, f64);
 
 // 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
-struct ChungThucBaoMat;
+struct LostReport;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
-struct TaiKhoanNganHang {
-    so_tai_khoan: String,
-    chu_tai_khoan: String,
-    so_du: f64,
-    kich_hoat: bool,
+struct AccountBank {
+    num_account: String,
+    account_owner: String,
+    balance: f64,
+    activate: bool,
 }
 
-// Khối hiện thực các phương thức và hàm liên kết cho TaiKhoanNganHang
-impl TaiKhoanNganHang {
+// Khối hiện thực các phương thức và hàm liên kết cho AccountBank
+impl AccountBank {
     // A. HÀM LIÊN KẾT (Associated Function) - Khởi tạo tài khoản mới chuẩn mực
-    fn mo_tai_khoan(so_tk: String, chu_tk: String, so_du_dau: f64) -> Self {
+    fn open_account(so_tk: String, chu_tk: String, so_du_dau: f64) -> Self {
         println!("-> Đang mở tài khoản mới cho khách hàng: {}", chu_tk);
         Self {
-            so_tai_khoan: so_tk,
-            chu_tai_khoan: chu_tk,
-            so_du: so_du_dau,
-            kich_hoat: true,
+            num_account: so_tk,
+            account_owner: chu_tk,
+            balance: so_du_dau,
+            activate: true,
         }
     }
 
     // B. PHƯƠNG THỨC MƯỢN ĐỌC (&self): Tra cứu thông tin số dư an toàn
     fn tra_cuu_thong_tin(&self) {
         println!("------------------------------------------------------------");
-        println!("Số tài khoản : {}", self.so_tai_khoan);
-        println!("Chủ tài khoản: {}", self.chu_tai_khoan);
-        println!("Số dư hiện có: {:.2} VND", self.so_du);
-        println!("Trạng thái   : {}", if self.kich_hoat { "Hoạt động" } else { "Đã khóa" });
+        println!("Số tài khoản : {}", self.num_account);
+        println!("Chủ tài khoản: {}", self.account_owner);
+        println!("Số dư hiện có: {:.2} VND", self.balance);
+        println!("Trạng thái   : {}", if self.activate { "Hoạt động" } else { "Đã khóa" });
         println!("------------------------------------------------------------");
     }
 
@@ -169,28 +169,28 @@ impl TaiKhoanNganHang {
             println!("[!] Lỗi: Số tiền nạp phải lớn hơn 0!");
             return;
         }
-        self.so_du += so_tien;
-        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.so_tai_khoan);
+        self.balance += so_tien;
+        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.num_account);
     }
 
     // D. PHƯƠNG THỨC MƯỢN SỬA (&mut self): Rút tiền có kiểm tra số dư
     fn rut_tien(&mut self, so_tien: f64) -> bool {
-        if so_tien > self.so_du {
+        if so_tien > self.balance {
             println!("[!] Giao dịch thất bại: Số dư không đủ để rút {:.2} VND!", so_tien);
             false
         } else {
-            self.so_du -= so_tien;
-            println!("-> Rút thành công {:.2} VND. Số dư còn lại: {:.2} VND", so_tien, self.so_du);
+            self.balance -= so_tien;
+            println!("-> Rút thành công {:.2} VND. Số dư còn lại: {:.2} VND", so_tien, self.balance);
             true
         }
     }
 
     // E. PHƯƠNG THỨC TIÊU THỤ SỞ HỮU (self): Đóng tài khoản vĩnh viễn
-    fn tat_toan_va_dong_so(self) {
+    fn all_math_and_round(self) {
         println!("\n*** TIẾN HÀNH TẤT TOÁN VÀ HỦY TÀI KHOẢN ***");
         println!("- Hoàn trả toàn bộ số dư cuối cùng: {:.2} VND cho ông/bà {}", 
-                 self.so_du, self.chu_tai_khoan);
-        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.so_tai_khoan);
+                 self.balance, self.account_owner);
+        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.num_account);
         // Khi hàm này kết thúc, self bị Drop ngay tại đây!
     }
 }
@@ -201,50 +201,50 @@ fn main() {
     println!("============================================================");
 
     // Sử dụng Tuple Struct để lưu tọa độ chi nhánh ngân hàng
-    let chi_nhanh_ha_noi = ToaDoGps(21.0285, 105.8542);
+    let chi_nhanh_ha_noi = GpsCoord(21.0285, 105.8542);
     println!("Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}", 
              chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
-    let _chung_thuc_phien = ChungThucBaoMat;
+    let _chung_thuc_session = LostReport;
     println!("Chứng thực bảo mật hệ thống: Đã kích hoạt tem xác thực điện tử.");
 
-    // Mở một tài khoản ngân hàng mới thông qua hàm liên kết mo_tai_khoan
-    let mut tk_an = TaiKhoanNganHang::mo_tai_khoan(
+    // Mở một tài khoản ngân hàng mới thông qua hàm liên kết open_account
+    let mut account_hidden = AccountBank::open_account(
         String::from("1900-123-456"),
         String::from("Nguyễn Văn An"),
         1_000_000.0,
     );
 
     // Tra cứu thông tin (gọi phương thức &self)
-    tk_an.tra_cuu_thong_tin();
+    account_hidden.tra_cuu_thong_tin();
 
     // Thực hiện các giao dịch làm biến đổi số dư (gọi phương thức &mut self)
-    tk_an.nap_tien(500_000.0);
-    tk_an.rut_tien(200_000.0);
-    tk_an.rut_tien(2_000_000.0); // Thử rút vượt số dư
+    account_hidden.nap_tien(500_000.0);
+    account_hidden.rut_tien(200_000.0);
+    account_hidden.rut_tien(2_000_000.0); // Thử rút vượt số dư
 
     // Tra cứu lại thông tin sau giao dịch
-    tk_an.tra_cuu_thong_tin();
+    account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)
-    let tk_phu = TaiKhoanNganHang {
-        so_tai_khoan: String::from("1900-999-888"),
-        so_du: 50_000.0,
-        ..TaiKhoanNganHang::mo_tai_khoan(
+    let account_aux = AccountBank {
+        num_account: String::from("1900-999-888"),
+        balance: 50_000.0,
+        ..AccountBank::open_account(
             String::from("TEMP"),
             String::from("Nguyễn Văn An (Tài khoản tiết kiệm)"),
             0.0
         )
     };
     println!("\nTài khoản phụ được tạo tự động:");
-    tk_phu.tra_cuu_thong_tin();
+    account_aux.tra_cuu_thong_tin();
 
     // Đóng tài khoản chính (gọi phương thức tiêu thụ self)
-    tk_an.tat_toan_va_dong_so();
+    account_hidden.all_math_and_round();
 
     // NẾU BẠN BỎ CHÚ THÍCH DÒNG SAU, RUSTC SẼ BÁO LỖI E0382 NGAY:
-    // tk_an.tra_cuu_thong_tin(); // LỖI: Giá trị tk_an đã bị tiêu thụ khi đóng sổ!
+    // account_hidden.tra_cuu_thong_tin(); // LỖI: Giá trị account_hidden đã bị tiêu thụ khi đóng sổ!
 }
 ```
 
@@ -256,10 +256,10 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0599** | `no method named 'rut_tien' found for struct 'TaiKhoan' in the current scope` | Bạn gọi một phương thức chưa được khai báo trong khối `impl`, hoặc gõ sai chính tả tên hàm. | Kiểm tra lại tên phương thức trong khối `impl` và đảm bảo kiểu dữ liệu gọi phương thức là chính xác. |
-| **E0596** | `cannot borrow 'tk' as mutable, as it is not declared as mutable` | Bạn gọi phương thức đòi hỏi `&mut self` (như `nap_tien`) trên một đối tượng struct khai báo bất biến (`let tk = ...`). | Thêm từ khóa `mut` khi tạo biến: `let mut tk = ...`. |
-| **E0382** | `use of moved value: 'tk'` | Bạn gọi một phương thức nhận `self` (tiêu thụ đối tượng), sau đó lại cố sử dụng tiếp biến đó ở các dòng sau. | Đổi tham số phương thức thành `&self` hoặc `&mut self` nếu không muốn hủy đối tượng, hoặc tạo bản sao trước khi tiêu thụ. |
-| **E0063** | `missing field 'kich_hoat' in initializer of 'TaiKhoanNganHang'` | Bạn khởi tạo Struct nhưng quên chưa điền giá trị cho một trong các trường dữ liệu. | Điền đầy đủ tất cả các trường, hoặc sử dụng cú pháp cập nhật `..struct_cu` để lấy giá trị mặc định cho các trường còn lại. |
+| **E0599** | `no method named 'rut_tien' found for struct 'Account' in the current scope` | Bạn gọi một phương thức chưa được khai báo trong khối `impl`, hoặc gõ sai chính tả tên hàm. | Kiểm tra lại tên phương thức trong khối `impl` và đảm bảo kiểu dữ liệu gọi phương thức là chính xác. |
+| **E0596** | `cannot borrow 'account' as mutable, as it is not declared as mutable` | Bạn gọi phương thức đòi hỏi `&mut self` (như `nap_tien`) trên một đối tượng struct khai báo bất biến (`let account = ...`). | Thêm từ khóa `mut` khi tạo biến: `let mut account = ...`. |
+| **E0382** | `use of moved value: 'account'` | Bạn gọi một phương thức nhận `self` (tiêu thụ đối tượng), sau đó lại cố sử dụng tiếp biến đó ở các dòng sau. | Đổi tham số phương thức thành `&self` hoặc `&mut self` nếu không muốn hủy đối tượng, hoặc tạo bản sao trước khi tiêu thụ. |
+| **E0063** | `missing field 'activate' in initializer of 'AccountBank'` | Bạn khởi tạo Struct nhưng quên chưa điền giá trị cho một trong các trường dữ liệu. | Điền đầy đủ tất cả các trường, hoặc sử dụng cú pháp cập nhật `..struct_cu` để lấy giá trị mặc định cho các trường còn lại. |
 
 ---
 
@@ -278,4 +278,4 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
    - Phương thức `tinh_chu_vi(&self) -> f64`.
    - Phương thức `co_phai_hinh_vuong(&self) -> bool`.
 2. **Bài tập tư duy 2**: Tại sao Rust lại hỗ trợ phương thức tiêu thụ `self` (chuyển giao quyền sở hữu)? Hãy nêu một tình huống thực tế (ví dụ: gửi một bức thư điện tử hoặc đốt một que diêm) mà phương thức `self` giúp ngăn chặn người dùng sử dụng lại đối tượng đã hết giá trị.
-3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `DonHang(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.
+3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `DonQueue(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.

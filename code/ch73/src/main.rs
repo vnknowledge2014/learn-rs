@@ -97,7 +97,7 @@ pub fn selector(period: &str) -> [u8; 4] {
 }
 
 /// Chủ đề sự kiện (topic0) dùng cả 32 byte, nên an toàn hơn hẳn.
-pub fn chu_de_su_kien(period: &str) -> [u8; 32] { keccak256(period.as_bytes()) }
+pub fn event_topic(period: &str) -> [u8; 32] { keccak256(period.as_bytes()) }
 
 // ============================================================================
 // 3. MÃ HOÁ ABI — quy tắc xếp tham số thành các ô 32 byte
@@ -106,7 +106,7 @@ pub fn chu_de_su_kien(period: &str) -> [u8; 32] { keccak256(period.as_bytes()) }
 pub type Address = [u8; 20];
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ValueAbi {
+pub enum AbiValue {
     Uint(u128),
     Int(i128),
     Bool(bool),
@@ -118,9 +118,9 @@ pub enum ValueAbi {
     MangUint(Vec<u128>),
 }
 
-impl ValueAbi {
+impl AbiValue {
     pub fn la_dong(&self) -> bool {
-        matches!(self, ValueAbi::Bytes(_) | ValueAbi::Chuoi(_) | ValueAbi::MangUint(_))
+        matches!(self, AbiValue::Bytes(_) | AbiValue::Chuoi(_) | AbiValue::MangUint(_))
     }
 
     fn o_32(v: u128) -> [u8; 32] {
@@ -132,20 +132,20 @@ impl ValueAbi {
     /// Phần cố định: kiểu tĩnh ghi thẳng giá trị, kiểu động ghi con trỏ (điền sau).
     fn header(&self) -> [u8; 32] {
         match self {
-            ValueAbi::Uint(v) => Self::o_32(*v),
-            ValueAbi::Bool(b) => Self::o_32(*b as u128),
-            ValueAbi::Int(v) => {
+            AbiValue::Uint(v) => Self::o_32(*v),
+            AbiValue::Bool(b) => Self::o_32(*b as u128),
+            AbiValue::Int(v) => {
                 // Số âm dùng bù hai và MỞ RỘNG DẤU bằng 0xFF, không phải 0x00
                 let mut o = if *v < 0 { [0xFFu8; 32] } else { [0u8; 32] };
                 o[16..].copy_from_slice(&(*v as u128).to_be_bytes());
                 o
             }
-            ValueAbi::Address(a) => {
+            AbiValue::Address(a) => {
                 let mut o = [0u8; 32];
                 o[12..].copy_from_slice(a); // 20 byte căn phải trong ô 32 byte
                 o
             }
-            ValueAbi::Bytes32(b) => *b,
+            AbiValue::Bytes32(b) => *b,
             _ => [0u8; 32], // kiểu động: chỗ này sẽ bị ghi đè bằng con trỏ
         }
     }
@@ -153,14 +153,14 @@ impl ValueAbi {
     /// Phần đuôi cho kiểu động: độ dài rồi tới dữ liệu, đệm cho tròn 32 byte.
     fn part_below(&self) -> Vec<u8> {
         match self {
-            ValueAbi::Bytes(b) => {
+            AbiValue::Bytes(b) => {
                 let mut v = Self::o_32(b.len() as u128).to_vec();
                 v.extend_from_slice(b);
                 while v.len() % 32 != 0 { v.push(0); }
                 v
             }
-            ValueAbi::Chuoi(s) => ValueAbi::Bytes(s.as_bytes().to_vec()).part_below(),
-            ValueAbi::MangUint(m) => {
+            AbiValue::Chuoi(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
+            AbiValue::MangUint(m) => {
                 let mut v = Self::o_32(m.len() as u128).to_vec();
                 for x in m { v.extend_from_slice(&Self::o_32(*x)); }
                 v
@@ -171,7 +171,7 @@ impl ValueAbi {
 }
 
 /// Mã hoá danh sách tham số theo đúng đặc tả ABI của Solidity.
-pub fn abi_encode(cac_gt: &[ValueAbi]) -> Vec<u8> {
+pub fn abi_encode(cac_gt: &[AbiValue]) -> Vec<u8> {
     let first_size = cac_gt.len() * 32;
     let mut first: Vec<u8> = Vec::with_capacity(first_size);
     let mut below: Vec<u8> = Vec::new();
@@ -181,7 +181,7 @@ pub fn abi_encode(cac_gt: &[ValueAbi]) -> Vec<u8> {
             // Con trỏ tính từ ĐẦU vùng tham số, không phải từ đầu calldata.
             // Nhầm gốc toạ độ ở đây là lỗi ABI phổ biến nhất.
             let pointer = first_size + below.len();
-            first.extend_from_slice(&ValueAbi::o_32(pointer as u128));
+            first.extend_from_slice(&AbiValue::o_32(pointer as u128));
             below.extend_from_slice(&gt.part_below());
         } else {
             first.extend_from_slice(&gt.header());
@@ -192,7 +192,7 @@ pub fn abi_encode(cac_gt: &[ValueAbi]) -> Vec<u8> {
 }
 
 /// Dựng calldata hoàn chỉnh: 4 byte chữ ký hàm + tham số đã mã hoá.
-pub fn dung_calldata(period: &str, cac_gt: &[ValueAbi]) -> Vec<u8> {
+pub fn dung_calldata(period: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
     let mut v = selector(period).to_vec();
     v.extend_from_slice(&abi_encode(cac_gt));
     v
@@ -226,29 +226,29 @@ impl Rlp {
                 if b.len() == 1 && b[0] < 0x80 {
                     b.clone() // byte đơn nhỏ tự mã hoá chính nó
                 } else {
-                    let mut v = Self::tien_to(b.len(), 0x80);
+                    let mut v = Self::prefix(b.len(), 0x80);
                     v.extend_from_slice(b);
                     v
                 }
             }
-            Rlp::DanhSach(ds) => {
+            Rlp::DanhSach(list) => {
                 let mut than = Vec::new();
-                for x in ds { than.extend_from_slice(&x.encode()); }
-                let mut v = Self::tien_to(than.len(), 0xC0);
+                for x in list { than.extend_from_slice(&x.encode()); }
+                let mut v = Self::prefix(than.len(), 0xC0);
                 v.extend_from_slice(&than);
                 v
             }
         }
     }
 
-    fn tien_to(do_long: usize, goc: u8) -> Vec<u8> {
-        if do_long < 56 {
-            vec![goc + do_long as u8]
+    fn prefix(length: usize, root: u8) -> Vec<u8> {
+        if length < 56 {
+            vec![root + length as u8]
         } else {
             // Độ dài dài: ghi độ-dài-của-độ-dài rồi tới độ dài
-            let b = do_long.to_be_bytes();
+            let b = length.to_be_bytes();
             let bo_qua = b.iter().position(|&x| x != 0).unwrap();
-            let mut v = vec![goc + 55 + (b.len() - bo_qua) as u8];
+            let mut v = vec![root + 55 + (b.len() - bo_qua) as u8];
             v.extend_from_slice(&b[bo_qua..]);
             v
         }
@@ -256,7 +256,7 @@ impl Rlp {
 
     /// Số nguyên trong RLP dùng big-endian KHÔNG có số 0 thừa ở đầu.
     /// Số 0 mã hoá thành chuỗi RỖNG, không phải byte 0x00 — điểm hay bị sai.
-    pub fn tu_so(v: u128) -> Rlp {
+    pub fn numerator(v: u128) -> Rlp {
         if v == 0 { return Rlp::Chuoi(vec![]); }
         let b = v.to_be_bytes();
         let bo_qua = b.iter().position(|&x| x != 0).unwrap();
@@ -269,49 +269,49 @@ impl Rlp {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GiaoDich1559 {
+pub struct Tx1559 {
     pub chain_id: u64,
     pub nonce: u64,           // nonce
     pub max_priority_fee: u128, // tiền "boa" cho người xây khối
-    pub phi_toi_da: u128,         // trần tổng phí mỗi đơn vị gas
+    pub max_fee: u128,         // trần tổng phí mỗi đơn vị gas
     pub gas_limit: u64,
     pub den: Option<Address>,      // None = tạo hợp đồng mới
     pub value: u128,
     pub data: Vec<u8>,
 }
 
-impl GiaoDich1559 {
+impl Tx1559 {
     /// Tải trọng để ký: 0x02 || rlp([...]). Byte 0x02 là "loại giao dịch",
     /// thêm vào từ EIP-2718 để chuỗi phân biệt được các định dạng khác nhau.
-    pub fn tai_in_ky(&self) -> Vec<u8> {
-        let ds = Rlp::DanhSach(vec![
-            Rlp::tu_so(self.chain_id as u128),
-            Rlp::tu_so(self.nonce as u128),
-            Rlp::tu_so(self.max_priority_fee),
-            Rlp::tu_so(self.phi_toi_da),
-            Rlp::tu_so(self.gas_limit as u128),
+    pub fn load_in_period(&self) -> Vec<u8> {
+        let list = Rlp::DanhSach(vec![
+            Rlp::numerator(self.chain_id as u128),
+            Rlp::numerator(self.nonce as u128),
+            Rlp::numerator(self.max_priority_fee),
+            Rlp::numerator(self.max_fee),
+            Rlp::numerator(self.gas_limit as u128),
             match self.den { Some(a) => Rlp::Chuoi(a.to_vec()), None => Rlp::Chuoi(vec![]) },
-            Rlp::tu_so(self.value),
+            Rlp::numerator(self.value),
             Rlp::Chuoi(self.data.clone()),
             Rlp::DanhSach(vec![]), // danh sách truy cập (EIP-2930), để trống
         ]);
         let mut v = vec![0x02];
-        v.extend_from_slice(&ds.encode());
+        v.extend_from_slice(&list.encode());
         v
     }
 
-    pub fn id_hash_ky(&self) -> [u8; 32] { keccak256(&self.tai_in_ky()) }
+    pub fn id_hash_ky(&self) -> [u8; 32] { keccak256(&self.load_in_period()) }
 
     /// Chi phí TỐI ĐA có thể bị trừ khỏi ví. Ví phải kiểm tra con số này
     /// chứ không phải phí thực tế — vì phí thực tế chỉ biết sau khi khai thác.
     pub fn chi_phi_toi_da(&self) -> u128 {
-        self.value + self.phi_toi_da * self.gas_limit as u128
+        self.value + self.max_fee * self.gas_limit as u128
     }
 
     /// Phí thực trả theo EIP-1559: phần đốt (base fee) + tiền boa, nhưng
     /// không bao giờ vượt trần người dùng đặt.
-    pub fn phi_thuc_te(&self, phi_co_ban: u128) -> u128 {
-        let boa = self.max_priority_fee.min(self.phi_toi_da.saturating_sub(phi_co_ban));
+    pub fn effective_fee(&self, phi_co_ban: u128) -> u128 {
+        let boa = self.max_priority_fee.min(self.max_fee.saturating_sub(phi_co_ban));
         phi_co_ban + boa
     }
 }
@@ -331,19 +331,19 @@ impl Erc20 {
     pub const SK_CHUYEN: &'static str = "Transfer(address,address,uint256)";
 
     pub fn transfer(&self, den: Address, quantity: u128) -> Vec<u8> {
-        dung_calldata(Self::CK_CHUYEN, &[ValueAbi::Address(den), ValueAbi::Uint(quantity)])
+        dung_calldata(Self::CK_CHUYEN, &[AbiValue::Address(den), AbiValue::Uint(quantity)])
     }
-    pub fn balance_cua(&self, ai: Address) -> Vec<u8> {
-        dung_calldata(Self::CK_SO_DU, &[ValueAbi::Address(ai)])
+    pub fn balance_of(&self, ai: Address) -> Vec<u8> {
+        dung_calldata(Self::CK_SO_DU, &[AbiValue::Address(ai)])
     }
     pub fn wait_op(&self, ai: Address, quantity: u128) -> Vec<u8> {
-        dung_calldata(Self::CK_CHO_PHEP, &[ValueAbi::Address(ai), ValueAbi::Uint(quantity)])
+        dung_calldata(Self::CK_CHO_PHEP, &[AbiValue::Address(ai), AbiValue::Uint(quantity)])
     }
     /// Giải mã giá trị `uint256` trả về từ `eth_call`.
     pub fn read_balance(ket_qua: &[u8]) -> Option<u128> { doc_uint(ket_qua, 0) }
 }
 
-pub fn dia_chi_tu_hex(s: &str) -> Address {
+pub fn address_from_hex(s: &str) -> Address {
     let s = s.trim_start_matches("0x");
     let mut a = [0u8; 20];
     for i in 0..20 {
@@ -367,11 +367,11 @@ fn main() {
                "transferFrom(address,address,uint256)", "totalSupply()"] {
         println!("   0x{} ← {}", hex(&selector(ck)), ck);
     }
-    println!("   topic0 sự kiện Transfer = 0x{}", hex(&chu_de_su_kien(Erc20::SK_CHUYEN)));
+    println!("   topic0 sự kiện Transfer = 0x{}", hex(&event_topic(Erc20::SK_CHUYEN)));
 
     println!("\n3. MÃ HOÁ ABI");
-    let token = Erc20 { address: dia_chi_tu_hex("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") };
-    let den = dia_chi_tu_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+    let token = Erc20 { address: address_from_hex("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") };
+    let den = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
     let cd = token.transfer(den, 1_000_000);
     println!("   transfer(0x742d…f44e, 1000000) → {} byte", cd.len());
     println!("   chữ ký hàm: 0x{}", hex(&cd[..4]));
@@ -379,42 +379,42 @@ fn main() {
     println!("   tham số 2 : {}", hex(&cd[36..68]));
 
     println!("\n4. KIỂU ĐỘNG — con trỏ ở đầu, dữ liệu ở đuôi");
-    let ma = abi_encode(&[
-        ValueAbi::Uint(42),
-        ValueAbi::Chuoi("xin chao".into()),
-        ValueAbi::Bool(true),
+    let id = abi_encode(&[
+        AbiValue::Uint(42),
+        AbiValue::Chuoi("xin chao".into()),
+        AbiValue::Bool(true),
     ]);
-    println!("   (uint 42, string \"xin chao\", bool true) → {} byte", ma.len());
-    println!("   ô 0 (uint)     : {}", hex(&ma[0..32]));
-    println!("   ô 1 (con trỏ)  : {} ← trỏ tới byte {}", hex(&ma[32..64]), doc_uint(&ma, 1).unwrap());
-    println!("   ô 2 (bool)     : {}", hex(&ma[64..96]));
-    println!("   ô 3 (độ dài)   : {}", hex(&ma[96..128]));
-    println!("   ô 4 (dữ liệu)  : {}", hex(&ma[128..160]));
+    println!("   (uint 42, string \"xin chao\", bool true) → {} byte", id.len());
+    println!("   ô 0 (uint)     : {}", hex(&id[0..32]));
+    println!("   ô 1 (con trỏ)  : {} ← trỏ tới byte {}", hex(&id[32..64]), doc_uint(&id, 1).unwrap());
+    println!("   ô 2 (bool)     : {}", hex(&id[64..96]));
+    println!("   ô 3 (độ dài)   : {}", hex(&id[96..128]));
+    println!("   ô 4 (dữ liệu)  : {}", hex(&id[128..160]));
 
     println!("\n5. RLP");
     println!("   RLP(\"dog\")         = {}", hex(&Rlp::Chuoi(b"dog".to_vec()).encode()));
-    println!("   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)", hex(&Rlp::tu_so(0).encode()));
-    println!("   RLP(15)             = {}", hex(&Rlp::tu_so(15).encode()));
-    println!("   RLP(1024)           = {}", hex(&Rlp::tu_so(1024).encode()));
+    println!("   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)", hex(&Rlp::numerator(0).encode()));
+    println!("   RLP(15)             = {}", hex(&Rlp::numerator(15).encode()));
+    println!("   RLP(1024)           = {}", hex(&Rlp::numerator(1024).encode()));
     println!("   RLP([\"cat\",\"dog\"]) = {}",
              hex(&Rlp::DanhSach(vec![Rlp::Chuoi(b"cat".to_vec()),
                                      Rlp::Chuoi(b"dog".to_vec())]).encode()));
 
     println!("\n6. GIAO DỊCH EIP-1559");
-    let gd = GiaoDich1559 {
+    let gd = Tx1559 {
         chain_id: 1, nonce: 42,
         max_priority_fee: 2_000_000_000,     // 2 gwei tiền boa
-        phi_toi_da: 100_000_000_000,           // trần 100 gwei
+        max_fee: 100_000_000_000,           // trần 100 gwei
         gas_limit: 65_000,
         den: Some(token.address), value: 0, data: cd.clone(),
     };
     println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại giao dịch)",
-             gd.tai_in_ky().len(), gd.tai_in_ky()[0]);
+             gd.load_in_period().len(), gd.load_in_period()[0]);
     println!("   Băm để ký   : 0x{}", hex(&gd.id_hash_ky()));
     println!("   Chi phí tối đa bị khoá: {} wei", gd.chi_phi_toi_da());
     for phi_co_ban in [10_000_000_000u128, 50_000_000_000, 99_000_000_000] {
         println!("   base fee {:>3} gwei → thực trả {:>3} gwei/gas",
-                 phi_co_ban / 1_000_000_000, gd.phi_thuc_te(phi_co_ban) / 1_000_000_000);
+                 phi_co_ban / 1_000_000_000, gd.effective_fee(phi_co_ban) / 1_000_000_000);
     }
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -456,10 +456,10 @@ mod tests {
     fn keccak_nhay_voi_moi_byte_trong_input_nhieu_khoi() {
         // Với input 300 byte (3 khối), lật BẤT KỲ byte nào cũng phải đổi băm.
         // Nếu vòng lặp bọt biển bỏ sót một khối, bài này sẽ bắt được.
-        let goc = vec![7u8; 300];
-        let hash_goc = keccak256(&goc);
+        let root = vec![7u8; 300];
+        let hash_goc = keccak256(&root);
         for pos_value in [0usize, 135, 136, 200, 271, 272, 299] {
-            let mut fix = goc.clone();
+            let mut fix = root.clone();
             fix[pos_value] ^= 1;
             assert_ne!(keccak256(&fix), hash_goc, "lật byte {} mà băm không đổi", pos_value);
         }
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn topic0_su_kien_transfer_dung() {
-        assert_eq!(hex(&chu_de_su_kien("Transfer(address,address,uint256)")),
+        assert_eq!(hex(&event_topic("Transfer(address,address,uint256)")),
             "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
     }
 
@@ -505,7 +505,7 @@ mod tests {
     // ---------- ABI ----------
     #[test]
     fn kieu_tinh_can_phai_trong_o_32_byte() {
-        let m = abi_encode(&[ValueAbi::Uint(1)]);
+        let m = abi_encode(&[AbiValue::Uint(1)]);
         assert_eq!(m.len(), 32);
         assert_eq!(m[31], 1, "giá trị nằm ở byte CUỐI, 31 byte đầu là đệm 0");
         assert!(m[..31].iter().all(|&b| b == 0));
@@ -513,8 +513,8 @@ mod tests {
 
     #[test]
     fn dia_chi_duoc_dem_12_byte_o_dau() {
-        let a = dia_chi_tu_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
-        let m = abi_encode(&[ValueAbi::Address(a)]);
+        let a = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+        let m = abi_encode(&[AbiValue::Address(a)]);
         assert!(m[..12].iter().all(|&b| b == 0), "12 byte đầu phải là đệm");
         assert_eq!(&m[12..32], &a);
         assert_eq!(read_address(&m, 0), Some(a), "đọc ngược phải ra đúng địa chỉ");
@@ -522,24 +522,24 @@ mod tests {
 
     #[test]
     fn so_am_duoc_mo_rong_dau_bang_ff() {
-        let m = abi_encode(&[ValueAbi::Int(-1)]);
+        let m = abi_encode(&[AbiValue::Int(-1)]);
         assert!(m.iter().all(|&b| b == 0xFF), "-1 trong bù hai là toàn bit 1");
-        let m2 = abi_encode(&[ValueAbi::Int(1)]);
+        let m2 = abi_encode(&[AbiValue::Int(1)]);
         assert!(m2[..31].iter().all(|&b| b == 0), "số dương thì đệm 0");
     }
 
     #[test]
     fn bool_ma_hoa_thanh_0_hoac_1() {
-        assert_eq!(abi_encode(&[ValueAbi::Bool(true)])[31], 1);
-        assert_eq!(abi_encode(&[ValueAbi::Bool(false)])[31], 0);
+        assert_eq!(abi_encode(&[AbiValue::Bool(true)])[31], 1);
+        assert_eq!(abi_encode(&[AbiValue::Bool(false)])[31], 0);
     }
 
     #[test]
     fn kind_close_record_pointer_use_pos_value() {
         let m = abi_encode(&[
-            ValueAbi::Uint(42),
-            ValueAbi::Chuoi("xin chao".into()),
-            ValueAbi::Bool(true),
+            AbiValue::Uint(42),
+            AbiValue::Chuoi("xin chao".into()),
+            AbiValue::Bool(true),
         ]);
         assert_eq!(doc_uint(&m, 0), Some(42));
         assert_eq!(doc_uint(&m, 1), Some(96), "con trỏ trỏ ngay sau phần đầu (3 ô × 32)");
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn kieu_dong_duoc_dem_cho_tron_32_byte() {
-        let m = abi_encode(&[ValueAbi::Chuoi("a".into())]);
+        let m = abi_encode(&[AbiValue::Chuoi("a".into())]);
         assert_eq!(m.len() % 32, 0, "toàn bộ mã hoá ABI luôn là bội của 32");
         assert_eq!(m.len(), 32 + 32 + 32, "con trỏ + độ dài + 1 ô dữ liệu đã đệm");
     }
@@ -558,8 +558,8 @@ mod tests {
     #[test]
     fn nhieu_kieu_dong_khong_de_len_nhau() {
         let m = abi_encode(&[
-            ValueAbi::Chuoi("mot".into()),
-            ValueAbi::Chuoi("hai ba bon nam sau bay".into()),
+            AbiValue::Chuoi("mot".into()),
+            AbiValue::Chuoi("hai ba bon nam sau bay".into()),
         ]);
         let p1 = doc_uint(&m, 0).unwrap() as usize;
         let p2 = doc_uint(&m, 1).unwrap() as usize;
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     fn mang_uint_ma_hoa_do_dai_roi_toi_phan_tu() {
-        let m = abi_encode(&[ValueAbi::MangUint(vec![10, 20, 30])]);
+        let m = abi_encode(&[AbiValue::MangUint(vec![10, 20, 30])]);
         assert_eq!(doc_uint(&m, 0), Some(32), "con trỏ");
         assert_eq!(doc_uint(&m, 1), Some(3), "độ dài mảng");
         assert_eq!(doc_uint(&m, 2), Some(10));
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn calldata_transfer_khop_dinh_dang_that() {
         let t = Erc20 { address: [0u8; 20] };
-        let den = dia_chi_tu_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+        let den = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
         let cd = t.transfer(den, 1_000_000);
         assert_eq!(cd.len(), 4 + 32 + 32, "4 byte chữ ký hàm + 2 ô tham số");
         assert_eq!(hex(&cd[..4]), "a9059cbb");
@@ -620,15 +620,15 @@ mod tests {
     #[test]
     fn rlp_so_khong_la_chuoi_rong() {
         // Bẫy kinh điển: RLP(0) KHÔNG phải 0x00 mà là 0x80 (chuỗi rỗng).
-        assert_eq!(hex(&Rlp::tu_so(0).encode()), "80");
-        assert_ne!(Rlp::tu_so(0), Rlp::Chuoi(vec![0]));
+        assert_eq!(hex(&Rlp::numerator(0).encode()), "80");
+        assert_ne!(Rlp::numerator(0), Rlp::Chuoi(vec![0]));
     }
 
     #[test]
     fn rlp_so_khong_co_so_khong_thua_o_dau() {
-        assert_eq!(Rlp::tu_so(1024), Rlp::Chuoi(vec![0x04, 0x00]));
-        assert_eq!(Rlp::tu_so(255), Rlp::Chuoi(vec![0xff]));
-        assert_eq!(Rlp::tu_so(256), Rlp::Chuoi(vec![0x01, 0x00]));
+        assert_eq!(Rlp::numerator(1024), Rlp::Chuoi(vec![0x04, 0x00]));
+        assert_eq!(Rlp::numerator(255), Rlp::Chuoi(vec![0xff]));
+        assert_eq!(Rlp::numerator(256), Rlp::Chuoi(vec![0x01, 0x00]));
     }
 
     #[test]
@@ -648,13 +648,13 @@ mod tests {
     }
 
     // ---------- Giao dịch ----------
-    fn trade_mau() -> GiaoDich1559 {
-        GiaoDich1559 {
+    fn trade_mau() -> Tx1559 {
+        Tx1559 {
             chain_id: 1, nonce: 42,
             max_priority_fee: 2_000_000_000,
-            phi_toi_da: 100_000_000_000,
+            max_fee: 100_000_000_000,
             gas_limit: 21_000,
-            den: Some(dia_chi_tu_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e")),
+            den: Some(address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e")),
             value: 1_000_000_000_000_000_000, // 1 ETH
             data: vec![],
         }
@@ -662,24 +662,24 @@ mod tests {
 
     #[test]
     fn tai_in_ky_start_table_kind_trade() {
-        assert_eq!(trade_mau().tai_in_ky()[0], 0x02, "EIP-1559 là loại 0x02");
+        assert_eq!(trade_mau().load_in_period()[0], 0x02, "EIP-1559 là loại 0x02");
     }
 
     #[test]
     fn swap_enable_ky_truong_which_same_swap_id_hash() {
         // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung giao dịch.
         // Nếu một trường lọt ra ngoài, kẻ tấn công sửa được nó mà chữ ký vẫn hợp lệ.
-        let goc = trade_mau();
-        let b0 = goc.id_hash_ky();
-        let bien_the: Vec<GiaoDich1559> = vec![
-            GiaoDich1559 { chain_id: 5, ..goc.clone() },
-            GiaoDich1559 { nonce: 43, ..goc.clone() },
-            GiaoDich1559 { max_priority_fee: 3_000_000_000, ..goc.clone() },
-            GiaoDich1559 { phi_toi_da: 90_000_000_000, ..goc.clone() },
-            GiaoDich1559 { gas_limit: 30_000, ..goc.clone() },
-            GiaoDich1559 { den: None, ..goc.clone() },
-            GiaoDich1559 { value: 2, ..goc.clone() },
-            GiaoDich1559 { data: vec![1], ..goc.clone() },
+        let root = trade_mau();
+        let b0 = root.id_hash_ky();
+        let bien_the: Vec<Tx1559> = vec![
+            Tx1559 { chain_id: 5, ..root.clone() },
+            Tx1559 { nonce: 43, ..root.clone() },
+            Tx1559 { max_priority_fee: 3_000_000_000, ..root.clone() },
+            Tx1559 { max_fee: 90_000_000_000, ..root.clone() },
+            Tx1559 { gas_limit: 30_000, ..root.clone() },
+            Tx1559 { den: None, ..root.clone() },
+            Tx1559 { value: 2, ..root.clone() },
+            Tx1559 { data: vec![1], ..root.clone() },
         ];
         for (i, v) in bien_the.iter().enumerate() {
             assert_ne!(v.id_hash_ky(), b0, "biến thể {} phải cho mã băm khác", i);
@@ -688,11 +688,11 @@ mod tests {
 
     #[test]
     fn make_contract_encode_dich_into_series_empty() {
-        let tao = GiaoDich1559 { den: None, ..trade_mau() };
+        let tao = Tx1559 { den: None, ..trade_mau() };
         let send = trade_mau();
-        assert_ne!(tao.tai_in_ky(), send.tai_in_ky());
+        assert_ne!(tao.load_in_period(), send.load_in_period());
         // `den: None` phải thành 0x80 (chuỗi rỗng), không phải 20 byte 0
-        assert!(tao.tai_in_ky().len() < send.tai_in_ky().len());
+        assert!(tao.load_in_period().len() < send.load_in_period().len());
     }
 
     #[test]
@@ -706,9 +706,9 @@ mod tests {
     fn phi_thuc_te_khong_bao_gio_vuot_tran_nguoi_dung_dat() {
         let gd = trade_mau();
         for base in [1u128, 50_000_000_000, 99_000_000_000, 100_000_000_000] {
-            assert!(gd.phi_thuc_te(base) <= gd.phi_toi_da,
+            assert!(gd.effective_fee(base) <= gd.max_fee,
                     "base {} → thực trả {} vượt trần {}",
-                    base, gd.phi_thuc_te(base), gd.phi_toi_da);
+                    base, gd.effective_fee(base), gd.max_fee);
         }
     }
 
@@ -716,21 +716,21 @@ mod tests {
     fn base_fee_thap_thi_tra_tron_ven_tien_boa() {
         let gd = trade_mau();
         let base = 10_000_000_000u128;
-        assert_eq!(gd.phi_thuc_te(base), base + gd.max_priority_fee);
+        assert_eq!(gd.effective_fee(base), base + gd.max_priority_fee);
     }
 
     #[test]
     fn base_fee_gan_tran_thi_tien_boa_bi_bop_lai() {
         let gd = trade_mau();
         let base = 99_000_000_000u128; // trần 100 gwei, chỉ còn 1 gwei cho boa
-        assert_eq!(gd.phi_thuc_te(base), 100_000_000_000,
+        assert_eq!(gd.effective_fee(base), 100_000_000_000,
                    "tiền boa bị cắt xuống 1 gwei chứ không phải 2");
     }
 
     #[test]
     fn base_fee_vuot_tran_thi_phep_tinh_khong_tran_so() {
         let gd = trade_mau();
-        assert_eq!(gd.phi_thuc_te(200_000_000_000), 200_000_000_000,
+        assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
                    "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");
     }
 }

@@ -275,7 +275,7 @@ fn main() {
     println!("    - Dung luong payload JSON    : {} bytes", rest_response.len());
 
     // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
-    println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
+    println!("\n[2] Xu ly qua cong gRPC concat bo (Protobuf Binary Format):");
     let grpc_binary = router.handle_grpc_get_product(101).unwrap();
     println!("    - Payload gRPC Binary nhan duoc (Hex): {:02X?}", grpc_binary);
     println!("    - Dung luong payload gRPC             : {} bytes", grpc_binary.len());
@@ -322,12 +322,12 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 ```rust
 // Đoạn mã lỗi minh họa E0599:
 struct LoiHeThong {
-    thong_diep: String,
+    thong_message: String,
 }
 
 // Hàm handler trả về LoiHeThong nhưng chưa có IntoResponse
 // async fn handler_loi() -> Result<&'static str, LoiHeThong> {
-//     Err(LoiHeThong { thong_diep: "Lỗi nội bộ".into() }) // LỖI E0599!
+//     Err(LoiHeThong { thong_message: "Lỗi nội bộ".into() }) // LỖI E0599!
 // }
 
 // Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển đổi sang HTTP Response

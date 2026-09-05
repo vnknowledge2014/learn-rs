@@ -23,16 +23,16 @@ fn main() {
 
     // 2. Sử dụng vòng lặp 'loop' có 'break' mang giá trị về:
     // Kiểm tra áp suất nhiên liệu buồng đốt đến khi đạt chuẩn an toàn
-    let mut ap_suat_hien_tai = 80;
+    let mut current_ap_suat = 80;
     println!("\nBắt đầu kích áp buồng đốt nhiên liệu...");
 
     let ap_suat_chot = loop {
-        ap_suat_hien_tai += 5;
-        println!("- Áp suất đang tăng: {} PSI", ap_suat_hien_tai);
+        current_ap_suat += 5;
+        println!("- Áp suất đang tăng: {} PSI", current_ap_suat);
 
-        if ap_suat_hien_tai >= 100 {
+        if current_ap_suat >= 100 {
             // Khi áp suất đạt ngưỡng 100 PSI, thoát vòng lặp và mang giá trị về!
-            break ap_suat_hien_tai;
+            break current_ap_suat;
         }
     };
     println!("==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI", ap_suat_chot);
@@ -48,13 +48,13 @@ fn main() {
 
     // 4. Sử dụng vòng lặp lồng nhau với Nhãn (Loop Labels) để quét cảm biến
     println!("\nBắt đầu diễn tập kịch bản ngắt khẩn cấp trên 3 tầng tên lửa:");
-    let mut phat_hien_su_co = false;
+    let mut phat_show_su_has = false;
 
     'kiem_tra_tang_ten_lua: for tang in 1..=3 {
         println!("* Đang quét tầng tên lửa số {}", tang);
         for cam_bien in 1..=4 {
             if tang == 2 && cam_bien == 3 {
-                phat_hien_su_co = true; // Kích hoạt sự cố mô phỏng!
+                phat_show_su_has = true; // Kích hoạt sự cố mô phỏng!
                 println!("  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!", 
                          tang, cam_bien);
                 // Thoát thẳng ra ngoài cả hai vòng lặp nhờ nhãn:
@@ -64,7 +64,7 @@ fn main() {
         }
     }
 
-    if phat_hien_su_co {
+    if phat_show_su_has {
         println!("==> Cơ chế ngắt khẩn cấp bằng nhãn đã dừng kiểm tra an toàn!");
         println!("==> Đội kỹ thuật đã khắc phục xong sự cố cảm biến 2.3.");
     }

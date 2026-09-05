@@ -18,8 +18,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Ghi một mẫu là O(1) và KHÔNG cấp phát — bắt buộc, vì bản thân việc đo
 /// không được làm nhiễu thứ đang đo.
 pub struct LatencyHistogram {
-    /// xo[i] đếm các giá trị trong [2^(i-1), 2^i)
-    xo: Vec<u64>,
+    /// xor[i] đếm các giá trị trong [2^(i-1), 2^i)
+    xor: Vec<u64>,
     pub tong_mau: u64,
     pub min: u64,
     pub max: u64,
@@ -28,14 +28,14 @@ pub struct LatencyHistogram {
 
 impl LatencyHistogram {
     pub fn new() -> Self {
-        LatencyHistogram { xo: vec![0; 65], tong_mau: 0, min: u64::MAX,
+        LatencyHistogram { xor: vec![0; 65], tong_mau: 0, min: u64::MAX,
                     max: 0, total_value: 0 }
     }
 
     #[inline]
     pub fn record(&mut self, ns: u64) {
         let i = if ns == 0 { 0 } else { 64 - ns.leading_zeros() as usize };
-        self.xo[i] += 1;
+        self.xor[i] += 1;
         self.tong_mau += 1;
         self.total_value += ns as u128;
         if ns < self.min { self.min = ns; }
@@ -52,7 +52,7 @@ impl LatencyHistogram {
         if self.tong_mau == 0 { return 0; }
         let threshold = (self.tong_mau as f64 * p).ceil().max(1.0) as u64;
         let mut cong_don = 0u64;
-        for (i, &c) in self.xo.iter().enumerate() {
+        for (i, &c) in self.xor.iter().enumerate() {
             cong_don += c;
             if cong_don >= threshold {
                 return if i == 0 { 0 } else { (1u64 << (i - 1)) * 2 - 1 };
@@ -79,7 +79,7 @@ pub const DONG_CACHE: usize = 64;
 /// nhưng phần cứng chỉ biết tới dòng cache — nên chúng giành nhau quyền sở
 /// hữu dòng đó, ping-pong qua lại. Chậm hơn hàng chục lần mà nhìn mã không thấy.
 #[repr(C)]
-pub struct BufferChungClose { pub a: AtomicUsize, pub b: AtomicUsize }
+pub struct SharedBuffer { pub a: AtomicUsize, pub b: AtomicUsize }
 
 /// Đệm cho mỗi bộ đếm chiếm trọn một dòng cache riêng.
 #[repr(C, align(64))]
@@ -99,7 +99,7 @@ pub struct BufferSplitClose { pub a: CountHasCount, pub b: CountHasCount }
 /// Một-ghi-một-đọc, không khoá, không cấp phát, sức chứa là luỹ thừa của 2.
 ///
 /// Ba quyết định thiết kế đáng chú ý:
-/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 chu kỳ) bằng `&` (1 chu kỳ).
+/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 owner kỳ) bằng `&` (1 owner kỳ).
 /// 2. Con trỏ đọc/ghi nằm ở hai dòng cache RIÊNG → không chia sẻ giả.
 /// 3. Con trỏ TĂNG MÃI, không quấn vòng → phân biệt được "rỗng" và "đầy"
 ///    mà không phải hy sinh một ô như hàng đợi vòng thông thường.
@@ -136,11 +136,11 @@ impl<T, const N: usize> DisruptorRing<T, N> {
     }
     pub fn rong(&self) -> bool { self.quantity() == 0 }
     pub fn day(&self) -> bool { self.quantity() == N }
-    pub fn suc_chua(&self) -> usize { N }
+    pub fn capacity(&self) -> usize { N }
 
     /// Gọi từ luồng SẢN XUẤT. Trả `Err` khi đầy — không bao giờ chặn,
     /// vì chặn trên đường nóng là điều cấm kỵ.
-    pub fn day_vao(&self, gt: T) -> Result<(), T> {
+    pub fn push(&self, gt: T) -> Result<(), T> {
         let record = self.pos_value_record.load(Ordering::Relaxed); // ta là bên duy nhất ghi nó
         let doc = self.pos_value_read.load(Ordering::Acquire);
         if record - doc == N { return Err(gt); }
@@ -151,7 +151,7 @@ impl<T, const N: usize> DisruptorRing<T, N> {
     }
 
     /// Gọi từ luồng TIÊU THỤ.
-    pub fn lay_ra(&self) -> Option<T> {
+    pub fn take(&self) -> Option<T> {
         let doc = self.pos_value_read.load(Ordering::Relaxed);
         let record = self.pos_value_record.load(Ordering::Acquire);
         if doc == record { return None; }
@@ -203,10 +203,10 @@ pub struct ObjectPool<T> {
 }
 
 impl<T: Default + Clone> ObjectPool<T> {
-    pub fn new(suc_chua: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         ObjectPool {
-            ranh: (0..suc_chua).rev().collect(),
-            o: vec![T::default(); suc_chua],
+            ranh: (0..capacity).rev().collect(),
+            o: vec![T::default(); capacity],
             count_borrow: 0, so_lan_het_be: 0,
         }
     }
@@ -232,7 +232,7 @@ impl<T: Default + Clone> ObjectPool<T> {
 /// Mảng-của-struct (AoS): mỗi bản ghi liền mạch. Tốt khi đọc TẤT CẢ trường.
 /// Trường được xếp theo kích thước GIẢM DẦN để trình biên dịch không phải đệm.
 #[derive(Clone, Copy, Default)]
-pub struct BaoGiaAoS {
+pub struct QuoteAoS {
     pub price_buy: i64,
     pub price_sell: i64,
     pub timestamp: u64,
@@ -247,7 +247,7 @@ pub struct BaoGiaAoS {
 /// trường trên nhiều bản ghi — CPU nạp một dòng cache 64 byte là được 8 giá
 /// trị đều có ích, thay vì 8 byte có ích trên 40 byte rác.
 #[derive(Default)]
-pub struct BangBaoGiaSoA {
+pub struct QuoteTableSoA {
     pub id_chain: Vec<u32>,
     pub price_buy: Vec<i64>,
     pub price_sell: Vec<i64>,
@@ -256,9 +256,9 @@ pub struct BangBaoGiaSoA {
     pub timestamp: Vec<u64>,
 }
 
-impl BangBaoGiaSoA {
+impl QuoteTableSoA {
     pub fn new(n: usize) -> Self {
-        BangBaoGiaSoA {
+        QuoteTableSoA {
             id_chain: vec![0; n], price_buy: vec![0; n], price_sell: vec![0; n],
             qty_buy: vec![0; n], qty_sell: vec![0; n], timestamp: vec![0; n],
         }
@@ -269,12 +269,12 @@ impl BangBaoGiaSoA {
     pub fn total_price_buy(&self) -> i128 { self.price_buy.iter().map(|&x| x as i128).sum() }
 
     /// Số byte thực sự phải kéo từ RAM để quét một trường 8 byte.
-    pub fn byte_can_doc_mot_truong(&self) -> usize { self.quantity() * 8 }
+    pub fn bytes_to_read_one_field(&self) -> usize { self.quantity() * 8 }
 }
 
-pub fn byte_can_doc_mot_truong_aos(n: usize) -> usize {
+pub fn bytes_to_read_one_field_aos(n: usize) -> usize {
     // Phải kéo cả bản ghi dù chỉ cần 8 byte
-    n * std::mem::size_of::<BaoGiaAoS>()
+    n * std::mem::size_of::<QuoteAoS>()
 }
 
 // ============================================================================
@@ -282,20 +282,20 @@ pub fn byte_can_doc_mot_truong_aos(n: usize) -> usize {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ChangDoTre { pub name: String, pub ns: u64 }
+pub struct LatencyStage { pub name: String, pub ns: u64 }
 
 #[derive(Debug, PartialEq)]
-pub struct LatencyBudget { pub chang: Vec<ChangDoTre>, pub tran_ns: u64 }
+pub struct LatencyBudget { pub chang: Vec<LatencyStage>, pub tran_ns: u64 }
 
 impl LatencyBudget {
     pub fn tong(&self) -> u64 { self.chang.iter().map(|c| c.ns).sum() }
     pub fn set_level_spend(&self) -> bool { self.tong() <= self.tran_ns }
     /// Chặng tốn nhất — nơi DUY NHẤT đáng bỏ công tối ưu.
-    pub fn nut_that_co_chai(&self) -> Option<&ChangDoTre> {
+    pub fn nut_that_co_chai(&self) -> Option<&LatencyStage> {
         self.chang.iter().max_by_key(|c| c.ns)
     }
     /// Định luật Amdahl: tăng tốc tối đa nếu chặng nghẽn cổ chai thành 0.
-    pub fn tang_toc_toi_da_neu_xoa_nut(&self) -> f64 {
+    pub fn max_speedup_if_node_removed(&self) -> f64 {
         match self.nut_that_co_chai() {
             Some(n) if self.tong() > n.ns => self.tong() as f64 / (self.tong() - n.ns) as f64,
             _ => f64::INFINITY,
@@ -336,17 +336,17 @@ fn main() {
 
     println!("\n2. CHIA SẺ GIẢ — kích thước quyết định tốc độ");
     println!("   BoDemChungDong: {} byte (hai bộ đếm CÙNG một dòng cache)",
-             std::mem::size_of::<BufferChungClose>());
+             std::mem::size_of::<SharedBuffer>());
     println!("   BoDemTachDong : {} byte (mỗi bộ đếm một dòng riêng)",
              std::mem::size_of::<BufferSplitClose>());
     println!("   → Tốn thêm {} byte để tránh ping-pong dòng cache giữa hai lõi.",
-             std::mem::size_of::<BufferSplitClose>() - std::mem::size_of::<BufferChungClose>());
+             std::mem::size_of::<BufferSplitClose>() - std::mem::size_of::<SharedBuffer>());
 
     println!("\n3. VÒNG ĐỆM DISRUPTOR");
     let v: DisruptorRing<u64, 1024> = DisruptorRing::new();
-    for i in 0..1024 { v.day_vao(i).unwrap(); }
+    for i in 0..1024 { v.push(i).unwrap(); }
     println!("   Đẩy 1024 phần tử → đầy: {} · đẩy thêm → bị từ chối: {}",
-             v.day(), v.day_vao(9999).is_err());
+             v.day(), v.push(9999).is_err());
     let mut lo = Vec::new();
     let n = v.lay_lo(256, &mut lo);
     println!("   Lấy một lô 256 → được {} phần tử, còn lại {}", n, v.quantity());
@@ -363,24 +363,24 @@ fn main() {
 
     println!("\n5. BỐ TRÍ BỘ NHỚ — AoS vs SoA khi quét MỘT trường");
     let n = 100_000;
-    println!("   Một bản ghi AoS = {} byte", std::mem::size_of::<BaoGiaAoS>());
+    println!("   Một bản ghi AoS = {} byte", std::mem::size_of::<QuoteAoS>());
     println!("   Quét {} bản ghi chỉ để lấy `gia_mua`:", n);
-    println!("     AoS phải kéo {:>9} byte từ RAM", byte_can_doc_mot_truong_aos(n));
-    println!("     SoA chỉ kéo  {:>9} byte", BangBaoGiaSoA::new(n).byte_can_doc_mot_truong());
+    println!("     AoS phải kéo {:>9} byte từ RAM", bytes_to_read_one_field_aos(n));
+    println!("     SoA chỉ kéo  {:>9} byte", QuoteTableSoA::new(n).bytes_to_read_one_field());
     println!("   → SoA đọc ít hơn {:.1}× — và đó là băng thông RAM, thứ đắt nhất.",
-             byte_can_doc_mot_truong_aos(n) as f64 / (n * 8) as f64);
+             bytes_to_read_one_field_aos(n) as f64 / (n * 8) as f64);
 
     println!("\n6. NGÂN SÁCH ĐỘ TRỄ TICK-TO-TRADE");
     let ns = LatencyBudget {
         tran_ns: 5_000,
         chang: vec![
-            ChangDoTre { name: "Card mạng → bộ nhớ".into(), ns: 800 },
-            ChangDoTre { name: "Phân tích gói tin".into(), ns: 150 },
-            ChangDoTre { name: "Cập nhật sổ lệnh".into(), ns: 400 },
-            ChangDoTre { name: "Chiến lược quyết định".into(), ns: 250 },
-            ChangDoTre { name: "Kiểm tra rủi ro".into(), ns: 120 },
-            ChangDoTre { name: "Tuần tự hoá lệnh".into(), ns: 180 },
-            ChangDoTre { name: "Gọi hệ thống gửi".into(), ns: 1_500 },
+            LatencyStage { name: "Card mạng → bộ nhớ".into(), ns: 800 },
+            LatencyStage { name: "Phân tích gói tin".into(), ns: 150 },
+            LatencyStage { name: "Cập nhật sổ lệnh".into(), ns: 400 },
+            LatencyStage { name: "Chiến lược quyết định".into(), ns: 250 },
+            LatencyStage { name: "Kiểm tra rủi ro".into(), ns: 120 },
+            LatencyStage { name: "Tuần tự hoá lệnh".into(), ns: 180 },
+            LatencyStage { name: "Gọi hệ thống gửi".into(), ns: 1_500 },
         ],
     };
     for c in &ns.chang {
@@ -391,7 +391,7 @@ fn main() {
     println!("   Tổng {} ns / trần {} ns → {}",
              ns.tong(), ns.tran_ns, if ns.set_level_spend() { "ĐẠT" } else { "TRƯỢT" });
     println!("   Nút thắt: {} · xoá hẳn nó cũng chỉ nhanh được {:.2}×",
-             ns.nut_that_co_chai().unwrap().name, ns.tang_toc_toi_da_neu_xoa_nut());
+             ns.nut_that_co_chai().unwrap().name, ns.max_speedup_if_node_removed());
     println!("   → Đó là lý do HFT thật dùng kernel bypass: gọi hệ thống là chặng đắt nhất.");
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -492,7 +492,7 @@ mod tests {
         assert!(dc_b - dc_a >= DONG_CACHE,
                 "hai bộ đếm cách nhau {} byte, phải ít nhất {}", dc_b - dc_a, DONG_CACHE);
         // Ngược lại, phiên bản không đệm thì chúng nằm sát nhau
-        let c = BufferChungClose { a: AtomicUsize::new(0), b: AtomicUsize::new(0) };
+        let c = SharedBuffer { a: AtomicUsize::new(0), b: AtomicUsize::new(0) };
         let ca = &c.a as *const _ as usize;
         let cb = &c.b as *const _ as usize;
         assert!(cb - ca < DONG_CACHE,
@@ -503,9 +503,9 @@ mod tests {
     #[test]
     fn prev_round_in_prev_out() {
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
-        for i in 0..5 { v.day_vao(i).unwrap(); }
-        for i in 0..5 { assert_eq!(v.lay_ra(), Some(i)); }
-        assert_eq!(v.lay_ra(), None);
+        for i in 0..5 { v.push(i).unwrap(); }
+        for i in 0..5 { assert_eq!(v.take(), Some(i)); }
+        assert_eq!(v.take(), None);
     }
 
     #[test]
@@ -513,18 +513,18 @@ mod tests {
         // Hàng đợi vòng thường phải bỏ một ô để phân biệt rỗng/đầy.
         // Con trỏ tăng mãi giúp ta dùng trọn N ô.
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
-        for i in 0..8 { assert!(v.day_vao(i).is_ok(), "phải nhận đủ 8 phần tử"); }
+        for i in 0..8 { assert!(v.push(i).is_ok(), "phải nhận đủ 8 phần tử"); }
         assert!(v.day());
         assert_eq!(v.quantity(), 8);
-        assert_eq!(v.day_vao(99), Err(99));
+        assert_eq!(v.push(99), Err(99));
     }
 
     #[test]
     fn vong_quay_dung_qua_nhieu_luot() {
         let v: DisruptorRing<u64, 4> = DisruptorRing::new();
         for i in 0..1000u64 {
-            v.day_vao(i).unwrap();
-            assert_eq!(v.lay_ra(), Some(i), "chỉ số phải quấn đúng qua biên mảng");
+            v.push(i).unwrap();
+            assert_eq!(v.take(), Some(i), "chỉ số phải quấn đúng qua biên mảng");
         }
         assert!(v.rong());
     }
@@ -532,7 +532,7 @@ mod tests {
     #[test]
     fn vong_rong_tra_none_va_khong_panic() {
         let v: DisruptorRing<u8, 16> = DisruptorRing::new();
-        assert_eq!(v.lay_ra(), None);
+        assert_eq!(v.take(), None);
         assert!(v.rong() && !v.day());
         assert_eq!(v.quantity(), 0);
     }
@@ -540,7 +540,7 @@ mod tests {
     #[test]
     fn get_lo_get_use_quantity_and_use_thu_from() {
         let v: DisruptorRing<u32, 64> = DisruptorRing::new();
-        for i in 0..50 { v.day_vao(i).unwrap(); }
+        for i in 0..50 { v.push(i).unwrap(); }
         let mut ra = Vec::new();
         assert_eq!(v.lay_lo(20, &mut ra), 20);
         assert_eq!(ra, (0..20).collect::<Vec<u32>>());
@@ -619,14 +619,14 @@ mod tests {
     #[test]
     fn soa_doc_it_byte_hon_han_aos_khi_quet_mot_truong() {
         let n = 10_000;
-        let aos = byte_can_doc_mot_truong_aos(n);
-        let soa = BangBaoGiaSoA::new(n).byte_can_doc_mot_truong();
+        let aos = bytes_to_read_one_field_aos(n);
+        let soa = QuoteTableSoA::new(n).bytes_to_read_one_field();
         assert!(aos > soa * 4, "AoS đọc {} byte, SoA chỉ {} byte", aos, soa);
     }
 
     #[test]
     fn soa_tinh_dung_tong() {
-        let mut t = BangBaoGiaSoA::new(5);
+        let mut t = QuoteTableSoA::new(5);
         for i in 0..5 { t.price_buy[i] = (i as i64 + 1) * 100; }
         assert_eq!(t.total_price_buy(), 100 + 200 + 300 + 400 + 500);
     }
@@ -637,7 +637,7 @@ mod tests {
         // cần biết khi tính băng thông bộ nhớ. Xếp trường theo kích thước
         // giảm dần là cách đơn giản nhất để tránh đệm.
         let total_truong = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4;
-        assert_eq!(std::mem::size_of::<BaoGiaAoS>(), total_truong);
+        assert_eq!(std::mem::size_of::<QuoteAoS>(), total_truong);
     }
 
     // ---------- Ngân sách độ trễ ----------
@@ -645,9 +645,9 @@ mod tests {
         LatencyBudget {
             tran_ns: 5_000,
             chang: vec![
-                ChangDoTre { name: "mang".into(), ns: 800 },
-                ChangDoTre { name: "phan_tich".into(), ns: 150 },
-                ChangDoTre { name: "goi_he_thong".into(), ns: 1_500 },
+                LatencyStage { name: "mang".into(), ns: 800 },
+                LatencyStage { name: "phan_tich".into(), ns: 150 },
+                LatencyStage { name: "goi_he_thong".into(), ns: 1_500 },
             ],
         }
     }
@@ -665,8 +665,8 @@ mod tests {
         let ns = nanos_mau();
         // Xoá hẳn chặng 1500 ns khỏi tổng 2450 ns → còn 950 ns
         let mong_doi = 2_450.0 / 950.0;
-        assert!((ns.tang_toc_toi_da_neu_xoa_nut() - mong_doi).abs() < 1e-9);
-        assert!(ns.tang_toc_toi_da_neu_xoa_nut() < 3.0,
+        assert!((ns.max_speedup_if_node_removed() - mong_doi).abs() < 1e-9);
+        assert!(ns.max_speedup_if_node_removed() < 3.0,
                 "kể cả xoá sạch nút thắt cũng chỉ nhanh được ~2.6× — đó là định luật Amdahl");
     }
 
@@ -674,7 +674,7 @@ mod tests {
     fn budget_exceed_cap_is_report_truot() {
         let ns = LatencyBudget {
             tran_ns: 1_000,
-            chang: vec![ChangDoTre { name: "cham".into(), ns: 9_999 }],
+            chang: vec![LatencyStage { name: "cham".into(), ns: 9_999 }],
         };
         assert!(!ns.set_level_spend());
     }
@@ -683,9 +683,9 @@ mod tests {
     fn ngan_sach_mot_chang_duy_nhat_cho_tang_toc_vo_han() {
         let ns = LatencyBudget {
             tran_ns: 100,
-            chang: vec![ChangDoTre { name: "tat_ca".into(), ns: 500 }],
+            chang: vec![LatencyStage { name: "all".into(), ns: 500 }],
         };
-        assert!(ns.tang_toc_toi_da_neu_xoa_nut().is_infinite(),
+        assert!(ns.max_speedup_if_node_removed().is_infinite(),
                 "xoá chặng duy nhất thì thời gian còn 0");
     }
 

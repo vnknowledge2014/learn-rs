@@ -13,7 +13,7 @@ pub mod mien {
     use std::fmt;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum LoiMien {
+    pub enum DomainError {
         EmailSai(String),
         TenSanPhamSai(String),
         SoLuongSai(String),
@@ -21,14 +21,14 @@ pub mod mien {
         DonQuaLon { so_dong: usize, toi_da: usize },
     }
 
-    impl fmt::Display for LoiMien {
+    impl fmt::Display for DomainError {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                LoiMien::EmailSai(s) => write!(f, "Email không hợp lệ: {}", s),
-                LoiMien::TenSanPhamSai(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
-                LoiMien::SoLuongSai(s) => write!(f, "Số lượng không hợp lệ: {}", s),
-                LoiMien::DonRong => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
-                LoiMien::DonQuaLon { so_dong, toi_da } => {
+                DomainError::EmailSai(s) => write!(f, "Email không hợp lệ: {}", s),
+                DomainError::TenSanPhamSai(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
+                DomainError::SoLuongSai(s) => write!(f, "Số lượng không hợp lệ: {}", s),
+                DomainError::DonRong => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
+                DomainError::DonQuaLon { so_dong, toi_da } => {
                     write!(f, "Đơn có {} dòng, vượt giới hạn {} dòng", so_dong, toi_da)
                 }
             }
@@ -36,20 +36,20 @@ pub mod mien {
     }
 
     // ---------------------------------------------------------------------
-    // KIỂU BỌC 1: Email — trường riêng tư, chỉ tạo được qua `phan_tich`
+    // KIỂU BỌC 1: Email — trường riêng tư, chỉ tạo được qua `analyze`
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Email(String); // KHÔNG có `pub` trước String → đây là con dấu
 
     impl Email {
-        pub fn phan_tich(tho: &str) -> Result<Self, LoiMien> {
+        pub fn analyze(tho: &str) -> Result<Self, DomainError> {
             let s = tho.trim().to_lowercase();
             if s.is_empty() {
-                return Err(LoiMien::EmailSai("chuỗi rỗng".to_string()));
+                return Err(DomainError::EmailSai("chuỗi rỗng".to_string()));
             }
-            let phan: Vec<&str> = s.split('@').collect();
-            if phan.len() != 2 || phan[0].is_empty() || !phan[1].contains('.') {
-                return Err(LoiMien::EmailSai(s));
+            let part: Vec<&str> = s.split('@').collect();
+            if part.len() != 2 || part[0].is_empty() || !part[1].contains('.') {
+                return Err(DomainError::EmailSai(s));
             }
             Ok(Email(s))
         }
@@ -73,15 +73,15 @@ pub mod mien {
     impl TenSanPham {
         pub const TOI_DA: usize = 50;
 
-        pub fn phan_tich(tho: &str) -> Result<Self, LoiMien> {
+        pub fn analyze(tho: &str) -> Result<Self, DomainError> {
             let s = tho.trim();
-            let so_ky_tu = s.chars().count(); // đếm CHỮ CÁI, không đếm byte (Chương 05)
-            if so_ky_tu == 0 {
-                Err(LoiMien::TenSanPhamSai("chuỗi rỗng".to_string()))
-            } else if so_ky_tu > Self::TOI_DA {
-                Err(LoiMien::TenSanPhamSai(format!(
+            let num_ky_from = s.chars().count(); // đếm CHỮ CÁI, không đếm byte (Chương 05)
+            if num_ky_from == 0 {
+                Err(DomainError::TenSanPhamSai("chuỗi rỗng".to_string()))
+            } else if num_ky_from > Self::TOI_DA {
+                Err(DomainError::TenSanPhamSai(format!(
                     "dài {} ký tự, tối đa {}",
-                    so_ky_tu,
+                    num_ky_from,
                     Self::TOI_DA
                 )))
             } else {
@@ -94,54 +94,54 @@ pub mod mien {
     }
 
     // ---------------------------------------------------------------------
-    // KIỂU BỌC 3: SoLuong — số nguyên dương trong khoảng cho phép
+    // KIỂU BỌC 3: Quantity — số nguyên dương trong khoảng cho phép
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct SoLuong(u32);
+    pub struct Quantity(u32);
 
-    impl SoLuong {
+    impl Quantity {
         pub const TOI_DA: u32 = 1000;
 
-        pub fn phan_tich(n: u32) -> Result<Self, LoiMien> {
+        pub fn analyze(n: u32) -> Result<Self, DomainError> {
             if n == 0 {
-                Err(LoiMien::SoLuongSai("phải lớn hơn 0".to_string()))
+                Err(DomainError::SoLuongSai("phải lớn hơn 0".to_string()))
             } else if n > Self::TOI_DA {
-                Err(LoiMien::SoLuongSai(format!("{} vượt quá {}", n, Self::TOI_DA)))
+                Err(DomainError::SoLuongSai(format!("{} vượt quá {}", n, Self::TOI_DA)))
             } else {
-                Ok(SoLuong(n))
+                Ok(Quantity(n))
             }
         }
-        pub fn gia_tri(&self) -> u32 {
+        pub fn value(&self) -> u32 {
             self.0
         }
     }
 
     // ---------------------------------------------------------------------
-    // KIỂU BỌC 4: SoTien — tính bằng ĐƠN VỊ NHỎ NHẤT (đồng), dùng u64.
+    // KIỂU BỌC 4: Money — tính bằng ĐƠN VỊ NHỎ NHẤT (đồng), dùng u64.
     // KHÔNG BAO GIỜ dùng f64 cho tiền tệ (xem cảnh báo ở Chương 03)!
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct SoTien(u64);
+    pub struct Money(u64);
 
-    impl SoTien {
+    impl Money {
         pub fn dong(n: u64) -> Self {
-            SoTien(n)
+            Money(n)
         }
-        pub fn gia_tri(&self) -> u64 {
+        pub fn value(&self) -> u64 {
             self.0
         }
-        pub fn cong(self, khac: SoTien) -> SoTien {
-            SoTien(self.0 + khac.0) // đây là một VỊ NHÓM (Chương 18)!
+        pub fn gate(self, other: Money) -> Money {
+            Money(self.0 + other.0) // đây là một VỊ NHÓM (Chương 18)!
         }
-        pub fn tru(self, khac: SoTien) -> SoTien {
-            SoTien(self.0.saturating_sub(khac.0))
+        pub fn subtract(self, other: Money) -> Money {
+            Money(self.0.saturating_sub(other.0))
         }
-        pub fn nhan(self, he_so: u32) -> SoTien {
-            SoTien(self.0 * he_so as u64)
+        pub fn nhan(self, he_so: u32) -> Money {
+            Money(self.0 * he_so as u64)
         }
     }
 
-    impl fmt::Display for SoTien {
+    impl fmt::Display for Money {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{} đ", self.0)
         }
@@ -151,9 +151,9 @@ pub mod mien {
     // KIỂU TỔNG: cách thanh toán — KHÔNG CÒN tổ hợp vô nghĩa
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum ThanhToan {
+    pub enum MathOp {
         TienMat,
-        ChuyenKhoan { ma_giao_dich: String },
+        ChuyenKhoan { id_trade: String },
         The { bon_so_cuoi: String },
     }
 
@@ -161,15 +161,15 @@ pub mod mien {
     // Dòng hàng: một kiểu TÍCH gồm toàn kiểu đã được công chứng
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct DongHang {
-        pub ten: TenSanPham,
-        pub so_luong: SoLuong,
-        pub don_gia: SoTien,
+    pub struct CloseQueue {
+        pub name: TenSanPham,
+        pub quantity: Quantity,
+        pub don_price: Money,
     }
 
-    impl DongHang {
-        pub fn thanh_tien(&self) -> SoTien {
-            self.don_gia.nhan(self.so_luong.gia_tri())
+    impl CloseQueue {
+        pub fn into_tien(&self) -> Money {
+            self.don_price.nhan(self.quantity.value())
         }
     }
 }
@@ -182,110 +182,110 @@ use mien::*;
 
 /// Bốn "thẻ đánh dấu" trạng thái. Chúng chiếm 0 byte và biến mất khi biên dịch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Nhap;
+pub struct Import;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DaXacThuc;
+pub struct Authenticated;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DaThanhToan;
+pub struct MathDone;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DaGiao;
+pub struct Delivered;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DonHang<TT> {
-    ma: String,
-    khach: Email,
-    dong: Vec<DongHang>,
-    thanh_toan: Option<ThanhToan>,
-    _trang_thai: PhantomData<TT>,
+pub struct DonQueue<TT> {
+    id: String,
+    customer: Email,
+    dong: Vec<CloseQueue>,
+    payment: Option<MathOp>,
+    _state: PhantomData<TT>,
 }
 
 /// Các phương thức dùng chung cho MỌI trạng thái.
-impl<TT> DonHang<TT> {
-    pub fn ma(&self) -> &str {
-        &self.ma
+impl<TT> DonQueue<TT> {
+    pub fn id(&self) -> &str {
+        &self.id
     }
-    pub fn khach(&self) -> &Email {
-        &self.khach
+    pub fn customer(&self) -> &Email {
+        &self.customer
     }
     pub fn so_dong(&self) -> usize {
         self.dong.len()
     }
-    /// Tổng tiền = gộp các thành tiền bằng phép cộng của vị nhóm SoTien.
-    pub fn tong_tien(&self) -> SoTien {
+    /// Tổng tiền = gộp các thành tiền bằng phép cộng của vị nhóm Money.
+    pub fn tong_tien(&self) -> Money {
         self.dong
             .iter()
-            .map(|d| d.thanh_tien())
-            .fold(SoTien::dong(0), |a, b| a.cong(b))
+            .map(|d| d.into_tien())
+            .fold(Money::dong(0), |a, b| a.gate(b))
     }
 }
 
 pub const SO_DONG_TOI_DA: usize = 20;
 
 /// Trạng thái NHẬP: chỉ có đúng một hành động hợp lệ — xác thực.
-impl DonHang<Nhap> {
-    pub fn moi(ma: &str, khach: Email, dong: Vec<DongHang>) -> Self {
-        DonHang {
-            ma: ma.to_string(),
-            khach,
+impl DonQueue<Import> {
+    pub fn new(id: &str, customer: Email, dong: Vec<CloseQueue>) -> Self {
+        DonQueue {
+            id: id.to_string(),
+            customer,
             dong,
-            thanh_toan: None,
-            _trang_thai: PhantomData,
+            payment: None,
+            _state: PhantomData,
         }
     }
 
-    pub fn xac_thuc(self) -> Result<DonHang<DaXacThuc>, LoiMien> {
+    pub fn auth(self) -> Result<DonQueue<Authenticated>, DomainError> {
         if self.dong.is_empty() {
-            return Err(LoiMien::DonRong);
+            return Err(DomainError::DonRong);
         }
         if self.dong.len() > SO_DONG_TOI_DA {
-            return Err(LoiMien::DonQuaLon {
+            return Err(DomainError::DonQuaLon {
                 so_dong: self.dong.len(),
                 toi_da: SO_DONG_TOI_DA,
             });
         }
-        Ok(DonHang {
-            ma: self.ma,
-            khach: self.khach,
+        Ok(DonQueue {
+            id: self.id,
+            customer: self.customer,
             dong: self.dong,
-            thanh_toan: None,
-            _trang_thai: PhantomData,
+            payment: None,
+            _state: PhantomData,
         })
     }
 }
 
 /// Trạng thái ĐÃ XÁC THỰC: chỉ có thể thanh toán.
-impl DonHang<DaXacThuc> {
-    pub fn thanh_toan(self, cach: ThanhToan) -> DonHang<DaThanhToan> {
-        DonHang {
-            ma: self.ma,
-            khach: self.khach,
+impl DonQueue<Authenticated> {
+    pub fn payment(self, cach: MathOp) -> DonQueue<MathDone> {
+        DonQueue {
+            id: self.id,
+            customer: self.customer,
             dong: self.dong,
-            thanh_toan: Some(cach),
-            _trang_thai: PhantomData,
+            payment: Some(cach),
+            _state: PhantomData,
         }
     }
 }
 
 /// Trạng thái ĐÃ THANH TOÁN: chỉ có thể giao hàng.
-impl DonHang<DaThanhToan> {
-    pub fn cach_thanh_toan(&self) -> &ThanhToan {
+impl DonQueue<MathDone> {
+    pub fn payment_method(&self) -> &MathOp {
         // An toàn tuyệt đối: chỉ trạng thái này mới tồn tại, và nó LUÔN có thanh toán.
-        self.thanh_toan
+        self.payment
             .as_ref()
             .expect("bất biến của DonHang<DaThanhToan>: luôn có thông tin thanh toán")
     }
 
-    pub fn giao_hang(self, ma_van_don: &str) -> DonHang<DaGiao> {
+    pub fn delivery_queue(self, ma_van_don: &str) -> DonQueue<Delivered> {
         println!(
             "   [VỎ MỆNH LỆNH] Gửi email tới {} về vận đơn {}",
-            self.khach, ma_van_don
+            self.customer, ma_van_don
         );
-        DonHang {
-            ma: self.ma,
-            khach: self.khach,
+        DonQueue {
+            id: self.id,
+            customer: self.customer,
             dong: self.dong,
-            thanh_toan: self.thanh_toan,
-            _trang_thai: PhantomData,
+            payment: self.payment,
+            _state: PhantomData,
         }
     }
 }
@@ -296,58 +296,58 @@ impl DonHang<DaThanhToan> {
 
 /// Kiểu TRUYỀN TẢI: khoan dung, phẳng, toàn chuỗi — đúng như JSON gửi tới.
 #[derive(Debug, Clone)]
-pub struct DonHangDto {
-    pub ma: String,
+pub struct OrderDto {
+    pub id: String,
     pub email: String,
-    pub dong: Vec<DongHangDto>,
+    pub dong: Vec<OrderLineDto>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DongHangDto {
-    pub ten: String,
-    pub so_luong: u32,
-    pub don_gia: u64,
+pub struct OrderLineDto {
+    pub name: String,
+    pub quantity: u32,
+    pub don_price: u64,
 }
 
-impl TryFrom<DonHangDto> for DonHang<Nhap> {
-    /// Trả về TẤT CẢ lỗi cùng lúc — đúng tinh thần Applicative ở Chương 19.
-    type Error = Vec<LoiMien>;
+impl TryFrom<OrderDto> for DonQueue<Import> {
+    /// Trả về TẤT CẢ lỗi cùng lúc — đúng compute thần Applicative ở Chương 19.
+    type Error = Vec<DomainError>;
 
-    fn try_from(dto: DonHangDto) -> Result<Self, Self::Error> {
-        let mut loi: Vec<LoiMien> = Vec::new();
+    fn try_from(dto: OrderDto) -> Result<Self, Self::Error> {
+        let mut error: Vec<DomainError> = Vec::new();
 
-        let khach = match Email::phan_tich(&dto.email) {
+        let customer = match Email::analyze(&dto.email) {
             Ok(e) => Some(e),
             Err(e) => {
-                loi.push(e);
+                error.push(e);
                 None
             }
         };
 
-        let mut dong: Vec<DongHang> = Vec::new();
+        let mut dong: Vec<CloseQueue> = Vec::new();
         for d in &dto.dong {
-            let ten = TenSanPham::phan_tich(&d.ten);
-            let sl = SoLuong::phan_tich(d.so_luong);
-            match (ten, sl) {
-                (Ok(t), Ok(s)) => dong.push(DongHang {
-                    ten: t,
-                    so_luong: s,
-                    don_gia: SoTien::dong(d.don_gia),
+            let name = TenSanPham::analyze(&d.name);
+            let sl = Quantity::analyze(d.quantity);
+            match (name, sl) {
+                (Ok(t), Ok(s)) => dong.push(CloseQueue {
+                    name: t,
+                    quantity: s,
+                    don_price: Money::dong(d.don_price),
                 }),
                 (t, s) => {
                     if let Err(e) = t {
-                        loi.push(e);
+                        error.push(e);
                     }
                     if let Err(e) = s {
-                        loi.push(e);
+                        error.push(e);
                     }
                 }
             }
         }
 
-        match khach {
-            Some(k) if loi.is_empty() => Ok(DonHang::moi(&dto.ma, k, dong)),
-            _ => Err(loi),
+        match customer {
+            Some(k) if error.is_empty() => Ok(DonQueue::new(&dto.id, k, dong)),
+            _ => Err(error),
         }
     }
 }
@@ -357,45 +357,45 @@ impl TryFrom<DonHangDto> for DonHang<Nhap> {
 // ============================================================================
 
 /// Tính phí vận chuyển theo tổng tiền. Hàm thuần túy 100%: dễ kiểm thử tuyệt đối.
-pub fn tinh_phi_van_chuyen(tong: SoTien) -> SoTien {
-    if tong.gia_tri() >= 500_000 {
-        SoTien::dong(0) // miễn phí cho đơn từ 500k
+pub fn shipping_fee(tong: Money) -> Money {
+    if tong.value() >= 500_000 {
+        Money::dong(0) // miễn phí cho đơn từ 500k
     } else {
-        SoTien::dong(30_000)
+        Money::dong(30_000)
     }
 }
 
 /// Tính chiết khấu theo số dòng hàng. Cũng thuần túy 100%.
-pub fn tinh_chiet_khau(tong: SoTien, so_dong: usize) -> SoTien {
-    let phan_tram = if so_dong >= 10 {
+pub fn apply_discount(tong: Money, so_dong: usize) -> Money {
+    let percent = if so_dong >= 10 {
         10
     } else if so_dong >= 5 {
         5
     } else {
         0
     };
-    SoTien::dong(tong.gia_tri() * phan_tram / 100)
+    Money::dong(tong.value() * percent / 100)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HoaDon {
-    pub tam_tinh: SoTien,
-    pub chiet_khau: SoTien,
-    pub phi_van_chuyen: SoTien,
-    pub tong_thanh_toan: SoTien,
+pub struct Invoice {
+    pub computed_temp: Money,
+    pub discount: Money,
+    pub phi_van_transfer: Money,
+    pub total_payable: Money,
 }
 
 /// Toàn bộ phép tính hóa đơn — vẫn hoàn toàn thuần túy.
-pub fn lap_hoa_don(don: &DonHang<DaXacThuc>) -> HoaDon {
-    let tam_tinh = don.tong_tien();
-    let chiet_khau = tinh_chiet_khau(tam_tinh, don.so_dong());
-    let sau_chiet_khau = tam_tinh.tru(chiet_khau);
-    let phi = tinh_phi_van_chuyen(sau_chiet_khau);
-    HoaDon {
-        tam_tinh,
-        chiet_khau,
-        phi_van_chuyen: phi,
-        tong_thanh_toan: sau_chiet_khau.cong(phi),
+pub fn invoice_loop(don: &DonQueue<Authenticated>) -> Invoice {
+    let computed_temp = don.tong_tien();
+    let discount = apply_discount(computed_temp, don.so_dong());
+    let sau_chiet_khau = computed_temp.subtract(discount);
+    let phi = shipping_fee(sau_chiet_khau);
+    Invoice {
+        computed_temp,
+        discount,
+        phi_van_transfer: phi,
+        total_payable: sau_chiet_khau.gate(phi),
     }
 }
 
@@ -413,7 +413,7 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n1. PHÒNG CÔNG CHỨNG (Smart Constructor)");
     for tho in ["  An.Nguyen@Example.COM ", "khong-co-a-cong", "@thieu-ten.vn", ""] {
-        match Email::phan_tich(tho) {
+        match Email::analyze(tho) {
             Ok(e) => println!("   {:>28} -> ✓ đóng dấu: {}", format!("{:?}", tho), e),
             Err(l) => println!("   {:>28} -> ✗ từ chối: {}", format!("{:?}", tho), l),
         }
@@ -434,19 +434,19 @@ fn main() {
     // 3. CỔNG BIÊN HỆ THỐNG: DTO -> KIỂU MIỀN, GOM HẾT LỖI
     // ------------------------------------------------------------------
     println!("\n3. CỔNG BIÊN HỆ THỐNG (DTO -> Miền), gom TẤT CẢ lỗi");
-    let dto_hong = DonHangDto {
-        ma: "ORD-0001".to_string(),
+    let dto_hong = OrderDto {
+        id: "ORD-0001".to_string(),
         email: "sai-email".to_string(),
         dong: vec![
-            DongHangDto { ten: "".to_string(), so_luong: 0, don_gia: 100 },
-            DongHangDto { ten: "Bàn phím cơ".to_string(), so_luong: 2, don_gia: 1_200_000 },
+            OrderLineDto { name: "".to_string(), quantity: 0, don_price: 100 },
+            OrderLineDto { name: "Bàn phím cơ".to_string(), quantity: 2, don_price: 1_200_000 },
         ],
     };
-    match DonHang::try_from(dto_hong) {
+    match DonQueue::try_from(dto_hong) {
         Ok(_) => println!("   (không tới đây)"),
-        Err(loi) => {
-            println!("   Từ chối đơn hàng với {} lỗi:", loi.len());
-            for (i, l) in loi.iter().enumerate() {
+        Err(error) => {
+            println!("   Từ chối đơn hàng với {} lỗi:", error.len());
+            for (i, l) in error.iter().enumerate() {
                 println!("     {}. {}", i + 1, l);
             }
         }
@@ -456,42 +456,42 @@ fn main() {
     // 4. ĐƠN HỢP LỆ ĐI QUA TOÀN BỘ MÁY TRẠNG THÁI
     // ------------------------------------------------------------------
     println!("\n4. TYPESTATE — QUY TRÌNH ĐƠN HÀNG");
-    let dto_tot = DonHangDto {
-        ma: "ORD-0002".to_string(),
+    let dto_tot = OrderDto {
+        id: "ORD-0002".to_string(),
         email: "  Khach.Hang@Shop.VN  ".to_string(),
         dong: vec![
-            DongHangDto { ten: "Bàn phím cơ không dây".to_string(), so_luong: 2, don_gia: 1_200_000 },
-            DongHangDto { ten: "Chuột công thái học".to_string(), so_luong: 1, don_gia: 750_000 },
-            DongHangDto { ten: "Lót chuột cỡ lớn".to_string(), so_luong: 3, don_gia: 150_000 },
+            OrderLineDto { name: "Bàn phím cơ không dây".to_string(), quantity: 2, don_price: 1_200_000 },
+            OrderLineDto { name: "Chuột công thái học".to_string(), quantity: 1, don_price: 750_000 },
+            OrderLineDto { name: "Lót chuột cỡ lớn".to_string(), quantity: 3, don_price: 150_000 },
         ],
     };
 
-    let don_nhap: DonHang<Nhap> = DonHang::try_from(dto_tot).expect("đơn này phải hợp lệ");
+    let don_import: DonQueue<Import> = DonQueue::try_from(dto_tot).expect("đơn này phải hợp lệ");
     println!(
         "   [Nhập]          mã={} khách={} số dòng={}",
-        don_nhap.ma(),
-        don_nhap.khach(),
-        don_nhap.so_dong()
+        don_import.id(),
+        don_import.customer(),
+        don_import.so_dong()
     );
 
-    let don_xac_thuc: DonHang<DaXacThuc> = don_nhap.xac_thuc().expect("đơn có 3 dòng, hợp lệ");
-    println!("   [Đã xác thực]   tổng hàng = {}", don_xac_thuc.tong_tien());
+    let don_auth: DonQueue<Authenticated> = don_import.auth().expect("đơn có 3 dòng, hợp lệ");
+    println!("   [Đã xác thực]   tổng hàng = {}", don_auth.tong_tien());
 
     // ---- LÕI THUẦN TÚY: lập hóa đơn (không I/O, kiểm thử được ngay) ----
-    let hoa_don = lap_hoa_don(&don_xac_thuc);
+    let hoa_don = invoice_loop(&don_auth);
     println!("   ┌─ HÓA ĐƠN (tính bởi LÕI THUẦN TÚY) ─────────────");
-    println!("   │ Tạm tính        : {}", hoa_don.tam_tinh);
-    println!("   │ Chiết khấu      : {}", hoa_don.chiet_khau);
-    println!("   │ Phí vận chuyển  : {}", hoa_don.phi_van_chuyen);
-    println!("   │ TỔNG THANH TOÁN : {}", hoa_don.tong_thanh_toan);
+    println!("   │ Tạm tính        : {}", hoa_don.computed_temp);
+    println!("   │ Chiết khấu      : {}", hoa_don.discount);
+    println!("   │ Phí vận chuyển  : {}", hoa_don.phi_van_transfer);
+    println!("   │ TỔNG THANH TOÁN : {}", hoa_don.total_payable);
     println!("   └────────────────────────────────────────────────");
 
-    let don_da_tra: DonHang<DaThanhToan> = don_xac_thuc.thanh_toan(ThanhToan::ChuyenKhoan {
-        ma_giao_dich: "VCB-99881234".to_string(),
+    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::ChuyenKhoan {
+        id_trade: "VCB-99881234".to_string(),
     });
-    println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.cach_thanh_toan());
+    println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
 
-    let _don_da_giao: DonHang<DaGiao> = don_da_tra.giao_hang("VN-EXP-77213");
+    let _don_da_giao: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
     println!("   [Đã giao]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
@@ -508,9 +508,9 @@ fn main() {
     // 6. ĐƠN VI PHẠM QUY TẮC NGHIỆP VỤ
     // ------------------------------------------------------------------
     println!("\n6. XÁC THỰC QUY TẮC NGHIỆP VỤ");
-    let email = Email::phan_tich("test@shop.vn").unwrap();
-    let don_rong: DonHang<Nhap> = DonHang::moi("ORD-0003", email, vec![]);
-    match don_rong.xac_thuc() {
+    let email = Email::analyze("test@shop.vn").unwrap();
+    let don_rong: DonQueue<Import> = DonQueue::new("ORD-0003", email, vec![]);
+    match don_rong.auth() {
         Ok(_) => println!("   (không tới đây)"),
         Err(l) => println!("   Đơn rỗng bị chặn: {}", l),
     }
@@ -525,71 +525,71 @@ fn main() {
 // ============================================================================
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn don_mau() -> DonHang<DaXacThuc> {
-        let email = Email::phan_tich("khach@shop.vn").unwrap();
+    fn don_mau() -> DonQueue<Authenticated> {
+        let email = Email::analyze("customer@shop.vn").unwrap();
         let dong = vec![
-            DongHang {
-                ten: TenSanPham::phan_tich("Bàn phím").unwrap(),
-                so_luong: SoLuong::phan_tich(2).unwrap(),
-                don_gia: SoTien::dong(100_000),
+            CloseQueue {
+                name: TenSanPham::analyze("Bàn phím").unwrap(),
+                quantity: Quantity::analyze(2).unwrap(),
+                don_price: Money::dong(100_000),
             },
-            DongHang {
-                ten: TenSanPham::phan_tich("Chuột").unwrap(),
-                so_luong: SoLuong::phan_tich(1).unwrap(),
-                don_gia: SoTien::dong(50_000),
+            CloseQueue {
+                name: TenSanPham::analyze("Chuột").unwrap(),
+                quantity: Quantity::analyze(1).unwrap(),
+                don_price: Money::dong(50_000),
             },
         ];
-        DonHang::moi("ORD-TEST", email, dong).xac_thuc().unwrap()
+        DonQueue::new("ORD-TEST", email, dong).auth().unwrap()
     }
 
     #[test]
     fn email_chap_nhan_dia_chi_hop_le() {
-        let e = Email::phan_tich("  An.Nguyen@Example.COM ").unwrap();
+        let e = Email::analyze("  An.Nguyen@Example.COM ").unwrap();
         assert_eq!(e.as_str(), "an.nguyen@example.com"); // đã chuẩn hóa
     }
 
     #[test]
     fn email_tu_choi_dia_chi_sai() {
         for xau in ["", "   ", "khong-co-a-cong", "@thieu-ten.vn", "a@b@c.vn", "a@khongcocham"] {
-            assert!(Email::phan_tich(xau).is_err(), "phải từ chối {:?}", xau);
+            assert!(Email::analyze(xau).is_err(), "phải từ chối {:?}", xau);
         }
     }
 
     #[test]
-    fn so_luong_phai_duong_va_trong_gioi_han() {
-        assert!(SoLuong::phan_tich(0).is_err());
-        assert!(SoLuong::phan_tich(1001).is_err());
-        assert_eq!(SoLuong::phan_tich(5).unwrap().gia_tri(), 5);
+    fn quantity_must_duong_and_in_limit() {
+        assert!(Quantity::analyze(0).is_err());
+        assert!(Quantity::analyze(1001).is_err());
+        assert_eq!(Quantity::analyze(5).unwrap().value(), 5);
     }
 
     #[test]
     fn ten_san_pham_dem_ky_tu_khong_dem_byte() {
         // 50 chữ cái tiếng Việt có dấu = nhiều hơn 50 BYTE, nhưng vẫn hợp lệ.
-        let ten_dai: String = "ế".repeat(50);
-        assert!(TenSanPham::phan_tich(&ten_dai).is_ok());
-        let qua_dai: String = "ế".repeat(51);
-        assert!(TenSanPham::phan_tich(&qua_dai).is_err());
+        let name_long: String = "ế".repeat(50);
+        assert!(TenSanPham::analyze(&name_long).is_ok());
+        let qua_long: String = "ế".repeat(51);
+        assert!(TenSanPham::analyze(&qua_long).is_err());
     }
 
     #[test]
-    fn don_rong_bi_tu_choi() {
-        let email = Email::phan_tich("a@b.vn").unwrap();
-        let don = DonHang::moi("X", email, vec![]);
-        assert_eq!(don.xac_thuc().unwrap_err(), LoiMien::DonRong);
+    fn don_empty_is_reject() {
+        let email = Email::analyze("a@b.vn").unwrap();
+        let don = DonQueue::new("X", email, vec![]);
+        assert_eq!(don.auth().unwrap_err(), DomainError::DonRong);
     }
 
     #[test]
     fn dto_gom_tat_ca_loi_cung_luc() {
-        let dto = DonHangDto {
-            ma: "X".to_string(),
+        let dto = OrderDto {
+            id: "X".to_string(),
             email: "sai".to_string(),
-            dong: vec![DongHangDto { ten: "".to_string(), so_luong: 0, don_gia: 1 }],
+            dong: vec![OrderLineDto { name: "".to_string(), quantity: 0, don_price: 1 }],
         };
-        let loi = DonHang::try_from(dto).unwrap_err();
-        assert_eq!(loi.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", loi);
+        let error = DonQueue::try_from(dto).unwrap_err();
+        assert_eq!(error.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", error);
     }
 
     // ---- Kiểm thử LÕI THUẦN TÚY: không cần CSDL, không cần mạng ----
@@ -598,48 +598,48 @@ mod kiem_thu {
     fn tong_tien_cong_dung_thanh_tien_tung_dong() {
         let don = don_mau();
         // 2 × 100.000 + 1 × 50.000 = 250.000
-        assert_eq!(don.tong_tien(), SoTien::dong(250_000));
+        assert_eq!(don.tong_tien(), Money::dong(250_000));
     }
 
     #[test]
     fn phi_van_chuyen_mien_phi_tu_500k() {
-        assert_eq!(tinh_phi_van_chuyen(SoTien::dong(499_999)), SoTien::dong(30_000));
-        assert_eq!(tinh_phi_van_chuyen(SoTien::dong(500_000)), SoTien::dong(0));
+        assert_eq!(shipping_fee(Money::dong(499_999)), Money::dong(30_000));
+        assert_eq!(shipping_fee(Money::dong(500_000)), Money::dong(0));
     }
 
     #[test]
     fn chiet_khau_theo_bac_so_dong() {
-        let tong = SoTien::dong(1_000_000);
-        assert_eq!(tinh_chiet_khau(tong, 3), SoTien::dong(0));
-        assert_eq!(tinh_chiet_khau(tong, 5), SoTien::dong(50_000));
-        assert_eq!(tinh_chiet_khau(tong, 12), SoTien::dong(100_000));
+        let tong = Money::dong(1_000_000);
+        assert_eq!(apply_discount(tong, 3), Money::dong(0));
+        assert_eq!(apply_discount(tong, 5), Money::dong(50_000));
+        assert_eq!(apply_discount(tong, 12), Money::dong(100_000));
     }
 
     #[test]
-    fn hoa_don_tinh_dung_toan_bo() {
+    fn hoa_don_tinh_use_toan_unit() {
         let don = don_mau(); // tạm tính 250.000, 2 dòng -> không chiết khấu
-        let hd = lap_hoa_don(&don);
-        assert_eq!(hd.tam_tinh, SoTien::dong(250_000));
-        assert_eq!(hd.chiet_khau, SoTien::dong(0));
-        assert_eq!(hd.phi_van_chuyen, SoTien::dong(30_000));
-        assert_eq!(hd.tong_thanh_toan, SoTien::dong(280_000));
+        let hd = invoice_loop(&don);
+        assert_eq!(hd.computed_temp, Money::dong(250_000));
+        assert_eq!(hd.discount, Money::dong(0));
+        assert_eq!(hd.phi_van_transfer, Money::dong(30_000));
+        assert_eq!(hd.total_payable, Money::dong(280_000));
     }
 
     #[test]
     fn quy_trinh_typestate_chay_het_bon_buoc() {
         let don = don_mau();
-        let da_tra = don.thanh_toan(ThanhToan::TienMat);
-        assert_eq!(da_tra.cach_thanh_toan(), &ThanhToan::TienMat);
-        let da_giao = da_tra.giao_hang("VD-001");
-        assert_eq!(da_giao.ma(), "ORD-TEST");
+        let da_tra = don.payment(MathOp::TienMat);
+        assert_eq!(da_tra.payment_method(), &MathOp::TienMat);
+        let da_giao = da_tra.delivery_queue("VD-001");
+        assert_eq!(da_giao.id(), "ORD-TEST");
     }
 
     #[test]
     fn typestate_khong_ton_bo_nho_luc_chay() {
         use std::mem::size_of;
-        // PhantomData chiếm 0 byte: DonHang<Nhap> và DonHang<DaGiao> có cùng kích thước.
-        assert_eq!(size_of::<DonHang<Nhap>>(), size_of::<DonHang<DaGiao>>());
-        assert_eq!(size_of::<Nhap>(), 0);
-        assert_eq!(size_of::<PhantomData<DaGiao>>(), 0);
+        // PhantomData chiếm 0 byte: DonQueue<Nhap> và DonQueue<Delivered> có cùng kích thước.
+        assert_eq!(size_of::<DonQueue<Import>>(), size_of::<DonQueue<Delivered>>());
+        assert_eq!(size_of::<Import>(), 0);
+        assert_eq!(size_of::<PhantomData<Delivered>>(), 0);
     }
 }

@@ -177,7 +177,7 @@ fn main() {
     println!("    - Dung luong payload JSON    : {} bytes", rest_response.len());
 
     // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
-    println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
+    println!("\n[2] Xu ly qua cong gRPC concat bo (Protobuf Binary Format):");
     let grpc_binary = router.handle_grpc_get_product(101).unwrap();
     println!("    - Payload gRPC Binary nhan duoc (Hex): {:02X?}", grpc_binary);
     println!("    - Dung luong payload gRPC             : {} bytes", grpc_binary.len());

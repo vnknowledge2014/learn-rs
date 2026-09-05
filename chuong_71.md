@@ -123,16 +123,16 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 /// Trong mạng P2P không có máy chủ trung tâm, nên "ai giữ dữ liệu gì" phải
 /// suy ra được từ chính định danh. Kademlia dùng phép XOR làm khoảng cách.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct MaNut(pub u64);
+pub struct NodeId(pub u64);
 
-impl MaNut {
+impl NodeId {
     /// XOR là một METRIC thật sự: đối xứng, thoả bất đẳng thức tam giác, và
     /// d(x,x)=0. Nhờ đối xứng mà mỗi lần A tra cứu B, B cũng học được về A —
     /// bảng định tuyến tự bồi đắp từ chính lưu lượng bình thường.
-    pub fn distance(self, other: MaNut) -> u64 { self.0 ^ other.0 }
+    pub fn distance(self, other: NodeId) -> u64 { self.0 ^ other.0 }
 
     /// Chỉ số "xô" = vị trí bit khác nhau cao nhất. Nút càng gần thì xô càng nhỏ.
-    pub fn only_num_xor(self, other: MaNut) -> Option<u32> {
+    pub fn only_num_xor(self, other: NodeId) -> Option<u32> {
         let d = self.distance(other);
         if d == 0 { None } else { Some(63 - d.leading_zeros()) }
     }
@@ -148,39 +148,39 @@ pub const K: usize = 4; // số nút giữ trong mỗi xô (Kademlia thật dùn
 /// Ta biết RẤT NHIỀU nút ở gần và RẤT ÍT nút ở xa — nhưng vẫn đủ để tới
 /// bất kỳ đâu trong log₂(n) bước. Đây là "thế giới nhỏ" có cấu trúc.
 pub struct RoutingTable {
-    pub toi: MaNut,
-    pub xo: Vec<VecDeque<MaNut>>,
+    pub toi: NodeId,
+    pub xor: Vec<VecDeque<NodeId>>,
 }
 
 impl RoutingTable {
-    pub fn new(toi: MaNut) -> Self {
-        RoutingTable { toi, xo: (0..64).map(|_| VecDeque::new()).collect() }
+    pub fn new(toi: NodeId) -> Self {
+        RoutingTable { toi, xor: (0..64).map(|_| VecDeque::new()).collect() }
     }
 
     /// Trả `true` nếu nút được thêm mới. Nút đã biết được đẩy lên cuối hàng —
     /// Kademlia ưu tiên giữ nút CŨ, vì nút sống lâu có xác suất sống tiếp cao hơn.
     /// Đây cũng là biện pháp chống tấn công Sybil: kẻ tấn công không thể tràn
     /// bảng định tuyến bằng cách bơm nút mới.
-    pub fn them(&mut self, nut: MaNut) -> bool {
+    pub fn them(&mut self, nut: NodeId) -> bool {
         let i = match self.toi.only_num_xor(nut) { Some(i) => i as usize, None => return false };
-        if let Some(vt) = self.xo[i].iter().position(|&n| n == nut) {
-            let n = self.xo[i].remove(vt).unwrap();
-            self.xo[i].push_back(n);
+        if let Some(vt) = self.xor[i].iter().position(|&n| n == nut) {
+            let n = self.xor[i].remove(vt).unwrap();
+            self.xor[i].push_back(n);
             return false;
         }
-        if self.xo[i].len() < K {
-            self.xo[i].push_back(nut);
+        if self.xor[i].len() < K {
+            self.xor[i].push_back(nut);
             true
         } else {
             false // xô đầy: giữ nút cũ, bỏ nút mới
         }
     }
 
-    pub fn tong_so_nut(&self) -> usize { self.xo.iter().map(|x| x.len()).sum() }
+    pub fn tong_so_nut(&self) -> usize { self.xor.iter().map(|x| x.len()).sum() }
 
     /// `quantity` nút gần `dich` nhất mà ta biết.
-    pub fn near_nhat(&self, dich: MaNut, quantity: usize) -> Vec<MaNut> {
-        let mut v: Vec<MaNut> = self.xo.iter().flatten().copied().collect();
+    pub fn nearest(&self, dich: NodeId, quantity: usize) -> Vec<NodeId> {
+        let mut v: Vec<NodeId> = self.xor.iter().flatten().copied().collect();
         v.sort_by_key(|n| n.distance(dich));
         v.truncate(quantity);
         v
@@ -193,28 +193,28 @@ impl RoutingTable {
 
 #[derive(Debug, PartialEq)]
 pub struct KetQuaTraCuu {
-    pub near_nhat: Vec<MaNut>,
+    pub nearest: Vec<NodeId>,
     pub num_round: usize,
     pub so_nut_da_hoi: usize,
 }
 
 /// Mạng mô phỏng: mỗi nút có bảng định tuyến riêng.
-pub struct ArrayOpenPhong { pub nut: BTreeMap<MaNut, RoutingTable> }
+pub struct BucketArray { pub nut: BTreeMap<NodeId, RoutingTable> }
 
-impl ArrayOpenPhong {
+impl BucketArray {
     /// Dựng mạng và cho các nút "gặp nhau" theo kiểu bootstrap thật:
     /// mỗi nút mới tự tra cứu chính mình qua một nút đã có sẵn.
-    pub fn dung(cac_ma: &[u64]) -> ArrayOpenPhong {
-        let mut m = ArrayOpenPhong { nut: BTreeMap::new() };
+    pub fn dung(cac_ma: &[u64]) -> BucketArray {
+        let mut m = BucketArray { nut: BTreeMap::new() };
         for &x in cac_ma {
-            let ma = MaNut(x);
-            m.nut.insert(ma, RoutingTable::new(ma));
+            let id = NodeId(x);
+            m.nut.insert(id, RoutingTable::new(id));
         }
         // Vài vòng trao đổi để bảng định tuyến hội tụ
-        let tat_ca: Vec<MaNut> = m.nut.keys().copied().collect();
+        let all: Vec<NodeId> = m.nut.keys().copied().collect();
         for _ in 0..3 {
-            for &a in &tat_ca {
-                for &b in &tat_ca {
+            for &a in &all {
+                for &b in &all {
                     if a != b { m.nut.get_mut(&a).unwrap().them(b); }
                 }
             }
@@ -224,20 +224,20 @@ impl ArrayOpenPhong {
 
     /// Tra cứu lặp: hỏi α nút gần nhất đã biết, chúng trả về nút chúng biết,
     /// lặp lại cho tới khi không tiến gần hơn được nữa.
-    pub fn tra_cuu(&self, tu: MaNut, dich: MaNut, alpha: usize) -> KetQuaTraCuu {
-        let mut candidates: Vec<MaNut> = self.nut[&tu].near_nhat(dich, K);
-        let mut da_hoi: HashSet<MaNut> = HashSet::new();
+    pub fn tra_cuu(&self, tu: NodeId, dich: NodeId, alpha: usize) -> KetQuaTraCuu {
+        let mut candidates: Vec<NodeId> = self.nut[&tu].nearest(dich, K);
+        let mut da_hoi: HashSet<NodeId> = HashSet::new();
         let mut num_round = 0;
 
         loop {
-            let hoi: Vec<MaNut> = candidates.iter().copied()
+            let hoi: Vec<NodeId> = candidates.iter().copied()
                 .filter(|n| !da_hoi.contains(n)).take(alpha).collect();
             if hoi.is_empty() { break; }
             num_round += 1;
             let mut new = Vec::new();
             for n in hoi {
                 da_hoi.insert(n);
-                if let Some(b) = self.nut.get(&n) { new.extend(b.near_nhat(dich, K)); }
+                if let Some(b) = self.nut.get(&n) { new.extend(b.nearest(dich, K)); }
             }
             let prev = candidates.first().map(|n| n.distance(dich));
             candidates.extend(new);
@@ -248,7 +248,7 @@ impl ArrayOpenPhong {
             if candidates.first().map(|n| n.distance(dich)) == prev && num_round > 1 { break; }
             if num_round > 64 { break; } // chặn an toàn
         }
-        KetQuaTraCuu { near_nhat: candidates, num_round, so_nut_da_hoi: da_hoi.len() }
+        KetQuaTraCuu { nearest: candidates, num_round, so_nut_da_hoi: da_hoi.len() }
     }
 }
 
@@ -262,18 +262,18 @@ pub struct ResultPropagate {
     pub so_nut_nhan: usize,
     /// Tổng số bản tin đã gửi — thước đo chi phí băng thông.
     pub so_ban_tin: usize,
-    pub aux_song_hoan_toan: bool,
+    pub fully_parallel: bool,
 }
 
 /// Mỗi nút chuyển tiếp bản tin cho `bac` hàng xóm, nhưng CHỈ LẦN ĐẦU thấy nó.
 /// Không có bộ nhớ chống trùng thì mạng sẽ bão bản tin và tự sập.
-pub fn lan_truyen_gossip(
-    neighbors: &HashMap<MaNut, Vec<MaNut>>,
-    nguon: MaNut,
+pub fn gossip_propagate(
+    neighbors: &HashMap<NodeId, Vec<NodeId>>,
+    nguon: NodeId,
     bac: usize,
     max_num_round: usize,
 ) -> ResultPropagate {
-    let mut seen: HashSet<MaNut> = HashSet::new();
+    let mut seen: HashSet<NodeId> = HashSet::new();
     seen.insert(nguon);
     let mut dang_lan = vec![nguon];
     let mut so_ban_tin = 0;
@@ -281,22 +281,22 @@ pub fn lan_truyen_gossip(
 
     while !dang_lan.is_empty() && num_round < max_num_round {
         num_round += 1;
-        let mut ke_cont = Vec::new();
+        let mut next = Vec::new();
         for n in &dang_lan {
             let lg = match neighbors.get(n) { Some(l) => l, None => continue };
             // Chọn `bac` hàng xóm một cách TẤT ĐỊNH (thật thì chọn ngẫu nhiên)
             for &m in lg.iter().take(bac) {
                 so_ban_tin += 1;
-                if seen.insert(m) { ke_cont.push(m); }
+                if seen.insert(m) { next.push(m); }
             }
         }
-        dang_lan = ke_cont;
+        dang_lan = next;
     }
     ResultPropagate {
         num_round,
         so_nut_nhan: seen.len(),
         so_ban_tin,
-        aux_song_hoan_toan: seen.len() == neighbors.len(),
+        fully_parallel: seen.len() == neighbors.len(),
     }
 }
 
@@ -308,7 +308,7 @@ pub fn lan_truyen_gossip(
 pub enum ExecPos { TrungThuc, Im, HaiMat }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LaPhieu { Thuan(u32), Chong }
+pub enum Ballot { Thuan(u32), Chong }
 
 /// Vì sao cần 3f+1 nút để chịu được f nút phản bội?
 ///
@@ -336,37 +336,37 @@ pub fn quorum_threshold(n: usize) -> usize {
 
 #[derive(Debug, PartialEq)]
 pub struct ResultRound {
-    pub quyet_dinh: Option<u32>,
-    pub so_phieu_thu_duoc: usize,
+    pub decide: Option<u32>,
+    pub votes_received: usize,
     pub threshold_can: usize,
 }
 
 /// Một vòng đồng thuận kiểu Tendermint/PBFT rút gọn: nút đề xuất phát giá trị,
 /// các nút bỏ phiếu, đạt quorum thì chốt.
-pub fn vong_dong_thuan(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound {
+pub fn consensus_round(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound {
     let n = hanh_vi.len();
     let threshold = quorum_threshold(n);
-    let mut thung: HashMap<LaPhieu, usize> = HashMap::new();
+    let mut thung: HashMap<Ballot, usize> = HashMap::new();
 
     for (i, &h) in hanh_vi.iter().enumerate() {
         match h {
-            ExecPos::TrungThuc => *thung.entry(LaPhieu::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
+            ExecPos::TrungThuc => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
             ExecPos::Im => {}  // không gửi gì — lỗi "dừng", dạng nhẹ nhất
             ExecPos::HaiMat => {
                 // Nút phản bội gửi giá trị KHÁC NHAU cho các nhóm khác nhau.
                 // Đây là lỗi Byzantine thực thụ, khó hơn hẳn lỗi "im lặng".
-                *thung.entry(LaPhieu::Thuan(gia_tri_de_xuat.wrapping_add(i as u32 + 1)))
+                *thung.entry(Ballot::Thuan(gia_tri_de_xuat.wrapping_add(i as u32 + 1)))
                     .or_insert(0) += 1;
             }
         }
     }
     let good_nhat = thung.iter().max_by_key(|(_, &c)| c);
-    let (quyet_dinh, so_phieu) = match good_nhat {
-        Some((LaPhieu::Thuan(v), &c)) if c >= threshold => (Some(*v), c),
+    let (decide, so_phieu) = match good_nhat {
+        Some((Ballot::Thuan(v), &c)) if c >= threshold => (Some(*v), c),
         Some((_, &c)) => (None, c),
         None => (None, 0),
     };
-    ResultRound { quyet_dinh, so_phieu_thu_duoc: so_phieu, threshold_can: threshold }
+    ResultRound { decide, votes_received: so_phieu, threshold_can: threshold }
 }
 
 // ============================================================================
@@ -374,24 +374,24 @@ pub fn vong_dong_thuan(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound
 // ============================================================================
 
 pub struct HashMapPartTan {
-    pub mang: ArrayOpenPhong,
+    pub mang: BucketArray,
     /// Mỗi nút giữ một phần kho. Dữ liệu nằm ở `r` nút gần khoá nhất.
-    pub store: HashMap<MaNut, HashMap<u64, String>>,
+    pub store: HashMap<NodeId, HashMap<u64, String>>,
     pub he_so_nhan_ban: usize,
 }
 
 impl HashMapPartTan {
     pub fn new(cac_ma: &[u64], he_so_nhan_ban: usize) -> Self {
-        let mang = ArrayOpenPhong::dung(cac_ma);
-        let store = cac_ma.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
+        let mang = BucketArray::dung(cac_ma);
+        let store = cac_ma.iter().map(|&x| (NodeId(x), HashMap::new())).collect();
         HashMapPartTan { mang, store, he_so_nhan_ban }
     }
 
     /// Ghi vào `r` nút gần khoá nhất. Nhân bản là cách DHT chịu được việc
     /// nút rời mạng bất cứ lúc nào — điều xảy ra liên tục trong mạng thật.
-    pub fn set(&mut self, tu: MaNut, key: u64, value: &str) -> usize {
-        let kq = self.mang.tra_cuu(tu, MaNut(key), 3);
-        let mut dich: Vec<MaNut> = kq.near_nhat;
+    pub fn set(&mut self, tu: NodeId, key: u64, value: &str) -> usize {
+        let kq = self.mang.tra_cuu(tu, NodeId(key), 3);
+        let mut dich: Vec<NodeId> = kq.nearest;
         dich.truncate(self.he_so_nhan_ban);
         for n in &dich {
             self.store.get_mut(n).unwrap().insert(key, value.to_string());
@@ -399,9 +399,9 @@ impl HashMapPartTan {
         dich.len()
     }
 
-    pub fn lay(&self, tu: MaNut, key: u64) -> Option<String> {
-        let kq = self.mang.tra_cuu(tu, MaNut(key), 3);
-        for n in kq.near_nhat {
+    pub fn lay(&self, tu: NodeId, key: u64) -> Option<String> {
+        let kq = self.mang.tra_cuu(tu, NodeId(key), 3);
+        for n in kq.nearest {
             if let Some(v) = self.store.get(&n).and_then(|k| k.get(&key)) {
                 return Some(v.clone());
             }
@@ -410,11 +410,11 @@ impl HashMapPartTan {
     }
 
     /// Mô phỏng nút rời mạng — xoá cả dữ liệu nó giữ.
-    pub fn nut_roi_mang(&mut self, nut: MaNut) {
+    pub fn nut_roi_mang(&mut self, nut: NodeId) {
         self.store.remove(&nut);
         self.mang.nut.remove(&nut);
         for (_, b) in self.mang.nut.iter_mut() {
-            for x in b.xo.iter_mut() { x.retain(|&n| n != nut); }
+            for x in b.xor.iter_mut() { x.retain(|&n| n != nut); }
         }
     }
 }
@@ -425,38 +425,38 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. KHOẢNG CÁCH XOR LÀ MỘT METRIC THẬT");
-    let (a, b, c) = (MaNut(0b1010), MaNut(0b1100), MaNut(0b0001));
+    let (a, b, c) = (NodeId(0b1010), NodeId(0b1100), NodeId(0b0001));
     println!("   d(a,b) = {} · d(b,a) = {} → đối xứng", a.distance(b), b.distance(a));
     println!("   d(a,c) = {} ≤ d(a,b) + d(b,c) = {} → bất đẳng thức tam giác",
              a.distance(c), a.distance(b) + b.distance(c));
     println!("   d(a,a) = {}", a.distance(a));
 
     println!("\n2. BẢNG ĐỊNH TUYẾN — biết ít mà tới được mọi nơi");
-    let ma: Vec<u64> = (0..64u64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15)).collect();
-    let mang = ArrayOpenPhong::dung(&ma);
-    let toi = MaNut(ma[0]);
+    let id: Vec<u64> = (0..64u64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15)).collect();
+    let mang = BucketArray::dung(&id);
+    let toi = NodeId(id[0]);
     let b0 = &mang.nut[&toi];
     println!("   Mạng {} nút · nút này chỉ lưu {} địa chỉ ({} xô không rỗng)",
-             ma.len(), b0.tong_so_nut(), b0.xo.iter().filter(|x| !x.is_empty()).count());
+             id.len(), b0.tong_so_nut(), b0.xor.iter().filter(|x| !x.is_empty()).count());
 
     println!("\n3. TRA CỨU LẶP");
-    let dich = MaNut(ma[50]);
+    let dich = NodeId(id[50]);
     let kq = mang.tra_cuu(toi, dich, 3);
     println!("   Tìm {:x} → {} vòng, hỏi {} nút", dich.0, kq.num_round, kq.so_nut_da_hoi);
-    println!("   Tìm thấy đúng đích: {}", kq.near_nhat.contains(&dich));
+    println!("   Tìm thấy đúng đích: {}", kq.nearest.contains(&dich));
 
     println!("\n4. GOSSIP — đánh đổi tốc độ lấy băng thông");
-    let mut lg: HashMap<MaNut, Vec<MaNut>> = HashMap::new();
-    for (i, &x) in ma.iter().enumerate() {
+    let mut lg: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for (i, &x) in id.iter().enumerate() {
         // vòng tròn + vài dây cung → đồ thị "thế giới nhỏ"
-        let l: Vec<MaNut> = [1, 2, 7, 19, 31].iter()
-            .map(|d| MaNut(ma[(i + d) % ma.len()])).collect();
-        lg.insert(MaNut(x), l);
+        let l: Vec<NodeId> = [1, 2, 7, 19, 31].iter()
+            .map(|d| NodeId(id[(i + d) % id.len()])).collect();
+        lg.insert(NodeId(x), l);
     }
     for bac in [1usize, 2, 3, 5] {
-        let r = lan_truyen_gossip(&lg, toi, bac, 50);
+        let r = gossip_propagate(&lg, toi, bac, 50);
         println!("   bậc {} → {:>2} vòng · phủ {:>2}/{} nút · {:>3} bản tin",
-                 bac, r.num_round, r.so_nut_nhan, ma.len(), r.so_ban_tin);
+                 bac, r.num_round, r.so_nut_nhan, id.len(), r.so_ban_tin);
     }
     println!("   → Bậc cao phủ nhanh hơn nhưng tốn băng thông theo cấp số nhân.");
 
@@ -470,21 +470,21 @@ fn main() {
     for so_gian in 0..5 {
         let mut h = hv.clone();
         for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
-        let r = vong_dong_thuan(&h, 42);
+        let r = consensus_round(&h, 42);
         println!("   {} kẻ gian → {:?} ({}/{} phiếu){}",
-                 so_gian, r.quyet_dinh, r.so_phieu_thu_duoc, r.threshold_can,
+                 so_gian, r.decide, r.votes_received, r.threshold_can,
                  if so_gian > fault_tolerance(10) { "  ← vượt ngưỡng an toàn" } else { "" });
     }
 
     println!("\n6. BẢNG BĂM PHÂN TÁN — chịu được nút rời mạng");
-    let mut dht = HashMapPartTan::new(&ma, 3);
+    let mut dht = HashMapPartTan::new(&id, 3);
     let n = dht.set(toi, 0xDEADBEEF, "xin chao P2P");
     println!("   Ghi khoá 0xDEADBEEF vào {} nút gần nhất", n);
-    println!("   Đọc lại: {:?}", dht.lay(MaNut(ma[30]), 0xDEADBEEF));
-    let giu: Vec<MaNut> = dht.store.iter()
+    println!("   Đọc lại: {:?}", dht.lay(NodeId(id[30]), 0xDEADBEEF));
+    let giu: Vec<NodeId> = dht.store.iter()
         .filter(|(_, k)| k.contains_key(&0xDEADBEEF)).map(|(n, _)| *n).collect();
     dht.nut_roi_mang(giu[0]);
-    println!("   Sau khi 1 nút giữ dữ liệu rời mạng: {:?}", dht.lay(MaNut(ma[30]), 0xDEADBEEF));
+    println!("   Sau khi 1 nút giữ dữ liệu rời mạng: {:?}", dht.lay(NodeId(id[30]), 0xDEADBEEF));
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   KHÔNG MÁY CHỦ, KHÔNG TIN NHAU, VẪN THỐNG NHẤT ĐƯỢC       ");
@@ -495,22 +495,22 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn ma_mau(n: usize) -> Vec<u64> {
+    fn color_code(n: usize) -> Vec<u64> {
         (0..n as u64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15)).collect()
     }
 
     // ---------- Khoảng cách XOR ----------
     #[test]
     fn xor_thoa_ba_tinh_chat_cua_metric() {
-        let ma = ma_mau(24);
-        for &x in &ma {
-            let a = MaNut(x);
+        let id = color_code(24);
+        for &x in &id {
+            let a = NodeId(x);
             assert_eq!(a.distance(a), 0, "d(x,x) = 0");
-            for &y in &ma {
-                let b = MaNut(y);
+            for &y in &id {
+                let b = NodeId(y);
                 assert_eq!(a.distance(b), b.distance(a), "đối xứng");
-                for &z in &ma {
-                    let c = MaNut(z);
+                for &z in &id {
+                    let c = NodeId(z);
                     // Cộng trong u128: với hai giá trị 64-bit, tổng của chúng
                     // TRÀN u64. Đây là cái bẫy thật khi kiểm chứng metric XOR.
                     assert!(a.distance(c) as u128
@@ -527,36 +527,36 @@ mod tests {
         //   d(a,c) = d(a,b) ⊕ d(b,c)   — ĐẲNG THỨC, không phải "≤"
         // vì (a⊕b) ⊕ (b⊕c) = a⊕c. Nhờ nó, khoảng cách tính được theo từng chặng
         // mà không tích luỹ sai số, và không bao giờ tràn số.
-        let ma = ma_mau(20);
-        for &x in &ma { for &y in &ma { for &z in &ma {
-            let (a, b, c) = (MaNut(x), MaNut(y), MaNut(z));
+        let id = color_code(20);
+        for &x in &id { for &y in &id { for &z in &id {
+            let (a, b, c) = (NodeId(x), NodeId(y), NodeId(z));
             assert_eq!(a.distance(c), a.distance(b) ^ b.distance(c));
         }}}
     }
 
     #[test]
     fn xor_duy_nhat_khoang_cach_bang_khong_khi_trung_nhau() {
-        let a = MaNut(12345);
+        let a = NodeId(12345);
         assert_eq!(a.distance(a), 0);
-        assert_ne!(a.distance(MaNut(12346)), 0);
+        assert_ne!(a.distance(NodeId(12346)), 0);
         assert_eq!(a.only_num_xor(a), None, "khoảng cách 0 không thuộc xô nào");
     }
 
     #[test]
     fn chi_so_xo_khop_bit_khac_cao_nhat() {
-        let a = MaNut(0b0000);
-        assert_eq!(a.only_num_xor(MaNut(0b0001)), Some(0));
-        assert_eq!(a.only_num_xor(MaNut(0b0010)), Some(1));
-        assert_eq!(a.only_num_xor(MaNut(0b1000)), Some(3));
-        assert_eq!(a.only_num_xor(MaNut(0b1001)), Some(3), "lấy bit CAO nhất khác nhau");
+        let a = NodeId(0b0000);
+        assert_eq!(a.only_num_xor(NodeId(0b0001)), Some(0));
+        assert_eq!(a.only_num_xor(NodeId(0b0010)), Some(1));
+        assert_eq!(a.only_num_xor(NodeId(0b1000)), Some(3));
+        assert_eq!(a.only_num_xor(NodeId(0b1001)), Some(3), "lấy bit CAO nhất khác nhau");
     }
 
     // ---------- Bảng định tuyến ----------
     #[test]
     fn xo_khong_bao_gio_vuot_qua_k() {
-        let mut b = RoutingTable::new(MaNut(0));
-        for i in 1..500u64 { b.them(MaNut(i)); }
-        for (i, x) in b.xo.iter().enumerate() {
+        let mut b = RoutingTable::new(NodeId(0));
+        for i in 1..500u64 { b.them(NodeId(i)); }
+        for (i, x) in b.xor.iter().enumerate() {
             assert!(x.len() <= K, "xô {} có {} nút, vượt K={}", i, x.len(), K);
         }
     }
@@ -564,37 +564,37 @@ mod tests {
     #[test]
     fn bang_dinh_tuyen_giu_nut_cu_khi_xo_day() {
         // Chống Sybil: kẻ tấn công bơm nút mới KHÔNG đẩy được nút cũ ra.
-        let mut b = RoutingTable::new(MaNut(0));
+        let mut b = RoutingTable::new(NodeId(0));
         // các nút 8..11 đều thuộc xô 3
-        for i in 8..8 + K as u64 { assert!(b.them(MaNut(i))); }
-        assert_eq!(b.xo[3].len(), K);
-        let cu: Vec<MaNut> = b.xo[3].iter().copied().collect();
-        assert!(!b.them(MaNut(15)), "xô đầy → từ chối nút mới");
-        assert_eq!(b.xo[3].iter().copied().collect::<Vec<_>>(), cu, "nút cũ nguyên vẹn");
+        for i in 8..8 + K as u64 { assert!(b.them(NodeId(i))); }
+        assert_eq!(b.xor[3].len(), K);
+        let cu: Vec<NodeId> = b.xor[3].iter().copied().collect();
+        assert!(!b.them(NodeId(15)), "xô đầy → từ chối nút mới");
+        assert_eq!(b.xor[3].iter().copied().collect::<Vec<_>>(), cu, "nút cũ nguyên vẹn");
     }
 
     #[test]
     fn gap_lai_nut_cu_day_no_len_cuoi_hang() {
-        let mut b = RoutingTable::new(MaNut(0));
-        for i in 8..12u64 { b.them(MaNut(i)); }
-        assert_eq!(*b.xo[3].front().unwrap(), MaNut(8));
-        assert!(!b.them(MaNut(8)), "gặp lại không tính là thêm mới");
-        assert_eq!(*b.xo[3].back().unwrap(), MaNut(8), "nút vừa liên lạc lên cuối hàng");
+        let mut b = RoutingTable::new(NodeId(0));
+        for i in 8..12u64 { b.them(NodeId(i)); }
+        assert_eq!(*b.xor[3].front().unwrap(), NodeId(8));
+        assert!(!b.them(NodeId(8)), "gặp lại không tính là thêm mới");
+        assert_eq!(*b.xor[3].back().unwrap(), NodeId(8), "nút vừa liên lạc lên cuối hàng");
     }
 
     #[test]
     fn no_from_add_main_minh() {
-        let mut b = RoutingTable::new(MaNut(42));
-        assert!(!b.them(MaNut(42)));
+        let mut b = RoutingTable::new(NodeId(42));
+        assert!(!b.them(NodeId(42)));
         assert_eq!(b.tong_so_nut(), 0);
     }
 
     #[test]
     fn near_nhat_sort_use_theo_distance() {
-        let mut b = RoutingTable::new(MaNut(0));
-        for i in 1..100u64 { b.them(MaNut(i)); }
-        let dich = MaNut(50);
-        let g = b.near_nhat(dich, 5);
+        let mut b = RoutingTable::new(NodeId(0));
+        for i in 1..100u64 { b.them(NodeId(i)); }
+        let dich = NodeId(50);
+        let g = b.nearest(dich, 5);
         for w in g.windows(2) {
             assert!(w[0].distance(dich) <= w[1].distance(dich));
         }
@@ -602,73 +602,73 @@ mod tests {
 
     #[test]
     fn bang_dinh_tuyen_nho_hon_nhieu_so_voi_ca_mang() {
-        let ma = ma_mau(256);
-        let m = ArrayOpenPhong::dung(&ma);
-        let b = &m.nut[&MaNut(ma[0])];
-        assert!(b.tong_so_nut() < ma.len(),
+        let id = color_code(256);
+        let m = BucketArray::dung(&id);
+        let b = &m.nut[&NodeId(id[0])];
+        assert!(b.tong_so_nut() < id.len(),
                 "biết {} trong tổng {} nút — đó là ý nghĩa của định tuyến log n",
-                b.tong_so_nut(), ma.len());
+                b.tong_so_nut(), id.len());
     }
 
     // ---------- Tra cứu ----------
     #[test]
     fn tra_cuu_tim_duoc_nut_dich() {
-        let ma = ma_mau(128);
-        let m = ArrayOpenPhong::dung(&ma);
-        let tu = MaNut(ma[0]);
-        for &x in ma.iter().skip(1).take(20) {
-            let kq = m.tra_cuu(tu, MaNut(x), 3);
-            assert!(kq.near_nhat.contains(&MaNut(x)), "không tìm được nút {:x}", x);
+        let id = color_code(128);
+        let m = BucketArray::dung(&id);
+        let tu = NodeId(id[0]);
+        for &x in id.iter().skip(1).take(20) {
+            let kq = m.tra_cuu(tu, NodeId(x), 3);
+            assert!(kq.nearest.contains(&NodeId(x)), "không tìm được nút {:x}", x);
         }
     }
 
     #[test]
     fn tra_cuu_hoi_it_hon_nhieu_so_voi_ca_mang() {
-        let ma = ma_mau(256);
-        let m = ArrayOpenPhong::dung(&ma);
-        let kq = m.tra_cuu(MaNut(ma[0]), MaNut(ma[200]), 3);
-        assert!(kq.so_nut_da_hoi < ma.len() / 2,
-                "hỏi {} nút trên tổng {} — tra cứu phải RẺ", kq.so_nut_da_hoi, ma.len());
+        let id = color_code(256);
+        let m = BucketArray::dung(&id);
+        let kq = m.tra_cuu(NodeId(id[0]), NodeId(id[200]), 3);
+        assert!(kq.so_nut_da_hoi < id.len() / 2,
+                "hỏi {} nút trên tổng {} — tra cứu phải RẺ", kq.so_nut_da_hoi, id.len());
         assert!(kq.num_round <= 64, "phải hội tụ, không lặp vô hạn");
     }
 
     #[test]
     fn tra_cuu_luon_dung_ke_ca_khoa_khong_ung_voi_nut_nao() {
-        let ma = ma_mau(64);
-        let m = ArrayOpenPhong::dung(&ma);
-        let key = MaNut(0x1234_5678_9ABC_DEF0);
-        let kq = m.tra_cuu(MaNut(ma[0]), key, 3);
-        assert!(!kq.near_nhat.is_empty(), "vẫn phải trả về nút gần nhất");
+        let id = color_code(64);
+        let m = BucketArray::dung(&id);
+        let key = NodeId(0x1234_5678_9ABC_DEF0);
+        let kq = m.tra_cuu(NodeId(id[0]), key, 3);
+        assert!(!kq.nearest.is_empty(), "vẫn phải trả về nút gần nhất");
         // kết quả phải thật sự là gần nhất trong toàn mạng
-        let true_su_near_nhat = ma.iter().map(|&x| MaNut(x))
+        let true_su_near_nhat = id.iter().map(|&x| NodeId(x))
             .min_by_key(|n| n.distance(key)).unwrap();
-        assert!(kq.near_nhat.contains(&true_su_near_nhat),
+        assert!(kq.nearest.contains(&true_su_near_nhat),
                 "tra cứu phải hội tụ về nút gần nhất thật sự");
     }
 
     // ---------- Gossip ----------
     #[test]
     fn gossip_phu_song_toan_mang_neu_do_thi_lien_thong() {
-        let ma = ma_mau(50);
+        let id = color_code(50);
         let mut lg = HashMap::new();
-        for (i, &x) in ma.iter().enumerate() {
-            lg.insert(MaNut(x), vec![MaNut(ma[(i + 1) % ma.len()])]); // vòng tròn
+        for (i, &x) in id.iter().enumerate() {
+            lg.insert(NodeId(x), vec![NodeId(id[(i + 1) % id.len()])]); // vòng tròn
         }
-        let r = lan_truyen_gossip(&lg, MaNut(ma[0]), 1, 100);
-        assert!(r.aux_song_hoan_toan);
+        let r = gossip_propagate(&lg, NodeId(id[0]), 1, 100);
+        assert!(r.fully_parallel);
         assert_eq!(r.so_nut_nhan, 50);
     }
 
     #[test]
     fn bac_cao_hon_phu_song_nhanh_hon() {
-        let ma = ma_mau(64);
+        let id = color_code(64);
         let mut lg = HashMap::new();
-        for (i, &x) in ma.iter().enumerate() {
-            lg.insert(MaNut(x), [1, 2, 7, 19, 31].iter()
-                .map(|d| MaNut(ma[(i + d) % ma.len()])).collect());
+        for (i, &x) in id.iter().enumerate() {
+            lg.insert(NodeId(x), [1, 2, 7, 19, 31].iter()
+                .map(|d| NodeId(id[(i + d) % id.len()])).collect());
         }
-        let it = lan_truyen_gossip(&lg, MaNut(ma[0]), 1, 100);
-        let many = lan_truyen_gossip(&lg, MaNut(ma[0]), 4, 100);
+        let it = gossip_propagate(&lg, NodeId(id[0]), 1, 100);
+        let many = gossip_propagate(&lg, NodeId(id[0]), 4, 100);
         assert!(many.num_round < it.num_round, "bậc cao phải phủ nhanh hơn");
         assert!(many.so_ban_tin > it.so_ban_tin, "và tốn nhiều băng thông hơn");
     }
@@ -676,26 +676,26 @@ mod tests {
     #[test]
     fn gossip_khong_bao_ban_tin_nho_chong_trung() {
         // Không có `seen` thì mỗi nút chuyển tiếp mãi mãi và mạng sập.
-        let ma = ma_mau(30);
+        let id = color_code(30);
         let mut lg = HashMap::new();
-        for (i, &x) in ma.iter().enumerate() {
-            lg.insert(MaNut(x), (1..=5).map(|d| MaNut(ma[(i + d) % ma.len()])).collect());
+        for (i, &x) in id.iter().enumerate() {
+            lg.insert(NodeId(x), (1..=5).map(|d| NodeId(id[(i + d) % id.len()])).collect());
         }
-        let r = lan_truyen_gossip(&lg, MaNut(ma[0]), 5, 100);
-        assert!(r.so_ban_tin <= ma.len() * 5,
+        let r = gossip_propagate(&lg, NodeId(id[0]), 5, 100);
+        assert!(r.so_ban_tin <= id.len() * 5,
                 "mỗi nút chỉ được chuyển tiếp MỘT lần: {} bản tin", r.so_ban_tin);
     }
 
     #[test]
     fn gossip_khong_toi_duoc_phan_mang_bi_co_lap() {
-        let ma = ma_mau(20);
+        let id = color_code(20);
         let mut lg = HashMap::new();
         // hai cụm rời nhau hoàn toàn
-        for i in 0..10 { lg.insert(MaNut(ma[i]), vec![MaNut(ma[(i + 1) % 10])]); }
-        for i in 10..20 { lg.insert(MaNut(ma[i]), vec![MaNut(ma[10 + (i + 1) % 10])]); }
-        let r = lan_truyen_gossip(&lg, MaNut(ma[0]), 1, 100);
+        for i in 0..10 { lg.insert(NodeId(id[i]), vec![NodeId(id[(i + 1) % 10])]); }
+        for i in 10..20 { lg.insert(NodeId(id[i]), vec![NodeId(id[10 + (i + 1) % 10])]); }
+        let r = gossip_propagate(&lg, NodeId(id[0]), 1, 100);
         assert_eq!(r.so_nut_nhan, 10, "chỉ phủ được cụm của mình");
-        assert!(!r.aux_song_hoan_toan, "phân mảnh mạng là rủi ro có thật");
+        assert!(!r.fully_parallel, "phân mảnh mạng là rủi ro có thật");
     }
 
     // ---------- Đồng thuận ----------
@@ -739,8 +739,8 @@ mod tests {
         for so_gian in 0..=f {
             let mut h = vec![ExecPos::TrungThuc; n];
             for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
-            let r = vong_dong_thuan(&h, 42);
-            assert_eq!(r.quyet_dinh, Some(42),
+            let r = consensus_round(&h, 42);
+            assert_eq!(r.decide, Some(42),
                        "{} kẻ gian (<= f={}) vẫn phải chốt được", so_gian, f);
         }
     }
@@ -751,8 +751,8 @@ mod tests {
         let f = fault_tolerance(n);
         let mut h = vec![ExecPos::TrungThuc; n];
         for i in 0..=f + 1 { h[i] = ExecPos::HaiMat; }
-        let r = vong_dong_thuan(&h, 42);
-        assert_eq!(r.quyet_dinh, None, "quá f kẻ gian → THÀ DỪNG còn hơn chốt sai");
+        let r = consensus_round(&h, 42);
+        assert_eq!(r.decide, None, "quá f kẻ gian → THÀ DỪNG còn hơn chốt sai");
     }
 
     #[test]
@@ -763,63 +763,63 @@ mod tests {
         let mut im = vec![ExecPos::TrungThuc; n];
         let mut time = vec![ExecPos::TrungThuc; n];
         for i in 0..3 { im[i] = ExecPos::Im; time[i] = ExecPos::HaiMat; }
-        assert_eq!(vong_dong_thuan(&im, 42).quyet_dinh, Some(42));
-        assert_eq!(vong_dong_thuan(&time, 42).quyet_dinh, Some(42));
+        assert_eq!(consensus_round(&im, 42).decide, Some(42));
+        assert_eq!(consensus_round(&time, 42).decide, Some(42));
         // Cùng 7 phiếu thật; khác nhau ở chỗ nút hai mặt còn tạo thêm phiếu rác
-        assert_eq!(vong_dong_thuan(&im, 42).so_phieu_thu_duoc, 7);
-        assert_eq!(vong_dong_thuan(&time, 42).so_phieu_thu_duoc, 7);
+        assert_eq!(consensus_round(&im, 42).votes_received, 7);
+        assert_eq!(consensus_round(&time, 42).votes_received, 7);
     }
 
     #[test]
     fn mang_bon_nut_chiu_duoc_dung_mot_ke_phan_boi() {
         assert_eq!(fault_tolerance(4), 1);
         assert_eq!(quorum_threshold(4), 3);
-        let r = vong_dong_thuan(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
+        let r = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
                                   ExecPos::TrungThuc, ExecPos::HaiMat], 7);
-        assert_eq!(r.quyet_dinh, Some(7));
-        let r2 = vong_dong_thuan(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
+        assert_eq!(r.decide, Some(7));
+        let r2 = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
                                    ExecPos::HaiMat, ExecPos::HaiMat], 7);
-        assert_eq!(r2.quyet_dinh, None, "2 kẻ gian trên 4 nút là quá ngưỡng");
+        assert_eq!(r2.decide, None, "2 kẻ gian trên 4 nút là quá ngưỡng");
     }
 
     // ---------- DHT ----------
     #[test]
     fn dht_ghi_roi_doc_lai_duoc_tu_nut_bat_ky() {
-        let ma = ma_mau(64);
-        let mut d = HashMapPartTan::new(&ma, 3);
-        d.set(MaNut(ma[0]), 999, "gia tri");
-        for &x in ma.iter().take(10) {
-            assert_eq!(d.lay(MaNut(x), 999), Some("gia tri".to_string()),
+        let id = color_code(64);
+        let mut d = HashMapPartTan::new(&id, 3);
+        d.set(NodeId(id[0]), 999, "gia tri");
+        for &x in id.iter().take(10) {
+            assert_eq!(d.lay(NodeId(x), 999), Some("gia tri".to_string()),
                        "mọi nút đều phải tìm ra dữ liệu");
         }
     }
 
     #[test]
     fn dht_nhan_ban_dung_so_luong() {
-        let ma = ma_mau(64);
-        let mut d = HashMapPartTan::new(&ma, 3);
-        assert_eq!(d.set(MaNut(ma[0]), 555, "x"), 3);
+        let id = color_code(64);
+        let mut d = HashMapPartTan::new(&id, 3);
+        assert_eq!(d.set(NodeId(id[0]), 555, "x"), 3);
         let giu = d.store.values().filter(|k| k.contains_key(&555)).count();
         assert_eq!(giu, 3);
     }
 
     #[test]
     fn dht_song_sot_khi_mot_ban_sao_roi_mang() {
-        let ma = ma_mau(64);
-        let mut d = HashMapPartTan::new(&ma, 3);
-        d.set(MaNut(ma[0]), 777, "ben bi");
-        let giu: Vec<MaNut> = d.store.iter()
+        let id = color_code(64);
+        let mut d = HashMapPartTan::new(&id, 3);
+        d.set(NodeId(id[0]), 777, "ben bi");
+        let giu: Vec<NodeId> = d.store.iter()
             .filter(|(_, k)| k.contains_key(&777)).map(|(n, _)| *n).collect();
         d.nut_roi_mang(giu[0]);
-        assert_eq!(d.lay(MaNut(ma[40]), 777), Some("ben bi".to_string()),
+        assert_eq!(d.lay(NodeId(id[40]), 777), Some("ben bi".to_string()),
                    "nhân bản 3 lần thì mất 1 vẫn đọc được");
     }
 
     #[test]
     fn dht_tra_none_cho_khoa_chua_tung_ghi() {
-        let ma = ma_mau(32);
-        let d = HashMapPartTan::new(&ma, 3);
-        assert_eq!(d.lay(MaNut(ma[0]), 12345), None);
+        let id = color_code(32);
+        let d = HashMapPartTan::new(&id, 3);
+        assert_eq!(d.lay(NodeId(id[0]), 12345), None);
     }
 }
 ```
@@ -865,22 +865,22 @@ Gossip đẩy (push) lan nhanh lúc đầu nhưng "đuôi" rất chậm — vài
 /// Trạng thái gossip của cả mạng: mỗi nút giữ tập thông điệp nó đã thấy.
 pub struct MangChongEntropy {
     /// `BTreeMap` (không phải `HashMap`) để thứ tự duyệt tất định.
-    pub seen: BTreeMap<MaNut, std::collections::BTreeSet<u64>>,
+    pub seen: BTreeMap<NodeId, std::collections::BTreeSet<u64>>,
 }
 
 impl MangChongEntropy {
-    pub fn new(cac_nut: &[MaNut]) -> Self {
+    pub fn new(cac_nut: &[NodeId]) -> Self {
         MangChongEntropy {
             seen: cac_nut.iter().map(|&n| (n, Default::default())).collect(),
         }
     }
 
-    pub fn gieo(&mut self, nut: MaNut, thong_message: u64) {
+    pub fn gieo(&mut self, nut: NodeId, thong_message: u64) {
         self.seen.entry(nut).or_default().insert(thong_message);
     }
 
     /// Đồng bộ hai chiều giữa hai nút. Trả về số thông điệp đã trao đổi.
-    pub fn chong_entropy(&mut self, a: MaNut, b: MaNut) -> usize {
+    pub fn chong_entropy(&mut self, a: NodeId, b: NodeId) -> usize {
         if a == b { return 0; }
         let (ca, cb) = match (self.seen.get(&a), self.seen.get(&b)) {
             (Some(x), Some(y)) => (x.clone(), y.clone()),
@@ -894,7 +894,7 @@ impl MangChongEntropy {
 
     /// Chạy anti-entropy tới khi mọi nút hội tụ, hoặc hết `toi_da` vòng.
     pub fn hoi_tu(&mut self, toi_da: usize) -> Option<usize> {
-        let cac_nut: Vec<MaNut> = self.seen.keys().copied().collect();
+        let cac_nut: Vec<NodeId> = self.seen.keys().copied().collect();
         let n = cac_nut.len();
         if n == 0 { return Some(0); }
         for round in 1..=toi_da {

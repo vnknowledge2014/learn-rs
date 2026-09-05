@@ -7,7 +7,7 @@
 ```rust
 let tong: i64        = so.iter().sum();                             // gộp các số
 let cau: String      = tu.concat();                                 // gộp các chuỗi
-let tat_ca: Vec<i32> = nhieu_mang.into_iter().flatten().collect();  // gộp các danh sách
+let all: Vec<i32> = nhieu_mang.into_iter().flatten().collect();  // gộp các danh sách
 let deu_dat: bool    = diem.iter().all(|d| *d >= 5.0);              // gộp các giá trị đúng/sai
 ```
 
@@ -25,8 +25,8 @@ Nếu bạn chỉ đặt tên "Vị nhóm" cho kiểu dữ liệu của mình m�
 
 Mục tiêu học tập của chương này:
 - Nắm được thang bậc **Magma → Nửa nhóm → Vị nhóm → Nhóm** và biết mỗi bậc đòi hỏi thêm điều gì.
-- Viết được `trait NuaNhom` và `trait ViNhom` trong Rust, cài đặt cho `String`, `Vec<T>`, số, giá trị logic và các kiểu bọc (newtype).
-- Hiểu **vì sao `i64` có tận HAI vị nhóm** (`Tong` và `Tich`) và vì sao Rust buộc phải dùng kiểu bọc để phân biệt.
+- Viết được `trait Semigroup` và `trait PosGroup` trong Rust, cài đặt cho `String`, `Vec<T>`, số, giá trị logic và các kiểu bọc (newtype).
+- Hiểu **vì sao `i64` có tận HAI vị nhóm** (`Tong` và `Product`) và vì sao Rust buộc phải dùng kiểu bọc để phân biệt.
 - Nhận ra các vị nhóm **đã có sẵn trong thư viện chuẩn Rust**: `Default`, `Sum`, `Product`, `Extend`, `Ordering::then`, `Option::or`.
 - Hiểu **luật phản xạ** và lý do sâu xa vì sao `f64` chỉ có `PartialEq` chứ không có `Eq` — bài học sống động nhất về "luật có thật".
 - Biến luật thành **kiểm thử theo tính chất (property-based testing)** chạy được bằng `cargo test`.
@@ -120,25 +120,25 @@ Viết thành các luật hình thức:
 
 ```rust
 /// Nửa nhóm: bất kỳ kiểu nào có phép gộp hai thành một, tuân luật kết hợp.
-pub trait NuaNhom {
-    fn ghep(self, khac: Self) -> Self;
+pub trait Semigroup {
+    fn compose(self, other: Self) -> Self;
 }
 
 /// Vị nhóm: nửa nhóm có thêm một "phần tử rỗng".
-pub trait ViNhom: NuaNhom + Sized {
-    fn don_vi() -> Self;
+pub trait PosGroup: Semigroup + Sized {
+    fn don_pos() -> Self;
 }
 ```
 
 Chú ý hai chi tiết thiết kế rất "Rust":
-- `fn ghep(self, khac: Self) -> Self` nhận `self` **theo giá trị**, không phải `&self`. Nhờ vậy, khi gộp hai `String` ta có thể *tái sử dụng* bộ đệm của chuỗi thứ nhất thay vì cấp phát mới — đúng tinh thần zero-cost.
-- `ViNhom: NuaNhom` là quan hệ **siêu trait (supertrait)**: mọi vị nhóm bắt buộc trước hết phải là một nửa nhóm. Đây chính là cách Rust biểu diễn quan hệ "kế thừa" giữa các cấu trúc đại số. (Bạn đã gặp mẫu này ở Chương 15 với `Fn: FnMut: FnOnce`.)
+- `fn ghep(self, khac: Self) -> Self` nhận `self` **theo giá trị**, không phải `&self`. Nhờ vậy, khi gộp hai `String` ta có thể *tái sử dụng* bộ đệm của chuỗi thứ nhất thay vì cấp phát mới — đúng compute thần zero-cost.
+- `PosGroup: Semigroup` là quan hệ **siêu trait (supertrait)**: mọi vị nhóm bắt buộc trước hết phải là một nửa nhóm. Đây chính là cách Rust biểu diễn quan hệ "kế thừa" giữa các cấu trúc đại số. (Bạn đã gặp mẫu này ở Chương 15 với `Fn: FnMut: FnOnce`.)
 
 Có hai trait đó rồi, ta viết được **một hàm gộp duy nhất dùng chung cho mọi kiểu**:
 
 ```rust
-pub fn gop_tat_ca<M: ViNhom>(danh_sach: impl IntoIterator<Item = M>) -> M {
-    danh_sach.into_iter().fold(M::don_vi(), |tich_luy, x| tich_luy.ghep(x))
+pub fn coalesce_all_all<M: PosGroup>(list: impl IntoIterator<Item = M>) -> M {
+    list.into_iter().fold(M::don_pos(), |accumulate, x| accumulate.compose(x))
 }
 ```
 
@@ -153,11 +153,11 @@ Kiểu `i64` có tận **hai** cấu trúc vị nhóm hoàn toàn hợp lệ:
 | Cộng | `a + b` | `0` |
 | Nhân | `a * b` | `1` |
 
-Rust không cho phép viết `impl ViNhom for i64` hai lần (lỗi **E0119: conflicting implementations**). Cách giải quyết chuẩn mực của cả Rust lẫn Haskell là **bọc số vào một kiểu mới**:
+Rust không cho phép viết `impl PosGroup for i64` hai lần (lỗi **E0119: conflicting implementations**). Cách giải quyết chuẩn mực của cả Rust lẫn Haskell là **bọc số vào một kiểu mới**:
 
 ```rust
 pub struct Tong(pub i64);   // đại diện vị nhóm cộng
-pub struct Tich(pub i64);   // đại diện vị nhóm nhân
+pub struct Product(pub i64);   // đại diện vị nhóm nhân
 ```
 
 Đây là lần đầu tiên trong giáo trình bạn gặp **mẫu kiểu bọc (newtype pattern)** — một kỹ thuật cực kỳ quan trọng mà chúng ta sẽ khai thác triệt để ở Chương 20 để mô hình hóa nghiệp vụ. Ghi nhớ: *kiểu bọc là cách bạn nói với trình biên dịch rằng "cùng một con số nhưng mang ý nghĩa khác nhau"*.
@@ -179,7 +179,7 @@ Ví dụ đẹp nhất là sắp xếp theo nhiều tiêu chí. Nó chính là p
 nhan_vien.sort_by(|a, b| {
     a.phong_ban.cmp(&b.phong_ban)            // tiêu chí 1
         .then(b.tham_nien.cmp(&a.tham_nien)) // ⊕ tiêu chí 2 (giảm dần)
-        .then(a.ho_ten.cmp(&b.ho_ten))       // ⊕ tiêu chí 3
+        .then(a.full_name.cmp(&b.full_name))       // ⊕ tiêu chí 3
 });
 ```
 
@@ -220,7 +220,7 @@ Bạn không thể dùng `f64` làm khóa `HashMap` hay phần tử `HashSet`. �
 Kiểm thử thông thường kiểm tra **một ví dụ cụ thể**:
 
 ```rust
-assert_eq!(Tong(2).ghep(Tong(3)), Tong(5));   // đúng với 2 và 3... còn các số khác?
+assert_eq!(Tong(2).compose(Tong(3)), Tong(5));   // đúng với 2 và 3... còn các số khác?
 ```
 
 Kiểm thử theo tính chất kiểm tra **một đẳng thức đúng với mọi đầu vào**:
@@ -228,7 +228,7 @@ Kiểm thử theo tính chất kiểm tra **một đẳng thức đúng với m�
 ```rust
 // Với MỌI a, b, c: (a ⊕ b) ⊕ c == a ⊕ (b ⊕ c)
 for (a, b, c) in cac_bo_ba_mau {
-    assert_eq!(a.ghep(b).ghep(c), a.ghep(b.ghep(c)));
+    assert_eq!(a.compose(b).compose(c), a.compose(b.compose(c)));
 }
 ```
 
@@ -252,46 +252,46 @@ use std::fmt::Debug;
 // ============================================================================
 
 /// Nửa nhóm (Semigroup): có phép gộp hai thành một, tuân LUẬT KẾT HỢP.
-pub trait NuaNhom {
-    fn ghep(self, khac: Self) -> Self;
+pub trait Semigroup {
+    fn compose(self, other: Self) -> Self;
 }
 
 /// Vị nhóm (Monoid): nửa nhóm có thêm PHẦN TỬ ĐƠN VỊ.
-pub trait ViNhom: NuaNhom + Sized {
-    fn don_vi() -> Self;
+pub trait PosGroup: Semigroup + Sized {
+    fn don_pos() -> Self;
 }
 
 /// Hàm gộp vạn năng: dùng được cho MỌI vị nhóm.
 /// Nó thay thế cho tinh_tong, noi_chuoi, gop_mang, tim_max... tất cả.
-pub fn gop_tat_ca<M: ViNhom>(danh_sach: impl IntoIterator<Item = M>) -> M {
-    danh_sach
+pub fn coalesce_all_all<M: PosGroup>(list: impl IntoIterator<Item = M>) -> M {
+    list
         .into_iter()
-        .fold(M::don_vi(), |tich_luy, x| tich_luy.ghep(x))
+        .fold(M::don_pos(), |accumulate, x| accumulate.compose(x))
 }
 
 // ============================================================================
 // PHẦN 2: CÁC KIỂU CÓ SẴN CŨNG LÀ VỊ NHÓM
 // ============================================================================
 
-impl NuaNhom for String {
-    fn ghep(self, khac: Self) -> Self {
-        self + &khac // tái sử dụng bộ đệm của chuỗi thứ nhất
+impl Semigroup for String {
+    fn compose(self, other: Self) -> Self {
+        self + &other // tái sử dụng bộ đệm của chuỗi thứ nhất
     }
 }
-impl ViNhom for String {
-    fn don_vi() -> Self {
+impl PosGroup for String {
+    fn don_pos() -> Self {
         String::new()
     }
 }
 
-impl<T> NuaNhom for Vec<T> {
-    fn ghep(mut self, mut khac: Self) -> Self {
-        self.append(&mut khac);
+impl<T> Semigroup for Vec<T> {
+    fn compose(mut self, mut other: Self) -> Self {
+        self.append(&mut other);
         self
     }
 }
-impl<T> ViNhom for Vec<T> {
-    fn don_vi() -> Self {
+impl<T> PosGroup for Vec<T> {
+    fn don_pos() -> Self {
         Vec::new()
     }
 }
@@ -302,87 +302,87 @@ impl<T> ViNhom for Vec<T> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tong(pub i64);
-impl NuaNhom for Tong {
-    fn ghep(self, k: Self) -> Self {
+impl Semigroup for Tong {
+    fn compose(self, k: Self) -> Self {
         Tong(self.0 + k.0)
     }
 }
-impl ViNhom for Tong {
-    fn don_vi() -> Self {
+impl PosGroup for Tong {
+    fn don_pos() -> Self {
         Tong(0)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Tich(pub i64);
-impl NuaNhom for Tich {
-    fn ghep(self, k: Self) -> Self {
-        Tich(self.0.wrapping_mul(k.0))
+pub struct Product(pub i64);
+impl Semigroup for Product {
+    fn compose(self, k: Self) -> Self {
+        Product(self.0.wrapping_mul(k.0))
     }
 }
-impl ViNhom for Tich {
-    fn don_vi() -> Self {
-        Tich(1) // Chú ý: đơn vị của phép nhân là 1, KHÔNG phải 0!
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LonNhat(pub i64);
-impl NuaNhom for LonNhat {
-    fn ghep(self, k: Self) -> Self {
-        LonNhat(self.0.max(k.0))
-    }
-}
-impl ViNhom for LonNhat {
-    fn don_vi() -> Self {
-        LonNhat(i64::MIN) // "âm vô cực": gộp với gì cũng thua
+impl PosGroup for Product {
+    fn don_pos() -> Self {
+        Product(1) // Chú ý: đơn vị của phép nhân là 1, KHÔNG phải 0!
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NhoNhat(pub i64);
-impl NuaNhom for NhoNhat {
-    fn ghep(self, k: Self) -> Self {
-        NhoNhat(self.0.min(k.0))
+pub struct Max(pub i64);
+impl Semigroup for Max {
+    fn compose(self, k: Self) -> Self {
+        Max(self.0.max(k.0))
     }
 }
-impl ViNhom for NhoNhat {
-    fn don_vi() -> Self {
-        NhoNhat(i64::MAX)
+impl PosGroup for Max {
+    fn don_pos() -> Self {
+        Max(i64::MIN) // "âm vô cực": gộp với gì cũng thua
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Min(pub i64);
+impl Semigroup for Min {
+    fn compose(self, k: Self) -> Self {
+        Min(self.0.min(k.0))
+    }
+}
+impl PosGroup for Min {
+    fn don_pos() -> Self {
+        Min(i64::MAX)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoiDeu(pub bool); // "tất cả đều đúng" — tương ứng .all()
-impl NuaNhom for MoiDeu {
-    fn ghep(self, k: Self) -> Self {
+impl Semigroup for MoiDeu {
+    fn compose(self, k: Self) -> Self {
         MoiDeu(self.0 && k.0)
     }
 }
-impl ViNhom for MoiDeu {
-    fn don_vi() -> Self {
+impl PosGroup for MoiDeu {
+    fn don_pos() -> Self {
         MoiDeu(true)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CoIt(pub bool); // "có ít nhất một cái đúng" — tương ứng .any()
-impl NuaNhom for CoIt {
-    fn ghep(self, k: Self) -> Self {
-        CoIt(self.0 || k.0)
+pub struct HasFew(pub bool); // "có ít nhất một cái đúng" — tương ứng .any()
+impl Semigroup for HasFew {
+    fn compose(self, k: Self) -> Self {
+        HasFew(self.0 || k.0)
     }
 }
-impl ViNhom for CoIt {
-    fn don_vi() -> Self {
-        CoIt(false)
+impl PosGroup for HasFew {
+    fn don_pos() -> Self {
+        HasFew(false)
     }
 }
 
 /// Vị nhóm "lấy cái đầu tiên có giá trị" — chính là ý tưởng của `Option::or`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DauTien<T>(pub Option<T>);
-impl<T> NuaNhom for DauTien<T> {
-    fn ghep(self, k: Self) -> Self {
+pub struct FirstTien<T>(pub Option<T>);
+impl<T> Semigroup for FirstTien<T> {
+    fn compose(self, k: Self) -> Self {
         if self.0.is_some() {
             self
         } else {
@@ -390,9 +390,9 @@ impl<T> NuaNhom for DauTien<T> {
         }
     }
 }
-impl<T> ViNhom for DauTien<T> {
-    fn don_vi() -> Self {
-        DauTien(None)
+impl<T> PosGroup for FirstTien<T> {
+    fn don_pos() -> Self {
+        FirstTien(None)
     }
 }
 
@@ -402,30 +402,30 @@ impl<T> ViNhom for DauTien<T> {
 // Mấu chốt: nếu A và B đều là vị nhóm thì cặp (A, B) cũng là vị nhóm.
 // Nhờ vậy ta tính được NHIỀU chỉ số chỉ trong MỘT lượt duyệt dữ liệu.
 
-impl<A: NuaNhom, B: NuaNhom> NuaNhom for (A, B) {
-    fn ghep(self, k: Self) -> Self {
-        (self.0.ghep(k.0), self.1.ghep(k.1))
+impl<A: Semigroup, B: Semigroup> Semigroup for (A, B) {
+    fn compose(self, k: Self) -> Self {
+        (self.0.compose(k.0), self.1.compose(k.1))
     }
 }
-impl<A: ViNhom, B: ViNhom> ViNhom for (A, B) {
-    fn don_vi() -> Self {
-        (A::don_vi(), B::don_vi())
+impl<A: PosGroup, B: PosGroup> PosGroup for (A, B) {
+    fn don_pos() -> Self {
+        (A::don_pos(), B::don_pos())
     }
 }
 
-impl<A: NuaNhom, B: NuaNhom, C: NuaNhom, D: NuaNhom> NuaNhom for (A, B, C, D) {
-    fn ghep(self, k: Self) -> Self {
+impl<A: Semigroup, B: Semigroup, C: Semigroup, D: Semigroup> Semigroup for (A, B, C, D) {
+    fn compose(self, k: Self) -> Self {
         (
-            self.0.ghep(k.0),
-            self.1.ghep(k.1),
-            self.2.ghep(k.2),
-            self.3.ghep(k.3),
+            self.0.compose(k.0),
+            self.1.compose(k.1),
+            self.2.compose(k.2),
+            self.3.compose(k.3),
         )
     }
 }
-impl<A: ViNhom, B: ViNhom, C: ViNhom, D: ViNhom> ViNhom for (A, B, C, D) {
-    fn don_vi() -> Self {
-        (A::don_vi(), B::don_vi(), C::don_vi(), D::don_vi())
+impl<A: PosGroup, B: PosGroup, C: PosGroup, D: PosGroup> PosGroup for (A, B, C, D) {
+    fn don_pos() -> Self {
+        (A::don_pos(), B::don_pos(), C::don_pos(), D::don_pos())
     }
 }
 
@@ -434,22 +434,22 @@ impl<A: ViNhom, B: ViNhom, C: ViNhom, D: ViNhom> ViNhom for (A, B, C, D) {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BanGhiTruyCap {
-    pub duong_dan: String,
-    pub ma_trang_thai: u16,
-    pub thoi_gian_ms: i64,
+pub struct SellRecordAccessCap {
+    pub path: String,
+    pub id_state: u16,
+    pub time_ms: i64,
 }
 
 /// Bốn chỉ số cần tính, gói trong một vị nhóm tích 4 thành phần.
-pub type ThongKe = (Tong, LonNhat, NhoNhat, CoIt);
+pub type ThongKe = (Tong, Max, Min, HasFew);
 
 /// Biến một bản ghi thành "đóng góp" của nó vào thống kê tổng.
-pub fn thanh_thong_ke(bg: &BanGhiTruyCap) -> ThongKe {
+pub fn into_thong_ke(bg: &SellRecordAccessCap) -> ThongKe {
     (
-        Tong(bg.thoi_gian_ms),
-        LonNhat(bg.thoi_gian_ms),
-        NhoNhat(bg.thoi_gian_ms),
-        CoIt(bg.ma_trang_thai >= 500),
+        Tong(bg.time_ms),
+        Max(bg.time_ms),
+        Min(bg.time_ms),
+        HasFew(bg.id_state >= 500),
     )
 }
 
@@ -458,12 +458,12 @@ pub fn thanh_thong_ke(bg: &BanGhiTruyCap) -> ThongKe {
 // ============================================================================
 
 /// Bộ sinh đồng dư tuyến tính (LCG) — tất định nên kiểm thử luôn lặp lại được.
-pub struct BoSinh(u64);
-impl BoSinh {
-    pub fn moi(hat_giong: u64) -> Self {
-        BoSinh(hat_giong)
+pub struct Generator(u64);
+impl Generator {
+    pub fn new(hat_giong: u64) -> Self {
+        Generator(hat_giong)
     }
-    pub fn so_tiep(&mut self) -> i64 {
+    pub fn num_cont(&mut self) -> i64 {
         // Hằng số của cuốn Numerical Recipes
         self.0 = self
             .0
@@ -474,42 +474,42 @@ impl BoSinh {
 }
 
 /// Kiểm chứng LUẬT KẾT HỢP trên nhiều mẫu giả ngẫu nhiên.
-pub fn kiem_chung_ket_hop<M, F>(ten: &str, tao: F, so_mau: usize) -> bool
+pub fn verify_link_hop<M, F>(name: &str, tao: F, samples: usize) -> bool
 where
-    M: NuaNhom + Clone + PartialEq + Debug,
+    M: Semigroup + Clone + PartialEq + Debug,
     F: Fn(i64) -> M,
 {
-    let mut sinh = BoSinh::moi(2026);
-    for _ in 0..so_mau {
-        let a = tao(sinh.so_tiep());
-        let b = tao(sinh.so_tiep());
-        let c = tao(sinh.so_tiep());
-        let trai = a.clone().ghep(b.clone()).ghep(c.clone());
-        let phai = a.clone().ghep(b.clone().ghep(c.clone()));
-        if trai != phai {
-            println!("  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}", ten, trai, phai);
+    let mut sinh = Generator::new(2026);
+    for _ in 0..samples {
+        let a = tao(sinh.num_cont());
+        let b = tao(sinh.num_cont());
+        let c = tao(sinh.num_cont());
+        let left = a.clone().compose(b.clone()).compose(c.clone());
+        let must = a.clone().compose(b.clone().compose(c.clone()));
+        if left != must {
+            println!("  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}", name, left, must);
             return false;
         }
     }
-    println!("  ✓ {}: luật kết hợp đúng trên {} bộ mẫu", ten, so_mau);
+    println!("  ✓ {}: luật kết hợp đúng trên {} bộ mẫu", name, samples);
     true
 }
 
 /// Kiểm chứng LUẬT ĐƠN VỊ trên nhiều mẫu giả ngẫu nhiên.
-pub fn kiem_chung_don_vi<M, F>(ten: &str, tao: F, so_mau: usize) -> bool
+pub fn verify_don_pos<M, F>(name: &str, tao: F, samples: usize) -> bool
 where
-    M: ViNhom + Clone + PartialEq + Debug,
+    M: PosGroup + Clone + PartialEq + Debug,
     F: Fn(i64) -> M,
 {
-    let mut sinh = BoSinh::moi(777);
-    for _ in 0..so_mau {
-        let a = tao(sinh.so_tiep());
-        if M::don_vi().ghep(a.clone()) != a || a.clone().ghep(M::don_vi()) != a {
-            println!("  ✗ {} VI PHẠM luật đơn vị với {:?}", ten, a);
+    let mut sinh = Generator::new(777);
+    for _ in 0..samples {
+        let a = tao(sinh.num_cont());
+        if M::don_pos().compose(a.clone()) != a || a.clone().compose(M::don_pos()) != a {
+            println!("  ✗ {} VI PHẠM luật đơn vị với {:?}", name, a);
             return false;
         }
     }
-    println!("  ✓ {}: luật đơn vị đúng trên {} bộ mẫu", ten, so_mau);
+    println!("  ✓ {}: luật đơn vị đúng trên {} bộ mẫu", name, samples);
     true
 }
 
@@ -527,61 +527,61 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n1. HÀM `gop_tat_ca` VẠN NĂNG");
     let so = vec![Tong(3), Tong(8), Tong(-2), Tong(11)];
-    println!("   Tổng các số       : {:?}", gop_tat_ca(so));
+    println!("   Tổng các số       : {:?}", coalesce_all_all(so));
 
-    let tich = vec![Tich(2), Tich(3), Tich(7)];
-    println!("   Tích các số       : {:?}", gop_tat_ca(tich));
+    let tich = vec![Product(2), Product(3), Product(7)];
+    println!("   Tích các số       : {:?}", coalesce_all_all(tich));
 
-    let chuoi = vec![
+    let series = vec![
         String::from("Rust "),
         String::from("thật "),
         String::from("tuyệt!"),
     ];
-    println!("   Nối chuỗi         : {:?}", gop_tat_ca(chuoi));
+    println!("   Nối chuỗi         : {:?}", coalesce_all_all(series));
 
     let mang = vec![vec![1, 2], vec![3], vec![4, 5, 6]];
-    println!("   Gộp danh sách     : {:?}", gop_tat_ca(mang));
+    println!("   Gộp danh sách     : {:?}", coalesce_all_all(mang));
 
-    let dat = vec![MoiDeu(true), MoiDeu(true), MoiDeu(false)];
-    println!("   Tất cả đều đạt?   : {:?}", gop_tat_ca(dat));
+    let set = vec![MoiDeu(true), MoiDeu(true), MoiDeu(false)];
+    println!("   Tất cả đều đạt?   : {:?}", coalesce_all_all(set));
 
-    let cau_hinh: Vec<DauTien<&str>> = vec![
-        DauTien(None),                // biến môi trường: không có
-        DauTien(Some("config.toml")), // tệp cấu hình: có!
-        DauTien(Some("mac_dinh")),    // giá trị mặc định (không dùng tới)
+    let cau_hinh: Vec<FirstTien<&str>> = vec![
+        FirstTien(None),                // biến môi trường: không có
+        FirstTien(Some("config.toml")), // tệp cấu hình: có!
+        FirstTien(Some("mac_dinh")),    // giá trị mặc định (không dùng tới)
     ];
-    println!("   Nguồn cấu hình đầu: {:?}", gop_tat_ca(cau_hinh));
+    println!("   Nguồn cấu hình đầu: {:?}", coalesce_all_all(cau_hinh));
 
     // ------------------------------------------------------------------
     // 2. DANH SÁCH RỖNG — GIÁ TRỊ CỦA "HỘP RỖNG"
     // ------------------------------------------------------------------
     println!("\n2. VÌ SAO CẦN PHẦN TỬ ĐƠN VỊ?");
-    let rong_cong: Vec<Tong> = Vec::new();
-    let rong_nhan: Vec<Tich> = Vec::new();
-    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", gop_tat_ca(rong_cong));
+    let empty_cong: Vec<Tong> = Vec::new();
+    let rong_nhan: Vec<Product> = Vec::new();
+    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_cong));
     println!(
         "   Tích của danh sách RỖNG: {:?}  (đúng: 1, KHÔNG phải 0!)",
-        gop_tat_ca(rong_nhan)
+        coalesce_all_all(rong_nhan)
     );
 
     // ------------------------------------------------------------------
     // 3. VỊ NHÓM TÍCH: 4 CHỈ SỐ TRONG 1 LƯỢT DUYỆT
     // ------------------------------------------------------------------
     println!("\n3. VỊ NHÓM TÍCH — 4 CHỈ SỐ, 1 LƯỢT DUYỆT");
-    let nhat_ky = vec![
-        BanGhiTruyCap { duong_dan: "/api/don-hang".into(), ma_trang_thai: 200, thoi_gian_ms: 42 },
-        BanGhiTruyCap { duong_dan: "/api/thanh-toan".into(), ma_trang_thai: 500, thoi_gian_ms: 1350 },
-        BanGhiTruyCap { duong_dan: "/api/san-pham".into(), ma_trang_thai: 200, thoi_gian_ms: 17 },
-        BanGhiTruyCap { duong_dan: "/api/kho".into(), ma_trang_thai: 404, thoi_gian_ms: 8 },
-        BanGhiTruyCap { duong_dan: "/api/don-hang".into(), ma_trang_thai: 200, thoi_gian_ms: 63 },
+    let order_log = vec![
+        SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 42 },
+        SellRecordAccessCap { path: "/api/thanh-toan".into(), id_state: 500, time_ms: 1350 },
+        SellRecordAccessCap { path: "/api/san-pham".into(), id_state: 200, time_ms: 17 },
+        SellRecordAccessCap { path: "/api/kho".into(), id_state: 404, time_ms: 8 },
+        SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 63 },
     ];
 
     let (tong, cham_nhat, nhanh_nhat, co_loi_may_chu): ThongKe =
-        gop_tat_ca(nhat_ky.iter().map(thanh_thong_ke));
+        coalesce_all_all(order_log.iter().map(into_thong_ke));
 
-    println!("   Số bản ghi          : {}", nhat_ky.len());
+    println!("   Số bản ghi          : {}", order_log.len());
     println!("   Tổng thời gian      : {} ms", tong.0);
-    println!("   Trung bình          : {} ms", tong.0 / nhat_ky.len() as i64);
+    println!("   Trung bình          : {} ms", tong.0 / order_log.len() as i64);
     println!("   Chậm nhất           : {} ms", cham_nhat.0);
     println!("   Nhanh nhất          : {} ms", nhanh_nhat.0);
     println!("   Có lỗi máy chủ 5xx? : {}", co_loi_may_chu.0);
@@ -590,27 +590,27 @@ fn main() {
     // 4. LUẬT KẾT HỢP CHO PHÉP CHIA NHỎ & SONG SONG HÓA
     // ------------------------------------------------------------------
     println!("\n4. CHIA NHỎ RỒI GHÉP LẠI CHO CÙNG KẾT QUẢ");
-    let tat_ca: ThongKe = gop_tat_ca(nhat_ky.iter().map(thanh_thong_ke));
-    let (nua_dau, nua_sau) = nhat_ky.split_at(2);
-    let phan_1: ThongKe = gop_tat_ca(nua_dau.iter().map(thanh_thong_ke));
-    let phan_2: ThongKe = gop_tat_ca(nua_sau.iter().map(thanh_thong_ke));
-    let ghep_lai = phan_1.ghep(phan_2);
-    assert_eq!(tat_ca, ghep_lai);
-    println!("   Gộp 1 lượt     : {:?}", tat_ca);
-    println!("   Chia 2 rồi ghép: {:?}", ghep_lai);
+    let all: ThongKe = coalesce_all_all(order_log.iter().map(into_thong_ke));
+    let (nua_dau, nua_sau) = order_log.split_at(2);
+    let part_1: ThongKe = coalesce_all_all(nua_dau.iter().map(into_thong_ke));
+    let part_2: ThongKe = coalesce_all_all(nua_sau.iter().map(into_thong_ke));
+    let compose_lai = part_1.compose(part_2);
+    assert_eq!(all, compose_lai);
+    println!("   Gộp 1 lượt     : {:?}", all);
+    println!("   Chia 2 rồi ghép: {:?}", compose_lai);
     println!("   → GIỐNG NHAU ✓ Đây chính là cơ sở để chạy song song trên nhiều nhân CPU.");
 
     // ------------------------------------------------------------------
     // 5. KIỂM CHỨNG LUẬT BẰNG KIỂM THỬ THEO TÍNH CHẤT
     // ------------------------------------------------------------------
     println!("\n5. KIỂM THỬ THEO TÍNH CHẤT (1.000 bộ mẫu mỗi luật)");
-    kiem_chung_ket_hop("Tong   ", Tong, 1000);
-    kiem_chung_ket_hop("Tich   ", Tich, 1000);
-    kiem_chung_ket_hop("LonNhat", LonNhat, 1000);
-    kiem_chung_ket_hop("String ", |n: i64| n.to_string(), 1000);
-    kiem_chung_don_vi("Tong   ", Tong, 1000);
-    kiem_chung_don_vi("Tich   ", Tich, 1000);
-    kiem_chung_don_vi("LonNhat", LonNhat, 1000);
+    verify_link_hop("Tong   ", Tong, 1000);
+    verify_link_hop("Product   ", Product, 1000);
+    verify_link_hop("LonNhat", Max, 1000);
+    verify_link_hop("String ", |n: i64| n.to_string(), 1000);
+    verify_don_pos("Tong   ", Tong, 1000);
+    verify_don_pos("Product   ", Product, 1000);
+    verify_don_pos("LonNhat", Max, 1000);
 
     // ------------------------------------------------------------------
     // 6. PHẢN VÍ DỤ: PHÉP TRỪ KHÔNG PHẢI NỬA NHÓM
@@ -662,52 +662,52 @@ fn main() {
 // ============================================================================
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
     fn tong_tuan_thu_luat_ket_hop() {
-        assert!(kiem_chung_ket_hop("Tong", Tong, 500));
+        assert!(verify_link_hop("Tong", Tong, 500));
     }
 
     #[test]
     fn tong_tuan_thu_luat_don_vi() {
-        assert!(kiem_chung_don_vi("Tong", Tong, 500));
+        assert!(verify_don_pos("Tong", Tong, 500));
     }
 
     #[test]
     fn tich_tuan_thu_ca_hai_luat() {
-        assert!(kiem_chung_ket_hop("Tich", Tich, 500));
-        assert!(kiem_chung_don_vi("Tich", Tich, 500));
+        assert!(verify_link_hop("Product", Product, 500));
+        assert!(verify_don_pos("Product", Product, 500));
     }
 
     #[test]
     fn chuoi_tuan_thu_luat_ket_hop() {
-        assert!(kiem_chung_ket_hop("String", |n: i64| n.to_string(), 500));
+        assert!(verify_link_hop("String", |n: i64| n.to_string(), 500));
     }
 
     #[test]
-    fn danh_sach_rong_tra_ve_phan_tu_don_vi() {
-        let rong_cong: Vec<Tong> = Vec::new();
-        let rong_nhan: Vec<Tich> = Vec::new();
-        let rong_max: Vec<LonNhat> = Vec::new();
-        assert_eq!(gop_tat_ca(rong_cong), Tong(0));
-        assert_eq!(gop_tat_ca(rong_nhan), Tich(1));
-        assert_eq!(gop_tat_ca(rong_max), LonNhat(i64::MIN));
+    fn list_empty_return_ve_part_from_don_pos() {
+        let empty_cong: Vec<Tong> = Vec::new();
+        let rong_nhan: Vec<Product> = Vec::new();
+        let rong_max: Vec<Max> = Vec::new();
+        assert_eq!(coalesce_all_all(empty_cong), Tong(0));
+        assert_eq!(coalesce_all_all(rong_nhan), Product(1));
+        assert_eq!(coalesce_all_all(rong_max), Max(i64::MIN));
     }
 
     #[test]
     fn vi_nhom_tich_gop_dung_bon_chi_so() {
-        let nhat_ky = vec![
-            BanGhiTruyCap { duong_dan: "/a".into(), ma_trang_thai: 200, thoi_gian_ms: 10 },
-            BanGhiTruyCap { duong_dan: "/b".into(), ma_trang_thai: 503, thoi_gian_ms: 40 },
-            BanGhiTruyCap { duong_dan: "/c".into(), ma_trang_thai: 200, thoi_gian_ms: 25 },
+        let order_log = vec![
+            SellRecordAccessCap { path: "/a".into(), id_state: 200, time_ms: 10 },
+            SellRecordAccessCap { path: "/b".into(), id_state: 503, time_ms: 40 },
+            SellRecordAccessCap { path: "/c".into(), id_state: 200, time_ms: 25 },
         ];
-        let (tong, max, min, loi): ThongKe = gop_tat_ca(nhat_ky.iter().map(thanh_thong_ke));
+        let (tong, max, min, error): ThongKe = coalesce_all_all(order_log.iter().map(into_thong_ke));
         assert_eq!(tong, Tong(75));
-        assert_eq!(max, LonNhat(40));
-        assert_eq!(min, NhoNhat(10));
-        assert_eq!(loi, CoIt(true));
+        assert_eq!(max, Max(40));
+        assert_eq!(min, Min(10));
+        assert_eq!(error, HasFew(true));
     }
 
     /// Đây là bài test QUAN TRỌNG NHẤT chương: nó chứng minh rằng
@@ -715,19 +715,19 @@ mod kiem_thu {
     /// tức là thuật toán này SONG SONG HÓA ĐƯỢC một cách an toàn.
     #[test]
     fn chia_nho_roi_ghep_lai_cho_cung_ket_qua() {
-        let mut sinh = BoSinh::moi(12345);
-        let du_lieu: Vec<Tong> = (0..100).map(|_| Tong(sinh.so_tiep())).collect();
+        let mut sinh = Generator::new(12345);
+        let data: Vec<Tong> = (0..100).map(|_| Tong(sinh.num_cont())).collect();
 
-        let mot_luot = gop_tat_ca(du_lieu.clone());
+        let mot_luot = coalesce_all_all(data.clone());
         for diem_cat in [0usize, 1, 37, 50, 99, 100] {
-            let (trai, phai) = du_lieu.split_at(diem_cat);
-            let ghep = gop_tat_ca(trai.to_vec()).ghep(gop_tat_ca(phai.to_vec()));
-            assert_eq!(mot_luot, ghep, "Sai khi cắt tại vị trí {}", diem_cat);
+            let (left, must) = data.split_at(diem_cat);
+            let compose = coalesce_all_all(left.to_vec()).compose(coalesce_all_all(must.to_vec()));
+            assert_eq!(mot_luot, compose, "Sai khi cắt tại vị trí {}", diem_cat);
         }
     }
 
     #[test]
-    fn phep_tru_khong_phai_nua_nhom() {
+    fn op_tru_no_must_nua_group() {
         // Phản ví dụ: chứng minh phép trừ VI PHẠM luật kết hợp.
         assert_ne!((10i64 - 3) - 2, 10i64 - (3 - 2));
     }
@@ -750,19 +750,19 @@ mod kiem_thu {
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0119** | `conflicting implementations of trait 'ViNhom' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Tich(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
-| **E0117** | `only traits defined in the current crate can be implemented for types defined outside of the crate` | **Quy tắc mồ côi (orphan rule)**: bạn không được cài trait của người khác cho kiểu của người khác. | Hoặc trait phải là của bạn (như `NuaNhom` trong chương này), hoặc kiểu phải là của bạn — lại là kiểu bọc! |
-| **E0277** | `the trait bound 'X: ViNhom' is not satisfied` | Bạn gọi `gop_tat_ca` với một kiểu chưa cài `ViNhom`, hoặc quên cài `NuaNhom` (siêu trait bắt buộc). | Cài đủ **cả hai** trait. Nhớ rằng `ViNhom: NuaNhom` nghĩa là muốn có vị nhóm thì phải có nửa nhóm trước. |
+| **E0119** | `conflicting implementations of trait 'PosGroup' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Product(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
+| **E0117** | `only traits defined in the current crate can be implemented for types defined outside of the crate` | **Quy tắc mồ côi (orphan rule)**: bạn không được cài trait của người khác cho kiểu của người khác. | Hoặc trait phải là của bạn (như `Semigroup` trong chương này), hoặc kiểu phải là của bạn — lại là kiểu bọc! |
+| **E0277** | `the trait bound 'X: PosGroup' is not satisfied` | Bạn gọi `coalesce_all_all` với một kiểu chưa cài `PosGroup`, hoặc quên cài `Semigroup` (siêu trait bắt buộc). | Cài đủ **cả hai** trait. Nhớ rằng `PosGroup: Semigroup` nghĩa là muốn có vị nhóm thì phải có nửa nhóm trước. |
 | **E0507** | `cannot move out of ... which is behind a shared reference` | `fn ghep(self, ...)` nhận `self` theo giá trị, nhưng bạn đang cầm `&M`. | Gọi `.clone()` trước khi gộp, hoặc dùng `.iter().map(...)` để tạo giá trị mới thay vì mượn. |
-| **E0382** | `use of moved value` | Trong vòng lặp kiểm chứng luật, bạn dùng lại `a` sau khi nó đã bị `ghep` tiêu thụ. | Thêm ràng buộc `M: Clone` và gọi `a.clone()` như trong hàm `kiem_chung_ket_hop` ở trên. |
+| **E0382** | `use of moved value` | Trong vòng lặp kiểm chứng luật, bạn dùng lại `a` sau khi nó đã bị `ghep` tiêu thụ. | Thêm ràng buộc `M: Clone` và gọi `a.clone()` như trong hàm `verify_link_hop` ở trên. |
 
 ### Phân tích lỗi thực tế `E0119` (vì sao bắt buộc phải dùng newtype):
 
 ```rust
 // ❌ Đoạn mã lỗi minh họa (đã đóng chú thích để tệp vẫn biên dịch được):
-// impl NuaNhom for i64 { fn ghep(self, k: Self) -> Self { self + k } }
-// impl NuaNhom for i64 { fn ghep(self, k: Self) -> Self { self * k } }
-// LỖI E0119: conflicting implementations of trait `NuaNhom` for type `i64`
+// impl Semigroup for i64 { fn ghep(self, k: Self) -> Self { self + k } }
+// impl Semigroup for i64 { fn ghep(self, k: Self) -> Self { self * k } }
+// LỖI E0119: conflicting implementations of trait `Semigroup` for type `i64`
 //
 // Trình biên dịch hỏi rất hợp lý: "Khi ai đó viết a.ghep(b) trên hai số i64,
 // tôi phải cộng hay phải nhân?" — Không có câu trả lời, nên nó từ chối.
@@ -778,7 +778,7 @@ pub struct TichSo(pub i64);
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Vị nhóm = phép gộp + phần tử rỗng + luật**. Nhận ra khuôn mẫu này cho phép bạn viết **một** hàm `gop_tat_ca` thay cho hàng chục hàm gộp chuyên biệt.
+1. **Vị nhóm = phép gộp + phần tử rỗng + luật**. Nhận ra khuôn mẫu này cho phép bạn viết **một** hàm `coalesce_all_all` thay cho hàng chục hàm gộp chuyên biệt.
 2. **Luật kết hợp là giấy phép song song hóa**. Vì `(a⊕b)⊕c = a⊕(b⊕c)`, bạn có thể chia dữ liệu ra nhiều nhân CPU rồi ghép lại mà chắc chắn không sai. Phép trừ vi phạm luật này, nên không bao giờ được chia nhỏ.
 3. **Kiểu bọc (newtype) giải quyết bài toán "một kiểu, nhiều ý nghĩa"** và cũng là lối thoát khỏi quy tắc mồ côi. Đây là mẫu thiết kế sẽ trở thành trung tâm ở Chương 20.
 4. **Luật phải được kiểm chứng bằng test, không phải bằng niềm tin.** Câu chuyện `f64::NAN != f64::NAN` cho thấy thư viện chuẩn Rust mã hóa luật ngay vào hệ thống trait: phá luật thì mất trait, mất trait thì mất luôn `HashMap`.
@@ -788,12 +788,12 @@ pub struct TichSo(pub i64);
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Vị nhóm `CuoiCung`)**
-Trong chương ta đã có `DauTien` (giữ giá trị đầu tiên khác `None`). Hãy viết vị nhóm đối ngẫu `CuoiCung<T>` giữ **giá trị cuối cùng** khác `None`, rồi giải thích vì sao nó hữu ích khi đọc cấu hình theo thứ tự "mặc định → tệp cấu hình → biến môi trường → tham số dòng lệnh".
+Trong chương ta đã có `FirstTien` (giữ giá trị đầu tiên khác `None`). Hãy viết vị nhóm đối ngẫu `CuoiCung<T>` giữ **giá trị cuối cùng** khác `None`, rồi giải thích vì sao nó hữu ích khi đọc cấu hình theo thứ tự "mặc định → tệp cấu hình → biến môi trường → tham số dòng lệnh".
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-`DauTien` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `khac` nếu `khac` có giá trị. Phần tử đơn vị vẫn là `None`.
+`FirstTien` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `khac` nếu `khac` có giá trị. Phần tử đơn vị vẫn là `None`.
 </details>
 
 <details>
@@ -803,13 +803,13 @@ Trong chương ta đã có `DauTien` (giữ giá trị đầu tiên khác `None`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CuoiCung<T>(pub Option<T>);
 
-impl<T> NuaNhom for CuoiCung<T> {
-    fn ghep(self, khac: Self) -> Self {
-        if khac.0.is_some() { khac } else { self }
+impl<T> Semigroup for CuoiCung<T> {
+    fn compose(self, other: Self) -> Self {
+        if other.0.is_some() { other } else { self }
     }
 }
-impl<T> ViNhom for CuoiCung<T> {
-    fn don_vi() -> Self { CuoiCung(None) }
+impl<T> PosGroup for CuoiCung<T> {
+    fn don_pos() -> Self { CuoiCung(None) }
 }
 
 fn main() {
@@ -819,15 +819,15 @@ fn main() {
         CuoiCung(None),                // biến môi trường không đặt
         CuoiCung(Some("--cong=8080")), // tham số dòng lệnh thắng
     ];
-    assert_eq!(gop_tat_ca(nguon), CuoiCung(Some("--cong=8080")));
+    assert_eq!(coalesce_all_all(nguon), CuoiCung(Some("--cong=8080")));
 }
 ```
 
-**Vì sao hữu ích**: quy tắc "nguồn cấu hình sau ghi đè nguồn trước" chính xác là phép gộp của vị nhóm `CuoiCung`. Bạn chỉ cần xếp các nguồn theo đúng thứ tự ưu tiên rồi `gop_tat_ca` — không cần một dãy `if let Some(...) else if ...` dài dằng dặc.
+**Vì sao hữu ích**: quy tắc "nguồn cấu hình sau ghi đè nguồn trước" chính xác là phép gộp của vị nhóm `CuoiCung`. Bạn chỉ cần xếp các nguồn theo đúng thứ tự ưu tiên rồi `coalesce_all_all` — không cần một dãy `if let Some(...) else if ...` dài dằng dặc.
 </details>
 
 **Bài tập 2 (Vị nhóm đếm tần suất)**
-Viết kiểu bọc `BangDem(pub std::collections::HashMap<String, u32>)` là một vị nhóm: phép gộp cộng dồn số đếm của các khóa trùng nhau, phần tử đơn vị là bảng rỗng. Dùng nó cùng `gop_tat_ca` để đếm số lượt truy cập theo từng đường dẫn trong danh sách `BanGhiTruyCap`.
+Viết kiểu bọc `BangDem(pub std::collections::HashMap<String, u32>)` là một vị nhóm: phép gộp cộng dồn số đếm của các khóa trùng nhau, phần tử đơn vị là bảng rỗng. Dùng nó cùng `coalesce_all_all` để đếm số lượt truy cập theo từng đường dẫn trong danh sách `SellRecordAccessCap`.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -844,27 +844,27 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub struct BangDem(pub HashMap<String, u32>);
 
-impl NuaNhom for BangDem {
-    fn ghep(mut self, khac: Self) -> Self {
-        for (khoa, so) in khac.0 {
-            *self.0.entry(khoa).or_insert(0) += so;
+impl Semigroup for BangDem {
+    fn compose(mut self, other: Self) -> Self {
+        for (key, so) in other.0 {
+            *self.0.entry(key).or_insert(0) += so;
         }
         self
     }
 }
-impl ViNhom for BangDem {
-    fn don_vi() -> Self { BangDem(HashMap::new()) }
+impl PosGroup for BangDem {
+    fn don_pos() -> Self { BangDem(HashMap::new()) }
 }
 
-fn dem_mot(duong_dan: &str) -> BangDem {
+fn dem_mot(path: &str) -> BangDem {
     let mut b = HashMap::new();
-    b.insert(duong_dan.to_string(), 1);
+    b.insert(path.to_string(), 1);
     BangDem(b)
 }
 
 fn main() {
-    let duong_dan = ["/api/a", "/api/b", "/api/a", "/api/a"];
-    let ket_qua = gop_tat_ca(duong_dan.iter().map(|d| dem_mot(d)));
+    let path = ["/api/a", "/api/b", "/api/a", "/api/a"];
+    let ket_qua = coalesce_all_all(path.iter().map(|d| dem_mot(d)));
     assert_eq!(ket_qua.0.get("/api/a"), Some(&3));
     assert_eq!(ket_qua.0.get("/api/b"), Some(&1));
     println!("{:?}", ket_qua);
@@ -896,19 +896,19 @@ Thử ba số `0, 0, 12`. Tính `(a⊕b)⊕c` rồi `a⊕(b⊕c)` và so sánh. 
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TichLuyTB { pub tong: f64, pub so_luong: u64 }
+pub struct TichLuyTB { pub tong: f64, pub quantity: u64 }
 
-impl NuaNhom for TichLuyTB {
-    fn ghep(self, k: Self) -> Self {
-        TichLuyTB { tong: self.tong + k.tong, so_luong: self.so_luong + k.so_luong }
+impl Semigroup for TichLuyTB {
+    fn compose(self, k: Self) -> Self {
+        TichLuyTB { tong: self.tong + k.tong, quantity: self.quantity + k.quantity }
     }
 }
-impl ViNhom for TichLuyTB {
-    fn don_vi() -> Self { TichLuyTB { tong: 0.0, so_luong: 0 } }
+impl PosGroup for TichLuyTB {
+    fn don_pos() -> Self { TichLuyTB { tong: 0.0, quantity: 0 } }
 }
 impl TichLuyTB {
-    pub fn trung_binh(&self) -> Option<f64> {
-        if self.so_luong == 0 { None } else { Some(self.tong / self.so_luong as f64) }
+    pub fn mean(&self) -> Option<f64> {
+        if self.quantity == 0 { None } else { Some(self.tong / self.quantity as f64) }
     }
 }
 ```

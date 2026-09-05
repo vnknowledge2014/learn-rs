@@ -3,12 +3,12 @@
 // Chương trình minh họa tư duy Lập trình hàm và Xây dựng Đường ống (Data Pipelines) trong Rust
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MatHang {
+pub struct MatQueue {
     pub ma_san_pham: String,
-    pub ten_hang: String,
-    pub don_gia: f64,
-    pub so_luong: u32,
-    pub da_thanh_toan: bool,
+    pub name_queue: String,
+    pub don_price: f64,
+    pub quantity: u32,
+    pub is_paid: bool,
 }
 
 // ============================================================================
@@ -17,12 +17,12 @@ pub struct MatHang {
 
 /// Hàm thuần túy: Tính thành tiền của một mặt hàng
 /// Nhận dữ liệu đầu vào và trả về giá trị mới, không thay đổi bất kỳ trạng thái nào
-pub fn tinh_thanh_tien(hang: &MatHang) -> f64 {
-    hang.don_gia * (hang.so_luong as f64)
+pub fn to_money(queue: &MatQueue) -> f64 {
+    queue.don_price * (queue.quantity as f64)
 }
 
 /// Hàm thuần túy: Áp dụng phiếu giảm giá tỷ lệ phần trăm
-pub fn ap_dung_giam_gia(tien_goc: f64, phan_tram_giam: f64) -> f64 {
+pub fn apply_down_price(tien_goc: f64, phan_tram_giam: f64) -> f64 {
     if phan_tram_giam <= 0.0 {
         tien_goc
     } else if phan_tram_giam >= 100.0 {
@@ -38,45 +38,45 @@ pub fn ap_dung_giam_gia(tien_goc: f64, phan_tram_giam: f64) -> f64 {
 
 /// CÁCH 1: Phong cách Mệnh lệnh (Imperative)
 /// Dùng vòng lặp thủ công, biến cờ mut tạm thời, dễ xảy ra lỗi ngoài ý muốn
-pub fn xu_ly_menh_lenh(danh_sach: &[MatHang]) -> (f64, Vec<String>) {
+pub fn xu_ly_menh_lenh(list: &[MatQueue]) -> (f64, Vec<String>) {
     let mut tong_doanh_thu: f64 = 0.0;
-    let mut danh_sach_ten: Vec<String> = Vec::new();
+    let mut list_name: Vec<String> = Vec::new();
 
     // Vòng lặp thủ công với nhiều bước điều kiện lồng nhau
-    for i in 0..danh_sach.len() {
-        let hang = &danh_sach[i];
+    for i in 0..list.len() {
+        let queue = &list[i];
         // Chỉ xử lý các đơn hàng đã thanh toán và có giá trị trên 50.0
-        if hang.da_thanh_toan {
-            let thanh_tien = tinh_thanh_tien(hang);
-            if thanh_tien >= 50.0 {
-                tong_doanh_thu += thanh_tien;
-                danh_sach_ten.push(hang.ten_hang.clone());
+        if queue.is_paid {
+            let into_tien = to_money(queue);
+            if into_tien >= 50.0 {
+                tong_doanh_thu += into_tien;
+                list_name.push(queue.name_queue.clone());
             }
         }
     }
 
-    (tong_doanh_thu, danh_sach_ten)
+    (tong_doanh_thu, list_name)
 }
 
 /// CÁCH 2: Phong cách Lập trình Hàm Khai báo (Declarative Pipeline)
 /// Dữ liệu chảy qua chuỗi lọc và ánh xạ, không dùng biến mut nào trong quá trình xử lý!
-pub fn xu_ly_khai_bao(danh_sach: &[MatHang]) -> (f64, Vec<String>) {
+pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
     // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
-    let tong_doanh_thu: f64 = danh_sach
+    let tong_doanh_thu: f64 = list
         .iter()
-        .filter(|hang| hang.da_thanh_toan)             // Bước 1: Lọc hàng đã trả tiền
-        .map(|hang| tinh_thanh_tien(hang))             // Bước 2: Chuyển đổi thành tiền
+        .filter(|queue| queue.is_paid)             // Bước 1: Lọc hàng đã trả tiền
+        .map(|queue| to_money(queue))             // Bước 2: Chuyển đổi thành tiền
         .filter(|&tien| tien >= 50.0)                  // Bước 3: Chỉ lấy món từ 50k trở lên
         .sum();                                        // Bước 4: Gom tụ tính tổng
 
     // 2. Nhánh trích xuất danh sách tên mặt hàng
-    let danh_sach_ten: Vec<String> = danh_sach
+    let list_name: Vec<String> = list
         .iter()
-        .filter(|hang| hang.da_thanh_toan && tinh_thanh_tien(hang) >= 50.0)
-        .map(|hang| hang.ten_hang.clone())             // Ánh xạ sang chuỗi tên
+        .filter(|queue| queue.is_paid && to_money(queue) >= 50.0)
+        .map(|queue| queue.name_queue.clone())             // Ánh xạ sang chuỗi tên
         .collect();                                    // Gom vào vector mới
 
-    (tong_doanh_thu, danh_sach_ten)
+    (tong_doanh_thu, list_name)
 }
 
 fn main() {
@@ -85,34 +85,34 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo tập dữ liệu ban đầu bất biến
-    let gio_hang: Vec<MatHang> = vec![
-        MatHang {
+    let gio_hang: Vec<MatQueue> = vec![
+        MatQueue {
             ma_san_pham: String::from("SP-01"),
-            ten_hang: String::from("Sổ tay Lập trình Rust"),
-            don_gia: 45.0,
-            so_luong: 2,
-            da_thanh_toan: true, // Thành tiền = 90.0 (Thỏa mãn >= 50)
+            name_queue: String::from("Sổ tay Lập trình Rust"),
+            don_price: 45.0,
+            quantity: 2,
+            is_paid: true, // Thành tiền = 90.0 (Thỏa mãn >= 50)
         },
-        MatHang {
+        MatQueue {
             ma_san_pham: String::from("SP-02"),
-            ten_hang: String::from("Bút bi kỹ thuật"),
-            don_gia: 15.0,
-            so_luong: 1,
-            da_thanh_toan: true, // Thành tiền = 15.0 (Bị loại do < 50)
+            name_queue: String::from("Bút bi kỹ thuật"),
+            don_price: 15.0,
+            quantity: 1,
+            is_paid: true, // Thành tiền = 15.0 (Bị loại do < 50)
         },
-        MatHang {
+        MatQueue {
             ma_san_pham: String::from("SP-03"),
-            ten_hang: String::from("Bàn phím cơ không dây"),
-            don_gia: 120.0,
-            so_luong: 1,
-            da_thanh_toan: false, // Chưa thanh toán (Bị loại)
+            name_queue: String::from("Bàn phím cơ không dây"),
+            don_price: 120.0,
+            quantity: 1,
+            is_paid: false, // Chưa thanh toán (Bị loại)
         },
-        MatHang {
+        MatQueue {
             ma_san_pham: String::from("SP-04"),
-            ten_hang: String::from("Chuột công thái học"),
-            don_gia: 75.0,
-            so_luong: 1,
-            da_thanh_toan: true, // Thành tiền = 75.0 (Thỏa mãn >= 50)
+            name_queue: String::from("Chuột công thái học"),
+            don_price: 75.0,
+            quantity: 1,
+            is_paid: true, // Thành tiền = 75.0 (Thỏa mãn >= 50)
         },
     ];
 
@@ -125,7 +125,7 @@ fn main() {
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_1);
 
     // 2. Chạy theo phong cách khai báo đường ống
-    let (doanh_thu_2, ten_2) = xu_ly_khai_bao(&gio_hang);
+    let (doanh_thu_2, ten_2) = handle_declaration(&gio_hang);
     println!("\n[Kết quả Khai báo Đường ống]:");
     println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_2);
@@ -135,7 +135,7 @@ fn main() {
     assert_eq!(ten_1, ten_2);
 
     // Minh họa hàm thuần túy tính chiết khấu khuyến mãi độc lập
-    let tong_sau_giam = ap_dung_giam_gia(doanh_thu_2, 10.0); // Giảm giá 10%
-    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", tong_sau_giam);
+    let total_next_down = apply_down_price(doanh_thu_2, 10.0); // Giảm giá 10%
+    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
     println!("============================================================");
 }

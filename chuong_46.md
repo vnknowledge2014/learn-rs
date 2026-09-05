@@ -30,10 +30,10 @@ Hãy tưởng tượng một trận chung kết bóng đá World Cup với sự 
 - Cầu thủ dùng tay đẩy bóng vào lưới (vi phạm vùng nhớ), trọng tài đứng xa không nhìn thấy gì nên vẫn công nhận bàn thắng.
 - Cầu thủ việt vị 2 mét (sai lệch kiểu dữ liệu), trận đấu vẫn tiếp tục trôi đi bình thường.
 - Nhưng đến phút thứ 89, khi hàng triệu khán giả truyền hình xem lại pha quay chậm, một cuộc bạo loạn nổ ra trên khán đài, trận đấu bị hủy bỏ và giải đấu biến thành một trò hề thảm họa.
-- Đây chính là hình ảnh của các ngôn ngữ lập trình dễ dãi: Mã lỗi của AI vẫn chạy trơn tru lúc phát triển, nhưng đến khi đưa lên máy chủ sản xuất thì nổ tung!
+- Đây chính là hình ảnh của các ngôn ngữ lập trình dễ dãi: Mã lỗi của AI vẫn chạy trơn subtract lúc phát triển, nhưng đến khi đưa lên máy chủ sản xuất thì nổ tung!
 
 #### Phong cách 2: Trọng tài Rust với Công nghệ VAR 3D siêu chính xác (The Supreme Arbiter)
-- Trọng tài `rustc` là một vị trọng tài quốc tế nghiêm khắc nhất hành tinh, được hỗ trợ bởi 50 góc máy quay siêu chậm công nghệ cao.
+- Trọng tài `rustc` là một vị trọng tài quốc tế nghiêm khắc nhất hành compute, được hỗ trợ bởi 50 góc máy quay siêu chậm công nghệ cao.
 - Chỉ cần một đầu gối của cầu thủ vượt qua vạch việt vị đúng 1 milimet (vi phạm một thời gian sống lifetime ngắn ngủi): **Tuýt!** Tiếng còi đanh thép lập tức vang lên!
 - Trọng tài không chỉ phạt, mà còn chiếu ngay màn hình lớn cho cả sân vận động xem:
   - *"Cầu thủ số 9 (biến `data`), anh đã chuyền quyền sở hữu (ownership) bóng cho cầu thủ số 10 ở phút 15, vậy tại sao anh vẫn cố tình sút bóng ở phút 16?"*

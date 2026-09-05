@@ -9,50 +9,50 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 // ============================================================================
 
 #[derive(Debug, Clone)]
-pub struct MayChu {
-    pub ten: String,
-    pub ket_noi_hien_tai: u32,
-    pub trong_so: u32, // máy mạnh hơn có trọng số cao hơn
+pub struct Server {
+    pub name: String,
+    pub current_connect: u32,
+    pub weight: u32, // máy mạnh hơn có trọng số cao hơn
 }
 
-pub trait ChienLuocCanBang {
-    fn chon<'a>(&mut self, may_chu: &'a [MayChu]) -> Option<&'a MayChu>;
+pub trait StrategyCanTable {
+    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server>;
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
-pub struct XoayVong { vi_tri: usize }
-impl XoayVong { pub fn moi() -> Self { XoayVong { vi_tri: 0 } } }
-impl ChienLuocCanBang for XoayVong {
-    fn chon<'a>(&mut self, may_chu: &'a [MayChu]) -> Option<&'a MayChu> {
+pub struct RoundRobin { pos_value: usize }
+impl RoundRobin { pub fn new() -> Self { RoundRobin { pos_value: 0 } } }
+impl StrategyCanTable for RoundRobin {
+    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
         if may_chu.is_empty() { return None; }
-        let m = &may_chu[self.vi_tri % may_chu.len()];
-        self.vi_tri += 1;
+        let m = &may_chu[self.pos_value % may_chu.len()];
+        self.pos_value += 1;
         Some(m)
     }
 }
 
 /// Ít kết nối nhất (Least-Connections): gửi tới máy đang rảnh nhất.
-pub struct ItKetNoi;
-impl ChienLuocCanBang for ItKetNoi {
-    fn chon<'a>(&mut self, may_chu: &'a [MayChu]) -> Option<&'a MayChu> {
-        may_chu.iter().min_by_key(|m| m.ket_noi_hien_tai)
+pub struct FewConnect;
+impl StrategyCanTable for FewConnect {
+    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
+        may_chu.iter().min_by_key(|m| m.current_connect)
     }
 }
 
 /// Xoay vòng có trọng số (Weighted): máy mạnh nhận nhiều hơn theo tỷ lệ trọng số.
-pub struct XoayVongTrongSo { dem: u32 }
-impl XoayVongTrongSo { pub fn moi() -> Self { XoayVongTrongSo { dem: 0 } } }
-impl ChienLuocCanBang for XoayVongTrongSo {
-    fn chon<'a>(&mut self, may_chu: &'a [MayChu]) -> Option<&'a MayChu> {
+pub struct WeightedRoundRobin { count: u32 }
+impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
+impl StrategyCanTable for WeightedRoundRobin {
+    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
         if may_chu.is_empty() { return None; }
-        let tong: u32 = may_chu.iter().map(|m| m.trong_so).sum();
+        let tong: u32 = may_chu.iter().map(|m| m.weight).sum();
         if tong == 0 { return may_chu.first(); }
-        let muc = self.dem % tong;
-        self.dem += 1;
+        let level = self.count % tong;
+        self.count += 1;
         let mut cong_don = 0;
         for m in may_chu {
-            cong_don += m.trong_so;
-            if muc < cong_don { return Some(m); }
+            cong_don += m.weight;
+            if level < cong_don { return Some(m); }
         }
         may_chu.last()
     }
@@ -63,10 +63,10 @@ impl ChienLuocCanBang for XoayVongTrongSo {
 // ============================================================================
 
 /// Băm đơn giản, tất định (FNV-1a) — đủ cho minh họa.
-pub fn bam(khoa: &str) -> u64 {
+pub fn bam(key: &str) -> u64 {
     // FNV-1a để trộn từng byte...
     let mut h: u64 = 0xcbf29ce484222325;
-    for b in khoa.bytes() {
+    for b in key.bytes() {
         h ^= b as u64;
         h = h.wrapping_mul(0x100000001b3);
     }
@@ -83,30 +83,30 @@ pub fn bam(khoa: &str) -> u64 {
 
 /// Vòng băm nhất quán. Mỗi máy chủ được đặt tại NHIỀU điểm ảo trên vòng,
 /// để phân bố đều. Khóa đi theo chiều kim đồng hồ tới máy chủ gần nhất.
-pub struct VongBamNhatQuan {
-    vong: BTreeMap<u64, String>, // điểm trên vòng -> tên máy chủ
+pub struct ConsistentHashRing {
+    round: BTreeMap<u64, String>, // điểm trên vòng -> tên máy chủ
     so_diem_ao: u32,
 }
 
-impl VongBamNhatQuan {
-    pub fn moi(so_diem_ao: u32) -> Self {
-        VongBamNhatQuan { vong: BTreeMap::new(), so_diem_ao }
+impl ConsistentHashRing {
+    pub fn new(so_diem_ao: u32) -> Self {
+        ConsistentHashRing { round: BTreeMap::new(), so_diem_ao }
     }
-    pub fn them_may_chu(&mut self, ten: &str) {
+    pub fn add_server(&mut self, name: &str) {
         for i in 0..self.so_diem_ao {
-            self.vong.insert(bam(&format!("{}#{}", ten, i)), ten.to_string());
+            self.round.insert(bam(&format!("{}#{}", name, i)), name.to_string());
         }
     }
-    pub fn bo_may_chu(&mut self, ten: &str) {
-        self.vong.retain(|_, v| v != ten);
+    pub fn unit_server(&mut self, name: &str) {
+        self.round.retain(|_, v| v != name);
     }
     /// Tìm máy chủ chịu trách nhiệm cho một khóa: điểm đầu tiên >= hash(khóa),
     /// hoặc quay vòng về đầu (vòng tròn).
-    pub fn tim_may_chu(&self, khoa: &str) -> Option<&str> {
-        if self.vong.is_empty() { return None; }
-        let h = bam(khoa);
-        self.vong.range(h..).next()
-            .or_else(|| self.vong.iter().next()) // quay vòng
+    pub fn find_server(&self, key: &str) -> Option<&str> {
+        if self.round.is_empty() { return None; }
+        let h = bam(key);
+        self.round.range(h..).next()
+            .or_else(|| self.round.iter().next()) // quay vòng
             .map(|(_, v)| v.as_str())
     }
 }
@@ -117,19 +117,19 @@ impl VongBamNhatQuan {
 
 /// Xô token: mỗi yêu cầu tốn 1 token; token được đổ lại theo thời gian.
 /// Cho phép "bùng nổ" ngắn (dùng token tích lũy) nhưng giới hạn tốc độ trung bình.
-pub struct XoToken {
-    dung_luong: f64,
+pub struct TokenBucket {
+    capacity: f64,
     token: f64,
-    toc_do_do: f64, // token/giây
+    measured_rate: f64, // token/giây
 }
 
-impl XoToken {
-    pub fn moi(dung_luong: f64, toc_do_do: f64) -> Self {
-        XoToken { dung_luong, token: dung_luong, toc_do_do }
+impl TokenBucket {
+    pub fn new(capacity: f64, measured_rate: f64) -> Self {
+        TokenBucket { capacity, token: capacity, measured_rate }
     }
     /// Nạp token theo thời gian trôi qua (giây), rồi thử tiêu 1 token.
-    pub fn cho_phep(&mut self, thoi_gian_troi: f64) -> bool {
-        self.token = (self.token + thoi_gian_troi * self.toc_do_do).min(self.dung_luong);
+    pub fn wait_op(&mut self, thoi_gian_troi: f64) -> bool {
+        self.token = (self.token + thoi_gian_troi * self.measured_rate).min(self.capacity);
         if self.token >= 1.0 {
             self.token -= 1.0;
             true
@@ -147,34 +147,34 @@ impl XoToken {
 #[derive(Debug, PartialEq)]
 pub enum KetQuaNhan {
     DaNhan,
-    TuChoi, // hàng đầy — báo ngược lên nguồn để nó chậm lại (back-pressure)
+    RejectReason, // hàng đầy — báo ngược lên nguồn để nó chậm lại (back-pressure)
 }
 
 /// Hàng đợi có giới hạn: khi đầy, TỪ CHỐI thay vì phình vô hạn.
 /// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống nhanh
 /// biết mà giảm tốc, thay vì âm thầm chất đống đến khi hết RAM.
-pub struct HangDoiGioiHan<T> {
-    hang: VecDeque<T>,
-    suc_chua: usize,
-    da_tu_choi: u64,
+pub struct QueueLimit<T> {
+    queue: VecDeque<T>,
+    capacity: usize,
+    da_reject: u64,
 }
 
-impl<T> HangDoiGioiHan<T> {
-    pub fn moi(suc_chua: usize) -> Self {
-        HangDoiGioiHan { hang: VecDeque::new(), suc_chua, da_tu_choi: 0 }
+impl<T> QueueLimit<T> {
+    pub fn new(capacity: usize) -> Self {
+        QueueLimit { queue: VecDeque::new(), capacity, da_reject: 0 }
     }
-    pub fn gui(&mut self, viec: T) -> KetQuaNhan {
-        if self.hang.len() >= self.suc_chua {
-            self.da_tu_choi += 1;
-            KetQuaNhan::TuChoi
+    pub fn send(&mut self, viec: T) -> KetQuaNhan {
+        if self.queue.len() >= self.capacity {
+            self.da_reject += 1;
+            KetQuaNhan::RejectReason
         } else {
-            self.hang.push_back(viec);
+            self.queue.push_back(viec);
             KetQuaNhan::DaNhan
         }
     }
-    pub fn nhan(&mut self) -> Option<T> { self.hang.pop_front() }
-    pub fn so_cho(&self) -> usize { self.hang.len() }
-    pub fn so_da_tu_choi(&self) -> u64 { self.da_tu_choi }
+    pub fn nhan(&mut self) -> Option<T> { self.queue.pop_front() }
+    pub fn so_cho(&self) -> usize { self.queue.len() }
+    pub fn num_da_reject(&self) -> u64 { self.da_reject }
 }
 
 fn main() {
@@ -183,48 +183,48 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     let may = vec![
-        MayChu { ten: "web-1".into(), ket_noi_hien_tai: 5, trong_so: 1 },
-        MayChu { ten: "web-2".into(), ket_noi_hien_tai: 2, trong_so: 3 },
-        MayChu { ten: "web-3".into(), ket_noi_hien_tai: 8, trong_so: 1 },
+        Server { name: "web-1".into(), current_connect: 5, weight: 1 },
+        Server { name: "web-2".into(), current_connect: 2, weight: 3 },
+        Server { name: "web-3".into(), current_connect: 8, weight: 1 },
     ];
 
     println!("\n1. CÂN BẰNG TẢI");
-    let mut xv = XoayVong::moi();
-    let chuoi: Vec<&str> = (0..5).filter_map(|_| xv.chon(&may).map(|m| m.ten.as_str())).collect();
-    println!("   Xoay vòng     : {:?}", chuoi);
-    println!("   Ít kết nối    : {:?}", ItKetNoi.chon(&may).map(|m| &m.ten)); // web-2 (2 kết nối)
-    let mut wt = XoayVongTrongSo::moi();
-    let ws: Vec<&str> = (0..5).filter_map(|_| wt.chon(&may).map(|m| m.ten.as_str())).collect();
+    let mut xv = RoundRobin::new();
+    let series: Vec<&str> = (0..5).filter_map(|_| xv.pick(&may).map(|m| m.name.as_str())).collect();
+    println!("   Xoay vòng     : {:?}", series);
+    println!("   Ít kết nối    : {:?}", FewConnect.pick(&may).map(|m| &m.name)); // web-2 (2 kết nối)
+    let mut wt = WeightedRoundRobin::new();
+    let ws: Vec<&str> = (0..5).filter_map(|_| wt.pick(&may).map(|m| m.name.as_str())).collect();
     println!("   Trọng số      : {:?} (web-2 xuất hiện nhiều nhất)", ws);
 
     println!("\n2. BĂM NHẤT QUÁN — thêm/bớt máy chủ ít xáo trộn");
-    let mut vong = VongBamNhatQuan::moi(100);
-    for m in ["cache-A", "cache-B", "cache-C"] { vong.them_may_chu(m); }
-    let khoa = ["user:1", "user:2", "user:3", "user:4", "user:5"];
-    let truoc: HashMap<&str, String> = khoa.iter()
-        .map(|k| (*k, vong.tim_may_chu(k).unwrap().to_string())).collect();
-    println!("   Trước khi bỏ cache-B: {:?}", truoc);
-    vong.bo_may_chu("cache-B");
+    let mut round = ConsistentHashRing::new(100);
+    for m in ["cache-A", "cache-B", "cache-C"] { round.add_server(m); }
+    let key = ["user:1", "user:2", "user:3", "user:4", "user:5"];
+    let prev: HashMap<&str, String> = key.iter()
+        .map(|k| (*k, round.find_server(k).unwrap().to_string())).collect();
+    println!("   Trước khi bỏ cache-B: {:?}", prev);
+    round.unit_server("cache-B");
     let mut giu_nguyen = 0;
-    for k in &khoa {
-        let sau = vong.tim_may_chu(k).unwrap();
-        if sau == truoc[k] { giu_nguyen += 1; }
+    for k in &key {
+        let next = round.find_server(k).unwrap();
+        if next == prev[k] { giu_nguyen += 1; }
     }
-    println!("   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ", giu_nguyen, khoa.len());
+    println!("   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ", giu_nguyen, key.len());
     println!("   → Băm thường (hash % N) sẽ xáo trộn GẦN NHƯ TẤT CẢ khóa!");
 
     println!("\n3. GIỚI HẠN TẦN SUẤT (Token Bucket: 3 token, đổ 1/giây)");
-    let mut xo = XoToken::moi(3.0, 1.0);
+    let mut xor = TokenBucket::new(3.0, 1.0);
     for i in 1..=5 {
-        print!("   Yêu cầu {} (tức thì): {} | ", i, if xo.cho_phep(0.0) { "CHO" } else { "CHẶN" });
+        print!("   Yêu cầu {} (tức thì): {} | ", i, if xor.wait_op(0.0) { "CHO" } else { "CHẶN" });
     }
     println!();
-    println!("   Chờ 2 giây rồi thử lại: {}", if xo.cho_phep(2.0) { "CHO" } else { "CHẶN" });
+    println!("   Chờ 2 giây rồi thử lại: {}", if xor.wait_op(2.0) { "CHO" } else { "CHẶN" });
 
     println!("\n4. BACK-PRESSURE (hàng đợi sức chứa 3)");
-    let mut hq: HangDoiGioiHan<u32> = HangDoiGioiHan::moi(3);
+    let mut hq: QueueLimit<u32> = QueueLimit::new(3);
     for i in 1..=5 {
-        println!("   Gửi việc {}: {:?}", i, hq.gui(i));
+        println!("   Gửi việc {}: {:?}", i, hq.send(i));
     }
     println!("   → 2 việc bị TỪ CHỐI. Nguồn gửi phải chậm lại, không được ép thêm.");
 
@@ -234,97 +234,97 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn may3() -> Vec<MayChu> {
+    fn may3() -> Vec<Server> {
         vec![
-            MayChu { ten: "a".into(), ket_noi_hien_tai: 5, trong_so: 1 },
-            MayChu { ten: "b".into(), ket_noi_hien_tai: 2, trong_so: 3 },
-            MayChu { ten: "c".into(), ket_noi_hien_tai: 8, trong_so: 1 },
+            Server { name: "a".into(), current_connect: 5, weight: 1 },
+            Server { name: "b".into(), current_connect: 2, weight: 3 },
+            Server { name: "c".into(), current_connect: 8, weight: 1 },
         ]
     }
 
     #[test]
     fn xoay_vong_deu_va_quay_lai() {
         let m = may3();
-        let mut xv = XoayVong::moi();
-        let ten: Vec<&str> = (0..6).map(|_| xv.chon(&m).unwrap().ten.as_str()).collect();
-        assert_eq!(ten, vec!["a", "b", "c", "a", "b", "c"]);
+        let mut xv = RoundRobin::new();
+        let name: Vec<&str> = (0..6).map(|_| xv.pick(&m).unwrap().name.as_str()).collect();
+        assert_eq!(name, vec!["a", "b", "c", "a", "b", "c"]);
     }
 
     #[test]
     fn it_ket_noi_chon_may_ranh_nhat() {
-        assert_eq!(ItKetNoi.chon(&may3()).unwrap().ten, "b"); // b có 2 kết nối
+        assert_eq!(FewConnect.pick(&may3()).unwrap().name, "b"); // b có 2 kết nối
     }
 
     #[test]
-    fn trong_so_phan_bo_dung_ty_le() {
+    fn weight_part_unit_use_ratio() {
         let m = may3(); // trọng số a=1, b=3, c=1 -> tổng 5
-        let mut wt = XoayVongTrongSo::moi();
-        let mut dem: HashMap<String, u32> = HashMap::new();
-        for _ in 0..5 { *dem.entry(wt.chon(&m).unwrap().ten.clone()).or_insert(0) += 1; }
-        assert_eq!(dem["b"], 3); // b nhận 3/5
-        assert_eq!(dem["a"], 1);
-        assert_eq!(dem["c"], 1);
+        let mut wt = WeightedRoundRobin::new();
+        let mut count: HashMap<String, u32> = HashMap::new();
+        for _ in 0..5 { *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1; }
+        assert_eq!(count["b"], 3); // b nhận 3/5
+        assert_eq!(count["a"], 1);
+        assert_eq!(count["c"], 1);
     }
 
     #[test]
     fn bam_nhat_quan_it_xao_tron_khi_bo_may() {
-        let mut vong = VongBamNhatQuan::moi(150);
-        for m in ["A", "B", "C", "D"] { vong.them_may_chu(m); }
-        let khoa: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
-        let truoc: HashMap<&String, String> =
-            khoa.iter().map(|k| (k, vong.tim_may_chu(k).unwrap().to_string())).collect();
+        let mut round = ConsistentHashRing::new(150);
+        for m in ["A", "B", "C", "D"] { round.add_server(m); }
+        let key: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
+        let prev: HashMap<&String, String> =
+            key.iter().map(|k| (k, round.find_server(k).unwrap().to_string())).collect();
 
-        vong.bo_may_chu("B"); // bỏ 1 trong 4 máy
+        round.unit_server("B"); // bỏ 1 trong 4 máy
 
-        let giu = khoa.iter().filter(|k| vong.tim_may_chu(k).unwrap() == truoc[*k]).count();
+        let giu = key.iter().filter(|k| round.find_server(k).unwrap() == prev[*k]).count();
         // Lý thuyết: chỉ ~1/4 khóa (thuộc B) phải di chuyển. Giữ nguyên phải > 60%.
         assert!(giu as f64 / 1000.0 > 0.6, "chỉ giữ {} khóa — xáo trộn quá nhiều", giu);
     }
 
     #[test]
     fn bam_nhat_quan_khoa_on_dinh() {
-        let mut vong = VongBamNhatQuan::moi(50);
-        vong.them_may_chu("X");
-        vong.them_may_chu("Y");
+        let mut round = ConsistentHashRing::new(50);
+        round.add_server("X");
+        round.add_server("Y");
         // Cùng một khóa luôn cho cùng một máy chủ
-        let a = vong.tim_may_chu("user:42").unwrap().to_string();
-        let b = vong.tim_may_chu("user:42").unwrap().to_string();
+        let a = round.find_server("user:42").unwrap().to_string();
+        let b = round.find_server("user:42").unwrap().to_string();
         assert_eq!(a, b);
     }
 
     #[test]
     fn token_bucket_gioi_han_va_hoi_phuc() {
-        let mut xo = XoToken::moi(3.0, 1.0);
+        let mut xor = TokenBucket::new(3.0, 1.0);
         // 3 token đầu -> cho; token thứ 4 tức thì -> chặn
-        assert!(xo.cho_phep(0.0));
-        assert!(xo.cho_phep(0.0));
-        assert!(xo.cho_phep(0.0));
-        assert!(!xo.cho_phep(0.0));
+        assert!(xor.wait_op(0.0));
+        assert!(xor.wait_op(0.0));
+        assert!(xor.wait_op(0.0));
+        assert!(!xor.wait_op(0.0));
         // Chờ 1 giây -> đổ lại 1 token -> cho đúng 1 lần
-        assert!(xo.cho_phep(1.0));
-        assert!(!xo.cho_phep(0.0));
+        assert!(xor.wait_op(1.0));
+        assert!(!xor.wait_op(0.0));
     }
 
     #[test]
     fn token_bucket_khong_vuot_dung_luong() {
-        let mut xo = XoToken::moi(2.0, 100.0);
+        let mut xor = TokenBucket::new(2.0, 100.0);
         // chờ rất lâu nhưng token bị GHIM ở dung lượng, không tràn
-        xo.cho_phep(1000.0);
-        assert!(xo.token_con() <= 2.0);
+        xor.wait_op(1000.0);
+        assert!(xor.token_con() <= 2.0);
     }
 
     #[test]
     fn back_pressure_tu_choi_khi_day() {
-        let mut hq: HangDoiGioiHan<u32> = HangDoiGioiHan::moi(2);
-        assert_eq!(hq.gui(1), KetQuaNhan::DaNhan);
-        assert_eq!(hq.gui(2), KetQuaNhan::DaNhan);
-        assert_eq!(hq.gui(3), KetQuaNhan::TuChoi); // đầy!
-        assert_eq!(hq.so_da_tu_choi(), 1);
+        let mut hq: QueueLimit<u32> = QueueLimit::new(2);
+        assert_eq!(hq.send(1), KetQuaNhan::DaNhan);
+        assert_eq!(hq.send(2), KetQuaNhan::DaNhan);
+        assert_eq!(hq.send(3), KetQuaNhan::RejectReason); // đầy!
+        assert_eq!(hq.num_da_reject(), 1);
         // Lấy ra 1 -> có chỗ -> nhận lại được
         assert_eq!(hq.nhan(), Some(1));
-        assert_eq!(hq.gui(3), KetQuaNhan::DaNhan);
+        assert_eq!(hq.send(3), KetQuaNhan::DaNhan);
     }
 }

@@ -7,12 +7,12 @@
 // ============================================================================
 
 macro_rules! phep_tinh_noi_bo {
-    ( $dau_vao:expr ) => {
+    ( $input:expr ) => {
         {
-            // Khai báo biến tạm mang tên 'gia_tri_tam' bên trong macro
-            let gia_tri_tam = $dau_vao * 2;
-            println!("  [Trong Macro] gia_tri_tam = {}", gia_tri_tam);
-            gia_tri_tam + 5
+            // Khai báo biến tạm mang tên 'value_temp' bên trong macro
+            let value_temp = $input * 2;
+            println!("  [Trong Macro] gia_tri_tam = {}", value_temp);
+            value_temp + 5
         }
     };
 }
@@ -44,23 +44,23 @@ macro_rules! tao_ma_tran {
 /// Macro đệ quy phân tích chuỗi phép toán từ trái sang phải
 macro_rules! tinh_bieu_thuc_chuoi {
     // Nhánh dừng cơ sở: Chỉ còn lại duy nhất một giá trị
-    ( $gia_tri:expr ) => {
-        $gia_tri
+    ( $value:expr ) => {
+        $value
     };
 
     // Nhánh đệ quy phép cộng: (x + y + rest...) -> tinh_bieu_thuc_chuoi!((x + y) + rest...)
-    ( $x:expr, +, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x + $y) $(, $duoi )* )
+    ( $x:expr, +, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x + $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép nhân: (x * y * rest...)
-    ( $x:expr, *, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x * $y) $(, $duoi )* )
+    ( $x:expr, *, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x * $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép trừ: (x - y - rest...)
-    ( $x:expr, -, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x - $y) $(, $duoi )* )
+    ( $x:expr, -, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x - $y) $(, $below )* )
     };
 }
 
@@ -77,29 +77,29 @@ fn main() {
     // TÌNH HUỐNG 1: Kiểm chứng Tính vệ sinh không làm ô nhiễm biến ngoài
     // ------------------------------------------------------------------------
     println!("\n1. Kiểm chứng Tính vệ sinh của Macro (Macro Hygiene):");
-    let gia_tri_tam = 7777; // Biến trùng tên ở phạm vi hàm main
-    println!("Trước khi gọi macro: gia_tri_tam = {}", gia_tri_tam);
+    let value_temp = 7777; // Biến trùng tên ở phạm vi hàm main
+    println!("Trước khi gọi macro: gia_tri_tam = {}", value_temp);
 
     let ket_qua_macro = phep_tinh_noi_bo!(10);
     println!("Kết quả trả về từ macro: {}", ket_qua_macro);
 
-    // Xác nhận biến gia_tri_tam ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
-    println!("Sau khi gọi macro: gia_tri_tam = {}", gia_tri_tam);
-    assert_eq!(gia_tri_tam, 7777);
+    // Xác nhận biến value_temp ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
+    println!("Sau khi gọi macro: gia_tri_tam = {}", value_temp);
+    assert_eq!(value_temp, 7777);
     println!("-> KẾT LUẬN: Biến trong macro được cách ly vô trùng tuyệt đối!");
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Xây dựng Ma trận dữ liệu 2D với Mẫu lặp lồng nhau
     // ------------------------------------------------------------------------
-    println!("\n2. Khởi tạo Bảng dữ liệu ma trận 2D qua macro lồng nhau:");
+    println!("\n2. Khởi tạo Bảng dữ liệu id trận 2D qua macro lồng nhau:");
     let ma_tran_diem = tao_ma_tran![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
+        [70, 80, 90],  // Dấu phẩy ở cuối khối id trận hợp lệ
     ];
 
-    for (so_hang, hang) in ma_tran_diem.iter().enumerate() {
-        println!("  Hàng #{}: {:?}", so_hang + 1, hang);
+    for (num_queue, queue) in ma_tran_diem.iter().enumerate() {
+        println!("  Hàng #{}: {:?}", num_queue + 1, queue);
     }
     assert_eq!(ma_tran_diem[1][1], 50);
 
@@ -108,9 +108,9 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
-    let ket_qua_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", ket_qua_tinh);
-    assert_eq!(ket_qua_tinh, 24);
+    let result_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
+    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", result_tinh);
+    assert_eq!(result_tinh, 24);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MẪU MACRO NÂNG CAO HOÀN THÀNH THÀNH CÔNG  ");

@@ -99,6 +99,28 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 
 ---
 
+## 🔤 Quy Ước Ngôn Ngữ Trong Mã Nguồn
+
+**Định danh bằng tiếng Anh, giảng nghĩa bằng comment tiếng Việt.**
+
+```rust
+/// Cổng rủi ro trước lệnh — chặn lệnh xấu **trước khi** nó rời khỏi máy.
+/// Không có đường vòng: mọi lệnh đều phải qua đây.
+pub struct RiskGate {
+    /// Hạn mức vị thế ròng, tính CẢ lệnh đang treo và đang bay.
+    pub max_position: Quantity,
+    /// Công tắc ngắt khẩn cấp. Vẫn cho lệnh HUỶ đi qua — chặn cả
+    /// đường rút chân là cái bẫy, không phải biện pháp an toàn.
+    pub kill_switch_on: bool,
+}
+```
+
+Lý do: bạn học Rust để đọc được mã nguồn thật, mà mọi crate ngoài đời đều đặt tên bằng tiếng Anh. Một cái tên như `SoLenh` chỉ tồn tại trong sách này; `OrderBook` thì bạn sẽ gặp lại ở khắp nơi. Comment tiếng Việt còn giảng được **nhiều hơn** tên biến tiếng Việt từng làm được — nó nói được cả *vì sao*, không chỉ *là gì*.
+
+Toàn bộ văn xuôi, tiêu đề, sơ đồ và bảng biểu vẫn bằng tiếng Việt. Bảng đối chiếu tên cũ ↔ tên mới: mục 19 của **[THUAT_NGU.md](./THUAT_NGU.md)**.
+
+---
+
 ## 🛠 Mã Nguồn Chạy Được
 
 Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 87 crate:

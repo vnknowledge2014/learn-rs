@@ -9,8 +9,8 @@ Trong lập trình truyền thống, một trong những cạm bẫy lớn nhấ
 Thay vì yêu cầu AI viết code ngay lập tức, bạn sẽ yêu cầu AI cùng bạn làm rõ bản đặc tả kỹ thuật (`SPEC.md`), sau đó tạo ra một bộ bài thi kiểm tra nghiêm ngặt (Unit Tests) trước khi viết dù chỉ một dòng mã thực thi. Quy trình này biến AI thành một cỗ máy giải đố cực kỳ chuẩn xác, đảm bảo mọi ngóc ngách của hệ thống đều tuân thủ các quy tắc an toàn về quyền sở hữu (ownership), mượn (borrow), và thời gian sống (lifetime).
 
 Mục tiêu học tập của chương:
-- Thấu hiểu triết lý và chu trình làm việc khép kín của **Spec-Driven Development (SDD)**.
-- Làm chủ chu trình 3 bước kinh điển của **AI-Assisted TDD**: Red (Viết test thất bại) -> Green (Viết mã tối thiểu để vượt qua) -> Refactor (Tái cấu trúc tối ưu).
+- Thấu hiểu triết lý và owner trình làm việc khép kín của **Spec-Driven Development (SDD)**.
+- Làm chủ owner trình 3 bước kinh điển của **AI-Assisted TDD**: Red (Viết test thất bại) -> Green (Viết mã tối thiểu để vượt qua) -> Refactor (Tái cấu trúc tối ưu).
 - Xây dựng tư duy phát hiện trường hợp biên (Edge Cases): Dữ liệu rỗng, độ dài bất thường, ký tự dị biệt, và lỗi logic nghiệp vụ.
 - Thiết lập bộ kiểm thử đơn vị tự động trong Rust bằng `#[cfg(test)]` và các macro kiểm tra khẳng định (`assert!`, `assert_eq!`).
 
@@ -36,7 +36,7 @@ Hãy tưởng tượng bạn chuẩn bị sản xuất hàng loạt một dòng 
 3. **Chế tạo để vượt qua bài kiểm tra (Green Phase)**:
    - Xưởng sản xuất (đóng vai trò là trợ lý AI) bắt đầu lắp ráp khung xe với mục tiêu duy nhất: Vượt qua bài kiểm tra va chạm của phòng thí nghiệm.
    - Khi chiếc xe chạy đâm vào tường và các túi khí bung hoàn hảo, hệ thống thông báo trạng thái chuyển sang **Xanh (Green)**!
-4. **Tối ưu hóa và tinh chỉnh (Refactor Phase)**:
+4. **Tối ưu hóa và compute chỉnh (Refactor Phase)**:
    - Sau khi các tiêu chuẩn an toàn đã vượt qua, kỹ sư yêu cầu làm nhẵn bề mặt sơn, thay ghế nỉ bằng ghế da cao cấp, nhưng giữ nguyên khung gầm an toàn đã kiểm định.
 
 Trong lập trình Rust:
@@ -294,7 +294,7 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục
 
-Dưới đây là các lỗi biên dịch thường phát sinh trong chu trình viết test và hoàn thiện mã cùng trợ lý AI:
+Dưới đây là các lỗi biên dịch thường phát sinh trong owner trình viết test và hoàn thiện mã cùng trợ lý AI:
 
 | Mã lỗi `rustc` | Nguyên nhân gốc rễ trong quá trình TDD | Đoạn mã vi phạm mẫu | Giải pháp sửa chữa chuẩn quy trình |
 | :--- | :--- | :--- | :--- |

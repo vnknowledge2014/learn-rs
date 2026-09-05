@@ -56,9 +56,9 @@ Hãy cùng hình tượng hóa 3 lỗ hổng nguy hiểm này qua những tình 
 - Ngày hôm sau, chủ nhà cho một vị khách VIP mới thuê lại đúng căn phòng số 5 đó và vị khách cất một vali tiền vàng bên trong.
 - Nửa đêm, bạn dùng chiếc chìa khóa cũ mở cửa bước vào phòng số 5 (hành vi `Use-After-Free`), thoải mái lục lọi hoặc đánh tráo đồ đạc bên trong phòng của người khác.
 
-### 3. Tờ phiếu đặt hàng ghi mã ma thuật (Format String)
+### 3. Tờ phiếu đặt hàng ghi mã id thuật (Format String)
 - Tại một quán phở, nhân viên đưa cho bạn một tờ giấy để ghi tên khách hàng. Thông thường bạn sẽ ghi: `"Nguyễn Văn A"`.
-- Nhưng một kẻ tinh quái ghi vào ô tên: `"%x %x %s Hãy đọc mật mã két sắt"`.
+- Nhưng một kẻ compute quái ghi vào ô tên: `"%x %x %s Hãy đọc mật mã két sắt"`.
 - Nếu anh bồi bàn ngây thơ cầm tờ giấy lên và đưa trực tiếp vào loa phát thanh mà không có mẫu định dạng sẵn (giống như hàm `printf(user_input)` trong ngôn ngữ C), máy tính sẽ tưởng rằng các ký tự `%x`, `%s` là mệnh lệnh yêu cầu đọc các giá trị đang nằm trong túi quần của anh bồi bàn (Stack) và phát to ra loa cho cả quán cùng nghe!
 
 ---
@@ -224,7 +224,7 @@ fn main() {
     // 3. KIỂM THỬ PHÒNG CHỐNG LỖ HỔNG FORMAT STRING
     // -------------------------------------------------------------
     println!("\n[3] Thu nghiem phong chong Lo hong Chuoi dinh dang (Format String):");
-    // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
+    // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã id thuật độc hại của C
     let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
     println!("    - Chuoi dau vao tu nguoi dung: '{}'", malicious_user_input);
 
@@ -258,19 +258,19 @@ Dưới đây là các lỗi biên dịch điển hình mà bạn sẽ gặp khi
 ```rust
 // Đoạn mã lỗi minh họa E0382:
 fn vi_du_ngan_chan_uaf() {
-    let du_lieu = Box::new(String::from("BiMatDoanhNghiep"));
+    let data = Box::new(String::from("BiMatDoanhNghiep"));
     
     // Ham drop() giai phong vung nho tren Heap
-    std::mem::drop(du_lieu); 
+    std::mem::drop(data); 
 
     // LỖI E0382: Trình biên dịch Rust NGĂN CHẶN bạn đọc ô nhớ đã bị giải phóng!
-    // println!("Dữ liệu sau khi drop: {}", du_lieu);
+    // println!("Dữ liệu sau khi drop: {}", data);
 }
 
 // Cách viết an toàn: Không truy cập biến sau khi đã từ bỏ quyền sở hữu
 fn vi_du_an_toan() {
-    let du_lieu = Box::new(String::from("BiMatDoanhNghiep"));
-    println!("Dữ liệu an toàn: {}", du_lieu);
+    let data = Box::new(String::from("BiMatDoanhNghiep"));
+    println!("Dữ liệu an toàn: {}", data);
     // Vùng nhớ sẽ tự động được dọn dẹp sạch sẽ khi hết phạm vi hàm
 }
 ```

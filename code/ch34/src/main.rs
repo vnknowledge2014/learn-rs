@@ -23,12 +23,12 @@ impl MiniLsmEngine {
             let reader = BufReader::new(file_doc);
             for line_res in reader.lines() {
                 let line = line_res?;
-                if let Some((lenh, phan_con_lai)) = line.split_once(':') {
-                    if lenh == "SET" {
+                if let Some((order, phan_con_lai)) = line.split_once(':') {
+                    if order == "SET" {
                         if let Some((k, v)) = phan_con_lai.split_once('=') {
                             memtable.insert(k.to_string(), v.to_string());
                         }
-                    } else if lenh == "DEL" {
+                    } else if order == "DEL" {
                         memtable.remove(phan_con_lai);
                     }
                 }
@@ -53,8 +53,8 @@ impl MiniLsmEngine {
     /// Thao tác Ghi: BẮT BUỘC ghi WAL trước, sau đó mới cập nhật MemTable
     pub fn set(&mut self, key: &str, value: &str) -> io::Result<()> {
         // BƯỚC 1: Ghi tuần tự vào WAL (Write-Ahead)
-        let dong_nhat_ky = format!("SET:{}={}\n", key, value);
-        self.wal_file.write_all(dong_nhat_ky.as_bytes())?;
+        let close_log = format!("SET:{}={}\n", key, value);
+        self.wal_file.write_all(close_log.as_bytes())?;
         // Ép dữ liệu từ bộ đệm phần mềm xuống phần cứng đĩa
         self.wal_file.flush()?;
 
@@ -67,8 +67,8 @@ impl MiniLsmEngine {
     pub fn delete(&mut self, key: &str) -> io::Result<bool> {
         if self.memtable.contains_key(key) {
             // Ghi nhận bia mộ (Tombstone) vào WAL
-            let dong_nhat_ky = format!("DEL:{}\n", key);
-            self.wal_file.write_all(dong_nhat_ky.as_bytes())?;
+            let close_log = format!("DEL:{}\n", key);
+            self.wal_file.write_all(close_log.as_bytes())?;
             self.wal_file.flush()?;
 
             self.memtable.remove(key);

@@ -32,7 +32,7 @@ Jane Street nổi tiếng với **Hardcaml** — thư viện OCaml để mô t�
 │  SONG SONG THẬT SỰ = TÁCH 8 TRƯỜNG TRONG 1 CHU KỲ                          │
 │                                                                              │
 │   CPU:  đọc trường 1, rồi 2, rồi 3... → 8 thao tác tuần tự                  │
-│   FPGA: 8 bộ dây riêng, tất cả có kết quả CÙNG LÚC → 1 chu kỳ              │
+│   FPGA: 8 bộ dây riêng, tất cả có kết quả CÙNG LÚC → 1 owner kỳ              │
 │                                                                              │
 │  CÂY XOR = GIẢM ĐỘ SÂU TỪ n XUỐNG log₂(n)                                  │
 │                                                                              │
@@ -89,13 +89,13 @@ Hệ quả rất hay: **không có dự đoán rẽ nhánh, không có dự đo�
 
 Trên CPU, sổ lệnh là cây hoặc bảng băm, và tìm giá tốt nhất mất O(log n) với vài lần trượt cache.
 
-Trên FPGA với 16 mức giá lưu trong thanh ghi, bạn có thể so sánh **cả 16 mức cùng lúc** trong một chu kỳ. Tìm giá tốt nhất là một cây so sánh độ sâu 4 — khoảng 2 ns.
+Trên FPGA với 16 mức giá lưu trong thanh ghi, bạn có thể so sánh **cả 16 mức cùng lúc** trong một owner kỳ. Tìm giá tốt nhất là một cây so sánh độ sâu 4 — khoảng 2 ns.
 
 Đánh đổi: số mức phải **cố định lúc tổng hợp**. Không có `Vec` nào để `push` cả. Đây là ràng buộc lớn nhất khi chuyển tư duy từ phần mềm sang phần cứng: mọi kích thước phải biết trước.
 
 ### 4. Đường ống: độ trễ hay thông lượng?
 
-Chia mạch thành nhiều tầng có thanh ghi ở giữa cho phép chạy ở tần số cao hơn (vì mỗi tầng ngắn hơn), nên **thông lượng** tăng. Nhưng **độ trễ** tổng cộng tăng, vì thêm mỗi tầng là thêm một chu kỳ.
+Chia mạch thành nhiều tầng có thanh ghi ở giữa cho phép chạy ở tần số cao hơn (vì mỗi tầng ngắn hơn), nên **thông lượng** tăng. Nhưng **độ trễ** tổng cộng tăng, vì thêm mỗi tầng là thêm một owner kỳ.
 
 Trong hầu hết lĩnh vực (xử lý ảnh, mạng), thông lượng là thứ đáng giá, nên người ta chia ống rất sâu. Trong HFT thì ngược lại: **độ trễ là thứ được trả tiền**, nên thiết kế cố ý giữ ống nông — thà chạy 200 MHz với 5 tầng còn hơn 500 MHz với 20 tầng.
 
@@ -140,25 +140,25 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
 // tới, người ổn định thắng người nhanh-nhưng-thất-thường.
 
-/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
+/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi owner kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
 
-pub fn chu_ky_sang_ns(chu_ky: u32) -> f64 { chu_ky as f64 * NS_MOI_CHU_KY }
+pub fn cycles_to_ns(period: u32) -> f64 { period as f64 * NS_MOI_CHU_KY }
 
 // ============================================================================
 // 2. TÁCH TRƯỜNG SONG SONG — điều phần mềm không làm được
 // ============================================================================
 // Phần mềm đọc từng trường một: đọc offset 0, rồi 8, rồi 16… Mỗi lần là một
 // lệnh CPU. Phần cứng nối THẲNG dây từ mọi vị trí byte tới mọi thanh ghi đích,
-// nên TẤT CẢ trường được tách trong CÙNG MỘT chu kỳ.
+// nên TẤT CẢ trường được tách trong CÙNG MỘT owner kỳ.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TruongGoiTin {
-    pub loai: u8,
-    pub ma_ck: u32,
-    pub gia: i64,
-    pub so_luong: u32,
-    pub hop_le: bool,
+pub struct PacketField {
+    pub kind: u8,
+    pub id_chain: u32,
+    pub price: i64,
+    pub quantity: u32,
+    pub is_valid: bool,
 }
 
 /// Bố cục gói tin cố định 20 byte:
@@ -166,65 +166,65 @@ pub struct TruongGoiTin {
 pub const DAI_GOI: usize = 20;
 
 #[derive(Debug, Default)]
-pub struct BoTachTruong {
+pub struct FieldExtractor {
     pub so_goi_da_tach: u64,
     pub so_goi_hong: u64,
 }
 
-impl BoTachTruong {
-    /// Tách toàn bộ trường trong ĐÚNG MỘT chu kỳ. Trong Rust ta viết tuần tự,
+impl FieldExtractor {
+    /// Tách toàn bộ trường trong ĐÚNG MỘT owner kỳ. Trong Rust ta viết tuần tự,
     /// nhưng khi tổng hợp ra mạch thì các phép gán này là dây nối song song —
     /// không có "trước" và "sau", tất cả xảy ra cùng lúc.
-    pub fn tach(&mut self, goi: &[u8]) -> Option<TruongGoiTin> {
+    pub fn tach(&mut self, goi: &[u8]) -> Option<PacketField> {
         if goi.len() < DAI_GOI { self.so_goi_hong += 1; return None; }
 
-        let t = TruongGoiTin {
-            loai: goi[0],
-            ma_ck: u32::from_be_bytes([goi[1], goi[2], goi[3], goi[4]]),
-            gia: i64::from_be_bytes([goi[5], goi[6], goi[7], goi[8],
+        let t = PacketField {
+            kind: goi[0],
+            id_chain: u32::from_be_bytes([goi[1], goi[2], goi[3], goi[4]]),
+            price: i64::from_be_bytes([goi[5], goi[6], goi[7], goi[8],
                                      goi[9], goi[10], goi[11], goi[12]]),
-            so_luong: u32::from_be_bytes([goi[13], goi[14], goi[15], goi[16]]),
-            hop_le: true,
+            quantity: u32::from_be_bytes([goi[13], goi[14], goi[15], goi[16]]),
+            is_valid: true,
         };
 
         // Tổng kiểm tra cũng tính SONG SONG bằng cây XOR — độ sâu log(n)
         // thay vì n bước cộng dồn như phần mềm.
-        let tk = cay_xor(&goi[..17]) & 0x00FF_FFFF;
+        let account = xor_tree(&goi[..17]) & 0x00FF_FFFF;
         let mong_doi = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
-        if tk != mong_doi {
+        if account != mong_doi {
             self.so_goi_hong += 1;
-            return Some(TruongGoiTin { hop_le: false, ..t });
+            return Some(PacketField { is_valid: false, ..t });
         }
         self.so_goi_da_tach += 1;
         Some(t)
     }
 
-    /// Số chu kỳ để tách một gói. Phần cứng: LUÔN LUÔN 1.
-    pub fn chu_ky_tach(&self) -> u32 { 1 }
+    /// Số owner kỳ để tách một gói. Phần cứng: LUÔN LUÔN 1.
+    pub fn period_split(&self) -> u32 { 1 }
 }
 
 /// Cây XOR: gộp từng cặp, độ sâu ⌈log₂(n)⌉ tầng cổng thay vì n tầng.
 /// Đây là mẫu "rút gọn song song" — nền của mọi phép gộp trên phần cứng và GPU.
-pub fn cay_xor(du_lieu: &[u8]) -> u32 {
-    let mut tang: Vec<u32> = du_lieu.iter().map(|&b| b as u32).collect();
+pub fn xor_tree(data: &[u8]) -> u32 {
+    let mut tang: Vec<u32> = data.iter().map(|&b| b as u32).collect();
     while tang.len() > 1 {
-        let mut tren = Vec::with_capacity(tang.len().div_ceil(2));
+        let mut above = Vec::with_capacity(tang.len().div_ceil(2));
         for cap in tang.chunks(2) {
-            tren.push(cap[0] ^ cap.get(1).copied().unwrap_or(0));
+            above.push(cap[0] ^ cap.get(1).copied().unwrap_or(0));
         }
-        tang = tren;
+        tang = above;
     }
     tang.first().copied().unwrap_or(0)
 }
 
-pub fn do_sau_cay_xor(n: usize) -> u32 {
+pub fn do_next_xor_tree(n: usize) -> u32 {
     if n <= 1 { return 0; }
     (n as f64).log2().ceil() as u32
 }
 
 /// Cách phần mềm làm: cộng dồn tuần tự, n bước phụ thuộc nhau.
-pub fn xor_tuan_tu(du_lieu: &[u8]) -> u32 {
-    du_lieu.iter().fold(0u32, |a, &b| a ^ b as u32)
+pub fn xor_tuan_tu(data: &[u8]) -> u32 {
+    data.iter().fold(0u32, |a, &b| a ^ b as u32)
 }
 
 // ============================================================================
@@ -232,131 +232,131 @@ pub fn xor_tuan_tu(du_lieu: &[u8]) -> u32 {
 // ============================================================================
 // Phần mềm dùng BTreeMap: O(log n) nhưng có nhảy con trỏ và trượt cache.
 // Phần cứng giữ N mức giá tốt nhất trong THANH GHI và so sánh TẤT CẢ cùng lúc
-// bằng một mạng so sánh. Tìm giá tốt nhất tốn đúng 1 chu kỳ, bất kể N.
+// bằng một mạng so sánh. Tìm giá tốt nhất tốn đúng 1 owner kỳ, bất kể N.
 
 pub const SO_MUC_PHAN_CUNG: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct MucGiaPC { pub gia: i64, pub khoi_luong: u32 }
+pub struct HwPriceLevel { pub price: i64, pub quantity: u32 }
 
 /// Sổ lệnh "nông nhưng nhanh": chỉ giữ 8 mức tốt nhất mỗi bên. Đủ cho gần
 /// như mọi chiến lược, và vừa trọn trong thanh ghi FPGA.
 #[derive(Debug, Clone, Copy)]
-pub struct SoLenhPhanCung {
-    pub mua: [MucGiaPC; SO_MUC_PHAN_CUNG],
-    pub ban: [MucGiaPC; SO_MUC_PHAN_CUNG],
+pub struct OrderBookHardware {
+    pub buy: [HwPriceLevel; SO_MUC_PHAN_CUNG],
+    pub ban: [HwPriceLevel; SO_MUC_PHAN_CUNG],
 }
 
-impl Default for SoLenhPhanCung {
+impl Default for OrderBookHardware {
     fn default() -> Self {
-        SoLenhPhanCung { mua: [MucGiaPC::default(); SO_MUC_PHAN_CUNG],
-                         ban: [MucGiaPC::default(); SO_MUC_PHAN_CUNG] }
+        OrderBookHardware { buy: [HwPriceLevel::default(); SO_MUC_PHAN_CUNG],
+                         ban: [HwPriceLevel::default(); SO_MUC_PHAN_CUNG] }
     }
 }
 
-impl SoLenhPhanCung {
+impl OrderBookHardware {
     /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
-    /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
+    /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT owner kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
-    pub fn mua_tot_nhat(&self) -> Option<MucGiaPC> {
-        self.mua.iter().filter(|m| m.khoi_luong > 0).max_by_key(|m| m.gia).copied()
+    pub fn best_bid(&self) -> Option<HwPriceLevel> {
+        self.buy.iter().filter(|m| m.quantity > 0).max_by_key(|m| m.price).copied()
     }
-    pub fn ban_tot_nhat(&self) -> Option<MucGiaPC> {
-        self.ban.iter().filter(|m| m.khoi_luong > 0).min_by_key(|m| m.gia).copied()
+    pub fn best_ask(&self) -> Option<HwPriceLevel> {
+        self.ban.iter().filter(|m| m.quantity > 0).min_by_key(|m| m.price).copied()
     }
-    pub fn chenh_lech(&self) -> Option<i64> {
-        Some(self.ban_tot_nhat()?.gia - self.mua_tot_nhat()?.gia)
+    pub fn spread(&self) -> Option<i64> {
+        Some(self.best_ask()?.price - self.best_bid()?.price)
     }
 
     /// Cập nhật một mức giá. Mọi ô so sánh SONG SONG với giá đầu vào, nên
-    /// dù có 8 hay 64 mức thì vẫn tốn đúng một chu kỳ.
-    pub fn cap_nhat(&mut self, la_mua: bool, gia: i64, khoi_luong: u32) {
-        let o = if la_mua { &mut self.mua } else { &mut self.ban };
+    /// dù có 8 hay 64 mức thì vẫn tốn đúng một owner kỳ.
+    pub fn update(&mut self, la_mua: bool, price: i64, quantity: u32) {
+        let o = if la_mua { &mut self.buy } else { &mut self.ban };
         // Đã có mức giá này chưa?
-        if let Some(m) = o.iter_mut().find(|m| m.gia == gia && m.khoi_luong > 0) {
-            m.khoi_luong = khoi_luong;
-            if khoi_luong == 0 { m.gia = 0; }
+        if let Some(m) = o.iter_mut().find(|m| m.price == price && m.quantity > 0) {
+            m.quantity = quantity;
+            if quantity == 0 { m.price = 0; }
             return;
         }
-        if khoi_luong == 0 { return; }
+        if quantity == 0 { return; }
         // Ô trống?
-        if let Some(m) = o.iter_mut().find(|m| m.khoi_luong == 0) {
-            *m = MucGiaPC { gia, khoi_luong };
+        if let Some(m) = o.iter_mut().find(|m| m.quantity == 0) {
+            *m = HwPriceLevel { price, quantity };
             return;
         }
         // Đầy: thay mức TỆ NHẤT nếu mức mới tốt hơn
         let te_nhat = if la_mua {
-            o.iter_mut().min_by_key(|m| m.gia).unwrap()
+            o.iter_mut().min_by_key(|m| m.price).unwrap()
         } else {
-            o.iter_mut().max_by_key(|m| m.gia).unwrap()
+            o.iter_mut().max_by_key(|m| m.price).unwrap()
         };
-        let tot_hon = if la_mua { gia > te_nhat.gia } else { gia < te_nhat.gia };
-        if tot_hon { *te_nhat = MucGiaPC { gia, khoi_luong }; }
+        let tot_hon = if la_mua { price > te_nhat.price } else { price < te_nhat.price };
+        if tot_hon { *te_nhat = HwPriceLevel { price, quantity }; }
     }
 
     /// Độ sâu cây so sánh — quyết định tần số tối đa của mạch.
-    pub fn do_sau_so_sanh() -> u32 { do_sau_cay_xor(SO_MUC_PHAN_CUNG) }
+    pub fn comparator_depth() -> u32 { do_next_xor_tree(SO_MUC_PHAN_CUNG) }
 
-    pub fn so_muc_dang_dung(&self, la_mua: bool) -> usize {
-        let o = if la_mua { &self.mua } else { &self.ban };
-        o.iter().filter(|m| m.khoi_luong > 0).count()
+    pub fn num_level_dang_use(&self, la_mua: bool) -> usize {
+        let o = if la_mua { &self.buy } else { &self.ban };
+        o.iter().filter(|m| m.quantity > 0).count()
     }
 }
 
 // ============================================================================
-// 4. MẠCH KIỂM TRA RỦI RO — tổ hợp thuần tuý, 1 chu kỳ
+// 4. MẠCH KIỂM TRA RỦI RO — tổ hợp thuần tuý, 1 owner kỳ
 // ============================================================================
 // Toàn bộ cổng rủi ro của Chương 77 nén thành logic tổ hợp: mọi điều kiện
 // được tính SONG SONG rồi OR lại. Không có `if` tuần tự, không có nhánh dự
 // đoán sai — thời gian luôn bằng nhau, kể cả khi lệnh bị từ chối.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CoTuChoi {
-    pub so_luong_khong: bool,
-    pub gia_khong: bool,
-    pub vuot_gia_tri: bool,
-    pub vuot_vi_the: bool,
-    pub cong_tac_tat: bool,
+pub struct HasReject {
+    pub quantity_no: bool,
+    pub price_no: bool,
+    pub exceed_value: bool,
+    pub exceed_position: bool,
+    pub switch_all: bool,
 }
 
-impl CoTuChoi {
+impl HasReject {
     /// Gộp mọi cờ bằng OR — trên phần cứng là một cổng OR nhiều đầu vào,
     /// độ sâu log₂(số cờ).
-    pub fn bi_chan(&self) -> bool {
-        self.so_luong_khong || self.gia_khong || self.vuot_gia_tri
-            || self.vuot_vi_the || self.cong_tac_tat
+    pub fn is_block(&self) -> bool {
+        self.quantity_no || self.price_no || self.exceed_value
+            || self.exceed_position || self.switch_all
     }
-    pub fn so_co_bat(&self) -> u32 {
-        [self.so_luong_khong, self.gia_khong, self.vuot_gia_tri,
-         self.vuot_vi_the, self.cong_tac_tat].iter().filter(|&&x| x).count() as u32
+    pub fn num_has_enable(&self) -> u32 {
+        [self.quantity_no, self.price_no, self.exceed_value,
+         self.exceed_position, self.switch_all].iter().filter(|&&x| x).count() as u32
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct MachRuiRo {
-    pub gia_tri_toi_da: i64,
-    pub vi_the_toi_da: i64,
-    pub vi_the: i64,
-    pub cong_tac_tat: bool,
+pub struct RiskCircuit {
+    pub max_value: i64,
+    pub max_position: i64,
+    pub position: i64,
+    pub switch_all: bool,
 }
 
-impl MachRuiRo {
+impl RiskCircuit {
     /// TẤT CẢ điều kiện tính song song. Đây là điểm khác biệt cốt lõi so với
-    /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một chu kỳ.
+    /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một owner kỳ.
     /// Không có "đường nhanh" và "đường chậm" → độ trễ không dao động, và
     /// thời gian phản hồi không tiết lộ điều gì về nội dung lệnh.
-    pub fn kiem_tra(&self, la_mua: bool, gia: i64, so_luong: i64) -> CoTuChoi {
-        let dau = if la_mua { 1i64 } else { -1 };
-        CoTuChoi {
-            so_luong_khong: so_luong <= 0,
-            gia_khong: gia <= 0,
-            vuot_gia_tri: gia.saturating_mul(so_luong) > self.gia_tri_toi_da,
-            vuot_vi_the: self.vi_the.saturating_add(dau.saturating_mul(so_luong))
-                             .saturating_abs() > self.vi_the_toi_da,
-            cong_tac_tat: self.cong_tac_tat,
+    pub fn check(&self, la_mua: bool, price: i64, quantity: i64) -> HasReject {
+        let first = if la_mua { 1i64 } else { -1 };
+        HasReject {
+            quantity_no: quantity <= 0,
+            price_no: price <= 0,
+            exceed_value: price.saturating_mul(quantity) > self.max_value,
+            exceed_position: self.position.saturating_add(first.saturating_mul(quantity))
+                             .saturating_abs() > self.max_position,
+            switch_all: self.switch_all,
         }
     }
-    pub fn chu_ky_kiem_tra(&self) -> u32 { 1 }
+    pub fn period_check(&self) -> u32 { 1 }
 }
 
 // ============================================================================
@@ -364,52 +364,52 @@ impl MachRuiRo {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TangOng { pub ten: String, pub chu_ky: u32 }
+pub struct PipelineStage { pub name: String, pub period: u32 }
 
 #[derive(Debug, PartialEq)]
-pub struct DuongOngPhanCung { pub tang: Vec<TangOng> }
+pub struct HwPipeline { pub tang: Vec<PipelineStage> }
 
-impl DuongOngPhanCung {
+impl HwPipeline {
     /// Đường ống điển hình của một hệ thống giao dịch trên FPGA.
-    pub fn dien_hinh() -> Self {
-        DuongOngPhanCung {
+    pub fn typical() -> Self {
+        HwPipeline {
             tang: vec![
-                TangOng { ten: "MAC/PHY nhận khung".into(), chu_ky: 3 },
-                TangOng { ten: "Tách trường song song".into(), chu_ky: 1 },
-                TangOng { ten: "Cập nhật sổ lệnh".into(), chu_ky: 1 },
-                TangOng { ten: "Tính tín hiệu".into(), chu_ky: 2 },
-                TangOng { ten: "Kiểm tra rủi ro".into(), chu_ky: 1 },
-                TangOng { ten: "Dựng gói lệnh".into(), chu_ky: 2 },
-                TangOng { ten: "MAC/PHY phát khung".into(), chu_ky: 3 },
+                PipelineStage { name: "MAC/PHY nhận khung".into(), period: 3 },
+                PipelineStage { name: "Tách trường song song".into(), period: 1 },
+                PipelineStage { name: "Cập nhật sổ lệnh".into(), period: 1 },
+                PipelineStage { name: "Tính tín hiệu".into(), period: 2 },
+                PipelineStage { name: "Kiểm tra rủi ro".into(), period: 1 },
+                PipelineStage { name: "Dựng gói lệnh".into(), period: 2 },
+                PipelineStage { name: "MAC/PHY phát khung".into(), period: 3 },
             ],
         }
     }
 
-    /// ĐỘ TRỄ: một gói tin đi hết đường ống mất bao nhiêu chu kỳ.
-    pub fn do_tre_chu_ky(&self) -> u32 { self.tang.iter().map(|t| t.chu_ky).sum() }
-    pub fn do_tre_ns(&self) -> f64 { chu_ky_sang_ns(self.do_tre_chu_ky()) }
+    /// ĐỘ TRỄ: một gói tin đi hết đường ống mất bao nhiêu owner kỳ.
+    pub fn latency_period(&self) -> u32 { self.tang.iter().map(|t| t.period).sum() }
+    pub fn latency_nanos(&self) -> f64 { cycles_to_ns(self.latency_period()) }
 
-    /// THÔNG LƯỢNG: sau khi ống đầy, cứ mỗi `chu_ky_khoi_dau` là một gói xong.
-    /// Bằng chu kỳ của tầng CHẬM NHẤT — không phải tổng các tầng.
-    pub fn chu_ky_khoi_dau(&self) -> u32 {
-        self.tang.iter().map(|t| t.chu_ky).max().unwrap_or(1)
+    /// THÔNG LƯỢNG: sau khi ống đầy, cứ mỗi `first_period_block` là một gói xong.
+    /// Bằng owner kỳ của tầng CHẬM NHẤT — không phải tổng các tầng.
+    pub fn first_period_block(&self) -> u32 {
+        self.tang.iter().map(|t| t.period).max().unwrap_or(1)
     }
-    pub fn thong_luong_goi_moi_giay(&self) -> f64 {
-        1e9 / chu_ky_sang_ns(self.chu_ky_khoi_dau())
+    pub fn packets_per_second(&self) -> f64 {
+        1e9 / cycles_to_ns(self.first_period_block())
     }
 
-    /// Xử lý `n` gói mất bao nhiêu chu kỳ (có đường ống).
-    pub fn tong_chu_ky_cho(&self, n: u32) -> u32 {
+    /// Xử lý `n` gói mất bao nhiêu owner kỳ (có đường ống).
+    pub fn total_period_wait(&self, n: u32) -> u32 {
         if n == 0 { return 0; }
-        self.do_tre_chu_ky() + (n - 1) * self.chu_ky_khoi_dau()
+        self.latency_period() + (n - 1) * self.first_period_block()
     }
 
     /// Nếu KHÔNG có đường ống: gói sau phải chờ gói trước ra hẳn.
-    pub fn tong_chu_ky_khong_ong(&self, n: u32) -> u32 { n * self.do_tre_chu_ky() }
+    pub fn total_cycles_no_pipeline(&self, n: u32) -> u32 { n * self.latency_period() }
 }
 
 /// Ngân sách phần mềm tương ứng, lấy từ Chương 74 (đơn vị nano-giây).
-pub fn do_tre_phan_mem_ns() -> f64 { 3_400.0 }
+pub fn software_latency_ns() -> f64 { 3_400.0 }
 
 // ============================================================================
 // 6. VÌ SAO VẪN CẦN PHẦN MỀM — kiến trúc lai
@@ -419,23 +419,23 @@ pub fn do_tre_phan_mem_ns() -> f64 { 3_400.0 }
 // logic hay đổi thì nằm trên CPU.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NoiThucThi { PhanCung, PhanMem }
+pub enum ExecutionUnit { PhanCung, PhanMem }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ChucNang {
-    pub ten: String,
-    pub tan_suat_doi: u32, // số lần sửa mỗi năm
-    pub nam_tren_duong_nong: bool,
+pub struct HeavyStage {
+    pub name: String,
+    pub rate_swap: u32, // số lần sửa mỗi năm
+    pub on_hot_path: bool,
 }
 
 /// Quy tắc chia việc: nằm trên đường nóng VÀ ít thay đổi thì đưa xuống phần
 /// cứng. Hay đổi thì giữ trên phần mềm, dù có nóng — vì mỗi lần sửa mạch tốn
 /// hàng chục phút, và một chiến lược không thử nghiệm được là chiến lược chết.
-pub fn phan_cong(c: &ChucNang) -> NoiThucThi {
-    if c.nam_tren_duong_nong && c.tan_suat_doi <= 4 {
-        NoiThucThi::PhanCung
+pub fn partial_sum(c: &HeavyStage) -> ExecutionUnit {
+    if c.on_hot_path && c.rate_swap <= 4 {
+        ExecutionUnit::PhanCung
     } else {
-        NoiThucThi::PhanMem
+        ExecutionUnit::PhanMem
     }
 }
 
@@ -445,83 +445,83 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. TÁCH TRƯỜNG SONG SONG");
-    let mut bt = BoTachTruong::default();
+    let mut bt = FieldExtractor::default();
     let mut goi = vec![b'A'];
     goi.extend_from_slice(&7u32.to_be_bytes());
     goi.extend_from_slice(&8_450i64.to_be_bytes());
     goi.extend_from_slice(&100u32.to_be_bytes());
-    let tk = cay_xor(&goi) & 0x00FF_FFFF;
-    goi.extend_from_slice(&tk.to_be_bytes()[1..]);
+    let account = xor_tree(&goi) & 0x00FF_FFFF;
+    goi.extend_from_slice(&account.to_be_bytes()[1..]);
     let t = bt.tach(&goi).unwrap();
     println!("   Gói {} byte → loại {:?} · mã ck {} · giá {} · số lượng {} · hợp lệ {}",
-             goi.len(), t.loai as char, t.ma_ck, t.gia, t.so_luong, t.hop_le);
-    println!("   Phần cứng tách TẤT CẢ trường trong {} chu kỳ = {} ns",
-             bt.chu_ky_tach(), chu_ky_sang_ns(bt.chu_ky_tach()));
+             goi.len(), t.kind as char, t.id_chain, t.price, t.quantity, t.is_valid);
+    println!("   Phần cứng tách TẤT CẢ trường trong {} owner kỳ = {} ns",
+             bt.period_split(), cycles_to_ns(bt.period_split()));
 
     println!("\n2. CÂY XOR — rút gọn song song");
     println!("   {:>8} {:>18} {:>18}", "số byte", "cây (log n tầng)", "tuần tự (n tầng)");
     for n in [4usize, 16, 64, 256, 1024] {
-        println!("   {:>8} {:>18} {:>18}", n, do_sau_cay_xor(n), n);
+        println!("   {:>8} {:>18} {:>18}", n, do_next_xor_tree(n), n);
     }
     let d: Vec<u8> = (0..=255).collect();
-    println!("   Cùng kết quả với cách tuần tự: {}", cay_xor(&d) == xor_tuan_tu(&d));
+    println!("   Cùng kết quả với cách tuần tự: {}", xor_tree(&d) == xor_tuan_tu(&d));
 
     println!("\n3. SỔ LỆNH TRÊN THANH GHI");
-    let mut so = SoLenhPhanCung::default();
+    let mut so = OrderBookHardware::default();
     for (g, kl) in [(8_400i64, 500u32), (8_390, 300), (8_380, 200)] {
-        so.cap_nhat(true, g, kl);
+        so.update(true, g, kl);
     }
-    for (g, kl) in [(8_410i64, 400u32), (8_420, 250)] { so.cap_nhat(false, g, kl); }
+    for (g, kl) in [(8_410i64, 400u32), (8_420, 250)] { so.update(false, g, kl); }
     println!("   Mua tốt nhất {:?} · bán tốt nhất {:?}",
-             so.mua_tot_nhat().unwrap(), so.ban_tot_nhat().unwrap());
-    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 chu kỳ",
-             so.chenh_lech().unwrap(), SoLenhPhanCung::do_sau_so_sanh());
+             so.best_bid().unwrap(), so.best_ask().unwrap());
+    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 owner kỳ",
+             so.spread().unwrap(), OrderBookHardware::comparator_depth());
 
     println!("\n4. MẠCH KIỂM TRA RỦI RO — thời gian KHÔNG đổi");
-    let m = MachRuiRo { gia_tri_toi_da: 1_000_000, vi_the_toi_da: 500,
-                        vi_the: 0, cong_tac_tat: false };
-    for (mo_ta, gia, sl) in [("hợp lệ        ", 8_400i64, 100i64),
+    let m = RiskCircuit { max_value: 1_000_000, max_position: 500,
+                        position: 0, switch_all: false };
+    for (description, price, sl) in [("hợp lệ        ", 8_400i64, 100i64),
                              ("số lượng âm   ", 8_400, -5),
                              ("giá trị quá to", 8_400, 1_000),
                              ("cả hai lỗi    ", 0, -1)] {
-        let c = m.kiem_tra(true, gia, sl);
-        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} chu kỳ",
-                 mo_ta, c.bi_chan(), c.so_co_bat(), m.chu_ky_kiem_tra());
+        let c = m.check(true, price, sl);
+        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} owner kỳ",
+                 description, c.is_block(), c.num_has_enable(), m.period_check());
     }
-    println!("   → Hợp lệ hay không cũng tốn đúng một chu kỳ: độ trễ không dao động,");
+    println!("   → Hợp lệ hay không cũng tốn đúng một owner kỳ: độ trễ không dao động,");
     println!("     và thời gian phản hồi không tiết lộ gì về nội dung lệnh.");
 
     println!("\n5. ĐƯỜNG ỐNG TICK-TO-TRADE");
-    let ong = DuongOngPhanCung::dien_hinh();
+    let ong = HwPipeline::typical();
     for t in &ong.tang {
-        println!("   {:<26} {} chu kỳ = {:>4.0} ns", t.ten, t.chu_ky, chu_ky_sang_ns(t.chu_ky));
+        println!("   {:<26} {} owner kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
     }
     println!("   ─────────────────────────────────────────");
-    println!("   Độ trễ     : {} chu kỳ = {:.0} ns", ong.do_tre_chu_ky(), ong.do_tre_ns());
-    println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
-             ong.chu_ky_khoi_dau(), ong.thong_luong_goi_moi_giay() / 1e6);
+    println!("   Độ trễ     : {} owner kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
+    println!("   Thông lượng: 1 gói mỗi {} owner kỳ = {:.0} triệu gói/giây",
+             ong.first_period_block(), ong.packets_per_second() / 1e6);
     println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
-             do_tre_phan_mem_ns(), do_tre_phan_mem_ns() / ong.do_tre_ns());
+             software_latency_ns(), software_latency_ns() / ong.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
-    println!("   Có ống   : {:>7} chu kỳ", ong.tong_chu_ky_cho(1_000));
-    println!("   Không ống: {:>7} chu kỳ", ong.tong_chu_ky_khong_ong(1_000));
+    println!("   Có ống   : {:>7} owner kỳ", ong.total_period_wait(1_000));
+    println!("   Không ống: {:>7} owner kỳ", ong.total_cycles_no_pipeline(1_000));
     println!("   → Nhanh gấp {:.1} lần về THÔNG LƯỢNG, nhưng ĐỘ TRỄ vẫn y nguyên {} ns.",
-             ong.tong_chu_ky_khong_ong(1_000) as f64 / ong.tong_chu_ky_cho(1_000) as f64,
-             ong.do_tre_ns());
+             ong.total_cycles_no_pipeline(1_000) as f64 / ong.total_period_wait(1_000) as f64,
+             ong.latency_nanos());
 
     println!("\n7. CHIA VIỆC GIỮA PHẦN CỨNG VÀ PHẦN MỀM");
     let cn = vec![
-        ChucNang { ten: "Tách gói tin".into(), tan_suat_doi: 1, nam_tren_duong_nong: true },
-        ChucNang { ten: "Cập nhật sổ lệnh".into(), tan_suat_doi: 2, nam_tren_duong_nong: true },
-        ChucNang { ten: "Kiểm tra rủi ro cứng".into(), tan_suat_doi: 3, nam_tren_duong_nong: true },
-        ChucNang { ten: "Logic chiến lược".into(), tan_suat_doi: 200, nam_tren_duong_nong: true },
-        ChucNang { ten: "Báo cáo cuối ngày".into(), tan_suat_doi: 12, nam_tren_duong_nong: false },
-        ChucNang { ten: "Hiệu chỉnh tham số".into(), tan_suat_doi: 500, nam_tren_duong_nong: true },
+        HeavyStage { name: "Tách gói tin".into(), rate_swap: 1, on_hot_path: true },
+        HeavyStage { name: "Cập nhật sổ lệnh".into(), rate_swap: 2, on_hot_path: true },
+        HeavyStage { name: "Kiểm tra rủi ro cứng".into(), rate_swap: 3, on_hot_path: true },
+        HeavyStage { name: "Logic chiến lược".into(), rate_swap: 200, on_hot_path: true },
+        HeavyStage { name: "Báo cáo cuối ngày".into(), rate_swap: 12, on_hot_path: false },
+        HeavyStage { name: "Hiệu chỉnh tham số".into(), rate_swap: 500, on_hot_path: true },
     ];
     for c in &cn {
         println!("   {:<24} đổi {:>3} lần/năm · nóng {:<5} → {:?}",
-                 c.ten, c.tan_suat_doi, c.nam_tren_duong_nong, phan_cong(c));
+                 c.name, c.rate_swap, c.on_hot_path, partial_sum(c));
     }
     println!("   → Chiến lược ở lại phần mềm dù rất nóng: một chiến lược không");
     println!("     thử nghiệm được là chiến lược chết, dù nó nhanh tới đâu.");
@@ -532,16 +532,16 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn goi_hop_le(loai: u8, ma_ck: u32, gia: i64, sl: u32) -> Vec<u8> {
-        let mut g = vec![loai];
-        g.extend_from_slice(&ma_ck.to_be_bytes());
-        g.extend_from_slice(&gia.to_be_bytes());
+    fn call_hop_le(kind: u8, id_chain: u32, price: i64, sl: u32) -> Vec<u8> {
+        let mut g = vec![kind];
+        g.extend_from_slice(&id_chain.to_be_bytes());
+        g.extend_from_slice(&price.to_be_bytes());
         g.extend_from_slice(&sl.to_be_bytes());
-        let tk = cay_xor(&g) & 0x00FF_FFFF;
-        g.extend_from_slice(&tk.to_be_bytes()[1..]);
+        let account = xor_tree(&g) & 0x00FF_FFFF;
+        g.extend_from_slice(&account.to_be_bytes()[1..]);
         g
     }
 
@@ -552,48 +552,48 @@ mod kiem_thu {
         // và giao hoán nên gộp theo cây hay theo chuỗi đều như nhau.
         for n in [0usize, 1, 2, 3, 4, 7, 16, 17, 64, 255, 256] {
             let d: Vec<u8> = (0..n).map(|i| (i * 37 % 251) as u8).collect();
-            assert_eq!(cay_xor(&d), xor_tuan_tu(&d), "n={}", n);
+            assert_eq!(xor_tree(&d), xor_tuan_tu(&d), "n={}", n);
         }
     }
 
     #[test]
     fn do_sau_cay_la_log_chu_khong_tuyen_tinh() {
-        assert_eq!(do_sau_cay_xor(1), 0);
-        assert_eq!(do_sau_cay_xor(2), 1);
-        assert_eq!(do_sau_cay_xor(4), 2);
-        assert_eq!(do_sau_cay_xor(256), 8);
-        assert_eq!(do_sau_cay_xor(1024), 10, "1024 byte chỉ cần 10 tầng, không phải 1024");
+        assert_eq!(do_next_xor_tree(1), 0);
+        assert_eq!(do_next_xor_tree(2), 1);
+        assert_eq!(do_next_xor_tree(4), 2);
+        assert_eq!(do_next_xor_tree(256), 8);
+        assert_eq!(do_next_xor_tree(1024), 10, "1024 byte chỉ cần 10 tầng, không phải 1024");
     }
 
     // ---------- Tách trường ----------
     #[test]
-    fn tach_dung_moi_truong() {
-        let mut bt = BoTachTruong::default();
-        let g = goi_hop_le(b'A', 12_345, 8_450, 100);
+    fn split_use_new_truong() {
+        let mut bt = FieldExtractor::default();
+        let g = call_hop_le(b'A', 12_345, 8_450, 100);
         let t = bt.tach(&g).unwrap();
-        assert_eq!(t.loai, b'A');
-        assert_eq!(t.ma_ck, 12_345);
-        assert_eq!(t.gia, 8_450);
-        assert_eq!(t.so_luong, 100);
-        assert!(t.hop_le);
+        assert_eq!(t.kind, b'A');
+        assert_eq!(t.id_chain, 12_345);
+        assert_eq!(t.price, 8_450);
+        assert_eq!(t.quantity, 100);
+        assert!(t.is_valid);
         assert_eq!(bt.so_goi_da_tach, 1);
         assert_eq!(bt.so_goi_hong, 0);
     }
 
     #[test]
     fn tach_dung_ca_gia_am_va_gia_tri_bien() {
-        let mut bt = BoTachTruong::default();
-        for (gia, sl) in [(-1i64, 0u32), (i64::MIN, u32::MAX), (i64::MAX, 1)] {
-            let g = goi_hop_le(b'X', 0, gia, sl);
+        let mut bt = FieldExtractor::default();
+        for (price, sl) in [(-1i64, 0u32), (i64::MIN, u32::MAX), (i64::MAX, 1)] {
+            let g = call_hop_le(b'X', 0, price, sl);
             let t = bt.tach(&g).unwrap();
-            assert_eq!(t.gia, gia, "giá {} phải tách đúng", gia);
-            assert_eq!(t.so_luong, sl);
+            assert_eq!(t.price, price, "giá {} phải tách đúng", price);
+            assert_eq!(t.quantity, sl);
         }
     }
 
     #[test]
-    fn goi_qua_ngan_bi_tu_choi() {
-        let mut bt = BoTachTruong::default();
+    fn call_qua_ngan_is_reject() {
+        let mut bt = FieldExtractor::default();
         for n in 0..DAI_GOI {
             assert_eq!(bt.tach(&vec![0u8; n]), None, "gói {} byte phải bị từ chối", n);
         }
@@ -601,237 +601,237 @@ mod kiem_thu {
     }
 
     #[test]
-    fn tong_kiem_tra_sai_bi_danh_dau_khong_hop_le() {
-        let mut bt = BoTachTruong::default();
-        let mut g = goi_hop_le(b'A', 1, 100, 10);
+    fn total_check_sai_is_danh_first_no_hop_le() {
+        let mut bt = FieldExtractor::default();
+        let mut g = call_hop_le(b'A', 1, 100, 10);
         g[19] ^= 0xFF; // phá tổng kiểm tra
         let t = bt.tach(&g).unwrap();
-        assert!(!t.hop_le, "gói hỏng phải bị đánh dấu, KHÔNG được im lặng cho qua");
+        assert!(!t.is_valid, "gói hỏng phải bị đánh dấu, KHÔNG được im lặng cho qua");
         assert_eq!(bt.so_goi_hong, 1);
         assert_eq!(bt.so_goi_da_tach, 0);
     }
 
     #[test]
     fn lat_mot_bit_trong_than_goi_bi_bat() {
-        let mut bt = BoTachTruong::default();
-        for vi_tri in 0..17usize {
-            let mut g = goi_hop_le(b'A', 999, 8_400, 500);
-            g[vi_tri] ^= 1;
+        let mut bt = FieldExtractor::default();
+        for pos_value in 0..17usize {
+            let mut g = call_hop_le(b'A', 999, 8_400, 500);
+            g[pos_value] ^= 1;
             let t = bt.tach(&g).unwrap();
-            assert!(!t.hop_le, "lật bit ở byte {} mà không bị phát hiện", vi_tri);
+            assert!(!t.is_valid, "lật bit ở byte {} mà không bị phát hiện", pos_value);
         }
     }
 
     #[test]
-    fn tach_luon_ton_dung_mot_chu_ky() {
-        let bt = BoTachTruong::default();
-        assert_eq!(bt.chu_ky_tach(), 1, "phần cứng tách mọi trường song song");
+    fn split_always_ton_use_one_period() {
+        let bt = FieldExtractor::default();
+        assert_eq!(bt.period_split(), 1, "phần cứng tách mọi trường song song");
     }
 
     // ---------- Sổ lệnh phần cứng ----------
     #[test]
-    fn so_rong_khong_co_gia_tot_nhat() {
-        let s = SoLenhPhanCung::default();
-        assert_eq!(s.mua_tot_nhat(), None);
-        assert_eq!(s.ban_tot_nhat(), None);
-        assert_eq!(s.chenh_lech(), None);
+    fn num_empty_no_has_price_good_nhat() {
+        let s = OrderBookHardware::default();
+        assert_eq!(s.best_bid(), None);
+        assert_eq!(s.best_ask(), None);
+        assert_eq!(s.spread(), None);
     }
 
     #[test]
-    fn tra_dung_gia_tot_nhat_hai_ben() {
-        let mut s = SoLenhPhanCung::default();
+    fn return_use_price_good_nhat_two_side() {
+        let mut s = OrderBookHardware::default();
         for (g, kl) in [(8_380i64, 100u32), (8_400, 500), (8_390, 300)] {
-            s.cap_nhat(true, g, kl);
+            s.update(true, g, kl);
         }
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
-            s.cap_nhat(false, g, kl);
+            s.update(false, g, kl);
         }
-        assert_eq!(s.mua_tot_nhat().unwrap().gia, 8_400, "bên mua lấy giá CAO nhất");
-        assert_eq!(s.ban_tot_nhat().unwrap().gia, 8_410, "bên bán lấy giá THẤP nhất");
-        assert_eq!(s.chenh_lech(), Some(10));
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
+        assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
+        assert_eq!(s.spread(), Some(10));
     }
 
     #[test]
     fn cap_nhat_muc_da_co_thi_ghi_de_khoi_luong() {
-        let mut s = SoLenhPhanCung::default();
-        s.cap_nhat(true, 8_400, 500);
-        s.cap_nhat(true, 8_400, 700);
-        assert_eq!(s.so_muc_dang_dung(true), 1, "không được tạo mức trùng");
-        assert_eq!(s.mua_tot_nhat().unwrap().khoi_luong, 700);
+        let mut s = OrderBookHardware::default();
+        s.update(true, 8_400, 500);
+        s.update(true, 8_400, 700);
+        assert_eq!(s.num_level_dang_use(true), 1, "không được tạo mức trùng");
+        assert_eq!(s.best_bid().unwrap().quantity, 700);
     }
 
     #[test]
-    fn khoi_luong_ve_khong_thi_muc_bien_mat() {
-        let mut s = SoLenhPhanCung::default();
-        s.cap_nhat(true, 8_400, 500);
-        s.cap_nhat(true, 8_390, 300);
-        s.cap_nhat(true, 8_400, 0);
-        assert_eq!(s.mua_tot_nhat().unwrap().gia, 8_390, "đỉnh phải tụt xuống mức kế");
-        assert_eq!(s.so_muc_dang_dung(true), 1);
+    fn quantity_ve_no_thi_level_bien_mat() {
+        let mut s = OrderBookHardware::default();
+        s.update(true, 8_400, 500);
+        s.update(true, 8_390, 300);
+        s.update(true, 8_400, 0);
+        assert_eq!(s.best_bid().unwrap().price, 8_390, "đỉnh phải tụt xuống mức kế");
+        assert_eq!(s.num_level_dang_use(true), 1);
     }
 
     #[test]
     fn so_day_thi_giu_lai_cac_muc_tot_nhat() {
         // Sổ phần cứng chỉ có 8 ô. Khi đầy, mức tệ nhất phải bị đẩy ra —
         // nếu không, ta sẽ giữ những mức giá vô dụng và bỏ mất mức tốt.
-        let mut s = SoLenhPhanCung::default();
+        let mut s = OrderBookHardware::default();
         for i in 0..SO_MUC_PHAN_CUNG as i64 {
-            s.cap_nhat(true, 8_000 + i, 100);
+            s.update(true, 8_000 + i, 100);
         }
-        assert_eq!(s.so_muc_dang_dung(true), SO_MUC_PHAN_CUNG);
-        assert_eq!(s.mua_tot_nhat().unwrap().gia, 8_007);
+        assert_eq!(s.num_level_dang_use(true), SO_MUC_PHAN_CUNG);
+        assert_eq!(s.best_bid().unwrap().price, 8_007);
         // Mức tốt hơn hẳn → phải chen vào được
-        s.cap_nhat(true, 9_000, 100);
-        assert_eq!(s.mua_tot_nhat().unwrap().gia, 9_000);
-        assert_eq!(s.so_muc_dang_dung(true), SO_MUC_PHAN_CUNG, "vẫn đúng 8 ô");
+        s.update(true, 9_000, 100);
+        assert_eq!(s.best_bid().unwrap().price, 9_000);
+        assert_eq!(s.num_level_dang_use(true), SO_MUC_PHAN_CUNG, "vẫn đúng 8 ô");
         // Mức tệ hơn tất cả → phải bị bỏ qua
-        s.cap_nhat(true, 1, 100);
-        assert!(s.mua.iter().all(|m| m.gia != 1), "mức tệ không được chiếm chỗ");
+        s.update(true, 1, 100);
+        assert!(s.buy.iter().all(|m| m.price != 1), "mức tệ không được chiếm chỗ");
     }
 
     #[test]
     fn ben_ban_cung_giu_lai_muc_tot_nhat() {
-        let mut s = SoLenhPhanCung::default();
+        let mut s = OrderBookHardware::default();
         for i in 0..SO_MUC_PHAN_CUNG as i64 {
-            s.cap_nhat(false, 9_000 - i, 100);
+            s.update(false, 9_000 - i, 100);
         }
-        assert_eq!(s.ban_tot_nhat().unwrap().gia, 8_993);
-        s.cap_nhat(false, 8_000, 100); // rẻ hơn hẳn = tốt hơn cho bên bán
-        assert_eq!(s.ban_tot_nhat().unwrap().gia, 8_000);
-        s.cap_nhat(false, 99_999, 100); // đắt vô lý
-        assert!(s.ban.iter().all(|m| m.gia != 99_999));
+        assert_eq!(s.best_ask().unwrap().price, 8_993);
+        s.update(false, 8_000, 100); // rẻ hơn hẳn = tốt hơn cho bên bán
+        assert_eq!(s.best_ask().unwrap().price, 8_000);
+        s.update(false, 99_999, 100); // đắt vô lý
+        assert!(s.ban.iter().all(|m| m.price != 99_999));
     }
 
     #[test]
     fn do_sau_so_sanh_la_log_so_muc() {
-        assert_eq!(SoLenhPhanCung::do_sau_so_sanh(), 3, "8 mức → 3 tầng cây so sánh");
+        assert_eq!(OrderBookHardware::comparator_depth(), 3, "8 mức → 3 tầng cây so sánh");
     }
 
     // ---------- Mạch rủi ro ----------
-    fn mach() -> MachRuiRo {
-        MachRuiRo { gia_tri_toi_da: 1_000_000, vi_the_toi_da: 500,
-                    vi_the: 0, cong_tac_tat: false }
+    fn mach() -> RiskCircuit {
+        RiskCircuit { max_value: 1_000_000, max_position: 500,
+                    position: 0, switch_all: false }
     }
 
     #[test]
-    fn lenh_hop_le_khong_bat_co_nao() {
-        let c = mach().kiem_tra(true, 8_400, 100);
-        assert!(!c.bi_chan());
-        assert_eq!(c.so_co_bat(), 0);
+    fn order_hop_le_no_enable_has_which() {
+        let c = mach().check(true, 8_400, 100);
+        assert!(!c.is_block());
+        assert_eq!(c.num_has_enable(), 0);
     }
 
     #[test]
     fn moi_dieu_kien_bat_dung_co_cua_no() {
         let m = mach();
-        assert!(m.kiem_tra(true, 8_400, 0).so_luong_khong);
-        assert!(m.kiem_tra(true, 0, 100).gia_khong);
-        assert!(m.kiem_tra(true, 8_400, 1_000).vuot_gia_tri);
-        assert!(m.kiem_tra(true, 100, 600).vuot_vi_the);
-        let tat = MachRuiRo { cong_tac_tat: true, ..m };
-        assert!(tat.kiem_tra(true, 8_400, 100).cong_tac_tat);
+        assert!(m.check(true, 8_400, 0).quantity_no);
+        assert!(m.check(true, 0, 100).price_no);
+        assert!(m.check(true, 8_400, 1_000).exceed_value);
+        assert!(m.check(true, 100, 600).exceed_position);
+        let tat = RiskCircuit { switch_all: true, ..m };
+        assert!(tat.check(true, 8_400, 100).switch_all);
     }
 
     #[test]
     fn nhieu_loi_cung_luc_bat_nhieu_co_cung_luc() {
         // Đây là điểm khác biệt thật so với phần mềm: phần mềm `return` ở lỗi
         // ĐẦU TIÊN nên chỉ biết một lỗi; mạch tính song song nên thấy HẾT.
-        let c = mach().kiem_tra(true, 0, -1);
-        assert!(c.so_luong_khong && c.gia_khong);
-        assert!(c.so_co_bat() >= 2, "phần cứng thấy mọi lỗi cùng lúc, không dừng ở lỗi đầu");
+        let c = mach().check(true, 0, -1);
+        assert!(c.quantity_no && c.price_no);
+        assert!(c.num_has_enable() >= 2, "phần cứng thấy mọi lỗi cùng lúc, không dừng ở lỗi đầu");
     }
 
     #[test]
     fn ban_khong_cung_bi_chan_boi_han_muc_vi_the() {
         let m = mach();
-        assert!(m.kiem_tra(false, 100, 600).vuot_vi_the, "chiều bán cũng phải bị chặn");
+        assert!(m.check(false, 100, 600).exceed_position, "chiều bán cũng phải bị chặn");
     }
 
     #[test]
-    fn vi_the_hien_tai_duoc_tinh_vao() {
-        let m = MachRuiRo { vi_the: 450, ..mach() };
-        assert!(!m.kiem_tra(true, 100, 50).vuot_vi_the, "450+50 = 500, vừa trần");
-        assert!(m.kiem_tra(true, 100, 51).vuot_vi_the, "450+51 vượt trần");
-        assert!(!m.kiem_tra(false, 100, 500).vuot_vi_the, "bán thì giảm vị thế");
+    fn position_current_can_tinh_in() {
+        let m = RiskCircuit { position: 450, ..mach() };
+        assert!(!m.check(true, 100, 50).exceed_position, "450+50 = 500, vừa trần");
+        assert!(m.check(true, 100, 51).exceed_position, "450+51 vượt trần");
+        assert!(!m.check(false, 100, 500).exceed_position, "bán thì giảm vị thế");
     }
 
     #[test]
     fn phep_nhan_khong_bao_gio_tran_so() {
         let m = mach();
         // Toàn bộ dùng phép bão hoà: không được panic, và phải báo vượt hạn mức
-        let c = m.kiem_tra(true, i64::MAX, i64::MAX);
-        assert!(c.vuot_gia_tri);
-        assert!(c.bi_chan());
-        let c2 = m.kiem_tra(false, 1, i64::MAX);
-        assert!(c2.bi_chan());
+        let c = m.check(true, i64::MAX, i64::MAX);
+        assert!(c.exceed_value);
+        assert!(c.is_block());
+        let c2 = m.check(false, 1, i64::MAX);
+        assert!(c2.is_block());
     }
 
     #[test]
-    fn kiem_tra_luon_ton_dung_mot_chu_ky() {
+    fn check_always_ton_use_one_period() {
         // Bất biến quan trọng nhất của mạch rủi ro: thời gian KHÔNG phụ thuộc
         // dữ liệu. Nhờ vậy độ trễ không dao động và không rò rỉ thông tin.
         let m = mach();
-        assert_eq!(m.chu_ky_kiem_tra(), 1);
+        assert_eq!(m.period_check(), 1);
         for (g, sl) in [(8_400i64, 100i64), (0, 0), (-1, -1), (i64::MAX, i64::MAX)] {
-            let _ = m.kiem_tra(true, g, sl);
-            assert_eq!(m.chu_ky_kiem_tra(), 1, "mọi đầu vào đều tốn đúng 1 chu kỳ");
+            let _ = m.check(true, g, sl);
+            assert_eq!(m.period_check(), 1, "mọi đầu vào đều tốn đúng 1 owner kỳ");
         }
     }
 
     // ---------- Đường ống ----------
     #[test]
-    fn do_tre_bang_tong_cac_tang() {
-        let o = DuongOngPhanCung::dien_hinh();
-        assert_eq!(o.do_tre_chu_ky(), 3 + 1 + 1 + 2 + 1 + 2 + 3);
-        assert!((o.do_tre_ns() - 13.0 * NS_MOI_CHU_KY).abs() < 1e-9);
+    fn latency_table_total_all_up() {
+        let o = HwPipeline::typical();
+        assert_eq!(o.latency_period(), 3 + 1 + 1 + 2 + 1 + 2 + 3);
+        assert!((o.latency_nanos() - 13.0 * NS_MOI_CHU_KY).abs() < 1e-9);
     }
 
     #[test]
-    fn thong_luong_bang_tang_cham_nhat_khong_phai_tong() {
+    fn total_thong_amount_table_up_slow_nhat_no_must() {
         // Nhầm hai đại lượng này là hiểu sai toàn bộ kiến trúc đường ống.
-        let o = DuongOngPhanCung::dien_hinh();
-        assert_eq!(o.chu_ky_khoi_dau(), 3, "tầng chậm nhất là 3 chu kỳ");
-        assert!(o.chu_ky_khoi_dau() < o.do_tre_chu_ky());
+        let o = HwPipeline::typical();
+        assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 owner kỳ");
+        assert!(o.first_period_block() < o.latency_period());
     }
 
     #[test]
     fn duong_ong_tang_thong_luong_nhung_khong_giam_do_tre() {
-        let o = DuongOngPhanCung::dien_hinh();
+        let o = HwPipeline::typical();
         // Một gói: y hệt nhau
-        assert_eq!(o.tong_chu_ky_cho(1), o.do_tre_chu_ky());
-        assert_eq!(o.tong_chu_ky_khong_ong(1), o.do_tre_chu_ky());
+        assert_eq!(o.total_period_wait(1), o.latency_period());
+        assert_eq!(o.total_cycles_no_pipeline(1), o.latency_period());
         // Nhiều gói: đường ống thắng đậm
-        assert!(o.tong_chu_ky_cho(1_000) * 4 < o.tong_chu_ky_khong_ong(1_000));
+        assert!(o.total_period_wait(1_000) * 4 < o.total_cycles_no_pipeline(1_000));
         // Nhưng độ trễ của MỘT gói vẫn y nguyên
-        assert_eq!(o.do_tre_chu_ky(), 13);
+        assert_eq!(o.latency_period(), 13);
     }
 
     #[test]
-    fn khong_goi_nao_thi_khong_ton_chu_ky_nao() {
-        let o = DuongOngPhanCung::dien_hinh();
-        assert_eq!(o.tong_chu_ky_cho(0), 0);
-        assert_eq!(o.tong_chu_ky_khong_ong(0), 0);
+    fn no_call_which_thi_no_ton_period_which() {
+        let o = HwPipeline::typical();
+        assert_eq!(o.total_period_wait(0), 0);
+        assert_eq!(o.total_cycles_no_pipeline(0), 0);
     }
 
     #[test]
     fn phan_cung_nhanh_hon_phan_mem_hang_chuc_lan() {
-        let o = DuongOngPhanCung::dien_hinh();
-        let ty_le = do_tre_phan_mem_ns() / o.do_tre_ns();
-        assert!(ty_le > 50.0, "phải nhanh hơn ít nhất 50 lần, thực tế {:.0}", ty_le);
-        assert!(o.do_tre_ns() < 100.0, "tick-to-trade phải dưới 100 ns");
+        let o = HwPipeline::typical();
+        let ratio = software_latency_ns() / o.latency_nanos();
+        assert!(ratio > 50.0, "phải nhanh hơn ít nhất 50 lần, thực tế {:.0}", ratio);
+        assert!(o.latency_nanos() < 100.0, "tick-to-trade phải dưới 100 ns");
     }
 
     #[test]
     fn thong_luong_dat_hang_tram_trieu_goi_moi_giay() {
-        let o = DuongOngPhanCung::dien_hinh();
-        assert!(o.thong_luong_goi_moi_giay() > 50e6,
-                "phải trên 50 triệu gói/giây, thực tế {:.0}", o.thong_luong_goi_moi_giay());
+        let o = HwPipeline::typical();
+        assert!(o.packets_per_second() > 50e6,
+                "phải trên 50 triệu gói/giây, thực tế {:.0}", o.packets_per_second());
     }
 
     // ---------- Phân công phần cứng/phần mềm ----------
     #[test]
     fn viec_nong_va_it_doi_thi_xuong_phan_cung() {
-        let c = ChucNang { ten: "tách gói".into(), tan_suat_doi: 1, nam_tren_duong_nong: true };
-        assert_eq!(phan_cong(&c), NoiThucThi::PhanCung);
+        let c = HeavyStage { name: "tách gói".into(), rate_swap: 1, on_hot_path: true };
+        assert_eq!(partial_sum(&c), ExecutionUnit::PhanCung);
     }
 
     #[test]
@@ -839,24 +839,24 @@ mod kiem_thu {
         // Bài học kiến trúc quan trọng nhất của chương: tốc độ không đáng giá
         // bằng khả năng thay đổi. Chiến lược sửa 200 lần/năm mà nằm trên FPGA
         // thì mỗi lần thử nghiệm tốn hàng chục phút tổng hợp mạch.
-        let c = ChucNang { ten: "chiến lược".into(), tan_suat_doi: 200,
-                           nam_tren_duong_nong: true };
-        assert_eq!(phan_cong(&c), NoiThucThi::PhanMem);
+        let c = HeavyStage { name: "chiến lược".into(), rate_swap: 200,
+                           on_hot_path: true };
+        assert_eq!(partial_sum(&c), ExecutionUnit::PhanMem);
     }
 
     #[test]
     fn viec_khong_nong_thi_o_phan_mem_du_it_doi() {
-        let c = ChucNang { ten: "báo cáo".into(), tan_suat_doi: 1,
-                           nam_tren_duong_nong: false };
-        assert_eq!(phan_cong(&c), NoiThucThi::PhanMem,
+        let c = HeavyStage { name: "báo cáo".into(), rate_swap: 1,
+                           on_hot_path: false };
+        assert_eq!(partial_sum(&c), ExecutionUnit::PhanMem,
                    "không nằm trên đường nóng thì đưa xuống phần cứng là lãng phí");
     }
 
     #[test]
     fn quy_doi_chu_ky_sang_nano_giay_dung() {
-        assert!((chu_ky_sang_ns(1) - 4.0).abs() < 1e-9);
-        assert!((chu_ky_sang_ns(250) - 1_000.0).abs() < 1e-9, "250 chu kỳ ở 250 MHz = 1 µs");
-        assert_eq!(chu_ky_sang_ns(0), 0.0);
+        assert!((cycles_to_ns(1) - 4.0).abs() < 1e-9);
+        assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 owner kỳ ở 250 MHz = 1 µs");
+        assert_eq!(cycles_to_ns(0), 0.0);
     }
 }
 ```
@@ -892,7 +892,7 @@ mod kiem_thu {
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Đây là bài toán mà FPGA vượt trội tuyệt đối: N phép nhân-cộng chạy hoàn toàn song song trên các khối DSP, rồi cộng lại bằng cây. Trên CPU cùng phép tính mất N chu kỳ; trên FPGA mất `log₂(N)` tầng.
+Đây là bài toán mà FPGA vượt trội tuyệt đối: N phép nhân-cộng chạy hoàn toàn song song trên các khối DSP, rồi cộng lại bằng cây. Trên CPU cùng phép tính mất N owner kỳ; trên FPGA mất `log₂(N)` tầng.
 </details>
 
 <details>
@@ -902,26 +902,26 @@ mod kiem_thu {
 pub struct BoLocTuongQuan<const N: usize> {
     pub he_so: [i32; N],
     /// Thanh ghi dịch giữ N mẫu gần nhất.
-    dem: [i32; N],
-    vi_tri: usize,
+    count: [i32; N],
+    pos_value: usize,
 }
 
 impl<const N: usize> BoLocTuongQuan<N> {
-    pub fn moi(he_so: [i32; N]) -> Self {
-        Self { he_so, dem: [0; N], vi_tri: 0 }
+    pub fn new(he_so: [i32; N]) -> Self {
+        Self { he_so, count: [0; N], pos_value: 0 }
     }
 
-    /// Một chu kỳ: đẩy mẫu mới vào và cho ra kết quả tương quan.
+    /// Một owner kỳ: đẩy mẫu mới vào và cho ra kết quả tương quan.
     /// Trên FPGA: N khối DSP song song + cây cộng độ sâu log₂(N).
-    pub fn buoc(&mut self, mau: i32) -> i64 {
-        self.dem[self.vi_tri] = mau;
-        self.vi_tri = (self.vi_tri + 1) % N;
+    pub fn step(&mut self, mau: i32) -> i64 {
+        self.count[self.pos_value] = mau;
+        self.pos_value = (self.pos_value + 1) % N;
 
         // Tất cả N tích được tính CÙNG LÚC trên phần cứng
         let mut tich = [0i64; N];
         for i in 0..N {
-            let j = (self.vi_tri + i) % N;
-            tich[i] = self.dem[j] as i64 * self.he_so[i] as i64;
+            let j = (self.pos_value + i) % N;
+            tich[i] = self.count[j] as i64 * self.he_so[i] as i64;
         }
         cong_theo_cay(&tich)
     }
@@ -945,7 +945,7 @@ fn cong_theo_cay(v: &[i64]) -> i64 {
 }
 ```
 
-Với N=16 ở 250 MHz, bộ lọc này xử lý một mẫu mỗi 4 ns với độ trễ 4 tầng. CPU cùng phép tính cần khoảng 16 chu kỳ cộng chi phí truy cập bộ nhớ — chậm hơn khoảng một bậc.
+Với N=16 ở 250 MHz, bộ lọc này xử lý một mẫu mỗi 4 ns với độ trễ 4 tầng. CPU cùng phép tính cần khoảng 16 owner kỳ cộng chi phí truy cập bộ nhớ — chậm hơn khoảng một bậc.
 </details>
 
 **Bài 2.** Cài **bộ kiểm rủi ro thời gian hằng số** với chứng minh không có nhánh nào thay đổi thời gian.
@@ -962,21 +962,21 @@ Thời gian hằng số quan trọng vì hai lý do khác nhau: trong HFT vì đ
 ```rust
 #[derive(Debug, Clone, Copy)]
 pub struct MachRuiRoHang {
-    pub gia_toi_thieu: u32,
-    pub gia_toi_da: u32,
-    pub khoi_luong_toi_da: u32,
-    pub vi_the_toi_da: i32,
+    pub min_price: u32,
+    pub max_price: u32,
+    pub max_quantity: u32,
+    pub max_position: i32,
 }
 
 impl MachRuiRoHang {
     /// KHÔNG có `if`. Mọi điều kiện tính song song rồi AND lại.
     /// Trên FPGA: 4 bộ so sánh + 1 cổng AND = ~130 LUT, độ trễ ~2 ns cố định.
-    pub fn kiem(&self, gia: u32, khoi_luong: u32, vi_the_sau: i32) -> (bool, u8) {
+    pub fn check(&self, price: u32, quantity: u32, vi_the_sau: i32) -> (bool, u8) {
         // Mỗi biến là 0 hoặc 1 — trên phần cứng là một dây
-        let g_thap = (gia >= self.gia_toi_thieu) as u8;
-        let g_cao  = (gia <= self.gia_toi_da) as u8;
-        let kl_ok  = (khoi_luong <= self.khoi_luong_toi_da) as u8;
-        let vt_ok  = (vi_the_sau.unsigned_abs() <= self.vi_the_toi_da.unsigned_abs()) as u8;
+        let g_thap = (price >= self.min_price) as u8;
+        let g_cao  = (price <= self.max_price) as u8;
+        let kl_ok  = (quantity <= self.max_quantity) as u8;
+        let vt_ok  = (vi_the_sau.unsigned_abs() <= self.max_position.unsigned_abs()) as u8;
 
         let cho_qua = g_thap & g_cao & kl_ok & vt_ok;
 

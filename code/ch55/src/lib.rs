@@ -7,31 +7,31 @@
 
 /// Giỏ hàng — ta sẽ "viết test trước, code sau" cho từng hành vi.
 #[derive(Debug, Clone, PartialEq)]
-pub struct GioHang {
-    mat_hang: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
+pub struct Cart {
+    mat_queue: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum LoiGio {
+pub enum CartError {
     SoLuongBangKhong,
     KhongTonTai,
 }
 
-impl GioHang {
-    pub fn moi() -> Self {
-        GioHang { mat_hang: Vec::new() }
+impl Cart {
+    pub fn new() -> Self {
+        Cart { mat_queue: Vec::new() }
     }
 
     /// Thêm mặt hàng. Số lượng 0 là lỗi nghiệp vụ (không phải panic).
-    pub fn them(&mut self, ten: &str, don_gia: u64, so_luong: u32) -> Result<(), LoiGio> {
-        if so_luong == 0 {
-            return Err(LoiGio::SoLuongBangKhong);
+    pub fn them(&mut self, name: &str, don_price: u64, quantity: u32) -> Result<(), CartError> {
+        if quantity == 0 {
+            return Err(CartError::SoLuongBangKhong);
         }
         // Nếu đã có, cộng dồn số lượng thay vì tạo dòng mới
-        if let Some(dong) = self.mat_hang.iter_mut().find(|(t, _, _)| t == ten) {
-            dong.2 += so_luong;
+        if let Some(dong) = self.mat_queue.iter_mut().find(|(t, _, _)| t == name) {
+            dong.2 += quantity;
         } else {
-            self.mat_hang.push((ten.to_string(), don_gia, so_luong));
+            self.mat_queue.push((name.to_string(), don_price, quantity));
         }
         Ok(())
     }
@@ -40,24 +40,24 @@ impl GioHang {
     ///
     /// # Ví dụ (đây cũng là một DOCTEST — chạy khi `cargo test`)
     /// ```
-    /// # use ch55::GioHang;
-    /// let mut gio = GioHang::moi();
+    /// # use ch55::Cart;
+    /// let mut gio = Cart::new();
     /// gio.them("Sách", 45_000, 2).unwrap();
     /// gio.them("Bút", 5_000, 3).unwrap();
     /// assert_eq!(gio.tong_tien(), 105_000);
     /// ```
     pub fn tong_tien(&self) -> u64 {
-        self.mat_hang.iter().map(|(_, gia, sl)| gia * *sl as u64).sum()
+        self.mat_queue.iter().map(|(_, price, sl)| price * *sl as u64).sum()
     }
 
     pub fn so_dong(&self) -> usize {
-        self.mat_hang.len()
+        self.mat_queue.len()
     }
 
     /// Áp mã giảm giá phần trăm (0..=100).
-    pub fn sau_giam_gia(&self, phan_tram: u32) -> u64 {
+    pub fn after_discount(&self, percent: u32) -> u64 {
         let tong = self.tong_tien();
-        let pt = phan_tram.min(100) as u64;
+        let pt = percent.min(100) as u64;
         tong - tong * pt / 100
     }
 }
@@ -67,29 +67,29 @@ impl GioHang {
 // ============================================================================
 
 /// Cổng thanh toán là một PHỤ THUỘC. Trong test ta thay nó bằng bản giả.
-pub trait CongThanhToan {
-    fn tru_tien(&self, so_tien: u64) -> Result<String, String>;
+pub trait PaymentGateway {
+    fn debit(&self, so_tien: u64) -> Result<String, String>;
 }
 
 /// Bản thật (chỉ mô phỏng, không gọi mạng thật ở đây).
-pub struct CongThat;
-impl CongThanhToan for CongThat {
-    fn tru_tien(&self, so_tien: u64) -> Result<String, String> {
+pub struct RealGateway;
+impl PaymentGateway for RealGateway {
+    fn debit(&self, so_tien: u64) -> Result<String, String> {
         Ok(format!("TXN-THAT-{}", so_tien))
     }
 }
 
 /// Hàm nghiệp vụ nhận phụ thuộc qua trait (tiêm phụ thuộc, Chương 14).
-pub fn thanh_toan_gio(
-    gio: &GioHang,
-    cong: &dyn CongThanhToan,
-    giam_gia: u32,
+pub fn checkout(
+    gio: &Cart,
+    gate: &dyn PaymentGateway,
+    discount: u32,
 ) -> Result<String, String> {
-    let so_tien = gio.sau_giam_gia(giam_gia);
+    let so_tien = gio.after_discount(discount);
     if so_tien == 0 {
         return Err("Giỏ rỗng hoặc miễn phí, không cần thanh toán".to_string());
     }
-    cong.tru_tien(so_tien)
+    gate.debit(so_tien)
 }
 
 // ============================================================================
@@ -97,9 +97,9 @@ pub fn thanh_toan_gio(
 // ============================================================================
 
 /// Bộ sinh giả ngẫu nhiên tất định (LCG) — giống Chương 18, không cần crate.
-pub struct BoSinh(u64);
-impl BoSinh {
-    pub fn moi(hat: u64) -> Self { BoSinh(hat) }
+pub struct Generator(u64);
+impl Generator {
+    pub fn new(hat: u64) -> Self { Generator(hat) }
     pub fn so(&mut self, tran: u32) -> u32 {
         self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         ((self.0 >> 33) as u32) % tran
@@ -118,22 +118,22 @@ mod unit {
     // --- Phong cách TDD: mỗi test mô tả MỘT hành vi mong muốn ---
 
     #[test]
-    fn gio_moi_thi_rong() {
-        let gio = GioHang::moi();
+    fn new_cart_is_empty() {
+        let gio = Cart::new();
         assert_eq!(gio.so_dong(), 0);
         assert_eq!(gio.tong_tien(), 0);
     }
 
     #[test]
-    fn them_mat_hang_tinh_dung_tong() {
-        let mut gio = GioHang::moi();
+    fn add_item_totals_correctly() {
+        let mut gio = Cart::new();
         gio.them("A", 10_000, 3).unwrap();
         assert_eq!(gio.tong_tien(), 30_000);
     }
 
     #[test]
-    fn them_cung_ten_thi_cong_don_so_luong() {
-        let mut gio = GioHang::moi();
+    fn same_name_merges_quantity() {
+        let mut gio = Cart::new();
         gio.them("A", 10_000, 1).unwrap();
         gio.them("A", 10_000, 2).unwrap();
         assert_eq!(gio.so_dong(), 1, "phải gộp thành 1 dòng");
@@ -141,17 +141,17 @@ mod unit {
     }
 
     #[test]
-    fn so_luong_bang_khong_la_loi_khong_phai_panic() {
-        let mut gio = GioHang::moi();
-        assert_eq!(gio.them("A", 10_000, 0), Err(LoiGio::SoLuongBangKhong));
+    fn zero_quantity_is_error_not_panic() {
+        let mut gio = Cart::new();
+        assert_eq!(gio.them("A", 10_000, 0), Err(CartError::SoLuongBangKhong));
         assert_eq!(gio.so_dong(), 0); // không thêm gì
     }
 
     #[test]
-    fn giam_gia_vuot_100_bi_ghim_ve_100() {
-        let mut gio = GioHang::moi();
+    fn discount_clamped_at_100() {
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
-        assert_eq!(gio.sau_giam_gia(200), 0); // ghim ở 100%, không âm
+        assert_eq!(gio.after_discount(200), 0); // ghim ở 100%, không âm
     }
 }
 
@@ -165,49 +165,49 @@ mod test_double {
     use std::cell::RefCell;
 
     /// SPY: cổng giả ghi lại nó được gọi với số tiền bao nhiêu.
-    struct CongGianDiep {
-        da_goi_voi: RefCell<Vec<u64>>,
+    struct SpyGateway {
+        called_with: RefCell<Vec<u64>>,
     }
-    impl CongThanhToan for CongGianDiep {
-        fn tru_tien(&self, so_tien: u64) -> Result<String, String> {
-            self.da_goi_voi.borrow_mut().push(so_tien);
+    impl PaymentGateway for SpyGateway {
+        fn debit(&self, so_tien: u64) -> Result<String, String> {
+            self.called_with.borrow_mut().push(so_tien);
             Ok("TXN-GIA".to_string())
         }
     }
 
     /// STUB: cổng giả luôn báo lỗi, để test nhánh thất bại.
-    struct CongLuonHong;
-    impl CongThanhToan for CongLuonHong {
-        fn tru_tien(&self, _: u64) -> Result<String, String> {
+    struct AlwaysFailGateway;
+    impl PaymentGateway for AlwaysFailGateway {
+        fn debit(&self, _: u64) -> Result<String, String> {
             Err("Thẻ bị từ chối".to_string())
         }
     }
 
     #[test]
-    fn thanh_toan_goi_cong_dung_so_tien_sau_giam_gia() {
-        let mut gio = GioHang::moi();
+    fn checkout_charges_discounted_total() {
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
-        let spy = CongGianDiep { da_goi_voi: RefCell::new(vec![]) };
+        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
 
-        thanh_toan_gio(&gio, &spy, 20).unwrap(); // giảm 20% -> 80.000
+        checkout(&gio, &spy, 20).unwrap(); // giảm 20% -> 80.000
 
-        assert_eq!(*spy.da_goi_voi.borrow(), vec![80_000], "phải trừ đúng số sau giảm giá");
+        assert_eq!(*spy.called_with.borrow(), vec![80_000], "phải trừ đúng số sau giảm giá");
     }
 
     #[test]
-    fn thanh_toan_lan_truyen_loi_tu_cong() {
-        let mut gio = GioHang::moi();
+    fn checkout_propagates_gateway_error() {
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
-        assert_eq!(thanh_toan_gio(&gio, &CongLuonHong, 0), Err("Thẻ bị từ chối".to_string()));
+        assert_eq!(checkout(&gio, &AlwaysFailGateway, 0), Err("Thẻ bị từ chối".to_string()));
     }
 
     #[test]
-    fn gio_rong_khong_goi_cong_thanh_toan() {
-        let gio = GioHang::moi();
-        let spy = CongGianDiep { da_goi_voi: RefCell::new(vec![]) };
-        let kq = thanh_toan_gio(&gio, &spy, 0);
+    fn empty_cart_skips_gateway() {
+        let gio = Cart::new();
+        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
+        let kq = checkout(&gio, &spy, 0);
         assert!(kq.is_err());
-        assert!(spy.da_goi_voi.borrow().is_empty(), "cổng KHÔNG được gọi khi giỏ rỗng");
+        assert!(spy.called_with.borrow().is_empty(), "cổng KHÔNG được gọi khi giỏ rỗng");
     }
 }
 
@@ -221,39 +221,39 @@ mod property {
     use super::*;
 
     #[test]
-    fn giam_gia_luon_nam_trong_khoang_0_va_tong() {
-        let mut sinh = BoSinh::moi(2026);
+    fn discount_within_bounds() {
+        let mut sinh = Generator::new(2026);
         for _ in 0..2000 {
-            let mut gio = GioHang::moi();
+            let mut gio = Cart::new();
             let so_mat_hang = sinh.so(5) + 1;
             for i in 0..so_mat_hang {
                 let _ = gio.them(&format!("SP{}", i), (sinh.so(100_000) + 1) as u64, sinh.so(5) + 1);
             }
             let pt = sinh.so(150); // cố tình cho vượt 100
-            let sau = gio.sau_giam_gia(pt);
+            let next = gio.after_discount(pt);
             // TÍNH CHẤT: giá sau giảm luôn trong [0, tổng]
-            assert!(sau <= gio.tong_tien(), "giảm giá không được làm TĂNG tiền");
+            assert!(next <= gio.tong_tien(), "giảm giá không được làm TĂNG tiền");
         }
     }
 
     #[test]
-    fn giam_0_phan_tram_bang_dung_tong() {
-        let mut sinh = BoSinh::moi(7);
+    fn zero_discount_keeps_total() {
+        let mut sinh = Generator::new(7);
         for _ in 0..1000 {
-            let mut gio = GioHang::moi();
+            let mut gio = Cart::new();
             gio.them("X", (sinh.so(50_000) + 1) as u64, sinh.so(9) + 1).unwrap();
             // TÍNH CHẤT: giảm 0% là phép đồng nhất
-            assert_eq!(gio.sau_giam_gia(0), gio.tong_tien());
+            assert_eq!(gio.after_discount(0), gio.tong_tien());
         }
     }
 
     #[test]
-    fn them_roi_lai_bang_tong_cac_phan() {
-        let mut sinh = BoSinh::moi(99);
+    fn sum_equals_parts() {
+        let mut sinh = Generator::new(99);
         for _ in 0..1000 {
             let (g1, sl1) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
             let (g2, sl2) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
-            let mut gio = GioHang::moi();
+            let mut gio = Cart::new();
             gio.them("A", g1, sl1).unwrap();
             gio.them("B", g2, sl2).unwrap();
             // TÍNH CHẤT: tổng = tổng thành tiền từng dòng
@@ -272,39 +272,39 @@ mod bdd {
     use super::*;
     use std::cell::RefCell;
 
-    struct CongOk(RefCell<Vec<u64>>);
-    impl CongThanhToan for CongOk {
-        fn tru_tien(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
+    struct OkGateway(RefCell<Vec<u64>>);
+    impl PaymentGateway for OkGateway {
+        fn debit(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
     }
 
     /// Kịch bản: "Khách VIP mua hàng và được giảm 15%".
     #[test]
-    fn khach_vip_duoc_giam_15_phan_tram() {
+    fn vip_gets_15_percent_off() {
         // GIVEN — một giỏ hàng trị giá 1.000.000đ và một cổng thanh toán
-        let mut gio = GioHang::moi();
+        let mut gio = Cart::new();
         gio.them("Tai nghe", 1_000_000, 1).unwrap();
-        let cong = CongOk(RefCell::new(vec![]));
+        let gate = OkGateway(RefCell::new(vec![]));
 
         // WHEN — khách VIP (giảm 15%) thanh toán
-        let ket_qua = thanh_toan_gio(&gio, &cong, 15);
+        let ket_qua = checkout(&gio, &gate, 15);
 
         // THEN — thanh toán thành công và số tiền bị trừ đúng 850.000đ
         assert!(ket_qua.is_ok());
-        assert_eq!(*cong.0.borrow(), vec![850_000]);
+        assert_eq!(*gate.0.borrow(), vec![850_000]);
     }
 
     /// Kịch bản: "Không thể thanh toán một giỏ hàng rỗng".
     #[test]
-    fn khong_the_thanh_toan_gio_rong() {
+    fn cannot_checkout_empty_cart() {
         // GIVEN — một giỏ hàng rỗng
-        let gio = GioHang::moi();
-        let cong = CongOk(RefCell::new(vec![]));
+        let gio = Cart::new();
+        let gate = OkGateway(RefCell::new(vec![]));
 
         // WHEN — cố gắng thanh toán
-        let ket_qua = thanh_toan_gio(&gio, &cong, 0);
+        let ket_qua = checkout(&gio, &gate, 0);
 
         // THEN — hệ thống từ chối và không gọi cổng thanh toán
         assert!(ket_qua.is_err());
-        assert!(cong.0.borrow().is_empty());
+        assert!(gate.0.borrow().is_empty());
     }
 }

@@ -25,17 +25,17 @@ pub enum Side { Buy, Sell }
 #[derive(Debug, Clone, PartialEq)]
 pub enum BanTin {
     /// Thêm lệnh mới vào sổ
-    AddOrder { ma: OrderId, id_chain: u32, side: Side, price: Price, quantity: Quantity },
+    AddOrder { id: OrderId, id_chain: u32, side: Side, price: Price, quantity: Quantity },
     /// Lệnh bị huỷ một phần hoặc toàn bộ
-    CancelOrder { ma: OrderId, so_luong_huy: Quantity },
+    CancelOrder { id: OrderId, so_luong_huy: Quantity },
     /// Lệnh khớp
-    Fill { ma: OrderId, quantity: Quantity, price: Price },
+    Fill { id: OrderId, quantity: Quantity, price: Price },
     /// Thay thế lệnh: huỷ cũ, tạo mới, MẤT ưu tiên thời gian
     ThayThe { old_id: OrderId, ma_moi: OrderId, price: Price, quantity: Quantity },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PacketTruong {
+pub struct FieldPacket {
     pub nonce: u64,
     pub timestamp_nanos: u64,
     pub ban_tin: BanTin,
@@ -58,7 +58,7 @@ pub enum ErrorAnalyze {
 ///  | loại   | stt    | thời điểm | mã   | mã ck | chiều | giá    | số lượng
 ///  | 1 byte | 8 byte | 8 byte    |8 byte| 4 byte| 1 byte| 8 byte | 4 byte
 /// ```
-pub fn analyze(b: &[u8]) -> Result<PacketTruong, ErrorAnalyze> {
+pub fn analyze(b: &[u8]) -> Result<FieldPacket, ErrorAnalyze> {
     if b.len() < 17 { return Err(ErrorAnalyze::QuaNgan { can: 17, co: b.len() }); }
     let kind = b[0];
     let nonce = u64::from_be_bytes(b[1..9].try_into().unwrap());
@@ -73,24 +73,24 @@ pub fn analyze(b: &[u8]) -> Result<PacketTruong, ErrorAnalyze> {
 
     let ban_tin = match kind {
         b'A' => BanTin::AddOrder {
-            ma: doc_u64(17), id_chain: doc_u32(25),
+            id: doc_u64(17), id_chain: doc_u32(25),
             side: match b[29] { b'B' => Side::Buy, b'S' => Side::Sell,
                                  x => return Err(ErrorAnalyze::ChieuLa(x)) },
             price: doc_i64(30), quantity: doc_u32(38),
         },
-        b'X' => BanTin::CancelOrder { ma: doc_u64(17), so_luong_huy: doc_u32(25) },
-        b'E' => BanTin::Fill { ma: doc_u64(17), quantity: doc_u32(25), price: doc_i64(29) },
+        b'X' => BanTin::CancelOrder { id: doc_u64(17), so_luong_huy: doc_u32(25) },
+        b'E' => BanTin::Fill { id: doc_u64(17), quantity: doc_u32(25), price: doc_i64(29) },
         b'R' => BanTin::ThayThe {
             old_id: doc_u64(17), ma_moi: doc_u64(25),
             price: doc_i64(33), quantity: doc_u32(41),
         },
         x => return Err(ErrorAnalyze::LoaiBanTinLa(x)),
     };
-    Ok(PacketTruong { nonce, timestamp_nanos, ban_tin })
+    Ok(FieldPacket { nonce, timestamp_nanos, ban_tin })
 }
 
 /// Mã hoá ngược — dùng để sinh dữ liệu kiểm thử và để ghi lại phiên (Chương 76).
-pub fn encode(g: &PacketTruong) -> Vec<u8> {
+pub fn encode(g: &FieldPacket) -> Vec<u8> {
     let mut v = Vec::with_capacity(48);
     let kind = match g.ban_tin {
         BanTin::AddOrder { .. } => b'A', BanTin::CancelOrder { .. } => b'X',
@@ -100,19 +100,19 @@ pub fn encode(g: &PacketTruong) -> Vec<u8> {
     v.extend_from_slice(&g.nonce.to_be_bytes());
     v.extend_from_slice(&g.timestamp_nanos.to_be_bytes());
     match &g.ban_tin {
-        BanTin::AddOrder { ma, id_chain, side, price, quantity } => {
-            v.extend_from_slice(&ma.to_be_bytes());
+        BanTin::AddOrder { id, id_chain, side, price, quantity } => {
+            v.extend_from_slice(&id.to_be_bytes());
             v.extend_from_slice(&id_chain.to_be_bytes());
             v.push(if *side == Side::Buy { b'B' } else { b'S' });
             v.extend_from_slice(&price.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
         }
-        BanTin::CancelOrder { ma, so_luong_huy } => {
-            v.extend_from_slice(&ma.to_be_bytes());
+        BanTin::CancelOrder { id, so_luong_huy } => {
+            v.extend_from_slice(&id.to_be_bytes());
             v.extend_from_slice(&so_luong_huy.to_be_bytes());
         }
-        BanTin::Fill { ma, quantity, price } => {
-            v.extend_from_slice(&ma.to_be_bytes());
+        BanTin::Fill { id, quantity, price } => {
+            v.extend_from_slice(&id.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
             v.extend_from_slice(&price.to_be_bytes());
         }
@@ -148,32 +148,32 @@ pub enum KetQuaNhan {
 }
 
 pub struct GapDetector {
-    pub ky_round: u64,
+    pub expectation: u64,
     /// Bản tin tới sớm được giữ lại, xử lý sau khi khe được lấp.
-    count_lai: BTreeMap<u64, PacketTruong>,
+    count_lai: BTreeMap<u64, FieldPacket>,
     /// Khe đang chờ lấp: (bản tin đầu thiếu, bản tin cuối thiếu).
     /// Có giá trị nghĩa là ta đang ở CHẾ ĐỘ KHÔI PHỤC.
     pending_gap: Option<(u64, u64)>,
-    pub num_khe: u64,
+    pub slot_count: u64,
     pub num_duplicate_loop: u64,
     pub tong_ban_tin_mat: u64,
 }
 
 impl GapDetector {
     pub fn new(start: u64) -> Self {
-        GapDetector { ky_round: start, count_lai: BTreeMap::new(), pending_gap: None,
-                        num_khe: 0, num_duplicate_loop: 0, tong_ban_tin_mat: 0 }
+        GapDetector { expectation: start, count_lai: BTreeMap::new(), pending_gap: None,
+                        slot_count: 0, num_duplicate_loop: 0, tong_ban_tin_mat: 0 }
     }
 
     pub fn dang_recovery(&self) -> bool { self.pending_gap.is_some() }
 
-    pub fn nhan(&mut self, g: PacketTruong) -> KetQuaNhan {
+    pub fn nhan(&mut self, g: FieldPacket) -> KetQuaNhan {
         let stt = g.nonce;
-        if stt < self.ky_round {
+        if stt < self.expectation {
             self.num_duplicate_loop += 1;
             return KetQuaNhan::TrungLap;
         }
-        if stt > self.ky_round {
+        if stt > self.expectation {
             self.count_lai.insert(stt, g); // luôn giữ lại, đừng bao giờ vứt
             // Đã biết có khe rồi thì chỉ đệm tiếp. Nếu báo lại mỗi bản tin,
             // ta sẽ gửi hàng nghìn yêu cầu phát lại cho CÙNG một khe và tự
@@ -182,19 +182,19 @@ impl GapDetector {
                 if stt > *den + 1 { *den = stt - 1; }
                 return KetQuaNhan::DangChoKhoiPhuc;
             }
-            let (tu, den) = (self.ky_round, stt - 1);
+            let (tu, den) = (self.expectation, stt - 1);
             self.pending_gap = Some((tu, den));
-            self.num_khe += 1;
+            self.slot_count += 1;
             self.tong_ban_tin_mat += den - tu + 1;
             return KetQuaNhan::ThieuBanTin { tu, den, so_ban_tin_mat: den - tu + 1 };
         }
-        self.ky_round += 1;
+        self.expectation += 1;
         self.count_lai.insert(stt, g);
         KetQuaNhan::DungThuTu
     }
 
     /// Rút các bản tin liền mạch đã sẵn sàng xử lý, theo đúng thứ tự.
-    pub fn rut_lien_mach(&mut self) -> Vec<PacketTruong> {
+    pub fn drain(&mut self) -> Vec<FieldPacket> {
         let mut ra = Vec::new();
         let mut mong = match self.count_lai.keys().next() { Some(&k) => k, None => return ra };
         while let Some(g) = self.count_lai.remove(&mong) {
@@ -206,15 +206,15 @@ impl GapDetector {
 
     /// Lấp khe bằng dữ liệu phát lại từ luồng khôi phục. Khi mọi bản tin
     /// thiếu đã về đủ, ta rời chế độ khôi phục và chạy bình thường trở lại.
-    pub fn loop_khe(&mut self, cac_goi: Vec<PacketTruong>) {
+    pub fn slot_loop(&mut self, cac_goi: Vec<FieldPacket>) {
         for g in cac_goi {
             let stt = g.nonce;
             self.count_lai.insert(stt, g);
         }
         // Đẩy kỳ vọng qua toàn bộ phần đã liền mạch
-        while self.count_lai.contains_key(&self.ky_round) { self.ky_round += 1; }
+        while self.count_lai.contains_key(&self.expectation) { self.expectation += 1; }
         if let Some((_, den)) = self.pending_gap {
-            if self.ky_round > den { self.pending_gap = None; }
+            if self.expectation > den { self.pending_gap = None; }
         }
     }
 
@@ -309,7 +309,7 @@ impl L2Book {
     /// hỏng hoặc mất bản tin — phải dừng giao dịch ngay, đừng cố khai thác.
     pub fn is_crossed(&self) -> bool { self.spread().is_some_and(|c| c < 0) }
 
-    pub fn lanh_manh(&self) -> bool { !self.is_crossed() }
+    pub fn is_healthy(&self) -> bool { !self.is_crossed() }
 }
 
 // ============================================================================
@@ -320,7 +320,7 @@ impl L2Book {
 // chiến lược tạo lập thị trường.
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OrderL3 { pub ma: OrderId, pub side: Side, pub price: Price, pub remaining: Quantity }
+pub struct L3Order { pub id: OrderId, pub side: Side, pub price: Price, pub remaining: Quantity }
 
 /// `Chieu` không cài `Ord`, nên dùng bản có thứ tự làm khoá bản đồ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -332,7 +332,7 @@ impl From<Side> for Chieu2 {
 
 #[derive(Debug, Default)]
 pub struct L3Book {
-    pub order: HashMap<OrderId, OrderL3>,
+    pub order: HashMap<OrderId, L3Order>,
     /// Thứ tự tới của từng mức giá — nền của ưu tiên thời gian.
     queue: BTreeMap<(Chieu2, Price), Vec<OrderId>>,
     pub l2: L2Book,
@@ -343,28 +343,28 @@ impl L3Book {
 
     pub fn apply(&mut self, bt: &BanTin) {
         match bt {
-            BanTin::AddOrder { ma, side, price, quantity, .. } => {
-                self.order.insert(*ma,
-                    OrderL3 { ma: *ma, side: *side, price: *price, remaining: *quantity });
-                self.queue.entry(((*side).into(), *price)).or_default().push(*ma);
+            BanTin::AddOrder { id, side, price, quantity, .. } => {
+                self.order.insert(*id,
+                    L3Order { id: *id, side: *side, price: *price, remaining: *quantity });
+                self.queue.entry(((*side).into(), *price)).or_default().push(*id);
                 self.l2.them(*side, *price, *quantity);
             }
-            BanTin::CancelOrder { ma, so_luong_huy } => {
-                if let Some(l) = self.order.get_mut(ma) {
+            BanTin::CancelOrder { id, so_luong_huy } => {
+                if let Some(l) = self.order.get_mut(id) {
                     let thuc_cancel = (*so_luong_huy).min(l.remaining);
                     l.remaining -= thuc_cancel;
                     let (c, g, het) = (l.side, l.price, l.remaining == 0);
                     self.l2.bot(c, g, thuc_cancel, het);
-                    if het { self.go_khoi_hang(*ma, c, g); self.order.remove(ma); }
+                    if het { self.remove_from_queue(*id, c, g); self.order.remove(id); }
                 }
             }
-            BanTin::Fill { ma, quantity, .. } => {
-                if let Some(l) = self.order.get_mut(ma) {
+            BanTin::Fill { id, quantity, .. } => {
+                if let Some(l) = self.order.get_mut(id) {
                     let thuc = (*quantity).min(l.remaining);
                     l.remaining -= thuc;
                     let (c, g, het) = (l.side, l.price, l.remaining == 0);
                     self.l2.bot(c, g, thuc, het);
-                    if het { self.go_khoi_hang(*ma, c, g); self.order.remove(ma); }
+                    if het { self.remove_from_queue(*id, c, g); self.order.remove(id); }
                 }
             }
             BanTin::ThayThe { old_id, ma_moi, price, quantity } => {
@@ -372,9 +372,9 @@ impl L3Book {
                 // xuống cuối hàng — đây là lý do sửa lệnh rất đắt trong HFT.
                 if let Some(l) = self.order.remove(old_id) {
                     self.l2.bot(l.side, l.price, l.remaining, true);
-                    self.go_khoi_hang(*old_id, l.side, l.price);
+                    self.remove_from_queue(*old_id, l.side, l.price);
                     self.order.insert(*ma_moi,
-                        OrderL3 { ma: *ma_moi, side: l.side, price: *price, remaining: *quantity });
+                        L3Order { id: *ma_moi, side: l.side, price: *price, remaining: *quantity });
                     self.queue.entry((l.side.into(), *price)).or_default().push(*ma_moi);
                     self.l2.them(l.side, *price, *quantity);
                 }
@@ -382,25 +382,25 @@ impl L3Book {
         }
     }
 
-    fn go_khoi_hang(&mut self, ma: OrderId, c: Side, g: Price) {
+    fn remove_from_queue(&mut self, id: OrderId, c: Side, g: Price) {
         if let Some(h) = self.queue.get_mut(&(c.into(), g)) {
-            h.retain(|&x| x != ma);
+            h.retain(|&x| x != id);
             if h.is_empty() { self.queue.remove(&(c.into(), g)); }
         }
     }
 
     /// Lệnh này đứng thứ mấy trong hàng ở mức giá của nó? (0 = đầu hàng)
     /// Câu trả lời quyết định xác suất được khớp.
-    pub fn queue_position(&self, ma: OrderId) -> Option<usize> {
-        let l = self.order.get(&ma)?;
-        self.queue.get(&(l.side.into(), l.price))?.iter().position(|&x| x == ma)
+    pub fn queue_position(&self, id: OrderId) -> Option<usize> {
+        let l = self.order.get(&id)?;
+        self.queue.get(&(l.side.into(), l.price))?.iter().position(|&x| x == id)
     }
 
     /// Khối lượng đứng TRƯỚC lệnh này — phải khớp hết chỗ đó thì mới tới lượt ta.
-    pub fn queue_ahead(&self, ma: OrderId) -> Option<u64> {
-        let l = self.order.get(&ma)?;
+    pub fn queue_ahead(&self, id: OrderId) -> Option<u64> {
+        let l = self.order.get(&id)?;
         let h = self.queue.get(&(l.side.into(), l.price))?;
-        let vt = h.iter().position(|&x| x == ma)?;
+        let vt = h.iter().position(|&x| x == id)?;
         Some(h[..vt].iter().filter_map(|m| self.order.get(m)).map(|x| x.remaining as u64).sum())
     }
 
@@ -411,11 +411,11 @@ impl L3Book {
 // 5. SINH DỮ LIỆU PHIÊN TẤT ĐỊNH
 // ============================================================================
 
-pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<PacketTruong> {
+pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<FieldPacket> {
     let mut s = hat_giong;
     let mut ra = Vec::with_capacity(so_ban_tin);
     let mut order_id: u64 = 1;
-    let mut dang_mo: Vec<(OrderId, Side, Price, Quantity)> = Vec::new();
+    let mut is_open: Vec<(OrderId, Side, Price, Quantity)> = Vec::new();
     let mut t: u64 = 1_000_000_000;
 
     for stt in 0..so_ban_tin as u64 {
@@ -424,7 +424,7 @@ pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<PacketTruong> 
         t += 1_000 + (s >> 20) % 50_000;
 
         // Giữ sổ có ít nhất vài lệnh trước khi bắt đầu huỷ/khớp
-        let bt = if dang_mo.len() < 4 || r < 55 {
+        let bt = if is_open.len() < 4 || r < 55 {
             let side = if (s >> 40) % 2 == 0 { Side::Buy } else { Side::Sell };
             // Bên mua đặt dưới 8400, bên bán đặt trên 8400 → sổ không bao giờ chéo
             let lech = ((s >> 44) % 20) as i64;
@@ -433,24 +433,24 @@ pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<PacketTruong> 
                 Side::Sell => 8_400 + 1 + lech,
             };
             let sl = 100 + ((s >> 48) % 10) as u32 * 100;
-            dang_mo.push((order_id, side, price, sl));
-            let bt = BanTin::AddOrder { ma: order_id, id_chain: 1, side, price, quantity: sl };
+            is_open.push((order_id, side, price, sl));
+            let bt = BanTin::AddOrder { id: order_id, id_chain: 1, side, price, quantity: sl };
             order_id += 1;
             bt
         } else {
-            let i = ((s >> 52) as usize) % dang_mo.len();
-            let (ma, _, price, sl) = dang_mo[i];
+            let i = ((s >> 52) as usize) % is_open.len();
+            let (id, _, price, sl) = is_open[i];
             let part = (sl / 2).max(1);
             if r < 80 {
-                dang_mo.remove(i);
-                BanTin::CancelOrder { ma, so_luong_huy: sl }
+                is_open.remove(i);
+                BanTin::CancelOrder { id, so_luong_huy: sl }
             } else {
-                dang_mo[i].3 -= part;
-                if dang_mo[i].3 == 0 { dang_mo.remove(i); }
-                BanTin::Fill { ma, quantity: part, price }
+                is_open[i].3 -= part;
+                if is_open[i].3 == 0 { is_open.remove(i); }
+                BanTin::Fill { id, quantity: part, price }
             }
         };
-        ra.push(PacketTruong { nonce: stt, timestamp_nanos: t, ban_tin: bt });
+        ra.push(FieldPacket { nonce: stt, timestamp_nanos: t, ban_tin: bt });
     }
     ra
 }
@@ -461,9 +461,9 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. GIAO THỨC NHỊ PHÂN vs JSON");
-    let g = PacketTruong {
+    let g = FieldPacket {
         nonce: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
-        ban_tin: BanTin::AddOrder { ma: 999, id_chain: 1, side: Side::Buy,
+        ban_tin: BanTin::AddOrder { id: 999, id_chain: 1, side: Side::Buy,
                                     price: 8_450, quantity: 100 },
     };
     let b = encode(&g);
@@ -481,11 +481,11 @@ fn main() {
         if kq != KetQuaNhan::DungThuTu { println!("   stt {} → {:?}", gt.nonce, kq); }
     }
     println!("   Tổng khe: {} · tổng bản tin mất: {} · đang đệm: {}",
-             pd.num_khe, pd.tong_ban_tin_mat, pd.num_dang_count());
-    pd.loop_khe(vec![session[3].clone(), session[4].clone()]);
+             pd.slot_count, pd.tong_ban_tin_mat, pd.num_dang_count());
+    pd.slot_loop(vec![session[3].clone(), session[4].clone()]);
     println!("   Đang ở chế độ khôi phục: {}", pd.dang_recovery());
     println!("   Sau khi phát lại → còn khôi phục: {} · rút liền mạch được {} bản tin",
-             pd.dang_recovery(), pd.rut_lien_mach().len());
+             pd.dang_recovery(), pd.drain().len());
 
     println!("\n3. DỰNG SỔ L2 TỪ 5000 BẢN TIN");
     let mut so = L3Book::new();
@@ -508,24 +508,24 @@ fn main() {
 
     println!("\n4. KIỂM TRA CHẤT LƯỢNG DỮ LIỆU");
     println!("   Sổ lành mạnh: {} · bị khoá: {} · bị chéo: {}",
-             so.l2.lanh_manh(), so.l2.is_key(), so.l2.is_crossed());
+             so.l2.is_healthy(), so.l2.is_key(), so.l2.is_crossed());
     let mut hong = L2Book::new();
     hong.them(Side::Buy, 8_500, 100);
     hong.them(Side::Sell, 8_400, 100); // mua CAO hơn bán → vô lý
     println!("   Sổ dựng sai (mua 85.00 > bán 84.00) → bị chéo: {} · lành mạnh: {}",
-             hong.is_crossed(), hong.lanh_manh());
+             hong.is_crossed(), hong.is_healthy());
     println!("   → Gặp sổ chéo phải NGỪNG giao dịch, không được coi là cơ hội.");
 
     println!("\n5. VỊ TRÍ TRONG HÀNG — câu hỏi sống còn của tạo lập thị trường");
     let mut s3 = L3Book::new();
-    for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-        s3.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
+    for (id, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
+        s3.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
                                        price: 8_400, quantity: sl });
     }
-    for ma in [1u64, 2, 3] {
+    for id in [1u64, 2, 3] {
         println!("   Lệnh #{} → đứng thứ {} · phải chờ {} đơn vị khớp trước",
-                 ma, s3.queue_position(ma).unwrap(),
-                 s3.queue_ahead(ma).unwrap());
+                 id, s3.queue_position(id).unwrap(),
+                 s3.queue_ahead(id).unwrap());
     }
     s3.apply(&BanTin::ThayThe { old_id: 1, ma_moi: 4, price: 8_400, quantity: 500 });
     println!("   Sửa lệnh #1 (thành #4) → giờ đứng thứ {} — MẤT SẠCH ưu tiên thời gian",
@@ -544,14 +544,14 @@ mod tests {
     #[test]
     fn ma_hoa_roi_phan_tich_ra_dung_ban_goc() {
         let all_bt = vec![
-            BanTin::AddOrder { ma: 1, id_chain: 7, side: Side::Buy, price: 8_450, quantity: 100 },
-            BanTin::AddOrder { ma: 2, id_chain: 7, side: Side::Sell, price: -50, quantity: 1 },
-            BanTin::CancelOrder { ma: 3, so_luong_huy: 250 },
-            BanTin::Fill { ma: 4, quantity: 75, price: 8_400 },
+            BanTin::AddOrder { id: 1, id_chain: 7, side: Side::Buy, price: 8_450, quantity: 100 },
+            BanTin::AddOrder { id: 2, id_chain: 7, side: Side::Sell, price: -50, quantity: 1 },
+            BanTin::CancelOrder { id: 3, so_luong_huy: 250 },
+            BanTin::Fill { id: 4, quantity: 75, price: 8_400 },
             BanTin::ThayThe { old_id: 5, ma_moi: 6, price: 8_390, quantity: 999 },
         ];
         for bt in all_bt {
-            let g = PacketTruong { nonce: 42, timestamp_nanos: 1_700_000_000_000_000_000,
+            let g = FieldPacket { nonce: 42, timestamp_nanos: 1_700_000_000_000_000_000,
                                    ban_tin: bt };
             assert_eq!(analyze(&encode(&g)), Ok(g.clone()), "vòng mã hoá phải khép kín");
         }
@@ -574,8 +574,8 @@ mod tests {
 
     #[test]
     fn analyze_reject_id_side_is() {
-        let g = PacketTruong { nonce: 1, timestamp_nanos: 1,
-            ban_tin: BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
+        let g = FieldPacket { nonce: 1, timestamp_nanos: 1,
+            ban_tin: BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                         price: 100, quantity: 1 } };
         let mut b = encode(&g);
         b[29] = b'?'; // phá byte chiều
@@ -584,8 +584,8 @@ mod tests {
 
     #[test]
     fn nhi_phan_gon_hon_json_nhieu_lan() {
-        let g = PacketTruong { nonce: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
-            ban_tin: BanTin::AddOrder { ma: 999, id_chain: 1, side: Side::Buy,
+        let g = FieldPacket { nonce: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
+            ban_tin: BanTin::AddOrder { id: 999, id_chain: 1, side: Side::Buy,
                                         price: 8_450, quantity: 100 } };
         assert_eq!(encode(&g).len(), 42, "bản tin thêm lệnh dài đúng 42 byte cố định");
         assert!(encode(&g).len() * 2 < 105, "nhị phân phải gọn hơn JSON ít nhất 2 lần");
@@ -595,8 +595,8 @@ mod tests {
     fn dung_thu_tu_byte_lon_truoc() {
         // Giao thức mạng LUÔN dùng big-endian. Nhầm sang little-endian thì
         // số nhỏ vẫn "chạy" nhưng giá trị hoàn toàn sai.
-        let g = PacketTruong { nonce: 0x0102030405060708, timestamp_nanos: 0,
-            ban_tin: BanTin::CancelOrder { ma: 1, so_luong_huy: 1 } };
+        let g = FieldPacket { nonce: 0x0102030405060708, timestamp_nanos: 0,
+            ban_tin: BanTin::CancelOrder { id: 1, so_luong_huy: 1 } };
         let b = encode(&g);
         assert_eq!(&b[1..9], &[1, 2, 3, 4, 5, 6, 7, 8], "byte cao đứng TRƯỚC");
     }
@@ -608,8 +608,8 @@ mod tests {
         for g in generate_session(100, 1) {
             assert_eq!(p.nhan(g), KetQuaNhan::DungThuTu);
         }
-        assert_eq!(p.num_khe, 0);
-        assert_eq!(p.ky_round, 100);
+        assert_eq!(p.slot_count, 0);
+        assert_eq!(p.expectation, 100);
     }
 
     #[test]
@@ -626,7 +626,7 @@ mod tests {
                            "các bản tin sau chỉ được đệm, không xin phát lại nữa");
             }
         }
-        assert_eq!(p.num_khe, 1);
+        assert_eq!(p.slot_count, 1);
         assert_eq!(p.tong_ban_tin_mat, 3);
     }
 
@@ -644,7 +644,7 @@ mod tests {
             }
         }
         assert_eq!(count_report_khe, 1, "một khe chỉ được xin phát lại đúng một lần");
-        assert_eq!(p.num_khe, 1);
+        assert_eq!(p.slot_count, 1);
         assert_eq!(p.tong_ban_tin_mat, 3);
         assert!(p.dang_recovery(), "vẫn đang chờ dữ liệu phát lại");
     }
@@ -658,11 +658,11 @@ mod tests {
             p.nhan(g.clone());
         }
         assert!(p.dang_recovery());
-        p.loop_khe(vec![session[3].clone(), session[4].clone()]);
+        p.slot_loop(vec![session[3].clone(), session[4].clone()]);
         assert!(p.dang_recovery(), "còn thiếu bản tin 5 thì vẫn đang khôi phục");
-        p.loop_khe(vec![session[5].clone()]);
+        p.slot_loop(vec![session[5].clone()]);
         assert!(!p.dang_recovery(), "đủ rồi thì phải trở lại bình thường");
-        assert_eq!(p.rut_lien_mach().len(), 20);
+        assert_eq!(p.drain().len(), 20);
     }
 
     #[test]
@@ -676,7 +676,7 @@ mod tests {
             assert_eq!(p.nhan(g.clone()), KetQuaNhan::TrungLap);
         }
         assert_eq!(p.num_duplicate_loop, 5);
-        assert_eq!(p.ky_round, 5, "trùng lặp không được đẩy kỳ vọng đi");
+        assert_eq!(p.expectation, 5, "trùng lặp không được đẩy kỳ vọng đi");
     }
 
     #[test]
@@ -686,7 +686,7 @@ mod tests {
         p.nhan(session[0].clone());
         p.nhan(session[5].clone()); // nhảy cóc
         assert_eq!(p.num_dang_count(), 2, "cả hai đều phải được giữ lại");
-        assert_eq!(p.rut_lien_mach().len(), 1, "chỉ rút được phần liền mạch từ đầu");
+        assert_eq!(p.drain().len(), 1, "chỉ rút được phần liền mạch từ đầu");
     }
 
     #[test]
@@ -697,8 +697,8 @@ mod tests {
             if i == 3 || i == 4 { continue; }
             p.nhan(g.clone());
         }
-        p.loop_khe(vec![session[3].clone(), session[4].clone()]);
-        let ra = p.rut_lien_mach();
+        p.slot_loop(vec![session[3].clone(), session[4].clone()]);
+        let ra = p.drain();
         assert_eq!(ra.len(), 10, "sau khi lấp khe phải rút được đủ 10 bản tin");
         for (i, g) in ra.iter().enumerate() {
             assert_eq!(g.nonce, i as u64, "và đúng thứ tự");
@@ -753,7 +753,7 @@ mod tests {
         let s = L2Book::new();
         assert_eq!(s.best_bid(), None);
         assert_eq!(s.spread(), None);
-        assert!(!s.is_crossed() && !s.is_key() && s.lanh_manh());
+        assert!(!s.is_crossed() && !s.is_key() && s.is_healthy());
         assert_eq!(s.price_can_table(), None);
     }
 
@@ -763,14 +763,14 @@ mod tests {
         cheo.them(Side::Buy, 8_500, 100);
         cheo.them(Side::Sell, 8_400, 100);
         assert!(cheo.is_crossed(), "mua 85.00 > bán 84.00 là dữ liệu hỏng");
-        assert!(!cheo.lanh_manh());
+        assert!(!cheo.is_healthy());
 
         let mut key = L2Book::new();
         key.them(Side::Buy, 8_400, 100);
         key.them(Side::Sell, 8_400, 100);
         assert!(key.is_key() && !key.is_crossed(),
                 "sổ khoá là hiếm nhưng hợp lệ, khác hẳn sổ chéo");
-        assert!(key.lanh_manh());
+        assert!(key.is_healthy());
     }
 
     #[test]
@@ -805,7 +805,7 @@ mod tests {
         let mut s = L3Book::new();
         for g in generate_session(3_000, 99) {
             s.apply(&g.ban_tin);
-            assert!(s.l2.lanh_manh(), "sổ không bao giờ được chéo khi dữ liệu sạch");
+            assert!(s.l2.is_healthy(), "sổ không bao giờ được chéo khi dữ liệu sạch");
         }
         // Dựng lại L2 từ L3 rồi so
         let mut check = L2Book::new();
@@ -823,8 +823,8 @@ mod tests {
     #[test]
     fn l3_giu_dung_uu_tien_thoi_gian() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
+        for (id, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
+            s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
                                           price: 8_400, quantity: sl });
         }
         assert_eq!(s.queue_position(1), Some(0));
@@ -838,11 +838,11 @@ mod tests {
     #[test]
     fn khop_het_lenh_dau_hang_day_ca_hang_len() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
+        for (id, sl) in [(1u64, 500u32), (2, 300)] {
+            s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
                                           price: 8_400, quantity: sl });
         }
-        s.apply(&BanTin::Fill { ma: 1, quantity: 500, price: 8_400 });
+        s.apply(&BanTin::Fill { id: 1, quantity: 500, price: 8_400 });
         assert_eq!(s.queue_position(2), Some(0), "lệnh #2 lên đầu hàng");
         assert_eq!(s.queue_ahead(2), Some(0));
         assert_eq!(s.order_book_dang_open(), 1);
@@ -851,11 +851,11 @@ mod tests {
     #[test]
     fn khop_mot_phan_giu_nguyen_vi_tri() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
+        for (id, sl) in [(1u64, 500u32), (2, 300)] {
+            s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
                                           price: 8_400, quantity: sl });
         }
-        s.apply(&BanTin::Fill { ma: 1, quantity: 200, price: 8_400 });
+        s.apply(&BanTin::Fill { id: 1, quantity: 200, price: 8_400 });
         assert_eq!(s.queue_position(1), Some(0), "khớp một phần KHÔNG mất chỗ");
         assert_eq!(s.queue_ahead(2), Some(300), "chỉ còn 300 đứng trước");
         assert_eq!(s.l2.qty_at(Side::Buy, 8_400), 600);
@@ -866,8 +866,8 @@ mod tests {
         // Bài học đắt tiền: sửa giá/khối lượng một lệnh = xuống cuối hàng.
         // Đó là lý do chiến lược tốt cân nhắc rất kỹ trước khi sửa lệnh.
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
+        for (id, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
+            s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
                                           price: 8_400, quantity: sl });
         }
         assert_eq!(s.queue_position(1), Some(0));
@@ -880,9 +880,9 @@ mod tests {
     #[test]
     fn huy_lenh_khong_ton_tai_khong_lam_hong_so() {
         let mut s = L3Book::new();
-        s.apply(&BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
+        s.apply(&BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                       price: 8_400, quantity: 100 });
-        s.apply(&BanTin::CancelOrder { ma: 999, so_luong_huy: 50 }); // mã lạ
+        s.apply(&BanTin::CancelOrder { id: 999, so_luong_huy: 50 }); // mã lạ
         assert_eq!(s.order_book_dang_open(), 1);
         assert_eq!(s.l2.qty_at(Side::Buy, 8_400), 100, "sổ phải nguyên vẹn");
     }
@@ -890,9 +890,9 @@ mod tests {
     #[test]
     fn cancel_qua_quantity_remaining_van_safe() {
         let mut s = L3Book::new();
-        s.apply(&BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
+        s.apply(&BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                       price: 8_400, quantity: 100 });
-        s.apply(&BanTin::CancelOrder { ma: 1, so_luong_huy: 99_999 });
+        s.apply(&BanTin::CancelOrder { id: 1, so_luong_huy: 99_999 });
         assert_eq!(s.order_book_dang_open(), 0);
         assert_eq!(s.l2.num_level(Side::Buy), 0);
     }

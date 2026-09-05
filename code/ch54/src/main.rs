@@ -289,7 +289,7 @@ fn main() -> io::Result<()> {
         let duplicate_order = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
         assert_eq!(duplicate_order.order_id, 1001);
         assert_eq!(inventory.get_available_stock(101), 9); // Kho KHÔNG bị trừ lần 2!
-        println!("    => Idempotency Engine da chan dung viec tru tien va tru kho trung lap!");
+        println!("    => Idempotency Engine da chan dung viec subtract tien va subtract kho trung lap!");
 
         // Tiến hành xuất kho
         engine.fulfill_order(1001).unwrap();
@@ -302,7 +302,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may chu toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;

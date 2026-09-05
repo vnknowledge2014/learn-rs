@@ -6,7 +6,7 @@ Chúc mừng bạn đã đặt chân tới chương sách thứ 50 — **Đại 
 
 Trải qua một hành trình phi thường gồm 9 chủ đề lớn: Từ những viên gạch đầu tiên về thanh ghi CPU, quyền sở hữu bộ nhớ, mượn và thời gian sống; qua các cấu trúc dữ liệu kinh điển, động cơ lưu trữ đĩa cứng Mini-Bitcask; vượt qua các thử thách bảo mật nhị phân, phân tích gói tin mạng và tư duy tấn công OSCP; cho đến kiến trúc vi dịch vụ, động cơ Tokio và thuật toán đồng thuận Raft... Giờ là lúc bạn chứng minh bản lĩnh của một **Kỹ sư Phần mềm Hệ thống Rust thực thụ (Senior Systems Engineer)**.
 
-Trong dự án tốt nghiệp này, chúng ta sẽ hợp nhất toàn bộ tinh hoa kiến thức của giáo trình để tự tay thiết kế và lập trình: **Một Động cơ Xử lý Đơn hàng Phân tán (Distributed Order Processing Engine) đạt chuẩn sản xuất!**
+Trong dự án tốt nghiệp này, chúng ta sẽ hợp nhất toàn bộ compute hoa kiến thức của giáo trình để tự tay thiết kế và lập trình: **Một Động cơ Xử lý Đơn hàng Phân tán (Distributed Order Processing Engine) đạt chuẩn sản xuất!**
 
 Hệ thống này tích hợp 5 phân hệ cốt lõi:
 1. **Tầng tiếp nhận & Xác thực bảo mật (API Ingestion & Threat Validation)**: Kiểm tra tính hợp lệ của dữ liệu đầu vào, chống tấn công Injection và kiểm soát giới hạn tải.
@@ -394,7 +394,7 @@ fn main() -> io::Result<()> {
         let duplicate_order = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
         assert_eq!(duplicate_order.order_id, 1001);
         assert_eq!(inventory.get_available_stock(101), 9); // Kho KHÔNG bị trừ lần 2!
-        println!("    => Idempotency Engine da chan dung viec tru tien va tru kho trung lap!");
+        println!("    => Idempotency Engine da chan dung viec subtract tien va subtract kho trung lap!");
 
         // Tiến hành xuất kho
         engine.fulfill_order(1001).unwrap();
@@ -407,7 +407,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may chu toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
@@ -455,22 +455,22 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi hiện th�
 
 ```rust
 #[derive(Debug, Clone)]
-struct DonHang {
+struct DonQueue {
     id: u64,
 }
 
-fn ghi_nhat_ky(dh: DonHang) {
+fn ghi_nhat_ky(dh: DonQueue) {
     println!("Ghi nhật ký: {:?}", dh);
 }
 
 // Đoạn mã lỗi minh họa E0382:
-fn xu_ly_loi(dh: DonHang) {
+fn xu_ly_loi(dh: DonQueue) {
     // ghi_nhat_ky(dh); // Di chuyển quyền sở hữu dh
     // println!("Đơn hàng đã xử lý: {:?}", dh); // LỖI E0382: dh đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Truyền tham chiếu mượn hoặc clone
-fn xu_ly_dung(dh: DonHang) {
+fn xu_ly_dung(dh: DonQueue) {
     ghi_nhat_ky(dh.clone()); // Tạo bản sao độc lập
     println!("Đơn hàng an toàn: {:?}", dh); // dh ban đầu vẫn còn nguyên vẹn!
 }

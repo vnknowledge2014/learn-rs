@@ -64,7 +64,7 @@ Hãy cùng quan sát cách người chủ tiệm tạp hóa quản lý sổ sác
 
 ### 2. Dọn dẹp sổ nợ (Compaction & Merge)
 - Sau 6 tháng, cuốn sổ cái dày cộm lên hàng ngàn trang, trong đó chứa rất nhiều dòng nợ cũ đã lỗi thời của Bác Ba và Chị Năm.
-- Cuối năm, bác chủ tiệm mua một cuốn sổ mới tinh, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ tinh tươm!
+- Cuối năm, bác chủ tiệm mua một cuốn sổ mới compute, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ compute tươm!
 
 ---
 
@@ -173,10 +173,10 @@ impl MiniBitcask {
         }
 
         self.file.seek(SeekFrom::Start(0))?;
-        let mut con_tro: u64 = 0;
+        let mut pointer: u64 = 0;
 
         // Header: [Timestamp: 8B] [is_deleted: 1B] [k_len: 4B] [v_len: 4B] = 17 bytes
-        while con_tro < file_len {
+        while pointer < file_len {
             let mut header = [0u8; 17];
             if let Err(e) = self.file.read_exact(&mut header) {
                 if e.kind() == io::ErrorKind::UnexpectedEof {
@@ -196,11 +196,11 @@ impl MiniBitcask {
             let key = String::from_utf8_lossy(&k_buf).to_string();
 
             // Tọa độ bắt đầu của phần Value trên đĩa
-            let value_offset = con_tro + 17 + k_len as u64;
+            let value_offset = pointer + 17 + k_len as u64;
 
             // Nhảy cóc qua phần Value để đến bản ghi tiếp theo
             self.file.seek(SeekFrom::Current(v_len as i64))?;
-            con_tro = value_offset + v_len as u64;
+            pointer = value_offset + v_len as u64;
 
             // Cập nhật KeyDir trên RAM
             if is_deleted == 1 {
@@ -399,12 +399,12 @@ fn main() -> io::Result<()> {
     {
         let mut db = MiniBitcask::open(db_path)?;
 
-        db.set("user:101", "Alice - Ha Noi")?;
+        db.set("user:101", "Alice - Ha Chain")?;
         db.set("user:102", "Bob - Da Nang")?;
         db.set("user:103", "Charlie - TP Ho Chi Minh")?;
 
         // Ghi đè cập nhật giá trị (tạo ra dữ liệu cũ trên đĩa)
-        db.set("user:101", "Alice Nguyen - Ha Noi (Updated)")?;
+        db.set("user:101", "Alice Nguyen - Ha Chain (Updated)")?;
 
         // Xóa một khóa (tạo Tombstone trên đĩa)
         db.delete("user:102")?;
@@ -413,7 +413,7 @@ fn main() -> io::Result<()> {
         println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
 
         // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
-        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
         assert_eq!(db.get("user:102")?, None);
         assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
@@ -429,7 +429,7 @@ fn main() -> io::Result<()> {
         println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
         println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
 
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:102")?, None);
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         assert_eq!(db_recovered.total_keys(), 2);
@@ -437,16 +437,16 @@ fn main() -> io::Result<()> {
 
         // GIAI ĐOẠN 3: Kiểm thử tiến trình nén gộp dọn rác (Compaction & Merge)
         println!("\n[3] Thực thi tiến trình nén gộp dọn rác Compaction:");
-        let dung_luong_truoc = db_recovered.file_size();
+        let prev_capacity = db_recovered.file_size();
         db_recovered.compact()?;
-        let dung_luong_sau = db_recovered.file_size();
+        let next_capacity = db_recovered.file_size();
 
-        println!("    - Dung lượng tệp TRƯỚC nén gộp: {} bytes", dung_luong_truoc);
-        println!("    - Dung lượng tệp SAU nén gộp   : {} bytes", dung_luong_sau);
-        assert!(dung_luong_sau < dung_luong_truoc);
+        println!("    - Dung lượng tệp TRƯỚC nén gộp: {} bytes", prev_capacity);
+        println!("    - Dung lượng tệp SAU nén gộp   : {} bytes", next_capacity);
+        assert!(next_capacity < prev_capacity);
 
         // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
     }
@@ -508,7 +508,7 @@ impl DemoStore {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp tinh hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
+1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp compute hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
 2. **Đúng 1 lần đọc đĩa (Single Disk Seek)**: Nhờ biết chính xác tọa độ byte (`offset`) và độ dài (`value_size`) từ RAM, thao tác đọc dữ liệu bỏ qua mọi tầng trung gian, nhảy thẳng tới vị trí đĩa cần đọc.
 3. **Cơ chế Tombstone**: Thay vì tìm xóa tại chỗ trên đĩa (gây phân mảnh và chậm chạp), Bitcask ghi một bản ghi đánh dấu xóa (Tombstone) vào cuối tệp và xóa khỏi RAM.
 4. **Nén gộp Compaction**: Tiến trình dọn dẹp định kỳ đọc lại các khóa còn sống và ghi sang tệp mới, giữ cho cơ sở dữ liệu luôn nhỏ gọn và loại bỏ hoàn toàn các phiên bản dữ liệu cũ.

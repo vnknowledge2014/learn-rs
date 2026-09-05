@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong lập trình thực tế, không có một hệ thống phần mềm nào có thể chạy trơn tru mãi mãi mà không bao giờ gặp sự cố. Người dùng có thể vô tình gõ sai định dạng email, đường truyền mạng Wifi có thể bị chập chờn ngắt kết nối giữa chừng, hoặc chiếc ổ cứng có thể bị đầy dung lượng khi đang lưu dữ liệu.
+Trong lập trình thực tế, không có một hệ thống phần mềm nào có thể chạy trơn subtract mãi mãi mà không bao giờ gặp sự cố. Người dùng có thể vô tình gõ sai định dạng email, đường truyền mạng Wifi có thể bị chập chờn ngắt kết nối giữa chừng, hoặc chiếc ổ cứng có thể bị đầy dung lượng khi đang lưu dữ liệu.
 
 Sự khác biệt giữa một lập trình viên nghiệp dư và một kỹ sư phần mềm cao cấp nằm ở chỗ: **Họ ứng phó như thế nào khi sự cố xảy ra?** Một ứng dụng tồi sẽ lập tức "đóng băng" hoặc văng ra màn hình desktop khiến người dùng mất trắng dữ liệu. Một ứng dụng Rust chuẩn mực sẽ lường trước mọi rủi ro và xử lý lỗi một cách lịch sự, kiên cố.
 
@@ -100,11 +100,11 @@ Việc lạm dụng `.unwrap()` giống như bạn đang chơi trò cò quay Nga
 
 Dòng lệnh:
 ```rust
-let du_lieu = doc_du_lieu_tu_mang()?;
+let data = doc_du_lieu_tu_mang()?;
 ```
 Được trình biên dịch Rust tự động mở rộng tương đương với khối mã sau:
 ```rust
-let du_lieu = match doc_du_lieu_tu_mang() {
+let data = match doc_du_lieu_tu_mang() {
     Ok(val) => val,
     Err(err) => return Err(From::from(err)), // Thoát hàm ngay lập tức và trả về Err!
 };
@@ -131,17 +131,17 @@ Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu
 >     fn from(e: std::num::ParseIntError) -> Self { LoiUngDung::PhanTichSo(e) }
 > }
 >
-> fn doc_cau_hinh(duong_dan: &str) -> Result<u16, LoiUngDung> {
->     let noi_dung = std::fs::read_to_string(duong_dan)?;  // io::Error  -> LoiUngDung
->     let cong: u16 = noi_dung.trim().parse()?;            // ParseIntError -> LoiUngDung
->     Ok(cong)
+> fn doc_cau_hinh(path: &str) -> Result<u16, LoiUngDung> {
+>     let content = std::fs::read_to_string(path)?;  // io::Error  -> LoiUngDung
+>     let gate: u16 = content.trim().parse()?;            // ParseIntError -> LoiUngDung
+>     Ok(gate)
 > }
 > ```
 >
 > Nếu chưa có `impl From<...>`, trình biên dịch sẽ báo lỗi *"`?` couldn't convert the error"*. Khi đó bạn có hai lựa chọn: cài `From`, hoặc chuyển thủ công ngay tại chỗ bằng **`.map_err(...)`** trước dấu `?`:
 >
 > ```rust
-> let cong: u16 = noi_dung.trim().parse().map_err(LoiUngDung::PhanTichSo)?;
+> let gate: u16 = content.trim().parse().map_err(LoiUngDung::PhanTichSo)?;
 > ```
 >
 > Chúng ta sẽ gặp lại `map_err` ở **Chương 17** dưới cái tên "bẻ ghi sang đường ray thất bại", và ở **Chương 19** với tên chính thức của nó: *Bifunctor*.
@@ -158,57 +158,57 @@ Chương trình dưới đây mô phỏng một hệ thống đọc tệp cấu 
 
 // 1. Tự định nghĩa kiểu Lỗi Nghiệp Vụ Tùy Biến (Custom Error Type) bằng Enum
 #[derive(Debug)]
-enum LoiThanhToan {
+enum MathError {
     SoTienKhongHopLe(String),
     TaiKhoanBiKhoa,
-    SoDuKhongDu { so_du: f64, can_rut: f64 },
+    SoDuKhongDu { balance: f64, can_rut: f64 },
 }
 
 // Cài đặt khả năng in ấn đẹp mắt cho kiểu lỗi của chúng ta
-impl std::fmt::Display for LoiThanhToan {
+impl std::fmt::Display for MathError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            LoiThanhToan::SoTienKhongHopLe(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
-            LoiThanhToan::TaiKhoanBiKhoa => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
-            LoiThanhToan::SoDuKhongDu { so_du, can_rut } => {
-                write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", so_du, can_rut)
+            MathError::SoTienKhongHopLe(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
+            MathError::TaiKhoanBiKhoa => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
+            MathError::SoDuKhongDu { balance, can_rut } => {
+                write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
             }
         }
     }
 }
 
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
-fn kiem_tra_so_tien(chuoi_nhap: &str) -> Result<f64, LoiThanhToan> {
-    let so_tien: f64 = chuoi_nhap.trim().parse().map_err(|_| {
-        LoiThanhToan::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
+fn check_num_tien(series_import: &str) -> Result<f64, MathError> {
+    let so_tien: f64 = series_import.trim().parse().map_err(|_| {
+        MathError::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
     if so_tien <= 0.0 {
-        return Err(LoiThanhToan::SoTienKhongHopLe(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(MathError::SoTienKhongHopLe(String::from("Số tiền phải lớn hơn 0!")));
     }
 
     Ok(so_tien)
 }
 
 // 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
-fn thuc_hien_giao_dich(
-    chuoi_nhap: &str, 
+fn display_trade(
+    series_import: &str, 
     mut so_du_hien_tai: f64, 
-    tai_khoan_hoat_dong: bool
-) -> Result<f64, LoiThanhToan> {
+    is_account_active: bool
+) -> Result<f64, MathError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
-    if !tai_khoan_hoat_dong {
-        return Err(LoiThanhToan::TaiKhoanBiKhoa);
+    if !is_account_active {
+        return Err(MathError::TaiKhoanBiKhoa);
     }
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
-    // Nếu kiem_tra_so_tien trả về Err, hàm lập tức return Err ngay tại dòng này!
-    let so_tien_can_rut = kiem_tra_so_tien(chuoi_nhap)?;
+    // Nếu check_num_tien trả về Err, hàm lập tức return Err ngay tại dòng này!
+    let so_tien_can_rut = check_num_tien(series_import)?;
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
-        return Err(LoiThanhToan::SoDuKhongDu {
-            so_du: so_du_hien_tai,
+        return Err(MathError::SoDuKhongDu {
+            balance: so_du_hien_tai,
             can_rut: so_tien_can_rut,
         });
     }
@@ -223,41 +223,41 @@ fn main() {
     println!("     CỔNG THANH TOÁN TÀI CHÍNH AN TOÀN - RUST BANKING       ");
     println!("============================================================");
 
-    let so_du_ban_dau = 5_000_000.0;
+    let first_balance_sell = 5_000_000.0;
 
     // --- KỊCH BẢN 1: GIAO DỊCH THÀNH CÔNG HỢP LỆ ---
     println!("\n[Kịch bản 1] Rút 1.500.000 VND hợp lệ:");
-    match thuc_hien_giao_dich("1500000", so_du_ban_dau, true) {
-        Ok(so_du_moi) => println!("-> Giao dịch THÀNH CÔNG! Số dư còn lại: {:.2} VND", so_du_moi),
+    match display_trade("1500000", first_balance_sell, true) {
+        Ok(new_balance) => println!("-> Giao dịch THÀNH CÔNG! Số dư còn lại: {:.2} VND", new_balance),
         Err(e) => println!("-> Giao dịch THẤT BẠI: {}", e),
     }
 
     // --- KỊCH BẢN 2: LỖI NHẬP LIỆU KHÔNG PHẢI CHỮ SỐ ---
-    println!("\n[Kịch bản 2] Người dùng nhập chữ linh tinh:");
-    match thuc_hien_giao_dich("mot_trieu", so_du_ban_dau, true) {
-        Ok(so_du_moi) => println!("-> Thành công: {:.2} VND", so_du_moi),
+    println!("\n[Kịch bản 2] Người dùng nhập chữ linh compute:");
+    match display_trade("mot_trieu", first_balance_sell, true) {
+        Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Hệ thống xử lý êm dịu: [{}]", e),
     }
 
     // --- KỊCH BẢN 3: LỖI SỐ DƯ KHÔNG ĐỦ ĐỂ RÚT ---
     println!("\n[Kịch bản 3] Rút số tiền vượt hạn mức số dư:");
-    match thuc_hien_giao_dich("10000000", so_du_ban_dau, true) {
-        Ok(so_du_moi) => println!("-> Thành công: {:.2} VND", so_du_moi),
+    match display_trade("10000000", first_balance_sell, true) {
+        Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Báo cáo lỗi chính xác: [{}]", e),
     }
 
     // --- KỊCH BẢN 4: LỖI TÀI KHOẢN BỊ KHÓA AN NINH ---
     println!("\n[Kịch bản 4] Tài khoản bị phong tỏa:");
-    match thuc_hien_giao_dich("500000", so_du_ban_dau, false) {
-        Ok(so_du_moi) => println!("-> Thành công: {:.2} VND", so_du_moi),
+    match display_trade("500000", first_balance_sell, false) {
+        Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Từ chối truy cập: [{}]", e),
     }
 
     // --- KỊCH BẢN 5: CÁC PHƯƠNG THỨC XỬ LÝ DỰ PHÒNG AN TOÀN ---
     println!("\n[Kịch bản 5] Sử dụng unwrap_or để lấy giá trị mặc định an toàn:");
-    let ket_qua_loi: Result<f64, &str> = Err("Mất kết nối máy chủ");
-    let so_tien_cuoi_cung = ket_qua_loi.unwrap_or(0.0);
-    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", so_tien_cuoi_cung);
+    let result_error: Result<f64, &str> = Err("Mất kết nối máy chủ");
+    let num_tien_last_same = result_error.unwrap_or(0.0);
+    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
 }
 ```
 
@@ -269,7 +269,7 @@ Dưới đây là các lỗi kinh điển khi sử dụng cơ chế xử lý l�
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn sử dụng dấu hỏi chấm `?` bên trong một hàm không có kiểu trả về `Result` (ví dụ hàm `fn main()` thông thường mặc định trả về kiểu rỗng `()`). | Sửa kiểu trả về của hàm đang chứa `?` thành `Result<T, E>`. Nếu muốn dùng `?` ngay trong hàm `main`, hãy đổi kiểu trả về của hàm `main` thành `fn main() -> Result<(), std::io::Error>` (khi đọc/ghi dữ liệu I/O) hoặc `fn main() -> Result<(), String>` / `Result<(), LoiThanhToan>`. |
+| **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn sử dụng dấu hỏi chấm `?` bên trong một hàm không có kiểu trả về `Result` (ví dụ hàm `fn main()` thông thường mặc định trả về kiểu rỗng `()`). | Sửa kiểu trả về của hàm đang chứa `?` thành `Result<T, E>`. Nếu muốn dùng `?` ngay trong hàm `main`, hãy đổi kiểu trả về của hàm `main` thành `fn main() -> Result<(), std::io::Error>` (khi đọc/ghi dữ liệu I/O) hoặc `fn main() -> Result<(), String>` / `Result<(), MathError>`. |
 | **E0308** | `mismatched types: expected 'f64', found 'Result<f64, _>'` | Bạn gọi một hàm trả về `Result` và cố tình gán thẳng vào một biến số thực mà chưa mở hộp `Ok` hay dùng toán tử `?`. | Thêm toán tử `?` ở cuối lời gọi hàm (nếu đang ở trong hàm trả về Result), hoặc dùng `match` / `.unwrap_or(...)`. |
 | **Cảnh báo `unused`** | `warning: unused 'Result' that must be used` | Gọi một thao tác có nguy cơ thất bại (như ghi file) nhưng không gán kết quả cho biến nào và không kiểm tra lỗi. | Thêm `let _ = ...` nếu cố ý bỏ qua, hoặc dùng `?` để kiểm tra lỗi đúng quy chuẩn. |
 | **E0599** | `no method named 'unwrap' found for type ...` | Bạn gọi `.unwrap()` trên một biến không phải là `Option` hay `Result`. | Kiểm tra lại kiểu dữ liệu của biến trước khi mở gói. |

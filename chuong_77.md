@@ -80,7 +80,7 @@ Trường hợp đảo chiều là chỗ hay sai nhất. Nếu xử lý nó như
 
 ### 2. Thứ tự các phép kiểm tra là một quyết định thiết kế
 
-Trong khi xây chương này, một lỗi tinh vi xuất hiện: kiểm tra **giá trị lệnh** đứng trước kiểm tra **vị thế**, nên nhiều bài kiểm thử không bao giờ chạm tới nhánh vị thế — chúng bị chặn sớm hơn.
+Trong khi xây chương này, một lỗi compute vi xuất hiện: kiểm tra **giá trị lệnh** đứng trước kiểm tra **vị thế**, nên nhiều bài kiểm thử không bao giờ chạm tới nhánh vị thế — chúng bị chặn sớm hơn.
 
 Bài học rộng hơn: khi cổng có nhiều luật, **luật nào chặn trước sẽ che khuất luật sau**. Điều đó ảnh hưởng tới cả kiểm thử lẫn chẩn đoán sản xuất — thông báo lỗi bạn nhận được không nhất thiết là vấn đề nghiêm trọng nhất.
 
@@ -167,10 +167,10 @@ pub enum RejectReason {
 pub struct LimitRisk {
     pub max_order_value: i64,
     pub max_position: i64,
-    pub max_lo_in_day: i64,
+    pub max_daily_loss: i64,
     pub so_lenh_moi_giay_toi_da: u32,
     /// Lệch quá tỉ lệ này so với giá tham chiếu thì coi là gõ nhầm.
-    pub nguong_ngon_tay_beo: f64,
+    pub fat_finger_threshold: f64,
 }
 
 impl Default for LimitRisk {
@@ -178,9 +178,9 @@ impl Default for LimitRisk {
         LimitRisk {
             max_order_value: 100_000_000,
             max_position: 10_000,
-            max_lo_in_day: 5_000_000,
+            max_daily_loss: 5_000_000,
             so_lenh_moi_giay_toi_da: 100,
-            nguong_ngon_tay_beo: 0.10, // 10%
+            fat_finger_threshold: 0.10, // 10%
         }
     }
 }
@@ -196,7 +196,7 @@ pub struct RiskGate {
     /// Dấu thời gian các lệnh gần đây, để đếm tần suất.
     window_order: VecDeque<u64>,
     /// Công tắc tắt: bật rồi thì KHÔNG tự tắt được. Chỉ người mới gỡ được.
-    cong_tac_all: bool,
+    switch_all: bool,
     pub order_book_qua: u64,
     pub orders_blocked: u64,
 }
@@ -204,20 +204,20 @@ pub struct RiskGate {
 impl RiskGate {
     pub fn new(limit: LimitRisk) -> Self {
         RiskGate { limit, position: 0, realized_pnl: 0, cost_basis: 0.0,
-                    window_order: VecDeque::new(), cong_tac_all: false,
+                    window_order: VecDeque::new(), switch_all: false,
                     order_book_qua: 0, orders_blocked: 0 }
     }
 
-    pub fn da_tat(&self) -> bool { self.cong_tac_all }
+    pub fn da_tat(&self) -> bool { self.switch_all }
     /// Bật công tắc tắt. Một chiều — chỉ người vận hành mới gỡ được.
-    pub fn enable_cong_tac_all(&mut self) { self.cong_tac_all = true; }
-    pub fn nguoi_van_hanh_go_cong_tac(&mut self) { self.cong_tac_all = false; }
+    pub fn enable_all_switches(&mut self) { self.switch_all = true; }
+    pub fn operator_flips_switch(&mut self) { self.switch_all = false; }
 
     /// Kiểm tra một lệnh. `bay_gio_ns` dùng cho cửa sổ tần suất.
     pub fn check(&mut self, side: Side, price: Price, quantity: Quantity,
                     reference_price: Price, bay_gio_ns: u64) -> Result<(), RejectReason>
     {
-        let ket_qua = self.check_noi_unit(side, price, quantity, reference_price, bay_gio_ns);
+        let ket_qua = self.check_join_unit(side, price, quantity, reference_price, bay_gio_ns);
         match &ket_qua {
             Ok(()) => {
                 self.order_book_qua += 1;
@@ -228,18 +228,18 @@ impl RiskGate {
         ket_qua
     }
 
-    fn check_noi_unit(&mut self, side: Side, price: Price, quantity: Quantity,
+    fn check_join_unit(&mut self, side: Side, price: Price, quantity: Quantity,
                        reference_price: Price, bay_gio_ns: u64) -> Result<(), RejectReason>
     {
         // Công tắc tắt xét ĐẦU TIÊN. Đã tắt thì không gì lọt qua được.
-        if self.cong_tac_all { return Err(RejectReason::CongTacTatDaBat); }
+        if self.switch_all { return Err(RejectReason::CongTacTatDaBat); }
         if quantity <= 0 { return Err(RejectReason::SoLuongKhongDuong(quantity)); }
         if price <= 0 { return Err(RejectReason::GiaKhongDuong(price)); }
 
         // Ngón tay béo: gõ 8400 thành 84000 là chuyện xảy ra hằng năm
         if reference_price > 0 {
             let lech = (price - reference_price).abs() as f64 / reference_price as f64;
-            if lech > self.limit.nguong_ngon_tay_beo {
+            if lech > self.limit.fat_finger_threshold {
                 return Err(RejectReason::NgonTayBeo { price, tham_chieu: reference_price,
                                                 lech_percent: lech * 100.0 });
             }
@@ -255,9 +255,9 @@ impl RiskGate {
             return Err(RejectReason::VuotViThe { next_order, tran: self.limit.max_position });
         }
 
-        if self.realized_pnl < -self.limit.max_lo_in_day {
+        if self.realized_pnl < -self.limit.max_daily_loss {
             return Err(RejectReason::VuotLoTrongNgay { lo: -self.realized_pnl,
-                                                 tran: self.limit.max_lo_in_day });
+                                                 tran: self.limit.max_daily_loss });
         }
 
         // Cửa sổ trượt một giây
@@ -303,8 +303,8 @@ impl RiskGate {
         }
 
         // Tự bảo vệ: lỗ chạm trần thì tự bật công tắc tắt
-        if self.realized_pnl < -self.limit.max_lo_in_day {
-            self.cong_tac_all = true;
+        if self.realized_pnl < -self.limit.max_daily_loss {
+            self.switch_all = true;
         }
     }
 }
@@ -331,31 +331,31 @@ pub fn price_pos_open(price_buy: Price, qty_buy: u64, price_sell: Price, qty_sel
 
 /// Cửa sổ trượt tính trung bình và độ lệch chuẩn — O(1) mỗi lần thêm.
 #[derive(Debug, Clone)]
-pub struct WindowThongKe {
+pub struct StatsWindow {
     o: VecDeque<f64>,
-    suc_chua: usize,
+    capacity: usize,
     tong: f64,
-    total_binh_phuong: f64,
+    sum_of_squares: f64,
 }
 
-impl WindowThongKe {
-    pub fn new(suc_chua: usize) -> Self {
-        WindowThongKe { o: VecDeque::with_capacity(suc_chua), suc_chua,
-                       tong: 0.0, total_binh_phuong: 0.0 }
+impl StatsWindow {
+    pub fn new(capacity: usize) -> Self {
+        StatsWindow { o: VecDeque::with_capacity(capacity), capacity,
+                       tong: 0.0, sum_of_squares: 0.0 }
     }
     pub fn them(&mut self, x: f64) {
-        if self.o.len() == self.suc_chua {
+        if self.o.len() == self.capacity {
             if let Some(cu) = self.o.pop_front() {
                 self.tong -= cu;
-                self.total_binh_phuong -= cu * cu;
+                self.sum_of_squares -= cu * cu;
             }
         }
         self.o.push_back(x);
         self.tong += x;
-        self.total_binh_phuong += x * x;
+        self.sum_of_squares += x * x;
     }
     pub fn quantity(&self) -> usize { self.o.len() }
-    pub fn day(&self) -> bool { self.o.len() == self.suc_chua }
+    pub fn day(&self) -> bool { self.o.len() == self.capacity }
     pub fn mean(&self) -> f64 {
         if self.o.is_empty() { 0.0 } else { self.tong / self.o.len() as f64 }
     }
@@ -363,7 +363,7 @@ impl WindowThongKe {
     pub fn variance(&self) -> f64 {
         let n = self.o.len() as f64;
         if n < 2.0 { return 0.0; }
-        let ps = (self.total_binh_phuong - self.tong * self.tong / n) / (n - 1.0);
+        let ps = (self.sum_of_squares - self.tong * self.tong / n) / (n - 1.0);
         ps.max(0.0) // chặn sai số dấu phẩy động làm ra số âm
     }
     pub fn stddev(&self) -> f64 { self.variance().sqrt() }
@@ -385,24 +385,24 @@ impl WindowThongKe {
 pub enum SignalCap { MoDaiA, MoDaiB, Dong, KhongLam }
 
 pub struct ArbCap {
-    pub ratio_phong_proxy: f64, // beta: 1 đơn vị A ứng với bao nhiêu đơn vị B
-    pub window: WindowThongKe,
+    pub proxy_ratio: f64, // beta: 1 đơn vị A ứng với bao nhiêu đơn vị B
+    pub window: StatsWindow,
     pub threshold_in: f64,
     pub threshold_out: f64,
     /// Chênh lệch giãn quá mức này thì coi như quan hệ đã gãy — CẮT LỖ.
     pub threshold_use: f64,
-    pub dang_mo: Option<SignalCap>,
+    pub is_open: Option<SignalCap>,
 }
 
 impl ArbCap {
-    pub fn new(ratio_phong_proxy: f64, window: usize,
+    pub fn new(proxy_ratio: f64, window: usize,
                threshold_in: f64, threshold_out: f64, threshold_use: f64) -> Self {
-        ArbCap { ratio_phong_proxy, window: WindowThongKe::new(window),
-                 threshold_in, threshold_out, threshold_use, dang_mo: None }
+        ArbCap { proxy_ratio, window: StatsWindow::new(window),
+                 threshold_in, threshold_out, threshold_use, is_open: None }
     }
 
     pub fn spread(&self, gia_a: Price, gia_b: Price) -> f64 {
-        gia_a as f64 - self.ratio_phong_proxy * gia_b as f64
+        gia_a as f64 - self.proxy_ratio * gia_b as f64
     }
 
     pub fn update(&mut self, gia_a: Price, gia_b: Price) -> SignalCap {
@@ -418,21 +418,21 @@ impl ArbCap {
             _ => return SignalCap::KhongLam,
         };
 
-        match self.dang_mo {
+        match self.is_open {
             None => {
                 if z > self.threshold_in {
                     // A đắt bất thường so với B → bán A, mua B
-                    self.dang_mo = Some(SignalCap::MoDaiB);
+                    self.is_open = Some(SignalCap::MoDaiB);
                     SignalCap::MoDaiB
                 } else if z < -self.threshold_in {
-                    self.dang_mo = Some(SignalCap::MoDaiA);
+                    self.is_open = Some(SignalCap::MoDaiA);
                     SignalCap::MoDaiA
                 } else { SignalCap::KhongLam }
             }
             Some(_) => {
                 // Cắt lỗ đứng TRƯỚC chốt lời: quan hệ gãy thì phải thoát ngay
                 if z.abs() > self.threshold_use || z.abs() < self.threshold_out {
-                    self.dang_mo = None;
+                    self.is_open = None;
                     SignalCap::Dong
                 } else { SignalCap::KhongLam }
             }
@@ -449,14 +449,14 @@ impl ArbCap {
 /// Kelly toàn phần tối ưu về tốc độ tăng trưởng dài hạn, nhưng dao động khủng
 /// khiếp và cực nhạy với sai số ước lượng `p`. Thực tế người ta dùng một PHẦN
 /// của Kelly (thường 1/4 tới 1/2) — đánh đổi chút tăng trưởng lấy nhiều bình yên.
-pub fn ty_le_kelly(xac_suat_thang: f64, ty_le_thang_thua: f64) -> f64 {
+pub fn kelly_fraction(xac_suat_thang: f64, ty_le_thang_thua: f64) -> f64 {
     if ty_le_thang_thua <= 0.0 { return 0.0; }
     let q = 1.0 - xac_suat_thang;
     ((xac_suat_thang * ty_le_thang_thua - q) / ty_le_thang_thua).max(0.0)
 }
 
-pub fn kelly_mot_phan(xac_suat_thang: f64, ty_le_thang_thua: f64, part: f64) -> f64 {
-    (ty_le_kelly(xac_suat_thang, ty_le_thang_thua) * part).clamp(0.0, 1.0)
+pub fn fractional_kelly(xac_suat_thang: f64, ty_le_thang_thua: f64, part: f64) -> f64 {
+    (kelly_fraction(xac_suat_thang, ty_le_thang_thua) * part).clamp(0.0, 1.0)
 }
 
 /// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì mua càng ít,
@@ -473,20 +473,20 @@ pub fn has_theo_volatility(von: i64, bien_dong_muc_tieu: f64,
 // ============================================================================
 
 #[derive(Debug, PartialEq)]
-pub struct OwnedDoRisk {
+pub struct RiskOwned {
     pub total_pnl: i64,
     pub max_drawdown: i64,
     pub ratio_drawdown: f64,
     pub num_session_lai: usize,
     pub num_session_lo: usize,
     /// Tỉ số lợi nhuận trên độ dao động — càng cao càng "êm".
-    pub ty_so_sharpe: f64,
+    pub sharpe_ratio: f64,
 }
 
-pub fn do_risk(equity_curve: &[i64]) -> OwnedDoRisk {
+pub fn risk_level(equity_curve: &[i64]) -> RiskOwned {
     if equity_curve.len() < 2 {
-        return OwnedDoRisk { total_pnl: 0, max_drawdown: 0, ratio_drawdown: 0.0,
-                              num_session_lai: 0, num_session_lo: 0, ty_so_sharpe: 0.0 };
+        return RiskOwned { total_pnl: 0, max_drawdown: 0, ratio_drawdown: 0.0,
+                              num_session_lai: 0, num_session_lo: 0, sharpe_ratio: 0.0 };
     }
     let mut peak = equity_curve[0];
     let mut dd = 0i64;
@@ -499,13 +499,13 @@ pub fn do_risk(equity_curve: &[i64]) -> OwnedDoRisk {
     let tb = thay_swap.iter().sum::<f64>() / n;
     let ps = thay_swap.iter().map(|x| (x - tb).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
     let sd = ps.sqrt();
-    OwnedDoRisk {
+    RiskOwned {
         total_pnl: equity_curve[equity_curve.len() - 1] - equity_curve[0],
         max_drawdown: dd,
         ratio_drawdown: if peak.abs() > 0 { dd as f64 / peak.abs() as f64 } else { 0.0 },
         num_session_lai: thay_swap.iter().filter(|&&x| x > 0.0).count(),
         num_session_lo: thay_swap.iter().filter(|&&x| x < 0.0).count(),
-        ty_so_sharpe: if sd < 1e-12 { 0.0 } else { tb / sd },
+        sharpe_ratio: if sd < 1e-12 { 0.0 } else { tb / sd },
     }
 }
 
@@ -539,11 +539,11 @@ fn main() {
     println!("\n1. CỔNG RỦI RO — mọi lệnh đều phải qua đây");
     let mut gate = RiskGate::new(LimitRisk {
         max_order_value: 10_000_000, max_position: 500,
-        max_lo_in_day: 100_000, so_lenh_moi_giay_toi_da: 5,
-        nguong_ngon_tay_beo: 0.10,
+        max_daily_loss: 100_000, so_lenh_moi_giay_toi_da: 5,
+        fat_finger_threshold: 0.10,
     });
     let tc = 8_400;
-    for (mo_ta, side, price, sl) in [
+    for (description, side, price, sl) in [
         ("hợp lệ            ", Side::Buy, 8_400i64, 100i64),
         ("ngón tay béo x10  ", Side::Buy, 84_000, 100),
         ("giá trị quá lớn   ", Side::Buy, 8_400, 100_000),
@@ -551,8 +551,8 @@ fn main() {
         ("vượt trần vị thế  ", Side::Buy, 8_400, 600),
     ] {
         match gate.check(side, price, sl, tc, 1_000_000_000) {
-            Ok(()) => println!("   {} → CHO QUA", mo_ta),
-            Err(e) => println!("   {} → CHẶN: {:?}", mo_ta, e),
+            Ok(()) => println!("   {} → CHO QUA", description),
+            Err(e) => println!("   {} → CHẶN: {:?}", description, e),
         }
     }
 
@@ -567,14 +567,14 @@ fn main() {
     println!("   Bắn 10 lệnh trong 10 ms → chỉ {} lệnh lọt qua (trần 5/giây)", qua);
 
     println!("\n3. CÔNG TẮC TẮT TỰ ĐỘNG KHI LỖ CHẠM TRẦN");
-    let mut c3 = RiskGate::new(LimitRisk { max_lo_in_day: 10_000,
+    let mut c3 = RiskGate::new(LimitRisk { max_daily_loss: 10_000,
                                               ..Default::default() });
     c3.record_recv_fill(Side::Buy, 9_000, 100);
     c3.record_recv_fill(Side::Sell, 8_800, 100); // lỗ 20 000
     println!("   Sau khi lỗ {} → công tắc tắt: {}", -c3.realized_pnl, c3.da_tat());
     println!("   Lệnh tiếp theo → {:?}",
              c3.check(Side::Buy, 8_400, 1, tc, 2_000_000_000).unwrap_err());
-    c3.nguoi_van_hanh_go_cong_tac();
+    c3.operator_flips_switch();
     println!("   Người vận hành gỡ công tắc → giao dịch lại được: {}",
              c3.check(Side::Buy, 8_400, 1, tc, 3_000_000_000).is_ok());
 
@@ -602,14 +602,14 @@ fn main() {
 
     println!("\n6. ĐỊNH CỠ VỊ THẾ");
     println!("   {:<28} {:>8} {:>10}", "kịch bản", "Kelly", "1/4 Kelly");
-    for (mo_ta, p, b) in [
+    for (description, p, b) in [
         ("55% thắng, ăn 1 thua 1  ", 0.55, 1.0),
         ("60% thắng, ăn 1 thua 1  ", 0.60, 1.0),
         ("40% thắng, ăn 2 thua 1  ", 0.40, 2.0),
         ("45% thắng, ăn 1 thua 1  ", 0.45, 1.0),
     ] {
-        println!("   {} {:>7.1}% {:>9.1}%", mo_ta,
-                 ty_le_kelly(p, b) * 100.0, kelly_mot_phan(p, b, 0.25) * 100.0);
+        println!("   {} {:>7.1}% {:>9.1}%", description,
+                 kelly_fraction(p, b) * 100.0, fractional_kelly(p, b, 0.25) * 100.0);
     }
     println!("   → Lợi thế âm thì Kelly = 0: công thức tự bảo bạn ĐỪNG đánh.");
 
@@ -621,9 +621,9 @@ fn main() {
     let mut v = 100_000i64;
     for i in 0..100 { v += if i % 3 == 0 { -8_000 } else { 5_750 }; xoc.push(v); }
     for (name, d) in [("êm ", &em), ("xóc", &xoc)] {
-        let r = do_risk(d);
+        let r = risk_level(d);
         println!("   {} → lãi {:>6} · sụt sâu nhất {:>6} · Sharpe {:>5.2} · thắng {}/{}",
-                 name, r.total_pnl, r.max_drawdown, r.ty_so_sharpe,
+                 name, r.total_pnl, r.max_drawdown, r.sharpe_ratio,
                  r.num_session_lai, r.num_session_lai + r.num_session_lo);
     }
     println!("   → Đường xóc lãi NHIỀU HƠN, nhưng Sharpe thấp hơn ~35 lần và có");
@@ -639,18 +639,18 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn cong_mau() -> RiskGate {
+    fn sample_gate() -> RiskGate {
         RiskGate::new(LimitRisk {
             max_order_value: 10_000_000, max_position: 500,
-            max_lo_in_day: 100_000, so_lenh_moi_giay_toi_da: 5,
-            nguong_ngon_tay_beo: 0.10,
+            max_daily_loss: 100_000, so_lenh_moi_giay_toi_da: 5,
+            fat_finger_threshold: 0.10,
         })
     }
 
     // ---------- Cổng rủi ro ----------
     #[test]
     fn order_hop_le_can_wait_qua() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         assert_eq!(c.check(Side::Buy, 8_400, 100, 8_400, 1_000_000_000), Ok(()));
         assert_eq!(c.order_book_qua, 1);
         assert_eq!(c.orders_blocked, 0);
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn chan_ngon_tay_beo() {
         // Gõ 8400 thành 84000 — lỗi có thật, xảy ra hằng năm ở mọi thị trường.
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         let e = c.check(Side::Buy, 84_000, 1, 8_400, 1_000_000_000).unwrap_err();
         assert!(matches!(e, RejectReason::NgonTayBeo { .. }));
         // Lệch nhỏ trong ngưỡng thì vẫn cho qua
@@ -669,13 +669,13 @@ mod tests {
     #[test]
     fn khong_co_gia_tham_chieu_thi_bo_qua_kiem_tra_ngon_tay_beo() {
         // Mã mới niêm yết chưa có giá tham chiếu — không được chặn oan.
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         assert!(c.check(Side::Buy, 9_000, 1, 0, 1_000_000_000).is_ok());
     }
 
     #[test]
     fn block_quantity_and_price_no_hop_le() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         assert_eq!(c.check(Side::Buy, 8_400, 0, 8_400, 1).unwrap_err(),
                    RejectReason::SoLuongKhongDuong(0));
         assert_eq!(c.check(Side::Buy, 8_400, -5, 8_400, 1).unwrap_err(),
@@ -686,14 +686,14 @@ mod tests {
 
     #[test]
     fn block_value_order_qua_lon() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 100_000, 8_400, 1).unwrap_err(),
                          RejectReason::VuotGiaTriLenh { .. }));
     }
 
     #[test]
     fn block_exceed_cap_position_all_two_side() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 501, 8_400, 1).unwrap_err(),
                          RejectReason::VuotViThe { next_order: 501, tran: 500 }));
         assert!(matches!(c.check(Side::Sell, 8_400, 501, 8_400, 1).unwrap_err(),
@@ -703,7 +703,7 @@ mod tests {
 
     #[test]
     fn position_current_can_tinh_in_limit() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_400, 400);
         assert!(c.check(Side::Buy, 8_400, 100, 8_400, 1).is_ok(), "400+100 = 500, vừa trần");
         assert!(c.check(Side::Buy, 8_400, 101, 8_400, 1).is_err(), "400+101 vượt trần");
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn limit_rate_block_use_order_book() {
-        let mut c = cong_mau(); // trần 5 lệnh/giây
+        let mut c = sample_gate(); // trần 5 lệnh/giây
         let mut qua = 0;
         for i in 0..20u64 {
             if c.check(Side::Buy, 8_400, 1, 8_400, 1_000_000_000 + i * 1_000_000).is_ok() {
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn window_rate_truot_theo_time_time() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         for i in 0..5u64 {
             assert!(c.check(Side::Buy, 8_400, 1, 8_400, 1_000_000_000 + i).is_ok());
         }
@@ -735,19 +735,19 @@ mod tests {
 
     #[test]
     fn cong_tac_tat_chan_moi_thu_va_khong_tu_go_duoc() {
-        let mut c = cong_mau();
-        c.enable_cong_tac_all();
+        let mut c = sample_gate();
+        c.enable_all_switches();
         // Kể cả lệnh hoàn toàn hợp lệ cũng không lọt
         assert_eq!(c.check(Side::Buy, 8_400, 1, 8_400, 1).unwrap_err(),
                    RejectReason::CongTacTatDaBat);
         assert!(c.da_tat(), "công tắc KHÔNG được tự tắt sau khi chặn");
-        c.nguoi_van_hanh_go_cong_tac();
+        c.operator_flips_switch();
         assert!(c.check(Side::Buy, 8_400, 1, 8_400, 1).is_ok());
     }
 
     #[test]
     fn lo_slow_cap_thi_from_enable_cong_tac_all() {
-        let mut c = RiskGate::new(LimitRisk { max_lo_in_day: 10_000,
+        let mut c = RiskGate::new(LimitRisk { max_daily_loss: 10_000,
                                                  ..Default::default() });
         assert!(!c.da_tat());
         c.record_recv_fill(Side::Buy, 9_000, 100);
@@ -758,7 +758,7 @@ mod tests {
 
     #[test]
     fn close_position_has_lai_thi_no_enable_cong_tac() {
-        let mut c = RiskGate::new(LimitRisk { max_lo_in_day: 10_000,
+        let mut c = RiskGate::new(LimitRisk { max_daily_loss: 10_000,
                                                  ..Default::default() });
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Sell, 8_500, 100);
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn cost_basis_can_binh_quan_when_open_add() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Buy, 9_000, 100);
         assert!((c.cost_basis - 8_500.0).abs() < 1e-9, "bình quân 8000 và 9000 = 8500");
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn reverse_side_position_set_lai_cost_basis() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_000, 100);
         // Bán 300: đóng 100 (lãi) rồi mở mới 200 ở chiều bán
         c.record_recv_fill(Side::Sell, 8_500, 300);
@@ -792,7 +792,7 @@ mod tests {
 
     #[test]
     fn ban_khong_roi_mua_lai_re_hon_thi_co_lai() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.record_recv_fill(Side::Sell, 9_000, 100);
         assert_eq!(c.position, -100);
         c.record_recv_fill(Side::Buy, 8_500, 100);
@@ -801,7 +801,7 @@ mod tests {
 
     #[test]
     fn open_add_same_side_thi_chua_show_thuc_hoa_pnl() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Buy, 9_000, 100);
         assert_eq!(c.position, 200);
@@ -810,7 +810,7 @@ mod tests {
 
     #[test]
     fn count_use_order_book_qua_and_is_block() {
-        let mut c = cong_mau();
+        let mut c = sample_gate();
         c.check(Side::Buy, 8_400, 100, 8_400, 1).ok();
         c.check(Side::Buy, 84_000, 100, 8_400, 1).ok();
         c.check(Side::Buy, 8_400, -1, 8_400, 1).ok();
@@ -851,7 +851,7 @@ mod tests {
     // ---------- Cửa sổ thống kê ----------
     #[test]
     fn window_tinh_use_mean_and_do_lech() {
-        let mut c = WindowThongKe::new(5);
+        let mut c = StatsWindow::new(5);
         for x in [2.0, 4.0, 4.0, 4.0, 5.0] { c.them(x); }
         assert!((c.mean() - 3.8).abs() < 1e-9);
         // phương sai mẫu của [2,4,4,4,5] = 1.2
@@ -861,7 +861,7 @@ mod tests {
 
     #[test]
     fn old_window_truot_unit_value() {
-        let mut c = WindowThongKe::new(3);
+        let mut c = StatsWindow::new(3);
         for x in [1.0, 2.0, 3.0, 4.0, 5.0] { c.them(x); }
         assert_eq!(c.quantity(), 3);
         assert!((c.mean() - 4.0).abs() < 1e-9, "chỉ còn [3,4,5]");
@@ -869,7 +869,7 @@ mod tests {
 
     #[test]
     fn phuong_sai_khong_bao_gio_am_du_sai_so_dau_phay_dong() {
-        let mut c = WindowThongKe::new(50);
+        let mut c = StatsWindow::new(50);
         for _ in 0..50 { c.them(1_000_000.0); } // toàn giá trị giống hệt, cỡ lớn
         assert!(c.variance() >= 0.0, "phải chặn sai số làm ra số âm");
         assert!(c.variance() < 1e-3, "dữ liệu không đổi thì phương sai ~0");
@@ -878,7 +878,7 @@ mod tests {
 
     #[test]
     fn window_chua_data_two_point_thi_variance_table_no() {
-        let mut c = WindowThongKe::new(10);
+        let mut c = StatsWindow::new(10);
         assert_eq!(c.variance(), 0.0);
         c.them(5.0);
         assert_eq!(c.variance(), 0.0, "một điểm thì không có phương sai mẫu");
@@ -886,7 +886,7 @@ mod tests {
 
     #[test]
     fn diem_z_do_dung_do_lech() {
-        let mut c = WindowThongKe::new(100);
+        let mut c = StatsWindow::new(100);
         for i in 0..100 { c.them((i % 10) as f64); }
         let z = c.diem_z(c.mean()).unwrap();
         assert!(z.abs() < 1e-9, "đúng giá trị trung bình thì z = 0");
@@ -913,7 +913,7 @@ mod tests {
         // rồi một cú giãn mạnh
         let th = a.update(10_100, 10_000);
         assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A mua B");
-        assert_eq!(a.dang_mo, Some(SignalCap::MoDaiB));
+        assert_eq!(a.is_open, Some(SignalCap::MoDaiB));
     }
 
     #[test]
@@ -935,10 +935,10 @@ mod tests {
         let mut a = ArbCap::new(1.0, 20, 2.0, 0.5, 3.0);
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
         a.update(10_050, 10_000); // vào lệnh
-        assert!(a.dang_mo.is_some());
+        assert!(a.is_open.is_some());
         let t = a.update(10_500, 10_000); // giãn cực mạnh
         assert_eq!(t, SignalCap::Dong, "vượt ngưỡng dừng phải CẮT LỖ");
-        assert_eq!(a.dang_mo, None);
+        assert_eq!(a.is_open, None);
     }
 
     #[test]
@@ -951,16 +951,16 @@ mod tests {
     // ---------- Định cỡ ----------
     #[test]
     fn kelly_bang_khong_khi_khong_co_loi_the() {
-        assert_eq!(ty_le_kelly(0.5, 1.0), 0.0, "tung đồng xu công bằng → đừng đánh");
-        assert_eq!(ty_le_kelly(0.4, 1.0), 0.0, "lợi thế âm → tuyệt đối đừng đánh");
-        assert_eq!(ty_le_kelly(0.3, 0.5), 0.0);
+        assert_eq!(kelly_fraction(0.5, 1.0), 0.0, "tung đồng xu công bằng → đừng đánh");
+        assert_eq!(kelly_fraction(0.4, 1.0), 0.0, "lợi thế âm → tuyệt đối đừng đánh");
+        assert_eq!(kelly_fraction(0.3, 0.5), 0.0);
     }
 
     #[test]
     fn kelly_tang_theo_loi_the() {
         let mut prev = 0.0;
         for p in [0.55, 0.60, 0.65, 0.70, 0.80] {
-            let f = ty_le_kelly(p, 1.0);
+            let f = kelly_fraction(p, 1.0);
             assert!(f > prev, "lợi thế lớn hơn phải cho cỡ lớn hơn");
             assert!(f <= 1.0);
             prev = f;
@@ -970,16 +970,16 @@ mod tests {
     #[test]
     fn kelly_dung_gia_tri_kinh_dien() {
         // 60% thắng, ăn 1 thua 1 → Kelly = 2p − 1 = 0.20
-        assert!((ty_le_kelly(0.60, 1.0) - 0.20).abs() < 1e-9);
+        assert!((kelly_fraction(0.60, 1.0) - 0.20).abs() < 1e-9);
         // 40% thắng, ăn 2 thua 1 → (0.4·2 − 0.6)/2 = 0.10
-        assert!((ty_le_kelly(0.40, 2.0) - 0.10).abs() < 1e-9);
+        assert!((kelly_fraction(0.40, 2.0) - 0.10).abs() < 1e-9);
     }
 
     #[test]
     fn kelly_mot_phan_luon_nho_hon_kelly_toan_phan() {
         for p in [0.55, 0.60, 0.75] {
-            let toan = ty_le_kelly(p, 1.0);
-            let part = kelly_mot_phan(p, 1.0, 0.25);
+            let toan = kelly_fraction(p, 1.0);
+            let part = fractional_kelly(p, 1.0, 0.25);
             assert!(part < toan);
             assert!((part - toan * 0.25).abs() < 1e-9);
         }
@@ -987,8 +987,8 @@ mod tests {
 
     #[test]
     fn kelly_khong_chia_cho_khong() {
-        assert_eq!(ty_le_kelly(0.9, 0.0), 0.0);
-        assert_eq!(ty_le_kelly(0.9, -1.0), 0.0);
+        assert_eq!(kelly_fraction(0.9, 0.0), 0.0);
+        assert_eq!(kelly_fraction(0.9, -1.0), 0.0);
     }
 
     #[test]
@@ -1019,7 +1019,7 @@ mod tests {
     #[test]
     fn duong_von_di_len_deu_thi_khong_sut_giam() {
         let d: Vec<i64> = (0..50).map(|i| 100_000 + i * 100).collect();
-        let r = do_risk(&d);
+        let r = risk_level(&d);
         assert_eq!(r.max_drawdown, 0);
         assert_eq!(r.num_session_lo, 0);
         assert_eq!(r.total_pnl, 4_900);
@@ -1028,7 +1028,7 @@ mod tests {
     #[test]
     fn drawdown_do_use_distance_from_peak() {
         let d = vec![100, 150, 120, 80, 130];
-        let r = do_risk(&d);
+        let r = risk_level(&d);
         assert_eq!(r.max_drawdown, 70, "từ đỉnh 150 xuống đáy 80");
     }
 
@@ -1040,7 +1040,7 @@ mod tests {
                 s = s.wrapping_mul(6364136223846793005).wrapping_add(1);
                 ((s >> 40) % 200_000) as i64
             }).collect();
-            assert!(do_risk(&d).max_drawdown >= 0);
+            assert!(risk_level(&d).max_drawdown >= 0);
         }
     }
 
@@ -1053,17 +1053,17 @@ mod tests {
         let mut xoc = Vec::new();
         let mut v = 100_000i64;
         for i in 0..100 { v += if i % 3 == 0 { -8_000 } else { 5_750 }; xoc.push(v); }
-        let (a, b) = (do_risk(&em), do_risk(&xoc));
-        assert!(a.ty_so_sharpe > b.ty_so_sharpe,
-                "êm {:.2} phải cao hơn xóc {:.2}", a.ty_so_sharpe, b.ty_so_sharpe);
+        let (a, b) = (risk_level(&em), risk_level(&xoc));
+        assert!(a.sharpe_ratio > b.sharpe_ratio,
+                "êm {:.2} phải cao hơn xóc {:.2}", a.sharpe_ratio, b.sharpe_ratio);
         assert!(b.max_drawdown > a.max_drawdown);
     }
 
     #[test]
     fn duong_von_qua_ngan_khong_panic() {
-        assert_eq!(do_risk(&[]).total_pnl, 0);
-        assert_eq!(do_risk(&[100]).max_drawdown, 0);
-        assert_eq!(do_risk(&[100, 100]).ty_so_sharpe, 0.0, "không dao động → Sharpe 0");
+        assert_eq!(risk_level(&[]).total_pnl, 0);
+        assert_eq!(risk_level(&[100]).max_drawdown, 0);
+        assert_eq!(risk_level(&[100, 100]).sharpe_ratio, 0.0, "không dao động → Sharpe 0");
     }
 
     // ---------- Sinh dữ liệu ----------
@@ -1181,13 +1181,13 @@ Cộng nhiều tín hiệu chỉ hữu ích nếu chúng **độc lập**. Hai t
 pub struct ToHopTinHieu {
     pub name: Vec<String>,
     pub weight: Vec<f64>,
-    pub schedule_su: Vec<Vec<f64>>,   // lịch sử giá trị từng tín hiệu
+    pub history: Vec<Vec<f64>>,   // lịch sử giá trị từng tín hiệu
 }
 
 impl ToHopTinHieu {
     pub fn ket_hop(&mut self, value: &[f64]) -> f64 {
         for (i, v) in value.iter().enumerate() {
-            if i < self.schedule_su.len() { self.schedule_su[i].push(*v); }
+            if i < self.history.len() { self.history[i].push(*v); }
         }
         let tong_ts: f64 = self.weight.iter().map(|w| w.abs()).sum();
         if tong_ts == 0.0 { return 0.0; }
@@ -1195,14 +1195,14 @@ impl ToHopTinHieu {
     }
 
     pub fn correlation(&self, i: usize, j: usize) -> Option<f64> {
-        let (a, b) = (self.schedule_su.get(i)?, self.schedule_su.get(j)?);
+        let (a, b) = (self.history.get(i)?, self.history.get(j)?);
         let n = a.len().min(b.len());
         if n < 2 { return None; }
-        let (ma, mb) = (a[..n].iter().sum::<f64>() / n as f64,
+        let (id, mb) = (a[..n].iter().sum::<f64>() / n as f64,
                         b[..n].iter().sum::<f64>() / n as f64);
         let (mut cov, mut va, mut vb) = (0.0, 0.0, 0.0);
         for k in 0..n {
-            let (da, db) = (a[k] - ma, b[k] - mb);
+            let (da, db) = (a[k] - id, b[k] - mb);
             cov += da * db; va += da * da; vb += db * db;
         }
         if va == 0.0 || vb == 0.0 { return None; }
@@ -1212,8 +1212,8 @@ impl ToHopTinHieu {
     /// Các cặp tín hiệu quá giống nhau — chúng KHÔNG đa dạng hoá gì cả.
     pub fn cap_du_thua(&self, threshold: f64) -> Vec<(usize, usize, f64)> {
         let mut ra = Vec::new();
-        for i in 0..self.schedule_su.len() {
-            for j in (i + 1)..self.schedule_su.len() {
+        for i in 0..self.history.len() {
+            for j in (i + 1)..self.history.len() {
                 if let Some(r) = self.correlation(i, j) {
                     if r.abs() > threshold { ra.push((i, j, r)); }
                 }

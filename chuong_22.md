@@ -4,7 +4,7 @@
 
 Ở Chương 21, bạn đã bước đầu khám phá thế giới siêu lập trình với `macro_rules!` và các bộ khớp cú pháp cơ bản. Bạn đã thấy macro có thể tạo ra các từ điển `HashMap` tiện lợi chỉ bằng vài dòng mã ngắn gọn. Nhưng khi xây dựng các thư viện lớn hoặc các công cụ tự động hóa phức tạp, bạn sẽ ngay lập tức đối mặt với những bài toán hóc búa hơn:
 - *Làm sao để một macro có thể nhận danh sách tham số lặp đi lặp lại vô số lần, hỗ trợ cả dấu phẩy ở phần tử cuối cùng (`trailing comma`) giống hệt như các cấu trúc chuẩn của Rust?*
-- *Làm sao để tạo các ma trận đa chiều 2D, 3D bằng các mẫu lặp lồng nhau?*
+- *Làm sao để tạo các id trận đa chiều 2D, 3D bằng các mẫu lặp lồng nhau?*
 - *Điều gì sẽ xảy ra nếu bên trong macro bạn khai báo một biến tạm mang tên `let x = 10;`, và người lập trình bên ngoài cũng đang có một biến `let x = 999;`? Liệu biến của macro có vô tình "đè bẹp" hoặc làm sai lệch giá trị của biến bên ngoài hay không?*
 
 Trong các ngôn ngữ như C hay C++, các tiền xử lý macro (`#define`) khét tiếng vì sự nguy hiểm: Chúng hoạt động như công cụ thay thế chuỗi mù quáng, thường xuyên gây ra lỗi xung đột tên biến ngầm và lỗ hổng bảo mật rò rỉ bộ nhớ đệm (buffer overflow). Nhưng trong Rust, các kỹ sư thiết kế ngôn ngữ đã trang bị một cơ chế bảo vệ tối tân mang tên: **Tính vệ sinh trong Macro (Macro Hygiene)**. Nhờ tính vệ sinh, các biến bên trong macro được cách ly hoàn toàn với thế giới bên ngoài.
@@ -16,7 +16,7 @@ Mục tiêu học tập của chương này:
   - **`$(...)*`**: Lặp lại từ 0 đến vô số lần.
   - **`$(...),+`**: Lặp lại từ 1 đến vô số lần (ít nhất một phần tử).
   - **`$(...)?`**: Tùy chọn (xuất hiện 0 hoặc 1 lần), đặc biệt là kỹ thuật xử lý dấu phẩy cuối dòng `$(,)?`.
-- Thiết kế các cấu trúc lặp lồng nhau (**Nested Repetitions**) cho dữ liệu bảng biểu và ma trận đa chiều.
+- Thiết kế các cấu trúc lặp lồng nhau (**Nested Repetitions**) cho dữ liệu bảng biểu và id trận đa chiều.
 - Khám phá mẫu thiết kế đệ quy nâng cao: **Bộ nhai thẻ bài (TT Muncher - Token Tree Muncher)**.
 - Xử lý các trường hợp biên (Edge Cases): Giới hạn đệ quy `#![recursion_limit]` và quy tắc xuất bản macro qua nhiều crate với `#[macro_export]`.
 
@@ -113,14 +113,14 @@ Cú pháp lặp trong `macro_rules!` có dạng chuẩn:
 
 ### 3. Mẫu lặp lồng nhau (Nested Repetitions)
 
-Khi bạn muốn biểu diễn các cấu trúc đa chiều như ma trận hàng và cột (2D Grid) hoặc danh sách các bảng dữ liệu:
+Khi bạn muốn biểu diễn các cấu trúc đa chiều như id trận hàng và cột (2D Grid) hoặc danh sách các bảng dữ liệu:
 
 ```rust
 macro_rules! tao_ma_tran {
-    ( $( [ $( $gia_tri:expr ),* $(,)? ] ),* $(,)? ) => {
+    ( $( [ $( $value:expr ),* $(,)? ] ),* $(,)? ) => {
         vec![
             $(
-                vec![ $( $gia_tri ),* ],
+                vec![ $( $value ),* ],
             )*
         ]
     };
@@ -128,7 +128,7 @@ macro_rules! tao_ma_tran {
 ```
 Ở đây có hai cấp lặp:
 - Cấp ngoài: lặp qua từng hàng `[ ... ]`.
-- Cấp trong: lặp qua từng phần tử `$gia_tri` trong hàng đó.
+- Cấp trong: lặp qua từng phần tử `$value` trong hàng đó.
 
 ### 4. Mẫu thiết kế Đệ quy: "Bộ nhai thẻ bài" (TT Muncher)
 
@@ -141,8 +141,8 @@ macro_rules! dem_phan_tu {
     // Nhánh cơ sở: Hết phần tử -> trả về 0
     () => { 0usize };
     // Nhánh đệ quy: Nhặt 1 phần tử $dau, gọi đệ quy cho phần $duoi
-    ( $dau:tt $( $duoi:tt )* ) => {
-        1usize + dem_phan_tu!( $( $duoi )* )
+    ( $first:tt $( $below:tt )* ) => {
+        1usize + dem_phan_tu!( $( $below )* )
     };
 }
 ```
@@ -165,12 +165,12 @@ Dưới đây là một chương trình hoàn chỉnh minh họa toàn diện:
 // ============================================================================
 
 macro_rules! phep_tinh_noi_bo {
-    ( $dau_vao:expr ) => {
+    ( $input:expr ) => {
         {
-            // Khai báo biến tạm mang tên 'gia_tri_tam' bên trong macro
-            let gia_tri_tam = $dau_vao * 2;
-            println!("  [Trong Macro] gia_tri_tam = {}", gia_tri_tam);
-            gia_tri_tam + 5
+            // Khai báo biến tạm mang tên 'value_temp' bên trong macro
+            let value_temp = $input * 2;
+            println!("  [Trong Macro] gia_tri_tam = {}", value_temp);
+            value_temp + 5
         }
     };
 }
@@ -202,23 +202,23 @@ macro_rules! tao_ma_tran {
 /// Macro đệ quy phân tích chuỗi phép toán từ trái sang phải
 macro_rules! tinh_bieu_thuc_chuoi {
     // Nhánh dừng cơ sở: Chỉ còn lại duy nhất một giá trị
-    ( $gia_tri:expr ) => {
-        $gia_tri
+    ( $value:expr ) => {
+        $value
     };
 
     // Nhánh đệ quy phép cộng: (x + y + rest...) -> tinh_bieu_thuc_chuoi!((x + y) + rest...)
-    ( $x:expr, +, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x + $y) $(, $duoi )* )
+    ( $x:expr, +, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x + $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép nhân: (x * y * rest...)
-    ( $x:expr, *, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x * $y) $(, $duoi )* )
+    ( $x:expr, *, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x * $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép trừ: (x - y - rest...)
-    ( $x:expr, -, $y:expr $(, $duoi:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x - $y) $(, $duoi )* )
+    ( $x:expr, -, $y:expr $(, $below:tt )* ) => {
+        tinh_bieu_thuc_chuoi!( ($x - $y) $(, $below )* )
     };
 }
 
@@ -235,29 +235,29 @@ fn main() {
     // TÌNH HUỐNG 1: Kiểm chứng Tính vệ sinh không làm ô nhiễm biến ngoài
     // ------------------------------------------------------------------------
     println!("\n1. Kiểm chứng Tính vệ sinh của Macro (Macro Hygiene):");
-    let gia_tri_tam = 7777; // Biến trùng tên ở phạm vi hàm main
-    println!("Trước khi gọi macro: gia_tri_tam = {}", gia_tri_tam);
+    let value_temp = 7777; // Biến trùng tên ở phạm vi hàm main
+    println!("Trước khi gọi macro: gia_tri_tam = {}", value_temp);
 
     let ket_qua_macro = phep_tinh_noi_bo!(10);
     println!("Kết quả trả về từ macro: {}", ket_qua_macro);
 
-    // Xác nhận biến gia_tri_tam ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
-    println!("Sau khi gọi macro: gia_tri_tam = {}", gia_tri_tam);
-    assert_eq!(gia_tri_tam, 7777);
+    // Xác nhận biến value_temp ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
+    println!("Sau khi gọi macro: gia_tri_tam = {}", value_temp);
+    assert_eq!(value_temp, 7777);
     println!("-> KẾT LUẬN: Biến trong macro được cách ly vô trùng tuyệt đối!");
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Xây dựng Ma trận dữ liệu 2D với Mẫu lặp lồng nhau
     // ------------------------------------------------------------------------
-    println!("\n2. Khởi tạo Bảng dữ liệu ma trận 2D qua macro lồng nhau:");
+    println!("\n2. Khởi tạo Bảng dữ liệu id trận 2D qua macro lồng nhau:");
     let ma_tran_diem = tao_ma_tran![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
+        [70, 80, 90],  // Dấu phẩy ở cuối khối id trận hợp lệ
     ];
 
-    for (so_hang, hang) in ma_tran_diem.iter().enumerate() {
-        println!("  Hàng #{}: {:?}", so_hang + 1, hang);
+    for (num_queue, queue) in ma_tran_diem.iter().enumerate() {
+        println!("  Hàng #{}: {:?}", num_queue + 1, queue);
     }
     assert_eq!(ma_tran_diem[1][1], 50);
 
@@ -266,9 +266,9 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
-    let ket_qua_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", ket_qua_tinh);
-    assert_eq!(ket_qua_tinh, 24);
+    let result_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
+    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", result_tinh);
+    assert_eq!(result_tinh, 24);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MẪU MACRO NÂNG CAO HOÀN THÀNH THÀNH CÔNG  ");

@@ -8,7 +8,7 @@ Trong các thập kỷ trước, một lập trình viên thường được đo
 
 Khái niệm **Vibe Coding** đại diện cho sự dịch chuyển mô hình tư duy: Lập trình viên không còn phải vật lộn với những chi tiết lặp đi lặp lại của cú pháp bề mặt, mà nâng tầm vị thế thành một **Tổng đạo diễn kiến trúc (System Architect)**. Bạn tập trung 90% năng lượng trí tuệ vào việc thiết kế cấu trúc dữ liệu, xác định ranh giới hệ thống, quy định các giao ước hành vi (traits), bảo vệ tính bất biến của nghiệp vụ, và đóng vai trò thẩm định viên chất lượng tối cao.
 
-Điều tuyệt vời nhất là: **Rust chính là ngôn ngữ lập trình hoàn hảo nhất hành tinh để thực hành Vibe Coding**. Trong các ngôn ngữ động như Python hay JavaScript, khi AI sinh mã sai lệch về kiểu dữ liệu hay bỏ quên trường hợp rỗng, chương trình vẫn có thể chạy và chỉ nổ tung lúc nửa đêm khi khách hàng bấm nút thanh toán. Nhưng trong Rust, trình biên dịch `rustc` cực kỳ nghiêm khắc. Trình biên dịch sẽ ngay lập tức "bắt lỗi" bất kỳ ảo giác (hallucination) nào của AI về kiểu dữ liệu, vi phạm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), hay xung đột đa luồng.
+Điều tuyệt vời nhất là: **Rust chính là ngôn ngữ lập trình hoàn hảo nhất hành compute để thực hành Vibe Coding**. Trong các ngôn ngữ động như Python hay JavaScript, khi AI sinh mã sai lệch về kiểu dữ liệu hay bỏ quên trường hợp rỗng, chương trình vẫn có thể chạy và chỉ nổ tung lúc nửa đêm khi khách hàng bấm nút thanh toán. Nhưng trong Rust, trình biên dịch `rustc` cực kỳ nghiêm khắc. Trình biên dịch sẽ ngay lập tức "bắt lỗi" bất kỳ ảo giác (hallucination) nào của AI về kiểu dữ liệu, vi phạm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), hay xung đột đa luồng.
 
 Mục tiêu học tập của chương:
 - Thấu hiểu bản chất và triết lý của làn sóng **Vibe Coding** trong kỷ nguyên AI.
@@ -247,7 +247,7 @@ Khi lập trình cùng trợ lý AI, AI có thể vô tình sinh ra mã vi phạ
 1. **Vibe Coding không phải là lập trình cẩu thả**: Đó là sự thăng hoa của tư duy kiến trúc, giải phóng kỹ sư khỏi việc gõ cú pháp để tập trung vào thiết kế hệ thống, xác định ranh giới và mô hình hóa nghiệp vụ.
 2. **Rust là đối tác hoàn hảo nhất của AI**: Trình biên dịch `rustc` đóng vai trò người gác cổng an toàn tối cao, tự động phát hiện và chặn đứng mọi ảo giác, lỗi kiểu dữ liệu và vi phạm an toàn bộ nhớ.
 3. **Nguyên tắc Hợp đồng trước (Contract-First)**: Luôn phác thảo `struct`, `enum`, và `trait` trước khi yêu cầu AI sinh mã chi tiết. Bản thiết kế càng chặt chẽ thì mã AI sinh ra càng hoàn hảo.
-4. **Quyền sở hữu và mượn tham chiếu**: Sử dụng tham chiếu mượn (borrow) hợp lý giúp mã nguồn tinh gọn, hiệu năng cao và tránh cấp phát bộ nhớ lãng phí.
+4. **Quyền sở hữu và mượn tham chiếu**: Sử dụng tham chiếu mượn (borrow) hợp lý giúp mã nguồn compute gọn, hiệu năng cao và tránh cấp phát bộ nhớ lãng phí.
 
 ### Bài tập rèn luyện tư duy
 

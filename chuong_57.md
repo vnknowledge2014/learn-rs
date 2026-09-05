@@ -2,9 +2,9 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chủ đề 7 (Chương 37–42) đã dạy bạn tấn công **tầng bộ nhớ** theo tinh thần OSCP: buffer overflow, use-after-free, format string. Nhưng phần lớn ứng dụng ngày nay là **ứng dụng web**, và lỗ hổng web thuộc một thế giới hoàn toàn khác — chúng không nằm ở con trỏ, mà ở chỗ **lập trình viên tin tưởng dữ liệu người dùng**.
+Chủ đề 7 (Chương 37–42) đã dạy bạn tấn công **tầng bộ nhớ** theo compute thần OSCP: buffer overflow, use-after-free, format string. Nhưng phần lớn ứng dụng ngày nay là **ứng dụng web**, và lỗ hổng web thuộc một thế giới hoàn toàn khác — chúng không nằm ở con trỏ, mà ở chỗ **lập trình viên tin tưởng dữ liệu người dùng**.
 
-Chương này theo tinh thần chứng chỉ **OSWE (Offensive Security Web Expert)**: hiểu lỗ hổng bằng cách nhìn nó từ góc kẻ tấn công, rồi **viết mã phòng thủ chặn đứng nó**. Mỗi lỗ hổng trong chương đều có hai bản: bản `❌ DÍNH LỖI` và bản `✅ SỬA`, kèm test chứng minh bản sửa thực sự chặn được đòn tấn công.
+Chương này theo compute thần chứng chỉ **OSWE (Offensive Security Web Expert)**: hiểu lỗ hổng bằng cách nhìn nó từ góc kẻ tấn công, rồi **viết mã phòng thủ chặn đứng nó**. Mỗi lỗ hổng trong chương đều có hai bản: bản `❌ DÍNH LỖI` và bản `✅ SỬA`, kèm test chứng minh bản sửa thực sự chặn được đòn tấn công.
 
 > **Đây là giáo dục bảo mật phòng thủ.** Mục tiêu là để bạn *viết ứng dụng an toàn*, không phải tấn công hệ thống người khác. Mọi ví dụ đều là mô phỏng offline, không nhắm vào mục tiêu thật.
 
@@ -77,8 +77,8 @@ IDOR là lỗ hổng **kiểm soát truy cập**: hệ thống tra đối tượ
 Rust cho một mẹo thiết kế mạnh: **đưa id người gọi vào chữ ký hàm bắt buộc**. So sánh:
 
 ```rust
-fn xem_hoa_don(id: u64) -> Option<HoaDon>              // ❌ dễ quên kiểm quyền
-fn xem_hoa_don(id: u64, nguoi_goi: u64) -> Result<..>  // ✅ KHÔNG THỂ gọi mà không có người gọi
+fn xem_hoa_don(id: u64) -> Option<Invoice>              // ❌ dễ quên kiểm quyền
+fn xem_hoa_don(id: u64, caller: u64) -> Result<..>  // ✅ KHÔNG THỂ gọi mà không có người gọi
 ```
 
 Với chữ ký thứ hai, lập trình viên *không thể quên* — muốn gọi hàm là phải cung cấp danh tính người gọi, và trình biên dịch nhắc nếu thiếu.
@@ -134,29 +134,29 @@ cargo test -p ch57
 
 /// ❌ DÍNH LỖI: ghép chuỗi thẳng vào câu SQL. Kẻ tấn công gửi
 /// `' OR '1'='1` để vượt qua điều kiện.
-pub fn dung_cau_sql_dinh_loi(ten_dang_nhap: &str) -> String {
-    format!("SELECT * FROM users WHERE username = '{}'", ten_dang_nhap)
+pub fn build_vulnerable_sql(name_dang_import: &str) -> String {
+    format!("SELECT * FROM users WHERE username = '{}'", name_dang_import)
 }
 
 /// ✅ SỬA: dùng tham số hóa (placeholder). Dữ liệu người dùng KHÔNG BAO GIỜ
 /// trở thành một phần cú pháp SQL — nó chỉ là *giá trị* điền vào chỗ `?`.
 #[derive(Debug, PartialEq)]
-pub struct CauSqlAnToan {
+pub struct SafeSql {
     pub mau: String,           // "... WHERE username = ?"
-    pub tham_so: Vec<String>,  // giá trị điền vào, tách RỜI khỏi cú pháp
+    pub param: Vec<String>,  // giá trị điền vào, tách RỜI khỏi cú pháp
 }
-pub fn dung_cau_sql_an_toan(ten_dang_nhap: &str) -> CauSqlAnToan {
-    CauSqlAnToan {
+pub fn build_safe_sql(name_dang_import: &str) -> SafeSql {
+    SafeSql {
         mau: "SELECT * FROM users WHERE username = ?".to_string(),
-        tham_so: vec![ten_dang_nhap.to_string()],
+        param: vec![name_dang_import.to_string()],
     }
 }
 
 /// Mô phỏng cách trình điều khiển cơ sở dữ liệu thật xử lý: giá trị được
 /// "thoát" và bọc, không bao giờ được diễn giải là cú pháp.
-pub fn co_the_bi_tiem_sql(cau: &CauSqlAnToan) -> bool {
+pub fn co_the_bi_tiem_sql(cau: &SafeSql) -> bool {
     // Với câu tham số hóa, dù tham số chứa gì thì cú pháp vẫn cố định.
-    cau.mau.matches('?').count() == cau.tham_so.len() && cau.mau.contains('?')
+    cau.mau.matches('?').count() == cau.param.len() && cau.mau.contains('?')
 }
 
 // ============================================================================
@@ -165,8 +165,8 @@ pub fn co_the_bi_tiem_sql(cau: &CauSqlAnToan) -> bool {
 
 /// ✅ Thoát các ký tự nguy hiểm trước khi nhúng dữ liệu người dùng vào HTML.
 /// Đây là tuyến phòng thủ số 1 chống XSS phản chiếu và lưu trữ.
-pub fn thoat_html(dau_vao: &str) -> String {
-    dau_vao
+pub fn escape_html(input: &str) -> String {
+    input
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -175,12 +175,12 @@ pub fn thoat_html(dau_vao: &str) -> String {
 }
 
 /// ❌ DÍNH LỖI: nhúng thẳng đầu vào vào HTML.
-pub fn render_binh_luan_dinh_loi(binh_luan: &str) -> String {
+pub fn render_comment_vulnerable(binh_luan: &str) -> String {
     format!("<div class=\"cmt\">{}</div>", binh_luan)
 }
 /// ✅ SỬA: thoát trước khi nhúng.
-pub fn render_binh_luan_an_toan(binh_luan: &str) -> String {
-    format!("<div class=\"cmt\">{}</div>", thoat_html(binh_luan))
+pub fn render_comment_safe(binh_luan: &str) -> String {
+    format!("<div class=\"cmt\">{}</div>", escape_html(binh_luan))
 }
 
 // ============================================================================
@@ -188,33 +188,33 @@ pub fn render_binh_luan_an_toan(binh_luan: &str) -> String {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HoaDon {
+pub struct Invoice {
     pub id: u64,
-    pub chu_so_huu: u64, // id người dùng sở hữu
+    pub owner: u64, // id người dùng sở hữu
     pub so_tien: u64,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum LoiTruyCap {
+pub enum ErrorAccessCap {
     KhongTonTai,
     KhongCoQuyen, // đây là lỗ hổng IDOR nếu quên kiểm tra
 }
 
 /// ❌ DÍNH LỖI: chỉ tra theo id, KHÔNG kiểm tra người gọi có sở hữu không.
 /// Kẻ tấn công đổi `?id=123` thành `?id=124` để xem hóa đơn người khác.
-pub fn xem_hoa_don_dinh_loi<'a>(kho: &'a [HoaDon], id: u64) -> Option<&'a HoaDon> {
-    kho.iter().find(|h| h.id == id)
+pub fn invoice_view_error<'a>(store: &'a [Invoice], id: u64) -> Option<&'a Invoice> {
+    store.iter().find(|h| h.id == id)
 }
 
 /// ✅ SỬA: bắt buộc truyền id người gọi và kiểm tra quyền sở hữu.
-pub fn xem_hoa_don_an_toan<'a>(
-    kho: &'a [HoaDon],
+pub fn invoice_view_safe<'a>(
+    store: &'a [Invoice],
     id: u64,
-    nguoi_goi: u64,
-) -> Result<&'a HoaDon, LoiTruyCap> {
-    let hd = kho.iter().find(|h| h.id == id).ok_or(LoiTruyCap::KhongTonTai)?;
-    if hd.chu_so_huu != nguoi_goi {
-        return Err(LoiTruyCap::KhongCoQuyen);
+    caller: u64,
+) -> Result<&'a Invoice, ErrorAccessCap> {
+    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::KhongTonTai)?;
+    if hd.owner != caller {
+        return Err(ErrorAccessCap::KhongCoQuyen);
     }
     Ok(hd)
 }
@@ -224,7 +224,7 @@ pub fn xem_hoa_don_an_toan<'a>(
 // ============================================================================
 
 #[derive(Debug, PartialEq)]
-pub enum LoiUrl {
+pub enum UrlError {
     KhongPhaiHttp,
     TroToiMangNoiBo, // chặn 127.0.0.1, 169.254.x (metadata đám mây), 10.x, 192.168.x
     HostKhongDuocPhep,
@@ -232,24 +232,24 @@ pub enum LoiUrl {
 
 /// ✅ Kiểm tra URL trước khi máy chủ đi lấy nội dung (chống SSRF).
 /// Quy tắc: DANH SÁCH TRẮNG host cho phép, và chặn mọi địa chỉ mạng nội bộ.
-pub fn kiem_tra_url_an_toan(url: &str, host_cho_phep: &[&str]) -> Result<(), LoiUrl> {
+pub fn is_safe_url(url: &str, host_cho_phep: &[&str]) -> Result<(), UrlError> {
     let sau_scheme = url.strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
-        .ok_or(LoiUrl::KhongPhaiHttp)?;
+        .ok_or(UrlError::KhongPhaiHttp)?;
 
     let host = sau_scheme.split(['/', ':']).next().unwrap_or("");
 
     // Chặn địa chỉ mạng nội bộ / loopback / metadata đám mây
-    if la_dia_chi_noi_bo(host) {
-        return Err(LoiUrl::TroToiMangNoiBo);
+    if is_unit_address(host) {
+        return Err(UrlError::TroToiMangNoiBo);
     }
     if !host_cho_phep.contains(&host) {
-        return Err(LoiUrl::HostKhongDuocPhep);
+        return Err(UrlError::HostKhongDuocPhep);
     }
     Ok(())
 }
 
-pub fn la_dia_chi_noi_bo(host: &str) -> bool {
+pub fn is_unit_address(host: &str) -> bool {
     host == "localhost"
         || host.starts_with("127.")
         || host.starts_with("10.")
@@ -277,36 +277,36 @@ pub fn so_sanh_bat_bien(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    let mut khac: u8 = 0;
+    let mut other: u8 = 0;
     for i in 0..a.len() {
-        khac |= a[i] ^ b[i]; // gộp mọi khác biệt, không rẽ nhánh sớm
+        other |= a[i] ^ b[i]; // gộp mọi khác biệt, không rẽ nhánh sớm
     }
-    khac == 0
+    other == 0
 }
 
 /// Kiểm tra ĐỘ MẠNH mật khẩu — chính sách tối thiểu.
 #[derive(Debug, PartialEq)]
-pub enum LoiMatKhau {
+pub enum ErrorPassword {
     QuaNgan,
     ThieuChuHoa,
     ThieuChuSo,
     ThieuKyTuDacBiet,
 }
-pub fn kiem_tra_do_manh(mk: &str) -> Result<(), Vec<LoiMatKhau>> {
-    let mut loi = Vec::new();
+pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
+    let mut error = Vec::new();
     if mk.chars().count() < 12 {
-        loi.push(LoiMatKhau::QuaNgan);
+        error.push(ErrorPassword::QuaNgan);
     }
     if !mk.chars().any(|c| c.is_uppercase()) {
-        loi.push(LoiMatKhau::ThieuChuHoa);
+        error.push(ErrorPassword::ThieuChuHoa);
     }
     if !mk.chars().any(|c| c.is_ascii_digit()) {
-        loi.push(LoiMatKhau::ThieuChuSo);
+        error.push(ErrorPassword::ThieuChuSo);
     }
     if !mk.chars().any(|c| !c.is_alphanumeric()) {
-        loi.push(LoiMatKhau::ThieuKyTuDacBiet);
+        error.push(ErrorPassword::ThieuKyTuDacBiet);
     }
-    if loi.is_empty() { Ok(()) } else { Err(loi) }
+    if error.is_empty() { Ok(()) } else { Err(error) }
 }
 
 // ============================================================================
@@ -315,11 +315,11 @@ pub fn kiem_tra_do_manh(mk: &str) -> Result<(), Vec<LoiMatKhau>> {
 
 /// ✅ Chuẩn hóa và kiểm tra đường dẫn tệp do người dùng cung cấp.
 /// Chặn `..` để không thoát ra khỏi thư mục gốc cho phép.
-pub fn duong_dan_an_toan(goc: &str, yeu_cau: &str) -> Result<String, String> {
+pub fn path_safe(root: &str, yeu_cau: &str) -> Result<String, String> {
     if yeu_cau.contains("..") || yeu_cau.starts_with('/') || yeu_cau.contains('\0') {
         return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", yeu_cau));
     }
-    Ok(format!("{}/{}", goc.trim_end_matches('/'), yeu_cau))
+    Ok(format!("{}/{}", root.trim_end_matches('/'), yeu_cau))
 }
 
 fn main() {
@@ -330,39 +330,39 @@ fn main() {
     let doc = "admin' OR '1'='1";
     println!("\n1. SQL INJECTION");
     println!("   Đầu vào tấn công: {:?}", doc);
-    println!("   ❌ Ghép chuỗi : {}", dung_cau_sql_dinh_loi(doc));
-    let an = dung_cau_sql_an_toan(doc);
-    println!("   ✅ Tham số hóa: {} | tham số = {:?}", an.mau, an.tham_so);
+    println!("   ❌ Ghép chuỗi : {}", build_vulnerable_sql(doc));
+    let an = build_safe_sql(doc);
+    println!("   ✅ Tham số hóa: {} | tham số = {:?}", an.mau, an.param);
     println!("      → Đầu vào chỉ là GIÁ TRỊ, không thể trở thành cú pháp.");
 
     println!("\n2. XSS");
     let xss = "<script>steal(document.cookie)</script>";
     println!("   Đầu vào: {}", xss);
-    println!("   ✅ Sau khi thoát: {}", thoat_html(xss));
+    println!("   ✅ Sau khi thoát: {}", escape_html(xss));
 
     println!("\n3. IDOR");
-    let kho = vec![
-        HoaDon { id: 100, chu_so_huu: 1, so_tien: 500 },
-        HoaDon { id: 101, chu_so_huu: 2, so_tien: 999 },
+    let store = vec![
+        Invoice { id: 100, owner: 1, so_tien: 500 },
+        Invoice { id: 101, owner: 2, so_tien: 999 },
     ];
     println!("   Người dùng #1 xem hóa đơn #101 (của người #2):");
-    println!("   ❌ Bản lỗi cho xem: {:?}", xem_hoa_don_dinh_loi(&kho, 101).map(|h| h.so_tien));
-    println!("   ✅ Bản sửa chặn  : {:?}", xem_hoa_don_an_toan(&kho, 101, 1));
+    println!("   ❌ Bản lỗi cho xem: {:?}", invoice_view_error(&store, 101).map(|h| h.so_tien));
+    println!("   ✅ Bản sửa chặn  : {:?}", invoice_view_safe(&store, 101, 1));
 
     println!("\n4. SSRF");
-    let cho_phep = ["api.doitac.vn", "cdn.congty.vn"];
+    let wait_op = ["api.doitac.vn", "cdn.congty.vn"];
     for u in ["https://api.doitac.vn/data", "http://169.254.169.254/latest/meta-data/", "https://evil.com"] {
-        println!("   {:>45} -> {:?}", u, kiem_tra_url_an_toan(u, &cho_phep));
+        println!("   {:>45} -> {:?}", u, is_safe_url(u, &wait_op));
     }
 
     println!("\n5. XÁC THỰC");
     println!("   So sánh token bất biến: {}", so_sanh_bat_bien(b"secret123", b"secret123"));
-    println!("   Mật khẩu 'abc': {:?}", kiem_tra_do_manh("abc").is_err());
-    println!("   Mật khẩu 'Rust@2026!Secure': {:?}", kiem_tra_do_manh("Rust@2026!Secure"));
+    println!("   Mật khẩu 'abc': {:?}", check_do_strong("abc").is_err());
+    println!("   Mật khẩu 'Rust@2026!Secure': {:?}", check_do_strong("Rust@2026!Secure"));
 
     println!("\n6. PATH TRAVERSAL");
-    println!("   {:?}", duong_dan_an_toan("/var/www/uploads", "avatar.png"));
-    println!("   {:?}", duong_dan_an_toan("/var/www/uploads", "../../etc/passwd"));
+    println!("   {:?}", path_safe("/var/www/uploads", "avatar.png"));
+    println!("   {:?}", path_safe("/var/www/uploads", "../../etc/passwd"));
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   ĐỪNG TIN DỮ LIỆU NGƯỜI DÙNG · DÙNG DANH SÁCH TRẮNG · KIỂM QUYỀN ");
@@ -370,57 +370,57 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
     fn sql_tham_so_hoa_khong_tiem_duoc() {
         let doc = "admin' OR '1'='1; DROP TABLE users;--";
-        let an = dung_cau_sql_an_toan(doc);
+        let an = build_safe_sql(doc);
         // Cú pháp cố định, chỉ 1 chỗ ?; toàn bộ đòn tấn công nằm trong THAM SỐ
-        assert_eq!(an.tham_so, vec![doc.to_string()]);
+        assert_eq!(an.param, vec![doc.to_string()]);
         assert!(an.mau.matches('?').count() == 1);
         assert!(!an.mau.contains("OR")); // đầu vào KHÔNG lọt vào cú pháp
     }
 
     #[test]
     fn xss_thoat_het_ky_tu_nguy_hiem() {
-        let out = thoat_html("<script>alert('x')</script>");
+        let out = escape_html("<script>alert('x')</script>");
         assert!(!out.contains('<'));
         assert!(!out.contains('>'));
         assert!(out.contains("&lt;script&gt;"));
         // Bản sửa KHÔNG chứa thẻ script thực thi được
-        assert!(!render_binh_luan_an_toan("<img onerror=hack()>").contains("<img"));
+        assert!(!render_comment_safe("<img onerror=hack()>").contains("<img"));
     }
 
     #[test]
     fn idor_chan_truy_cap_cheo_nguoi_dung() {
-        let kho = vec![
-            HoaDon { id: 100, chu_so_huu: 1, so_tien: 500 },
-            HoaDon { id: 101, chu_so_huu: 2, so_tien: 999 },
+        let store = vec![
+            Invoice { id: 100, owner: 1, so_tien: 500 },
+            Invoice { id: 101, owner: 2, so_tien: 999 },
         ];
         // Người #1 xem hóa đơn của chính mình -> OK
-        assert!(xem_hoa_don_an_toan(&kho, 100, 1).is_ok());
+        assert!(invoice_view_safe(&store, 100, 1).is_ok());
         // Người #1 xem hóa đơn người #2 -> BỊ CHẶN
-        assert_eq!(xem_hoa_don_an_toan(&kho, 101, 1), Err(LoiTruyCap::KhongCoQuyen));
+        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::KhongCoQuyen));
         // Hóa đơn không tồn tại
-        assert_eq!(xem_hoa_don_an_toan(&kho, 999, 1), Err(LoiTruyCap::KhongTonTai));
+        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::KhongTonTai));
     }
 
     #[test]
     fn ssrf_chan_metadata_dam_may_va_mang_noi_bo() {
         let cp = ["api.tot.vn"];
-        assert!(kiem_tra_url_an_toan("https://api.tot.vn/x", &cp).is_ok());
+        assert!(is_safe_url("https://api.tot.vn/x", &cp).is_ok());
         // Địa chỉ metadata đám mây — mục tiêu SSRF nguy hiểm nhất
-        assert_eq!(kiem_tra_url_an_toan("http://169.254.169.254/", &cp), Err(LoiUrl::TroToiMangNoiBo));
-        assert_eq!(kiem_tra_url_an_toan("http://127.0.0.1:8080/admin", &cp), Err(LoiUrl::TroToiMangNoiBo));
-        assert_eq!(kiem_tra_url_an_toan("http://10.0.0.5/", &cp), Err(LoiUrl::TroToiMangNoiBo));
-        assert_eq!(kiem_tra_url_an_toan("http://172.16.0.1/", &cp), Err(LoiUrl::TroToiMangNoiBo));
-        assert_eq!(kiem_tra_url_an_toan("http://172.15.0.1/", &["172.15.0.1"]), Ok(())); // 172.15 KHÔNG nội bộ
+        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://172.15.0.1/", &["172.15.0.1"]), Ok(())); // 172.15 KHÔNG nội bộ
         // Host lạ không trong danh sách trắng
-        assert_eq!(kiem_tra_url_an_toan("https://evil.com/", &cp), Err(LoiUrl::HostKhongDuocPhep));
+        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostKhongDuocPhep));
         // Không phải http(s)
-        assert_eq!(kiem_tra_url_an_toan("file:///etc/passwd", &cp), Err(LoiUrl::KhongPhaiHttp));
+        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::KhongPhaiHttp));
     }
 
     #[test]
@@ -431,20 +431,20 @@ mod kiem_thu {
     }
 
     #[test]
-    fn do_manh_mat_khau() {
-        assert!(kiem_tra_do_manh("abc").is_err());
-        assert!(kiem_tra_do_manh("khongcosohoa!X").is_err()); // thiếu số
-        assert!(kiem_tra_do_manh("Rust@2026!Secure").is_ok());
-        let loi = kiem_tra_do_manh("short").unwrap_err();
-        assert!(loi.contains(&LoiMatKhau::QuaNgan));
+    fn do_strong_password() {
+        assert!(check_do_strong("abc").is_err());
+        assert!(check_do_strong("khongcosohoa!X").is_err()); // thiếu số
+        assert!(check_do_strong("Rust@2026!Secure").is_ok());
+        let error = check_do_strong("short").unwrap_err();
+        assert!(error.contains(&ErrorPassword::QuaNgan));
     }
 
     #[test]
     fn path_traversal_bi_chan() {
-        assert!(duong_dan_an_toan("/uploads", "anh.png").is_ok());
-        assert!(duong_dan_an_toan("/uploads", "../../etc/passwd").is_err());
-        assert!(duong_dan_an_toan("/uploads", "/etc/passwd").is_err());
-        assert!(duong_dan_an_toan("/uploads", "a/../../secret").is_err());
+        assert!(path_safe("/uploads", "anh.png").is_ok());
+        assert!(path_safe("/uploads", "../../etc/passwd").is_err());
+        assert!(path_safe("/uploads", "/etc/passwd").is_err());
+        assert!(path_safe("/uploads", "a/../../secret").is_err());
     }
 }
 ```
@@ -462,7 +462,7 @@ mod kiem_thu {
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Chống XSS trong thuộc tính)**
-`thoat_html` an toàn cho *thân* HTML. Nhưng nhúng vào một *thuộc tính* (`<a title="...">`) cần thoát thêm. Viết `thoat_thuoc_tinh` và test với đầu vào `" onmouseover="hack()`.
+`escape_html` an toàn cho *thân* HTML. Nhưng nhúng vào một *thuộc tính* (`<a title="...">`) cần thoát thêm. Viết `thoat_thuoc_tinh` và test với đầu vào `" onmouseover="hack()`.
 
 <details>
 <summary><b>Lời giải</b></summary>
@@ -470,7 +470,7 @@ mod kiem_thu {
 ```rust
 pub fn thoat_thuoc_tinh(s: &str) -> String {
     // Trong thuộc tính, dấu nháy kép là ký tự thoát ra ngoài nguy hiểm nhất
-    thoat_html(s) // đã thoát cả " thành &quot; và ' thành &#x27;
+    escape_html(s) // đã thoát cả " thành &quot; và ' thành &#x27;
 }
 
 #[cfg(test)]
@@ -501,19 +501,19 @@ pub struct BoDemDangNhap {
     gioi_han: u32,
 }
 impl BoDemDangNhap {
-    pub fn moi(gioi_han: u32) -> Self {
+    pub fn new(gioi_han: u32) -> Self {
         BoDemDangNhap { lan_sai: HashMap::new(), gioi_han }
     }
-    pub fn thu_dang_nhap(&mut self, tai_khoan: &str, dung: bool) -> Result<(), String> {
-        let dem = self.lan_sai.entry(tai_khoan.to_string()).or_insert(0);
-        if *dem >= self.gioi_han {
+    pub fn thu_dang_nhap(&mut self, account: &str, dung: bool) -> Result<(), String> {
+        let count = self.lan_sai.entry(account.to_string()).or_insert(0);
+        if *count >= self.gioi_han {
             return Err("Tài khoản tạm khóa do quá nhiều lần sai".into());
         }
         if dung {
-            *dem = 0;
+            *count = 0;
             Ok(())
         } else {
-            *dem += 1;
+            *count += 1;
             Err("Sai mật khẩu".into())
         }
     }
@@ -524,7 +524,7 @@ mod bt2 {
     use super::*;
     #[test]
     fn khoa_sau_5_lan_sai() {
-        let mut bd = BoDemDangNhap::moi(5);
+        let mut bd = BoDemDangNhap::new(5);
         for _ in 0..5 { let _ = bd.thu_dang_nhap("an", false); }
         // Lần thứ 6 bị chặn dù có nhập đúng
         assert!(bd.thu_dang_nhap("an", true).unwrap_err().contains("tạm khóa"));
@@ -546,8 +546,8 @@ Với mỗi tình huống, chỉ ra lỗ hổng và cách sửa:
 <summary><b>Lời giải tham khảo</b></summary>
 
 1. **IDOR** (A01). Sửa: kiểm tra `user_id trong URL == user_id của phiên đăng nhập`, hoặc quyền admin.
-2. **XSS phản chiếu** (A03). Sửa: `thoat_html` từ khóa trước khi hiển thị.
-3. **SSRF** (A10). Sửa: danh sách trắng host + chặn dải nội bộ như `kiem_tra_url_an_toan`.
+2. **XSS phản chiếu** (A03). Sửa: `escape_html` từ khóa trước khi hiển thị.
+3. **SSRF** (A10). Sửa: danh sách trắng host + chặn dải nội bộ như `is_safe_url`.
 4. **Kiểm soát truy cập hỏng / CSRF** (A01). Sửa: bắt buộc xác nhận mật khẩu cũ, dùng token CSRF, và cân nhắc xác thực hai yếu tố cho thao tác nhạy cảm.
 
 Nguyên tắc chung: mỗi lần dữ liệu **vào** (input) hay **ra** (output) qua một ranh giới tin cậy, hãy hỏi *"nếu đây là kẻ tấn công thì sao?"*.

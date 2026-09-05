@@ -2,25 +2,25 @@
 /// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
 /// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
-pub fn tinh_tong_lat_cat(du_lieu: &[i32]) -> i64 {
+pub fn total_tile_latency(data: &[i32]) -> i64 {
     let mut tong: i64 = 0;
-    for &gia_tri in du_lieu {
-        tong += gia_tri as i64;
+    for &value in data {
+        tong += value as i64;
     }
     tong
 }
 
 /// Hàm đảo ngược các phần tử tại chỗ trên một lát cắt khả biến &mut [i32]
-pub fn dao_nguoc_tai_cho(du_lieu: &mut [i32]) {
-    if du_lieu.is_empty() {
+pub fn reverse_inverse_tai_wait(data: &mut [i32]) {
+    if data.is_empty() {
         return;
     }
-    let mut trai = 0;
-    let mut phai = du_lieu.len() - 1;
-    while trai < phai {
-        du_lieu.swap(trai, phai);
-        trai += 1;
-        phai -= 1;
+    let mut left = 0;
+    let mut must = data.len() - 1;
+    while left < must {
+        data.swap(left, must);
+        left += 1;
+        must -= 1;
     }
 }
 
@@ -30,35 +30,35 @@ fn main() {
     println!("============================================================");
 
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
-    let mang_tinh: [i32; 5] = [10, 20, 30, 40, 50];
+    let array_tinh: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&mang_tinh));
-    println!("    - Số lượng phần tử  : {}", mang_tinh.len());
+    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&array_tinh));
+    println!("    - Số lượng phần tử  : {}", array_tinh.len());
     
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
-    for i in 0..mang_tinh.len() {
-        let dia_chi = &mang_tinh[i] as *const i32 as usize;
-        print!("[Phần tử {}: đuôi ...{:x}] ", i, dia_chi % 0x1000);
+    for i in 0..array_tinh.len() {
+        let address = &array_tinh[i] as *const i32 as usize;
+        print!("[Phần tử {}: đuôi ...{:x}] ", i, address % 0x1000);
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
-    // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
+    // 2. Khảo sát Vector động Vec<T> và owner kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
     let mut vec_dong: Vec<i32> = Vec::new();
     println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
 
-    let mut dia_chi_truoc: usize = 0;
+    let mut prev_address: usize = 0;
     for i in 1..=9 {
         vec_dong.push(i * 10);
-        let dia_chi_hien_tai = vec_dong.as_ptr() as usize;
+        let current_address = vec_dong.as_ptr() as usize;
         
         // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
-        let thong_bao_doi_nha = if dia_chi_hien_tai != dia_chi_truoc && dia_chi_truoc != 0 {
-            dia_chi_truoc = dia_chi_hien_tai;
+        let thong_report_swap_nha = if current_address != prev_address && prev_address != 0 {
+            prev_address = current_address;
             " -> [ĐỔI NHÀ MỚI TRÊN HEAP!]"
         } else {
-            dia_chi_truoc = dia_chi_hien_tai;
+            prev_address = current_address;
             ""
         };
 
@@ -67,8 +67,8 @@ fn main() {
             i * 10,
             vec_dong.len(),
             vec_dong.capacity(),
-            dia_chi_hien_tai % 0x10000,
-            thong_bao_doi_nha
+            current_address % 0x10000,
+            thong_report_swap_nha
         );
     }
 
@@ -87,16 +87,16 @@ fn main() {
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
     // Lấy lát cắt từ mảng tĩnh
-    let lat_cat_mang = &mang_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    let lat_cat_mang = &array_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
     println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
-    let tong_mang = tinh_tong_lat_cat(lat_cat_mang);
+    let tong_mang = total_tile_latency(lat_cat_mang);
     println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
     assert_eq!(tong_mang, 90);
 
     // Lấy lát cắt từ vector động
     let lat_cat_vec = &vec_dong[0..5]; // Lấy 5 phần tử đầu tiên
     println!("    - Lát cắt từ vector [0..5]   : {:?}", lat_cat_vec);
-    let tong_vec = tinh_tong_lat_cat(lat_cat_vec);
+    let tong_vec = total_tile_latency(lat_cat_vec);
     println!("    - Tổng tính từ lát cắt vector: {}", tong_vec);
     assert_eq!(tong_vec, 150);
 
@@ -105,7 +105,7 @@ fn main() {
     println!("\n[5] Đảo ngược tại chỗ trên lát cắt khả biến:");
     println!("    - Mảng ban đầu : {:?}", mang_can_dao);
     // Đảo ngược chỉ một đoạn ở giữa: từ chỉ số 1 đến 4 (các số 2, 3, 4, 5)
-    dao_nguoc_tai_cho(&mut mang_can_dao[1..5]);
+    reverse_inverse_tai_wait(&mut mang_can_dao[1..5]);
     println!("    - Sau khi đảo đoạn [1..5]: {:?}", mang_can_dao);
     assert_eq!(mang_can_dao, [1, 5, 4, 3, 2, 6]);
 
@@ -115,38 +115,38 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
     fn tong_lat_cat() {
-        assert_eq!(tinh_tong_lat_cat(&[10, 20, 30]), 60);
-        assert_eq!(tinh_tong_lat_cat(&[]), 0);
+        assert_eq!(total_tile_latency(&[10, 20, 30]), 60);
+        assert_eq!(total_tile_latency(&[]), 0);
     }
 
     #[test]
-    fn dao_nguoc_tai_cho_khong_cap_phat_moi() {
+    fn new_reverse_inverse_tai_wait_no_cap_phat() {
         let mut v = vec![1, 2, 3, 4, 5];
-        dao_nguoc_tai_cho(&mut v);
+        reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![5, 4, 3, 2, 1]);
     }
 
     #[test]
-    fn dao_nguoc_hai_lan_ve_ban_dau() {
-        let goc = vec![7, 3, 9, 1];
-        let mut v = goc.clone();
-        dao_nguoc_tai_cho(&mut v);
-        dao_nguoc_tai_cho(&mut v);
-        assert_eq!(v, goc); // đảo hai lần = phép đồng nhất
+    fn first_reverse_inverse_two_lan_ve_sell() {
+        let root = vec![7, 3, 9, 1];
+        let mut v = root.clone();
+        reverse_inverse_tai_wait(&mut v);
+        reverse_inverse_tai_wait(&mut v);
+        assert_eq!(v, root); // đảo hai lần = phép đồng nhất
     }
 
     #[test]
     fn dao_nguoc_do_dai_le_giu_nguyen_giua() {
         let mut v = vec![1, 2, 3];
-        dao_nguoc_tai_cho(&mut v);
+        reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![3, 2, 1]);
         let mut r = vec![42];
-        dao_nguoc_tai_cho(&mut r);
+        reverse_inverse_tai_wait(&mut r);
         assert_eq!(r, vec![42]);
     }
 }

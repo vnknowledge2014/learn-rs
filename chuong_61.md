@@ -56,14 +56,14 @@ Mục tiêu học tập:
 
 Một tuyến gồm ba phần: **phương thức** (GET/POST...), **mẫu đường dẫn** (có thể chứa tham số động `:id`), và **bộ xử lý**. Bộ định tuyến duyệt các tuyến, tìm cái đầu tiên khớp cả phương thức lẫn hình dạng đường dẫn.
 
-Điểm tinh tế: `GET /san-pham/:id` khớp `/san-pham/7` và trích `id = "7"`, nhưng KHÔNG khớp `/san-pham` (khác số đoạn) hay `POST /san-pham/7` (khác phương thức). Cùng một đường dẫn với phương thức khác là *tuyến khác* — đó là cách REST phân biệt "xem" (GET) với "xóa" (DELETE) cùng một tài nguyên.
+Điểm compute tế: `GET /san-pham/:id` khớp `/san-pham/7` và trích `id = "7"`, nhưng KHÔNG khớp `/san-pham` (khác số đoạn) hay `POST /san-pham/7` (khác phương thức). Cùng một đường dẫn với phương thức khác là *tuyến khác* — đó là cách REST phân biệt "xem" (GET) với "xóa" (DELETE) cùng một tài nguyên.
 
 ### 2. Bộ trích xuất (Extractor) — hệ thống kiểu làm giao diện
 
 Đây là điều làm Axum khác biệt. Trong nhiều framework, bạn tự lấy dữ liệu từ đối tượng request thô rồi tự ép kiểu — dễ sai runtime. Axum đảo ngược: bạn **khai báo kiểu bạn muốn** trong chữ ký handler, và framework tự trích xuất:
 
 ```rust
-async fn xem(Path(id): Path<u32>, State(kho): State<Arc<Kho>>) -> impl IntoResponse
+async fn view(Path(id): Path<u32>, State(store): State<Arc<Store>>) -> impl IntoResponse
 //           └── trích :id từ URL, ép sang u32   └── lấy trạng thái chia sẻ
 ```
 
@@ -94,7 +94,7 @@ Trong Axum, bạn định nghĩa một kiểu lỗi và cài `IntoResponse` cho 
 ### 5. Vì sao tách lõi thuần túy khỏi khung web
 
 Mã trong chương này để toàn bộ logic nghiệp vụ trong các hàm `xu_ly_*` **thuần túy** (nhận yêu cầu + trạng thái, trả phản hồi), và bộ định tuyến chỉ là lớp mỏng điều phối. Nhờ vậy:
-- **Test không cần server**: gọi `app.xu_ly(yeu_cau, trang_thai)` trực tiếp và kiểm phản hồi (xem module test).
+- **Test không cần server**: gọi `app.handle(yeu_cau, state)` trực tiếp và kiểm phản hồi (xem module test).
 - **Đổi framework không đổi logic**: chuyển từ router tự viết sang Axum, hay sang một framework khác, phần lõi giữ nguyên.
 
 Đây là kiến trúc "lõi thuần túy, vỏ mệnh lệnh" (Chương 20) áp dụng vào web: Axum là *vỏ*, các hàm nghiệp vụ là *lõi*.
@@ -123,89 +123,89 @@ use std::sync::{Arc, Mutex};
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PhuongThuc { GET, POST, PUT, DELETE }
+pub enum Method { GET, POST, PUT, DELETE }
 
 #[derive(Debug, Clone)]
-pub struct YeuCau {
-    pub phuong_thuc: PhuongThuc,
-    pub duong_dan: String,
+pub struct Request {
+    pub method: Method,
+    pub path: String,
     pub than: String, // body (JSON dạng chuỗi cho đơn giản)
-    pub tham_so_duong_dan: HashMap<String, String>, // /user/:id -> {id: "7"}
+    pub path_param: HashMap<String, String>, // /user/:id -> {id: "7"}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PhanHoi {
-    pub ma: u16, // 200, 201, 404, 422...
+pub struct Response {
+    pub id: u16, // 200, 201, 404, 422...
     pub than: String,
 }
 
-impl PhanHoi {
-    pub fn ok(than: impl Into<String>) -> Self { PhanHoi { ma: 200, than: than.into() } }
-    pub fn tao(than: impl Into<String>) -> Self { PhanHoi { ma: 201, than: than.into() } }
-    pub fn khong_thay() -> Self { PhanHoi { ma: 404, than: "Không tìm thấy".into() } }
-    pub fn du_lieu_sai(ly_do: impl Into<String>) -> Self { PhanHoi { ma: 422, than: ly_do.into() } }
+impl Response {
+    pub fn ok(than: impl Into<String>) -> Self { Response { id: 200, than: than.into() } }
+    pub fn tao(than: impl Into<String>) -> Self { Response { id: 201, than: than.into() } }
+    pub fn not_seen() -> Self { Response { id: 404, than: "Không tìm thấy".into() } }
+    pub fn data_sai(ly_do: impl Into<String>) -> Self { Response { id: 422, than: ly_do.into() } }
 }
 
 // ============================================================================
 // 2. BỘ ĐỊNH TUYẾN (Router) — khớp phương thức + mẫu đường dẫn
 // ============================================================================
 
-pub type BoXuLy = Arc<dyn Fn(&YeuCau, &TrangThai) -> PhanHoi + Send + Sync>;
+pub type UnitHandle = Arc<dyn Fn(&Request, &State) -> Response + Send + Sync>;
 
-pub struct Tuyen {
-    phuong_thuc: PhuongThuc,
+pub struct Route {
+    method: Method,
     mau: Vec<String>, // ["user", ":id", "profile"]
-    xu_ly: BoXuLy,
+    handle: UnitHandle,
 }
 
-pub struct BoDinhTuyen {
-    tuyen: Vec<Tuyen>,
+pub struct RouteMatcher {
+    route: Vec<Route>,
 }
 
-impl BoDinhTuyen {
-    pub fn moi() -> Self { BoDinhTuyen { tuyen: Vec::new() } }
+impl RouteMatcher {
+    pub fn new() -> Self { RouteMatcher { route: Vec::new() } }
 
-    pub fn them(mut self, pt: PhuongThuc, mau: &str, xu_ly: BoXuLy) -> Self {
-        self.tuyen.push(Tuyen {
-            phuong_thuc: pt,
+    pub fn them(mut self, pt: Method, mau: &str, handle: UnitHandle) -> Self {
+        self.route.push(Route {
+            method: pt,
             mau: mau.trim_matches('/').split('/').map(|s| s.to_string()).collect(),
-            xu_ly,
+            handle,
         });
         self
     }
 
     /// Khớp một yêu cầu với tuyến. Trả về (bộ xử lý, tham số đường dẫn) nếu khớp.
-    fn khop<'a>(&'a self, yc: &YeuCau) -> Option<(&'a BoXuLy, HashMap<String, String>)> {
-        let phan: Vec<&str> = yc.duong_dan.trim_matches('/').split('/').collect();
-        for t in &self.tuyen {
-            if t.phuong_thuc != yc.phuong_thuc || t.mau.len() != phan.len() {
+    fn fill<'a>(&'a self, yc: &Request) -> Option<(&'a UnitHandle, HashMap<String, String>)> {
+        let part: Vec<&str> = yc.path.trim_matches('/').split('/').collect();
+        for t in &self.route {
+            if t.method != yc.method || t.mau.len() != part.len() {
                 continue;
             }
-            let mut tham_so = HashMap::new();
-            let mut khop = true;
-            for (mau, thuc) in t.mau.iter().zip(phan.iter()) {
-                if let Some(ten) = mau.strip_prefix(':') {
-                    tham_so.insert(ten.to_string(), thuc.to_string()); // tham số động
+            let mut param = HashMap::new();
+            let mut fill = true;
+            for (mau, thuc) in t.mau.iter().zip(part.iter()) {
+                if let Some(name) = mau.strip_prefix(':') {
+                    param.insert(name.to_string(), thuc.to_string()); // tham số động
                 } else if mau != thuc {
-                    khop = false;
+                    fill = false;
                     break;
                 }
             }
-            if khop {
-                return Some((&t.xu_ly, tham_so));
+            if fill {
+                return Some((&t.handle, param));
             }
         }
         None
     }
 
     /// Xử lý một yêu cầu: khớp tuyến, gọi bộ xử lý, hoặc trả 404.
-    pub fn xu_ly(&self, mut yc: YeuCau, tt: &TrangThai) -> PhanHoi {
-        match self.khop(&yc) {
-            Some((xu_ly, tham_so)) => {
-                yc.tham_so_duong_dan = tham_so;
-                xu_ly(&yc, tt)
+    pub fn handle(&self, mut yc: Request, tt: &State) -> Response {
+        match self.fill(&yc) {
+            Some((handle, param)) => {
+                yc.path_param = param;
+                handle(&yc, tt)
             }
-            None => PhanHoi::khong_thay(),
+            None => Response::not_seen(),
         }
     }
 }
@@ -217,20 +217,20 @@ impl BoDinhTuyen {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SanPham {
     pub id: u64,
-    pub ten: String,
-    pub gia: u64,
+    pub name: String,
+    pub price: u64,
 }
 
-pub struct TrangThai {
-    pub kho: Mutex<HashMap<u64, SanPham>>,
-    pub id_ke_tiep: Mutex<u64>,
+pub struct State {
+    pub store: Mutex<HashMap<u64, SanPham>>,
+    pub next_id: Mutex<u64>,
 }
 
-impl TrangThai {
-    pub fn moi() -> Arc<Self> {
-        Arc::new(TrangThai {
-            kho: Mutex::new(HashMap::new()),
-            id_ke_tiep: Mutex::new(1),
+impl State {
+    pub fn new() -> Arc<Self> {
+        Arc::new(State {
+            store: Mutex::new(HashMap::new()),
+            next_id: Mutex::new(1),
         })
     }
 }
@@ -240,73 +240,73 @@ impl TrangThai {
 // ============================================================================
 
 /// Phân tích JSON thô rất đơn giản: "ten=X;gia=Y" (thay cho serde để chạy offline).
-fn phan_tich_than(than: &str) -> HashMap<String, String> {
+fn analyze_than(than: &str) -> HashMap<String, String> {
     than.split(';')
         .filter_map(|c| c.split_once('='))
         .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
         .collect()
 }
 
-pub fn xu_ly_liet_ke(_yc: &YeuCau, tt: &TrangThai) -> PhanHoi {
-    let kho = tt.kho.lock().unwrap();
-    let mut ds: Vec<&SanPham> = kho.values().collect();
-    ds.sort_by_key(|s| s.id);
-    let than = ds.iter().map(|s| format!("{}:{}:{}", s.id, s.ten, s.gia))
+pub fn xu_ly_liet_ke(_yc: &Request, tt: &State) -> Response {
+    let store = tt.store.lock().unwrap();
+    let mut list: Vec<&SanPham> = store.values().collect();
+    list.sort_by_key(|s| s.id);
+    let than = list.iter().map(|s| format!("{}:{}:{}", s.id, s.name, s.price))
         .collect::<Vec<_>>().join(",");
-    PhanHoi::ok(than)
+    Response::ok(than)
 }
 
-pub fn xu_ly_xem_mot(yc: &YeuCau, tt: &TrangThai) -> PhanHoi {
-    let id: u64 = match yc.tham_so_duong_dan.get("id").and_then(|s| s.parse().ok()) {
+pub fn handle_view_one(yc: &Request, tt: &State) -> Response {
+    let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
         Some(x) => x,
-        None => return PhanHoi::du_lieu_sai("id không hợp lệ"),
+        None => return Response::data_sai("id không hợp lệ"),
     };
-    match tt.kho.lock().unwrap().get(&id) {
-        Some(sp) => PhanHoi::ok(format!("{}:{}:{}", sp.id, sp.ten, sp.gia)),
-        None => PhanHoi::khong_thay(),
+    match tt.store.lock().unwrap().get(&id) {
+        Some(sp) => Response::ok(format!("{}:{}:{}", sp.id, sp.name, sp.price)),
+        None => Response::not_seen(),
     }
 }
 
-pub fn xu_ly_tao(yc: &YeuCau, tt: &TrangThai) -> PhanHoi {
-    let truong = phan_tich_than(&yc.than);
-    let ten = match truong.get("ten") {
+pub fn handle_make(yc: &Request, tt: &State) -> Response {
+    let truong = analyze_than(&yc.than);
+    let name = match truong.get("ten") {
         Some(t) if !t.is_empty() => t.clone(),
-        _ => return PhanHoi::du_lieu_sai("thiếu tên sản phẩm"),
+        _ => return Response::data_sai("thiếu tên sản phẩm"),
     };
-    let gia: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
+    let price: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
         Some(g) => g,
-        None => return PhanHoi::du_lieu_sai("giá phải là số nguyên"),
+        None => return Response::data_sai("giá phải là số nguyên"),
     };
-    let mut id_ke = tt.id_ke_tiep.lock().unwrap();
+    let mut id_ke = tt.next_id.lock().unwrap();
     let id = *id_ke;
     *id_ke += 1;
-    tt.kho.lock().unwrap().insert(id, SanPham { id, ten, gia });
-    PhanHoi::tao(format!("Đã tạo sản phẩm #{}", id))
+    tt.store.lock().unwrap().insert(id, SanPham { id, name, price });
+    Response::tao(format!("Đã tạo sản phẩm #{}", id))
 }
 
-pub fn xu_ly_xoa(yc: &YeuCau, tt: &TrangThai) -> PhanHoi {
-    let id: u64 = match yc.tham_so_duong_dan.get("id").and_then(|s| s.parse().ok()) {
+pub fn handle_remove(yc: &Request, tt: &State) -> Response {
+    let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
         Some(x) => x,
-        None => return PhanHoi::du_lieu_sai("id không hợp lệ"),
+        None => return Response::data_sai("id không hợp lệ"),
     };
-    if tt.kho.lock().unwrap().remove(&id).is_some() {
-        PhanHoi::ok(format!("Đã xóa #{}", id))
+    if tt.store.lock().unwrap().remove(&id).is_some() {
+        Response::ok(format!("Đã xóa #{}", id))
     } else {
-        PhanHoi::khong_thay()
+        Response::not_seen()
     }
 }
 
 /// Dựng bộ định tuyến — tương đương `Router::new().route(...)` của Axum.
-pub fn dung_ung_dung() -> BoDinhTuyen {
-    BoDinhTuyen::moi()
-        .them(PhuongThuc::GET, "/san-pham", Arc::new(xu_ly_liet_ke))
-        .them(PhuongThuc::GET, "/san-pham/:id", Arc::new(xu_ly_xem_mot))
-        .them(PhuongThuc::POST, "/san-pham", Arc::new(xu_ly_tao))
-        .them(PhuongThuc::DELETE, "/san-pham/:id", Arc::new(xu_ly_xoa))
+pub fn use_resp_use() -> RouteMatcher {
+    RouteMatcher::new()
+        .them(Method::GET, "/san-pham", Arc::new(xu_ly_liet_ke))
+        .them(Method::GET, "/san-pham/:id", Arc::new(handle_view_one))
+        .them(Method::POST, "/san-pham", Arc::new(handle_make))
+        .them(Method::DELETE, "/san-pham/:id", Arc::new(handle_remove))
 }
 
-fn yc(pt: PhuongThuc, dd: &str, than: &str) -> YeuCau {
-    YeuCau { phuong_thuc: pt, duong_dan: dd.into(), than: than.into(), tham_so_duong_dan: HashMap::new() }
+fn yc(pt: Method, dd: &str, than: &str) -> Request {
+    Request { method: pt, path: dd.into(), than: than.into(), path_param: HashMap::new() }
 }
 
 fn main() {
@@ -314,24 +314,24 @@ fn main() {
     println!("   BACKEND WEB: BỘ ĐỊNH TUYẾN · TRẠNG THÁI · BỘ XỬ LÝ (như Axum) ");
     println!("═══════════════════════════════════════════════════════════════");
 
-    let app = dung_ung_dung();
-    let tt = TrangThai::moi();
+    let app = use_resp_use();
+    let tt = State::new();
 
     let goi = |pt, dd: &str, than: &str| {
-        let r = app.xu_ly(yc(pt, dd, than), &tt);
-        println!("   {:>6} {:<18} -> {} {}", format!("{:?}", &r.ma)[0..3].to_string(), dd, r.ma, r.than);
+        let r = app.handle(yc(pt, dd, than), &tt);
+        println!("   {:>6} {:<18} -> {} {}", format!("{:?}", &r.id)[0..3].to_string(), dd, r.id, r.than);
         r
     };
 
     println!("\nMô phỏng các lời gọi API:");
-    goi(PhuongThuc::POST, "/san-pham", "ten=Bàn phím;gia=1200000");
-    goi(PhuongThuc::POST, "/san-pham", "ten=Chuột;gia=350000");
-    goi(PhuongThuc::GET, "/san-pham", "");
-    goi(PhuongThuc::GET, "/san-pham/1", "");
-    goi(PhuongThuc::GET, "/san-pham/99", "");         // 404
-    goi(PhuongThuc::POST, "/san-pham", "gia=xyz");     // 422 thiếu tên
-    goi(PhuongThuc::DELETE, "/san-pham/2", "");
-    goi(PhuongThuc::GET, "/khong-co-tuyen", "");       // 404
+    goi(Method::POST, "/san-pham", "ten=Bàn phím;gia=1200000");
+    goi(Method::POST, "/san-pham", "ten=Chuột;gia=350000");
+    goi(Method::GET, "/san-pham", "");
+    goi(Method::GET, "/san-pham/1", "");
+    goi(Method::GET, "/san-pham/99", "");         // 404
+    goi(Method::POST, "/san-pham", "gia=xyz");     // 422 thiếu tên
+    goi(Method::DELETE, "/san-pham/2", "");
+    goi(Method::GET, "/khong-co-route", "");       // 404
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   LÕI NGHIỆP VỤ THUẦN TÚY = KIỂM THỬ ĐƯỢC KHÔNG CẦN CHẠY SERVER ");
@@ -339,68 +339,68 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn moi_truong() -> (BoDinhTuyen, Arc<TrangThai>) {
-        (dung_ung_dung(), TrangThai::moi())
+    fn new_truong() -> (RouteMatcher, Arc<State>) {
+        (use_resp_use(), State::new())
     }
 
     #[test]
     fn tao_va_xem_san_pham() {
-        let (app, tt) = moi_truong();
-        let r = app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "ten=Sách;gia=45000"), &tt);
-        assert_eq!(r.ma, 201);
-        let r = app.xu_ly(yc(PhuongThuc::GET, "/san-pham/1", ""), &tt);
-        assert_eq!(r.ma, 200);
+        let (app, tt) = new_truong();
+        let r = app.handle(yc(Method::POST, "/san-pham", "ten=Sách;gia=45000"), &tt);
+        assert_eq!(r.id, 201);
+        let r = app.handle(yc(Method::GET, "/san-pham/1", ""), &tt);
+        assert_eq!(r.id, 200);
         assert_eq!(r.than, "1:Sách:45000");
     }
 
     #[test]
-    fn tuyen_khong_ton_tai_tra_404() {
-        let (app, tt) = moi_truong();
-        assert_eq!(app.xu_ly(yc(PhuongThuc::GET, "/bat-ky", ""), &tt).ma, 404);
+    fn tuyen_no_ton_tai_return_404() {
+        let (app, tt) = new_truong();
+        assert_eq!(app.handle(yc(Method::GET, "/bat-ky", ""), &tt).id, 404);
     }
 
     #[test]
-    fn sai_phuong_thuc_tra_404() {
-        let (app, tt) = moi_truong();
+    fn sai_phuong_thuc_return_404() {
+        let (app, tt) = new_truong();
         // Có tuyến GET /san-pham/:id nhưng không có PUT -> 404
-        assert_eq!(app.xu_ly(yc(PhuongThuc::PUT, "/san-pham/1", ""), &tt).ma, 404);
+        assert_eq!(app.handle(yc(Method::PUT, "/san-pham/1", ""), &tt).id, 404);
     }
 
     #[test]
-    fn du_lieu_sai_tra_422() {
-        let (app, tt) = moi_truong();
+    fn data_sai_return_422() {
+        let (app, tt) = new_truong();
         // Thiếu tên
-        assert_eq!(app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "gia=100"), &tt).ma, 422);
+        assert_eq!(app.handle(yc(Method::POST, "/san-pham", "gia=100"), &tt).id, 422);
         // Giá không phải số
-        assert_eq!(app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "ten=X;gia=abc"), &tt).ma, 422);
+        assert_eq!(app.handle(yc(Method::POST, "/san-pham", "ten=X;gia=abc"), &tt).id, 422);
     }
 
     #[test]
-    fn tham_so_duong_dan_dong() {
-        let (app, tt) = moi_truong();
-        app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "ten=A;gia=1"), &tt);
-        app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "ten=B;gia=2"), &tt);
+    fn tham_num_path_close() {
+        let (app, tt) = new_truong();
+        app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
+        app.handle(yc(Method::POST, "/san-pham", "ten=B;gia=2"), &tt);
         // :id được trích đúng
-        assert_eq!(app.xu_ly(yc(PhuongThuc::GET, "/san-pham/2", ""), &tt).than, "2:B:2");
+        assert_eq!(app.handle(yc(Method::GET, "/san-pham/2", ""), &tt).than, "2:B:2");
     }
 
     #[test]
     fn xoa_san_pham() {
-        let (app, tt) = moi_truong();
-        app.xu_ly(yc(PhuongThuc::POST, "/san-pham", "ten=A;gia=1"), &tt);
-        assert_eq!(app.xu_ly(yc(PhuongThuc::DELETE, "/san-pham/1", ""), &tt).ma, 200);
-        assert_eq!(app.xu_ly(yc(PhuongThuc::GET, "/san-pham/1", ""), &tt).ma, 404); // đã xóa
-        assert_eq!(app.xu_ly(yc(PhuongThuc::DELETE, "/san-pham/1", ""), &tt).ma, 404); // xóa lại
+        let (app, tt) = new_truong();
+        app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
+        assert_eq!(app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id, 200);
+        assert_eq!(app.handle(yc(Method::GET, "/san-pham/1", ""), &tt).id, 404); // đã xóa
+        assert_eq!(app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id, 404); // xóa lại
     }
 
     #[test]
     fn liet_ke_sap_theo_id() {
-        let (app, tt) = moi_truong();
-        for i in 1..=3 { app.xu_ly(yc(PhuongThuc::POST, "/san-pham", &format!("ten=SP{};gia={}", i, i)), &tt); }
-        let r = app.xu_ly(yc(PhuongThuc::GET, "/san-pham", ""), &tt);
+        let (app, tt) = new_truong();
+        for i in 1..=3 { app.handle(yc(Method::POST, "/san-pham", &format!("ten=SP{};gia={}", i, i)), &tt); }
+        let r = app.handle(yc(Method::GET, "/san-pham", ""), &tt);
         assert_eq!(r.than, "1:SP1:1,2:SP2:2,3:SP3:3");
     }
 }
@@ -430,33 +430,33 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
-struct SanPham { id: u64, ten: String, gia: u64 }
+struct SanPham { id: u64, name: String, price: u64 }
 
 #[derive(Deserialize)]
-struct TaoSanPham { ten: String, gia: u64 }
+struct TaoSanPham { name: String, price: u64 }
 
-struct TrangThai {
-    kho: Mutex<HashMap<u64, SanPham>>,
-    id_ke_tiep: Mutex<u64>,
+struct State {
+    store: Mutex<HashMap<u64, SanPham>>,
+    next_id: Mutex<u64>,
 }
 
 // Handler nhận State và Json ĐÃ ĐƯỢC TRÍCH XUẤT + KIỂM KIỂU tự động.
 async fn tao(
-    State(tt): State<Arc<TrangThai>>,
-    Json(dau_vao): Json<TaoSanPham>,          // JSON sai -> Axum tự trả 422
+    State(tt): State<Arc<State>>,
+    Json(input): Json<TaoSanPham>,          // JSON sai -> Axum tự trả 422
 ) -> (StatusCode, Json<SanPham>) {
-    let mut id_ke = tt.id_ke_tiep.lock().unwrap();
+    let mut id_ke = tt.next_id.lock().unwrap();
     let id = *id_ke; *id_ke += 1;
-    let sp = SanPham { id, ten: dau_vao.ten, gia: dau_vao.gia };
-    tt.kho.lock().unwrap().insert(id, sp.clone());
+    let sp = SanPham { id, name: input.name, price: input.price };
+    tt.store.lock().unwrap().insert(id, sp.clone());
     (StatusCode::CREATED, Json(sp))
 }
 
-async fn xem(
-    State(tt): State<Arc<TrangThai>>,
+async fn view(
+    State(tt): State<Arc<State>>,
     Path(id): Path<u64>,                      // :id không phải số -> Axum tự trả 400
 ) -> Result<Json<SanPham>, StatusCode> {
-    tt.kho.lock().unwrap().get(&id)
+    tt.store.lock().unwrap().get(&id)
         .cloned()
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)          // map_err = Bifunctor (Chương 19)
@@ -464,14 +464,14 @@ async fn xem(
 
 #[tokio::main]
 async fn main() {
-    let tt = Arc::new(TrangThai {
-        kho: Mutex::new(HashMap::new()),
-        id_ke_tiep: Mutex::new(1),
+    let tt = Arc::new(State {
+        store: Mutex::new(HashMap::new()),
+        next_id: Mutex::new(1),
     });
 
     let app = Router::new()
         .route("/san-pham", post(tao))
-        .route("/san-pham/{id}", get(xem))
+        .route("/san-pham/{id}", get(view))
         .with_state(tt);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -502,23 +502,23 @@ Thêm handler `xu_ly_cap_nhat` cho `PUT /san-pham/:id` cập nhật tên và gi�
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn xu_ly_cap_nhat(yc: &YeuCau, tt: &TrangThai) -> PhanHoi {
-    let id: u64 = match yc.tham_so_duong_dan.get("id").and_then(|s| s.parse().ok()) {
-        Some(x) => x, None => return PhanHoi::du_lieu_sai("id không hợp lệ"),
+pub fn xu_ly_cap_nhat(yc: &Request, tt: &State) -> Response {
+    let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
+        Some(x) => x, None => return Response::data_sai("id không hợp lệ"),
     };
-    let truong = phan_tich_than(&yc.than);
-    let gia: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
-        Some(g) => g, None => return PhanHoi::du_lieu_sai("giá phải là số"),
+    let truong = analyze_than(&yc.than);
+    let price: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
+        Some(g) => g, None => return Response::data_sai("giá phải là số"),
     };
-    let ten = match truong.get("ten") { Some(t) if !t.is_empty() => t.clone(),
-        _ => return PhanHoi::du_lieu_sai("thiếu tên") };
-    let mut kho = tt.kho.lock().unwrap();
-    match kho.get_mut(&id) {
-        Some(sp) => { sp.ten = ten; sp.gia = gia; PhanHoi::ok(format!("Đã cập nhật #{}", id)) }
-        None => PhanHoi::khong_thay(),
+    let name = match truong.get("ten") { Some(t) if !t.is_empty() => t.clone(),
+        _ => return Response::data_sai("thiếu tên") };
+    let mut store = tt.store.lock().unwrap();
+    match store.get_mut(&id) {
+        Some(sp) => { sp.name = name; sp.price = price; Response::ok(format!("Đã cập nhật #{}", id)) }
+        None => Response::not_seen(),
     }
 }
-// đăng ký: .them(PhuongThuc::PUT, "/san-pham/:id", Arc::new(xu_ly_cap_nhat))
+// đăng ký: .them(Method::PUT, "/san-pham/:id", Arc::new(xu_ly_cap_nhat))
 ```
 </details>
 
@@ -528,7 +528,7 @@ Trong Axum, middleware bọc quanh handler. Mô phỏng: viết hàm `voi_nhat_k
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Middleware chính là *hàm bậc cao bọc handler* — nhận yêu cầu, làm gì đó trước, gọi handler, làm gì đó sau, trả phản hồi. Đo thời gian, ghi log, kiểm xác thực đều là middleware. Nhớ hàm `do_thoi_gian_thuc_thi` ở Chương 17.
+Middleware chính là *hàm bậc cao bọc handler* — nhận yêu cầu, làm gì đó trước, gọi handler, làm gì đó sau, trả phản hồi. Đo thời gian, ghi log, kiểm xác thực đều là middleware. Nhớ hàm `measure_exec_time` ở Chương 17.
 </details>
 
 **Bài tập 3 (Tư duy: chọn mã trạng thái)**

@@ -98,13 +98,13 @@ pub enum Poll<T> {
 >
 > Chuỗi `async` sau đây chính là một chuỗi `bind` được viết bằng cú pháp thuận mắt:
 > ```rust
-> async fn xu_ly(id: u64) -> Result<HoaDon, LoiHeThong> {
+> async fn handle(id: u64) -> Result<Invoice, LoiHeThong> {
 >     let nguoi_dung = tim_nguoi_dung(id).await?;   // bind trong CẢ HAI ngữ cảnh cùng lúc
 >     let don = tim_don_hang(&nguoi_dung).await?;   // (Future và Result lồng nhau)
->     Ok(lap_hoa_don(&don))
+>     Ok(invoice_loop(&don))
 > }
 > ```
-> Chữ ký `-> Result<HoaDon, LoiHeThong>` của một `async fn` thực chất là `Future<Output = Result<HoaDon, LoiHeThong>>` — hai chiếc hộp lồng nhau. Đây chính là tình huống mà thế giới Haskell gọi là *chồng đơn nguyên* (monad stack), và `.await?` là cách Rust cho bạn bóc cả hai lớp chỉ bằng ba ký tự.
+> Chữ ký `-> Result<Invoice, LoiHeThong>` của một `async fn` thực chất là `Future<Output = Result<Invoice, LoiHeThong>>` — hai chiếc hộp lồng nhau. Đây chính là tình huống mà thế giới Haskell gọi là *chồng đơn nguyên* (monad stack), và `.await?` là cách Rust cho bạn bóc cả hai lớp chỉ bằng ba ký tự.
 - **Máy trạng thái không chi phí (Zero-Cost State Machine)**:
   - Khi một tác vụ bất đồng bộ được biên dịch, Rust biến tác vụ đó thành một `enum` máy trạng thái.
   - Mỗi bước tạm dừng tương ứng với một trạng thái của `enum`.
@@ -281,7 +281,7 @@ fn main() {
     println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
     println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
     println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
-    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
+    println!("    ==> Cho phep 1 may owner duy tri hang trieu ket concat id khong bao gio het RAM!");
 
     println!("\n==================================================================");
     println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");

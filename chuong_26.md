@@ -124,31 +124,31 @@ Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Ru
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Đoạn mã dưới đây là một chương trình độc lập, minh họa toàn diện từ cách cấp phát, quan sát địa chỉ ô nhớ liền kề, theo dõi chu kỳ tăng trưởng dung lượng của `Vec`, đến kỹ thuật trích xuất lát cắt an toàn:
+Đoạn mã dưới đây là một chương trình độc lập, minh họa toàn diện từ cách cấp phát, quan sát địa chỉ ô nhớ liền kề, theo dõi owner kỳ tăng trưởng dung lượng của `Vec`, đến kỹ thuật trích xuất lát cắt an toàn:
 
 ```rust
 /// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
 /// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
-pub fn tinh_tong_lat_cat(du_lieu: &[i32]) -> i64 {
+pub fn total_tile_latency(data: &[i32]) -> i64 {
     let mut tong: i64 = 0;
-    for &gia_tri in du_lieu {
-        tong += gia_tri as i64;
+    for &value in data {
+        tong += value as i64;
     }
     tong
 }
 
 /// Hàm đảo ngược các phần tử tại chỗ trên một lát cắt khả biến &mut [i32]
-pub fn dao_nguoc_tai_cho(du_lieu: &mut [i32]) {
-    if du_lieu.is_empty() {
+pub fn reverse_inverse_tai_wait(data: &mut [i32]) {
+    if data.is_empty() {
         return;
     }
-    let mut trai = 0;
-    let mut phai = du_lieu.len() - 1;
-    while trai < phai {
-        du_lieu.swap(trai, phai);
-        trai += 1;
-        phai -= 1;
+    let mut left = 0;
+    let mut must = data.len() - 1;
+    while left < must {
+        data.swap(left, must);
+        left += 1;
+        must -= 1;
     }
 }
 
@@ -158,35 +158,35 @@ fn main() {
     println!("============================================================");
 
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
-    let mang_tinh: [i32; 5] = [10, 20, 30, 40, 50];
+    let array_tinh: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&mang_tinh));
-    println!("    - Số lượng phần tử  : {}", mang_tinh.len());
+    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&array_tinh));
+    println!("    - Số lượng phần tử  : {}", array_tinh.len());
     
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
-    for i in 0..mang_tinh.len() {
-        let dia_chi = &mang_tinh[i] as *const i32 as usize;
-        print!("[Phần tử {}: đuôi ...{:x}] ", i, dia_chi % 0x1000);
+    for i in 0..array_tinh.len() {
+        let address = &array_tinh[i] as *const i32 as usize;
+        print!("[Phần tử {}: đuôi ...{:x}] ", i, address % 0x1000);
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
-    // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
+    // 2. Khảo sát Vector động Vec<T> và owner kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
     let mut vec_dong: Vec<i32> = Vec::new();
     println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
 
-    let mut dia_chi_truoc: usize = 0;
+    let mut prev_address: usize = 0;
     for i in 1..=9 {
         vec_dong.push(i * 10);
-        let dia_chi_hien_tai = vec_dong.as_ptr() as usize;
+        let current_address = vec_dong.as_ptr() as usize;
         
         // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
-        let thong_bao_doi_nha = if dia_chi_hien_tai != dia_chi_truoc && dia_chi_truoc != 0 {
-            dia_chi_truoc = dia_chi_hien_tai;
+        let thong_report_swap_nha = if current_address != prev_address && prev_address != 0 {
+            prev_address = current_address;
             " -> [ĐỔI NHÀ MỚI TRÊN HEAP!]"
         } else {
-            dia_chi_truoc = dia_chi_hien_tai;
+            prev_address = current_address;
             ""
         };
 
@@ -195,8 +195,8 @@ fn main() {
             i * 10,
             vec_dong.len(),
             vec_dong.capacity(),
-            dia_chi_hien_tai % 0x10000,
-            thong_bao_doi_nha
+            current_address % 0x10000,
+            thong_report_swap_nha
         );
     }
 
@@ -215,16 +215,16 @@ fn main() {
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
     // Lấy lát cắt từ mảng tĩnh
-    let lat_cat_mang = &mang_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    let lat_cat_mang = &array_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
     println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
-    let tong_mang = tinh_tong_lat_cat(lat_cat_mang);
+    let tong_mang = total_tile_latency(lat_cat_mang);
     println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
     assert_eq!(tong_mang, 90);
 
     // Lấy lát cắt từ vector động
     let lat_cat_vec = &vec_dong[0..5]; // Lấy 5 phần tử đầu tiên
     println!("    - Lát cắt từ vector [0..5]   : {:?}", lat_cat_vec);
-    let tong_vec = tinh_tong_lat_cat(lat_cat_vec);
+    let tong_vec = total_tile_latency(lat_cat_vec);
     println!("    - Tổng tính từ lát cắt vector: {}", tong_vec);
     assert_eq!(tong_vec, 150);
 
@@ -233,7 +233,7 @@ fn main() {
     println!("\n[5] Đảo ngược tại chỗ trên lát cắt khả biến:");
     println!("    - Mảng ban đầu : {:?}", mang_can_dao);
     // Đảo ngược chỉ một đoạn ở giữa: từ chỉ số 1 đến 4 (các số 2, 3, 4, 5)
-    dao_nguoc_tai_cho(&mut mang_can_dao[1..5]);
+    reverse_inverse_tai_wait(&mut mang_can_dao[1..5]);
     println!("    - Sau khi đảo đoạn [1..5]: {:?}", mang_can_dao);
     assert_eq!(mang_can_dao, [1, 5, 4, 3, 2, 6]);
 
@@ -251,7 +251,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the size for values of type '[i32]' cannot be known at compilation time` | Bạn cố gắng truyền một mảng chưa rõ kích thước bằng giá trị `fn xu_ly(arr: [i32])`. Kiểu `[T]` là kiểu kích thước động (DST), không thể nằm trực tiếp trên Stack mà không có con trỏ. | Đổi tham số sang tham chiếu lát cắt `&[i32]` hoặc mảng kích thước cố định `[i32; 10]`. |
+| **E0277** | `the size for values of type '[i32]' cannot be known at compilation time` | Bạn cố gắng truyền một mảng chưa rõ kích thước bằng giá trị `fn handle(arr: [i32])`. Kiểu `[T]` là kiểu kích thước động (DST), không thể nằm trực tiếp trên Stack mà không có con trỏ. | Đổi tham số sang tham chiếu lát cắt `&[i32]` hoặc mảng kích thước cố định `[i32; 10]`. |
 | **E0502** | `cannot borrow 'vec' as mutable because it is also borrowed as immutable` | Bạn tạo một lát cắt `let s = &vec[0..2];` rồi sau đó gọi `vec.push(10);` trong khi `s` vẫn đang được sử dụng. Phép `push` có thể khiến vector đổi nhà trên Heap, biến con trỏ `s` thành con trỏ lơ lửng (Dangling Pointer)! Rust ngăn chặn triệt để điều này. | Kết thúc việc sử dụng lát cắt `s` trước khi gọi các hàm làm biến đổi vector như `.push()`, hoặc sao chép dữ liệu ra nếu cần. |
 | **E0308** | `mismatched types: expected '[i32; 4]', found '[i32; 5]'` | Trong Rust, độ dài của mảng tĩnh là một phần của hệ thống kiểu dữ liệu! Mảng 4 phần tử có kiểu dữ liệu hoàn toàn khác mảng 5 phần tử. | Nếu hàm cần nhận mảng có độ dài bất kỳ, hãy đổi kiểu tham số sang lát cắt `&[i32]`. |
 | **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng tạo một lát cắt khả biến `&mut arr[..]` từ một mảng hoặc vector khai báo bằng `let` bất biến. | Thêm từ khóa `mut` khi khai báo biến: `let mut arr = ...;`. |
@@ -261,12 +261,12 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 ```rust
 // Đoạn mã lỗi minh họa: Vi phạm an toàn bộ nhớ do vector tái cấp phát
 fn minh_hoa_loi_e0502() {
-    let mut danh_sach = vec![1, 2, 3];
+    let mut list = vec![1, 2, 3];
     // Lát cắt giu_cho đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
-    // let giu_cho = &danh_sach[0]; 
+    // let giu_cho = &list[0]; 
     
     // Thao tác push có thể kích hoạt cấp phát vùng nhớ mới to hơn và hủy vùng nhớ cũ!
-    // danh_sach.push(4); 
+    // list.push(4); 
     
     // Nếu dòng này được phép chạy, giu_cho sẽ đọc vào vùng nhớ rác đã bị giải phóng!
     // println!("Phần tử đầu: {}", giu_cho); // LỖI E0502!
@@ -274,16 +274,16 @@ fn minh_hoa_loi_e0502() {
 
 // Cách sửa chữa đúng chuẩn: Sử dụng xong lát cắt trước khi biến đổi
 fn minh_hoa_dung_e0502() {
-    let mut danh_sach = vec![1, 2, 3];
+    let mut list = vec![1, 2, 3];
     
     // Bước 1: Đọc giá trị và sao chép (copy) ra biến độc lập trên Stack
-    let gia_tri_dau = danh_sach[0];
+    let gia_tri_dau = list[0];
     
     // Bước 2: Tự do biến đổi vector mà không lo xung đột con trỏ
-    danh_sach.push(4);
+    list.push(4);
     
     println!("Phần tử đầu đã sao chép an toàn: {}", gia_tri_dau);
-    println!("Danh sách sau khi thêm mới: {:?}", danh_sach);
+    println!("Danh sách sau khi thêm mới: {:?}", list);
 }
 ```
 
@@ -299,38 +299,38 @@ Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu í
 
 ```rust
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
     fn tong_lat_cat() {
-        assert_eq!(tinh_tong_lat_cat(&[10, 20, 30]), 60);
-        assert_eq!(tinh_tong_lat_cat(&[]), 0);
+        assert_eq!(total_tile_latency(&[10, 20, 30]), 60);
+        assert_eq!(total_tile_latency(&[]), 0);
     }
 
     #[test]
-    fn dao_nguoc_tai_cho_khong_cap_phat_moi() {
+    fn new_reverse_inverse_tai_wait_no_cap_phat() {
         let mut v = vec![1, 2, 3, 4, 5];
-        dao_nguoc_tai_cho(&mut v);
+        reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![5, 4, 3, 2, 1]);
     }
 
     #[test]
-    fn dao_nguoc_hai_lan_ve_ban_dau() {
-        let goc = vec![7, 3, 9, 1];
-        let mut v = goc.clone();
-        dao_nguoc_tai_cho(&mut v);
-        dao_nguoc_tai_cho(&mut v);
-        assert_eq!(v, goc); // đảo hai lần = phép đồng nhất
+    fn first_reverse_inverse_two_lan_ve_sell() {
+        let root = vec![7, 3, 9, 1];
+        let mut v = root.clone();
+        reverse_inverse_tai_wait(&mut v);
+        reverse_inverse_tai_wait(&mut v);
+        assert_eq!(v, root); // đảo hai lần = phép đồng nhất
     }
 
     #[test]
     fn dao_nguoc_do_dai_le_giu_nguyen_giua() {
         let mut v = vec![1, 2, 3];
-        dao_nguoc_tai_cho(&mut v);
+        reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![3, 2, 1]);
         let mut r = vec![42];
-        dao_nguoc_tai_cho(&mut r);
+        reverse_inverse_tai_wait(&mut r);
         assert_eq!(r, vec![42]);
     }
 }
@@ -351,7 +351,7 @@ mod kiem_thu {
    - b) Lưu danh sách các bình luận của người dùng trên một bài đăng mạng xã hội (số lượng bình luận tăng dần theo thời gian).
    - c) Viết hàm kiểm tra một chuỗi số có phải là chuỗi đối xứng (Palindrome) hay không mà không cần nhân bản dữ liệu.
 2. **Bài tập 2 (Tìm phần tử lớn nhất bằng Lát cắt)**:  
-   Hãy viết một hàm `fn tim_max(du_lieu: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `tim_max` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
+   Hãy viết một hàm `fn tim_max(data: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `tim_max` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
 3. **Bài tập 3 (Tối ưu hóa dung lượng)**:  
    Viết một đoạn mã tạo một vector chứa các số chẵn từ 2 đến 2000. Đo lường số lần vector phải thay đổi địa chỉ con trỏ `as_ptr()` trong hai trường hợp:
    - Trường hợp A: Sử dụng `Vec::new()` thông thường.
