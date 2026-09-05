@@ -41,7 +41,7 @@ Không muốn cài gì cả? Mọi đoạn mã đều copy-paste chạy được
 
 ## 📚 Lộ Trình Học Tập (25 Chủ Đề — 85 Chương)
 
-Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Thứ tự đọc, đồ thị phụ thuộc và bốn nhánh theo mục tiêu nằm ở **[LO_TRINH.md](./LO_TRINH.md)** — đọc nó trước. Lộ trình chia làm ba chặng:
+Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Thứ tự đọc, đồ thị phụ thuộc và bốn nhánh theo mục tiêu nằm ở **[ROADMAP.md](./ROADMAP.md)** — đọc nó trước. Lộ trình chia làm ba chặng:
 
 | Chặng | Chủ đề | Chương | Bạn có được gì |
 |---|---|---|---|
@@ -80,7 +80,7 @@ Tóm tắt từng chủ đề:
 | 25 | **Tài Chính Định Lượng** | 82–84 | Chỉ báo có bất biến chống nhìn trộm tương lai; Black-Scholes, Greeks, biến động ngụ ý; đồng liên kết, Kalman, VaR/ES, kiểm định tiến (OpenAlgo) |
 
 **Phụ lục tra cứu:**
-- **[Lộ trình học tập](./LO_TRINH.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
+- **[Lộ trình học tập](./ROADMAP.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
 - **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
 - **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: gần 490 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
 
@@ -131,7 +131,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 
 ## 💡 Hướng Dẫn Sử Dụng
 
-1. **Bắt đầu từ đâu?** Mở **[LO_TRINH.md](./LO_TRINH.md)** để chọn nhánh phù hợp, rồi dùng **[SUMMARY.md](./SUMMARY.md)** làm mục lục. Bấm vào `chuong_01.md` và bắt đầu.
+1. **Bắt đầu từ đâu?** Mở **[ROADMAP.md](./ROADMAP.md)** để chọn nhánh phù hợp, rồi dùng **[SUMMARY.md](./SUMMARY.md)** làm mục lục. Bấm vào `chuong_01.md` và bắt đầu.
 2. **Đừng nhảy cóc**, đặc biệt là 12 chương đầu. Rust có triết lý quản lý bộ nhớ rất độc đáo (Ownership); bỏ qua nền tảng sẽ khiến bạn khổ sở về sau.
 3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án.
 4. **Gõ lại mã, đừng chỉ đọc.** Cách nhanh nhất để hiểu Borrow Checker là để nó từ chối bạn vài chục lần.
