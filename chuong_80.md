@@ -123,6 +123,40 @@ Ba điều kiện để SIMD thực sự nhanh:
 
 Và luôn có **phần dư**: mảng 1000 phần tử với vector 4 phần tử cho 250 vector chẵn; mảng 1001 phần tử cho 250 vector và 1 phần tử lẻ phải xử lý riêng. Quên phần dư là lỗi phổ biến nhất khi viết mã SIMD bằng tay.
 
+
+### Bản đồ 22 bài của LeetCPU sang chương này
+
+Danh sách dưới đây được **lấy trực tiếp từ leetcpu.com** (thu thập ngày 05/09/2026). Nền tảng đó chạy mã C của bạn trên **ChampSim** — bộ mô phỏng vi kiến trúc chính xác theo chu kỳ, 200 triệu lệnh — rồi trả về IPC, MPKI và số liệu bộ dự đoán rẽ nhánh. Chuỗi công cụ của họ là `gcc` → `objdump` → vết Intel PIN → ChampSim → bảng chỉ số.
+
+Chúng ta không mô phỏng vi kiến trúc ở đây; chúng ta cài **cùng những kỹ thuật đó bằng Rust** và đo bằng đồng hồ thật. Bốn nhóm của họ ánh xạ đúng vào bốn phần của chương này.
+
+| # | Bài | Mức | Nhóm | Kỹ thuật tương ứng trong chương |
+|---|---|---|---|---|
+| 1 | Stable Partition for Predictable Branches | Dễ | Dự đoán rẽ nhánh | Sắp xếp trước để dự đoán đúng |
+| 10 | Score Window — Remove Unpredictable Branches | Dễ | Dự đoán rẽ nhánh | Mã không rẽ nhánh |
+| 20 | Masked SAXPY — Remove Branches | Vừa | Dự đoán rẽ nhánh | Mặt nạ + SIMD |
+| 22 | Grade Bands — Replace Nested Branches with a LUT | Dễ | Dự đoán rẽ nhánh | Bảng tra thay chuỗi `if` |
+| 2 | Matrix Multiply — Cache Tiling | Dễ | Cục bộ cache | `nhan_ma_tran_khoi` |
+| 8 | Particle Score — Repack Structs (AoS→SoA) | Vừa | Cục bộ cache | AoS vs SoA (ch74) |
+| 9 | Image Blur — Tile the Working Set | Vừa | Cục bộ cache | Chia khối cho stencil |
+| 11 | ECE Lab — 2D Jacobi Stencil Cache Blocking | Vừa | Cục bộ cache | Chia khối; xem thêm ch81 |
+| 14 | 3D Array — Fix Loop Order | Dễ | Cục bộ cache | Hoán vị vòng lặp |
+| 15 | Binary Search — Eytzinger Layout | Khó | Cục bộ cache | Bố cục BFS thân thiện cache |
+| 17 | 2D Grid Sum — Fix Column-First Access | Vừa | Cục bộ cache | `duyet_theo_hang` vs `duyet_theo_cot` |
+| 19 | Gather Reordering — Cluster by Cache Region | Vừa | Cục bộ cache | Gom truy cập theo vùng |
+| 3 | Reduction Tree — Break Dependency Chains | Vừa | ILP | Nhiều biến tích luỹ |
+| 7 | Bitset Scan — Scalar Loops to Throughput | Dễ | ILP | `popcount`, thông lượng |
+| 13 | Histogram — Break Write Dependency Chains | Vừa | ILP | Xen kẽ ô đếm |
+| 16 | Streaming Computation — Multiple Accumulators | Dễ | ILP | `phan_tich_gop` |
+| 18 | SAXPY — Unlock Auto-Vectorization | Dễ | ILP | `phan_tich_simd` |
+| 21 | Dot Product — Eight Accumulators | Dễ | ILP | Nhiều biến tích luỹ |
+| 4 | Pointer Chasing — Recover Memory Parallelism | Vừa | Song song bộ nhớ | Phá chuỗi đuổi con trỏ |
+| 6 | Strided Sum — Hide Latency with Prefetch | Vừa | Song song bộ nhớ | Nạp trước thủ công |
+| 12 | Irregular Gather — Prefetch Ahead | Vừa | Song song bộ nhớ | Nạp trước cho truy cập ngẫu nhiên |
+| 5 | Bottleneck Triage — Diagnose and Fix | Khó | Chẩn đoán | Bài tổng hợp: đo trước, sửa sau |
+
+Phân bố nhóm: cục bộ cache 8 bài, ILP 6, dự đoán rẽ nhánh 4, song song bộ nhớ 3, chẩn đoán 1. Nói cách khác, **hơn một phần ba bài tập của một nền tảng luyện hiệu năng CPU là về bố cục bộ nhớ** — đúng như luận điểm mở đầu chương này.
+
 ---
 
 ## Mã nguồn minh họa thực chiến

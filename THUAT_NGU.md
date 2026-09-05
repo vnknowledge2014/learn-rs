@@ -1,6 +1,6 @@
 # Bảng Thuật Ngữ Việt – Anh (Vietnamese–English Glossary)
 
-Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 84 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
+Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 85 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
 **Quy ước dùng trong sách**: lần đầu một thuật ngữ xuất hiện, chúng tôi luôn viết dạng *tiếng Việt (tiếng Anh)*, ví dụ: "quyền sở hữu (ownership)". Những lần sau chỉ dùng bản tiếng Việt.
 
@@ -584,6 +584,32 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Co ma trận hiệp phương sai | Covariance shrinkage | Ledoit–Wolf |
 | Ngang bằng rủi ro | Risk parity | Cân bằng theo rủi ro, không theo vốn |
 | Đóng góp rủi ro | Risk contribution | |
+
+---
+
+## 18. Hệ sinh thái HFT tích hợp (Chương 85)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Ảnh chụp thị trường | Market snapshot | Thứ DUY NHẤT chiến lược được nhìn |
+| Bộ điều phối | Orchestrator | Nối phát lại → sàn → chiến lược → rủi ro → OMS |
+| Hệ thống quản lý lệnh | OMS — Order Management System | |
+| Lệnh đang bay | In-flight order | Đã phát, chưa tới sàn |
+| Đặt chỗ phơi nhiễm | Exposure reservation | Đặt chỗ lúc **phát**, không lúc giao |
+| Phơi nhiễm ba tầng | vị thế + đang treo + đang bay | Thiếu tầng nào cũng vỡ hạn mức |
+| Rủi ro chân lẻ | Leg risk | Một chân qua, chân kia bị chặn |
+| Bất đối xứng khớp | Fill asymmetry | AMM luôn khớp đủ, sổ lệnh thì không |
+| Phòng vệ theo khối lượng đã khớp | Hedge-on-fill | Chạy chân không chắc trước |
+| Chân không chắc / chân chắc chắn | Uncertain leg / certain leg | Thứ tự thực thi quyết định vị thế ròng |
+| Nghịch đảo hoán đổi | Swap inverse | Cần bỏ vào bao nhiêu để nhận đúng ngần này |
+| Tỉ lệ thụ động | Passive fill ratio | < 50% nghĩa là MM đang cắt qua sổ |
+| Kẹp giá báo | Quote clamping | Không bao giờ cắt qua bên kia |
+| Rút báo giá quá tuổi | Stale quote cancellation | Không có nó, hệ thống tự bóp cổ mình |
+| Đường ưu tiên | Priority path | Huỷ lệnh đi thẳng, không xếp hàng |
+| Giám sát sức khoẻ | Health monitoring | Tỉ lệ, không phải số tuyệt đối |
+| Tính nhân quả | Causality | Không thấy dữ liệu tương lai |
+| Bất biến hệ thống | System invariant | Thứ đáng tin, khác với lãi lỗ |
+| Sản phẩm phụ của mô hình | Model artifact | Kết quả đúng cơ học mà sai kinh tế |
 
 ---
 

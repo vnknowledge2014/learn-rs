@@ -2,7 +2,7 @@
 
 Chào mừng bạn đến với **Mục lục toàn diện** của bộ giáo trình *Rust Masterclass: Lập Trình Hệ Thống Toàn Diện Cho Người Mới Bắt Đầu*.
 
-Giáo trình được thiết kế đặc biệt dành cho người học chưa từng có nền tảng toán học chuyên sâu hay kinh nghiệm lập trình từ trước. Toàn bộ **84 chương** được chia thành **25 chủ đề** lớn, xây dựng lộ trình sư phạm vững chắc từ phần cứng máy tính căn bản, cú pháp ngôn ngữ, lập trình hàm, cấu trúc dữ liệu, kiến trúc cơ sở dữ liệu, an toàn thông tin, lập trình cùng AI, hệ thống phân tán, cho tới bốn chặng chuyên sâu cuối: blockchain từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng (FPGA/CPU/GPU) và tài chính định lượng.
+Giáo trình được thiết kế đặc biệt dành cho người học chưa từng có nền tảng toán học chuyên sâu hay kinh nghiệm lập trình từ trước. Toàn bộ **85 chương** được chia thành **25 chủ đề** lớn, xây dựng lộ trình sư phạm vững chắc từ phần cứng máy tính căn bản, cú pháp ngôn ngữ, lập trình hàm, cấu trúc dữ liệu, kiến trúc cơ sở dữ liệu, an toàn thông tin, lập trình cùng AI, hệ thống phân tán, cho tới bốn chặng chuyên sâu cuối: blockchain từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng (FPGA/CPU/GPU) và tài chính định lượng.
 
 Lộ trình chia làm **ba chặng**:
 
@@ -10,10 +10,11 @@ Lộ trình chia làm **ba chặng**:
 |---|---|---|
 | **Nền tảng** | 01–30 | Từ bit và byte tới sở hữu, lập trình hàm, macro, cấu trúc dữ liệu — đủ để viết Rust thành thạo |
 | **Hệ thống** | 31–69 | Cơ sở dữ liệu, bảo mật, phân tán, web, nhúng, hệ điều hành, game — đủ để dựng sản phẩm thật |
-| **Chuyên sâu** | 70–84 | Blockchain, HFT, FPGA/CPU/GPU, định lượng — bốn lĩnh vực Rust có lợi thế không thể thay thế |
+| **Chuyên sâu** | 70–85 | Blockchain, HFT, FPGA/CPU/GPU, định lượng — bốn lĩnh vực Rust có lợi thế không thể thay thế |
 
 > **Mã nguồn chạy được**: toàn bộ chương trình minh họa nằm trong thư mục [`code/`](./code/), tổ chức thành một Cargo workspace. Chạy `cargo run -p ch14` để xem chương 14 hoạt động, hay `cargo test --workspace` để kiểm chứng mọi bài kiểm thử trong sách.
 > **Thuật ngữ**: xem bảng đối chiếu Việt–Anh tại [`THUAT_NGU.md`](./THUAT_NGU.md).
+> **Nên đọc theo thứ tự nào?** [`LO_TRINH.md`](./LO_TRINH.md) có đồ thị phụ thuộc, bốn nhánh học theo mục tiêu, và bản đồ phủ đầy đủ các nguồn tham khảo.
 
 
 ---
@@ -202,13 +203,14 @@ Dựng blockchain từ số không rồi mới dùng công cụ có sẵn: tự 
 
 ---
 
-## Chủ đề 23: Hệ sinh thái giao dịch tần suất cao (HFT Ecosystem) — Chương 74 đến 78
+## Chủ đề 23: Hệ sinh thái giao dịch tần suất cao (HFT Ecosystem) — Chương 74 đến 78, và 85
 Năm chương dựng một hệ sinh thái HFT hoàn chỉnh, ở mức tương đương những gì Jane Street làm bằng OCaml: đo độ trễ theo phân vị và vòng Disruptor không cấp phát; giao thức nhị phân, phát hiện khe và sổ lệnh L2/L3; môi trường phục dựng phiên giao dịch thật qua ghi–phát lại có đồng hồ ảo và mô hình độ trễ; cổng rủi ro trước lệnh cùng định cỡ vị thế; và cuối cùng là thị trường blockchain với AMM, MEV và chênh lệch CEX–DEX.
 - [Chương 74: Nền tảng HFT — Đo độ trễ, Vòng Disruptor & Bố cục bộ nhớ (HFT Foundations)](chuong_74.md)
 - [Chương 75: Dữ liệu thị trường — Giao thức nhị phân, Phát hiện khe & Sổ lệnh (Market Data Pipeline)](chuong_75.md)
 - [Chương 76: Phục dựng phiên giao dịch — Ghi phiên, Đồng hồ ảo & Phát lại (Session Capture & Replay)](chuong_76.md)
 - [Chương 77: Chiến lược & Quản trị rủi ro — Cổng rủi ro, Tín hiệu & Định cỡ vị thế (Strategy & Risk Management)](chuong_77.md)
 - [Chương 78: Thị trường blockchain — AMM, MEV & Chênh lệch giá CEX–DEX (Blockchain Market Microstructure)](chuong_78.md)
+- [Chương 85: Hệ sinh thái HFT tích hợp — Nối mọi mảnh thành một hệ chạy được (Integrated HFT Ecosystem)](chuong_85.md) — **đọc sau cùng trong nhóm này**
 
 ---
 
@@ -231,6 +233,7 @@ Toàn bộ phần lập trình được của giáo trình OpenAlgo, cài lại 
 ## Phụ lục
 
 Tài liệu tra cứu, đọc sau khi đã hoàn thành các chủ đề tương ứng.
+- [Lộ trình học tập: đồ thị phụ thuộc, bốn nhánh, bản đồ phủ nguồn tham khảo](LO_TRINH.md) — đọc TRƯỚC khi bắt đầu
 - [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md) — đọc sau Chương 18–20
 - [Bảng thuật ngữ Việt–Anh](THUAT_NGU.md) — tra cứu bất cứ lúc nào
 

@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**84 chương · 25 chủ đề · 86 crate · toàn bộ mã nguồn chạy được và có kiểm thử.**
+**85 chương · 25 chủ đề · 87 crate · toàn bộ mã nguồn chạy được và có kiểm thử.**
 
 ---
 
@@ -39,15 +39,15 @@ Không muốn cài gì cả? Mọi đoạn mã đều copy-paste chạy được
 
 ---
 
-## 📚 Lộ Trình Học Tập (25 Chủ Đề — 84 Chương)
+## 📚 Lộ Trình Học Tập (25 Chủ Đề — 85 Chương)
 
-Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Lộ trình chia làm ba chặng:
+Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Thứ tự đọc, đồ thị phụ thuộc và bốn nhánh theo mục tiêu nằm ở **[LO_TRINH.md](./LO_TRINH.md)** — đọc nó trước. Lộ trình chia làm ba chặng:
 
 | Chặng | Chủ đề | Chương | Bạn có được gì |
 |---|---|---|---|
 | **I. Nền tảng** | 1–5 | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
 | **II. Hệ thống** | 6–21 | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
-| **III. Chuyên sâu** | 22–25 | 70–84 | Bốn lĩnh vực Rust có lợi thế không thể thay thế |
+| **III. Chuyên sâu** | 22–25 | 70–85 | Bốn lĩnh vực Rust có lợi thế không thể thay thế |
 
 Tóm tắt từng chủ đề:
 
@@ -75,13 +75,14 @@ Tóm tắt từng chủ đề:
 | 20 | **Lập Trình Game** | 68 | Vòng lặp bước cố định, Euler nửa ẩn, va chạm AABB, băm không gian, kiến trúc ECS |
 | 21 | **Giao Dịch Thuật Toán** | 69 | Sổ lệnh ưu tiên giá–thời gian, động cơ khớp lệnh, cổng rủi ro typestate, bộ kiểm định chiến lược |
 | 22 | **Blockchain & Web3** | 70–73 | SHA-256 tự cài đối chiếu FIPS, cây Merkle, UTXO, PoW; Kademlia, gossip, quorum Byzantine đúng công thức; CosmWasm & Solana; Keccak-256 kiểm bằng selector ERC-20, ABI, RLP, EIP-1559 |
-| 23 | **Hệ Sinh Thái HFT** | 74–78 | Phân vị độ trễ, vòng Disruptor, giao thức nhị phân & phát hiện khe, sổ lệnh L2/L3, phục dựng phiên bằng đồng hồ ảo, cổng rủi ro trước lệnh, AMM/MEV/chênh lệch CEX–DEX |
+| 23 | **Hệ Sinh Thái HFT** | 74–78, **85** | Phân vị độ trễ, vòng Disruptor, giao thức nhị phân & phát hiện khe, sổ lệnh L2/L3, phục dựng phiên bằng đồng hồ ảo, cổng rủi ro trước lệnh, AMM/MEV/chênh lệch CEX–DEX — và **chương 85 nối cả năm thành một hệ chạy end-to-end trên hai sàn** |
 | 24 | **Hiệu Năng Phần Cứng** | 79–81 | Tư duy FPGA cho giao dịch (RHDL/Hardcaml); cache, dự đoán rẽ nhánh, ILP, SIMD (LeetCPU); SIMT, gộp truy cập, xung đột ngân hàng (LeetGPU) |
 | 25 | **Tài Chính Định Lượng** | 82–84 | Chỉ báo có bất biến chống nhìn trộm tương lai; Black-Scholes, Greeks, biến động ngụ ý; đồng liên kết, Kalman, VaR/ES, kiểm định tiến (OpenAlgo) |
 
 **Phụ lục tra cứu:**
+- **[Lộ trình học tập](./LO_TRINH.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
 - **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
-- **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: gần 470 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
+- **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: gần 490 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
 
 ---
 
@@ -100,7 +101,7 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 
 ## 🛠 Mã Nguồn Chạy Được
 
-Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 86 crate:
+Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 87 crate:
 
 ```bash
 cd code
@@ -108,6 +109,7 @@ cargo run  -p ch18              # Chương 18: kiểm chứng luật nửa nhóm
 cargo run  -p ch16_mo_rong      # Bộ công cụ Iterator đầy đủ
 cargo run  -p ch70              # Chương 70: SHA-256 tự cài + cây Merkle + PoW
 cargo run  -p ch76              # Chương 76: phát lại phiên giao dịch bằng đồng hồ ảo
+cargo run  -p ch85              # Chương 85: hệ sinh thái HFT tích hợp, hai loại sàn
 cargo test -p ch19              # Chạy riêng bài kiểm thử của Chương 19
 cargo test --workspace          # Chạy TẤT CẢ
 ```
@@ -118,7 +120,7 @@ Các chương về lập trình hàm đi kèm bộ kiểm thử biến **luật 
 
 ## 📖 Đọc Dưới Dạng Sách Điện Tử (tùy chọn)
 
-Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 84 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
+Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 85 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
 
 ```bash
 cargo install mdbook
@@ -129,7 +131,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 
 ## 💡 Hướng Dẫn Sử Dụng
 
-1. **Bắt đầu từ đâu?** Mở **[SUMMARY.md](./SUMMARY.md)** — đó là mục lục chính. Bấm vào `chuong_01.md` và bắt đầu.
+1. **Bắt đầu từ đâu?** Mở **[LO_TRINH.md](./LO_TRINH.md)** để chọn nhánh phù hợp, rồi dùng **[SUMMARY.md](./SUMMARY.md)** làm mục lục. Bấm vào `chuong_01.md` và bắt đầu.
 2. **Đừng nhảy cóc**, đặc biệt là 12 chương đầu. Rust có triết lý quản lý bộ nhớ rất độc đáo (Ownership); bỏ qua nền tảng sẽ khiến bạn khổ sở về sau.
 3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án.
 4. **Gõ lại mã, đừng chỉ đọc.** Cách nhanh nhất để hiểu Borrow Checker là để nó từ chối bạn vài chục lần.

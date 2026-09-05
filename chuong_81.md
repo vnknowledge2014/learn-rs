@@ -130,6 +130,31 @@ Mức chiếm dụng bị giới hạn bởi ba tài nguyên:
 
 Một điểm phản trực giác: **mức chiếm dụng cao không phải lúc nào cũng tốt**. Một nhân dùng nhiều thanh ghi (mức chiếm dụng thấp) nhưng có nhiều ILP có thể nhanh hơn một nhân mức chiếm dụng 100% mà chuỗi phụ thuộc dài. Đây là kết luận nổi tiếng từ nghiên cứu của Volkov về "hiệu năng thấp ở mức chiếm dụng thấp là một huyền thoại".
 
+
+### 99 thử thách của LeetGPU, nhìn theo chủ đề
+
+Danh sách dưới đây được **lấy trực tiếp từ leetgpu.com/challenges** (thu thập ngày 05/09/2026): 99 bài, chia 19 Dễ / 65 Vừa / 15 Khó.
+
+Điều đáng chú ý là **hình dạng** của tập bài tập. Nó không phải một khoá học GPU tổng quát — nó nghiêng hẳn về các nhân của học sâu:
+
+| Chủ đề | Ví dụ tiêu biểu | Kỹ thuật quyết định |
+|---|---|---|
+| Phần tử theo phần tử | Vector Addition, ReLU, Sigmoid, Color Inversion, Value Clipping | Gộp truy cập — và chỉ có thế |
+| Rút gọn & quét | Reduction, Prefix Sum, Dot Product, Segmented Prefix Sum, Parallel Reverse Scan | Cây rút gọn, tránh phân kỳ |
+| Đại số tuyến tính | GEMM, Batched MatMul, Matrix Power, Sparse MV, Sparse-Dense MM | Chia lát, cường độ số học |
+| Tích chập & stencil | 1D/2D/3D Convolution, Gaussian Blur, 2D Jacobi Stencil, Causal Depthwise Conv1d | Bộ nhớ chia sẻ, tái dùng theo hàng |
+| Chuẩn hoá | Softmax, Batch Norm, Layer Norm, RMS Norm, Group Norm, Fused Residual + RMS Norm | Rút gọn hai lượt, ổn định số học |
+| Chú ý (attention) | Softmax Attention, Multi-Head, Causal, Sliding Window, Grouped Query, Attention with Sinks, Backward | Kết hợp nhân, chia lát, mặt nạ |
+| Lượng tử hoá | INT8 Quantized MatMul, INT4 Weight-Only, FP16 BMM, Weight Dequantization, INT8 KV-Cache | Đóng gói bit, tăng thông lượng |
+| Khối mô hình | GPT-2 Block, Llama Block, Diffusion Transformer Block, SwiGLU MLP, LoRA Linear, MoE Top-K Gating | Ghép mọi thứ ở trên |
+| Sắp xếp & đồ thị | Sorting, Radix Sort, K-Means, BFS Shortest Path, All-Pairs Shortest Paths | Phân kỳ, cân bằng tải |
+| Biến đổi & mô phỏng | FFT, 2D FFT, Monte Carlo Integration, Multi-Agent Simulation | Xung đột ngân hàng, mẫu truy cập |
+| Học tăng cường | PPO Clipped Surrogate, DPO Sequence Loss, GRPO Surrogate | Rút gọn có mặt nạ |
+
+Toàn bộ 11 nhóm này quy về đúng **bốn kỹ thuật** mà chương này dạy: gộp truy cập, tránh phân kỳ warp, tránh xung đột ngân hàng, và chia lát để nâng cường độ số học. Một bài "Llama Transformer Block" mức Khó không đòi hỏi ý tưởng mới — nó đòi hỏi bạn áp dụng bốn thứ đó nhiều lần mà không sai lần nào.
+
+> **Ghi chú về nguồn.** Cả leetcpu.com lẫn leetgpu.com đều là ứng dụng một trang dựng bằng JavaScript, nên `WebFetch` chỉ nhận về khung rỗng. Dữ liệu ở đây được thu thập bằng cách **kết xuất trang trong trình duyệt thật** rồi đọc DOM sau khi ứng dụng đã dựng xong. Với LeetCPU, danh sách bài nằm sau một nút điều hướng chứ không phải một URL riêng — đó là lý do một lần tải `/problems` trả về 404. Nội dung chi tiết từng bài của LeetCPU nằm sau đăng nhập và **không** được truy cập.
+
 ---
 
 ## Mã nguồn minh họa thực chiến
