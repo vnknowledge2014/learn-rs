@@ -1,367 +1,392 @@
-# Chương 47: Dịch vụ REST & gRPC thông lượng cao với Axum & Tonic (High-Throughput REST & gRPC Services with Axum & Tonic)
+# Chương 47: Dự Án Thực Chiến: Xây Dựng Công Cụ CLI Chuẩn Sản Xuất Bằng Vibe Coding (Capstone Project: AI-Assisted Production CLI Tool)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong kỷ nguyên của các ứng dụng quy mô toàn cầu, một hệ thống backend không chỉ đơn thuần là nhận một yêu cầu và trả về kết quả. Một máy chủ hiện đại phải xử lý từ hàng chục ngàn đến hàng triệu yêu cầu mỗi giây (RPS - Requests Per Second) với độ trễ phản hồi tính bằng mili-giây.
+Chào mừng bạn đến với chương đỉnh cao của Chủ đề 8: **Đại dự án tốt nghiệp Vibe Coding (Capstone Project)**!
 
-Để đạt được kỳ tích này, hệ sinh thái Rust đã sản sinh ra hai "vũ khí tối thượng" định hình lại tiêu chuẩn của ngành công nghiệp:
-1. **Axum**: Web framework thế hệ mới được bảo trợ chính thức bởi đội ngũ phát triển Tokio, xây dựng trên nền tảng trừu tượng hóa cực mạnh của thư viện `Tower`. Axum mang tới sự kết hợp hoàn hảo giữa độ an toàn kiểu dữ liệu tuyệt đối (Type-Safe Routing) và tốc độ phục vụ REST API thuộc top đầu thế giới.
-2. **Tonic**: Hiện thực hóa chuẩn mực giao thức **gRPC** (Google Remote Procedure Call) trên nền HTTP/2 và định dạng nhị phân Protocol Buffers (Protobuf). gRPC với Tonic là "huyết mạch" kết nối siêu tốc giữa các microservice nội bộ, giúp tăng thông lượng truyền tải từ 7 đến 10 lần so với chuẩn REST/JSON truyền thống.
+Trải qua 4 chương vừa qua, chúng ta đã được trang bị đầy đủ các trụ cột tri thức hiện đại nhất:
+- Thấu hiểu vị thế của **Tổng đạo diễn kiến trúc (System Architect)** ở Chương 43.
+- Làm chủ kỹ thuật **Prompt hệ thống và Quản lý cửa sổ ngữ cảnh (Context Window)** ở Chương 44.
+- Thực hành thuần thục quy trình **Spec-Driven Development (SDD) và AI-Assisted TDD** ở Chương 45.
+- Tận dụng **Trình biên dịch Rust làm Trọng tài Tối cao** để tự sửa lỗi và tái cấu trúc mã nguồn ở Chương 46.
 
-Mục tiêu học tập của bạn:
-- Nắm vững kiến trúc cốt lõi của Axum: Bộ định tuyến Router, các Bộ trích xuất dữ liệu an toàn (Extractors: `Json`, `Path`, `State`), và tầng Middleware với Tower.
-- Hiểu thấu cơ chế hoạt động của gRPC và Protocol Buffers: Đa dồn kênh nhiều luồng (Multiplexing) trên 1 kết nối TCP duy nhất của HTTP/2, và sự vượt trội của định dạng nhị phân so với văn bản JSON.
-- Xây dựng mô hình kiến trúc lai (Hybrid Architecture): Cổng ngoài đón khách (API Gateway) dùng Axum REST/JSON, trong khi mạng nội bộ giao tiếp bằng gRPC Tonic siêu tốc.
+Giờ là lúc chúng ta ghép nối tất cả các mảnh ghép đó lại với nhau để thực hiện một kỳ tích: **Xây dựng một công cụ dòng lệnh (CLI Tool) hoàn chỉnh, đạt chuẩn mực thương mại và hiệu năng cao trong vòng chưa đầy 30 phút bằng phương pháp Vibe Coding!**
+
+Dự án chúng ta sẽ cùng xây dựng có tên là **LogPulse** — một công cụ dòng lệnh chuyên dụng dành cho các kỹ sư DevOps và quản trị hệ thống:
+- Đọc và phân tích hàng triệu dòng nhật ký máy chủ web (Web Access Logs).
+- Phân tích cờ dòng lệnh (CLI flags & options) linh hoạt.
+- Tự động thống kê số lượng truy cập, tỷ lệ mã lỗi (4xx, 5xx), tổng dung lượng dữ liệu truyền tải thông qua bộ nhớ đệm (buffer), và nhận diện địa chỉ IP gửi nhiều yêu cầu nhất.
+- Xuất báo cáo dạng bảng trực quan ngay trên terminal với mã thoát POSIX chuẩn mực (Exit Codes).
+
+Mục tiêu học tập của chương:
+- Trực tiếp áp dụng quy trình Vibe Coding end-to-end từ đặc tả kỹ thuật đến sản phẩm thực tế có thể chạy được.
+- Nắm vững kiến trúc phần mềm của một công cụ CLI chuẩn sản xuất: Phân tích tham số, luồng nhập xuất an toàn, định dạng bảng hiển thị và xử lý lỗi không bao giờ để ứng dụng bị hoảng loạn (panic).
+- Củng cố triệt để các nguyên lý của Rust về quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), và áp dụng con trỏ thông minh (smart pointer) khi quản lý dữ liệu lớn.
+- Trải nghiệm cảm giác làm chủ công nghệ: Tốc độ x10 của AI kết hợp với độ tin cậy tuyệt đối của Rust!
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu tại sao các tập đoàn lớn lại chuyển từ REST/JSON sang gRPC/Protobuf trong giao tiếp nội bộ, hãy quan sát trạm thu phí cao tốc:
+### Xưởng chế tạo Dao đa năng Thụy Sĩ công nghệ cao
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA: LÀN THU PHÍ TIỀN MẶT VS LÀN THU PHÍ TỰ ĐỘNG VETC    │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│ [1. REST API VỚI JSON: LÀN THU PHÍ DỪNG XE ĐẾM TIỀN MẶT]                         │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Tài xế dừng hẳn xe lại ──► Kéo cửa kính xuống:                       │         │
-│ │ - Đưa tờ giấy viết tay dài dòng bằng tiếng Việt (Chuỗi văn bản JSON).│         │
-│ │ - Nhân viên trạm soi đèn pin đọc từng chữ, đếm tiền thối lại...      │         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> Tốn 30 giây mỗi xe, hàng trăm ô tô nối đuôi nhau ùn tắc kéo dài!          │
-│                                                                                  │
-│ [2. gRPC VỚI PROTOCOL BUFFERS: LÀN THU PHÍ TỰ ĐỘNG KHÔNG DỪNG ETC (HTTP/2)]      │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Xe dán tem mã vạch thông minh (Định dạng nhị phân Protobuf siêu nén).│         │
-│ │ Xe phóng qua trạm với tốc độ 80km/h:                                 │         │
-│ │ - Máy quét laser rọi qua trong 1 phần nghìn giây (Zero-Copy Parse).  │         │
-│ │ - Barie tự động nâng lên, tiền tự động trừ trong tích tắc!           │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ HTTP/2 Multiplexing: 10 làn xe chạy song song trên cùng 1 cây cầu!   │         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> THÔNG LƯỢNG GẤP 10 LẦN, XE QUA TRẠM VÙN VỤT KHÔNG HỀ CÓ ĐỘ TRỄ!          │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+Hãy tưởng tượng bạn muốn tạo ra một chiếc **Dao đa năng Thụy Sĩ (Swiss Army Knife)** cao cấp gồm: Lưỡi dao sắc bén, kéo cắt tỉa, tuốc-nơ-vít, và đồ khui nút chai.
 
-### 1. Viết thư tay tiếng Việt (REST API với JSON)
-- JSON rất thân thiện với con người: Bạn mở tệp tin ra là đọc được ngay: `{"ten": "Alice", "tuoi": 25}`.
-- Nhưng đối với máy tính, việc phân tích (parse) chuỗi JSON là một cực hình: Máy tính phải quét từng ký tự xem dấu ngoặc kép ở đâu, dấu hai chấm ở đâu, chuyển chuỗi `"25"` thành số nguyên 4 bytes. Nó giống như người thủ kho phải đọc bức thư dài dòng mới biết cần xuất bao nhiêu bao gạo.
+#### Phương pháp thủ công (Trước kỷ nguyên Vibe Coding):
+- Bạn phải tự mình đi vào rừng đốn gỗ làm cán dao, đào quặng sắt, nung lò rèn đập từng chiếc lò xo, tự mài giũa từng con ốc vít.
+- Bạn mất 6 tháng ròng rã chỉ để chế tạo xong một chiếc dao đơn giản, và nếu một chiếc lò xo bị lệch 1 milimet, toàn bộ con dao sẽ bị kẹt không thể mở ra.
 
-### 2. Mã Morse của thuyền trưởng (gRPC với Protocol Buffers)
-- Protobuf loại bỏ toàn bộ các ký tự rườm rà (dấu ngoặc, tên trường). Thay vào đó, nó gán mỗi trường một mã số nhị phân siêu ngắn (Field Tag).
-- Trường `ten` là mã số 1, `tuoi` là mã số 2. Dữ liệu được nén thành chuỗi byte nhị phân ngắn bằng $1/5$ chuỗi JSON.
-- Khi máy tính nhận được gói tin, nó chỉ việc nhảy thẳng tới vị trí byte đó và đọc giá trị tức thì, không cần dò tìm ký tự. Kết hợp với đường cao tốc HTTP/2 (cho phép gửi hàng trăm yêu cầu cùng lúc trên 1 sợi cáp mạng duy nhất mà không bị nghẽn đầu làn), gRPC mang lại tốc độ không đối thủ!
+#### Phương pháp Vibe Coding hiện đại:
+- Bạn là **Tổng công trình sư thiết kế**: Bạn có sẵn một bản thiết kế 3D chính xác đến từng micromet (Bản đặc tả `SPEC.md`).
+- Bạn bước vào một **Xưởng in 3D laser và cánh tay robot thông minh (Trợ lý AI)**:
+  - Bạn nạp bản thiết kế vào máy: *"Tôi cần chế tạo chiếc dao đa năng Thụy Sĩ bằng thép không gỉ. Mô-đun 1 là lưỡi dao, mô-đun 2 là tuốc-nơ-vít, các khớp nối phải gập 90 độ mượt mà, chịu lực 20kg"*.
+  - Cánh tay robot (AI) hoạt động với tốc độ ánh sáng, cắt gọt và lắp ráp các linh kiện chuẩn xác theo hợp đồng trong vòng 15 phút.
+- **Thanh tra chất lượng Thụy Sĩ (Trình biên dịch `rustc`)** đứng bên cạnh dùng kính hiển vi điện tử soi từng mối nối:
+  - Nếu có một khớp nối bị lỏng (lỗi an toàn bộ nhớ), thanh tra yêu cầu robot sửa lại ngay lập tức.
+- Kết quả: Sau 30 phút, bạn cầm trên tay một chiếc dao Thụy Sĩ hoàn mỹ, bóng bẩy, sắc bén phi thường và hoạt động bền bỉ suốt 50 năm!
+
+Công cụ CLI **LogPulse** của chúng ta cũng được tạo ra theo đúng tinh thần đó: Bạn làm chủ thiết kế, AI tăng tốc triển khai, và Rust bảo chứng chất lượng!
 
 ---
 
-## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
+## Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
-### 1. Kiến trúc Bộ Trích Xuất (Extractors Architecture) trong Axum
-
-Khác với các web framework truyền thống trong Python hay JavaScript (nơi lập trình viên phải tự lấy dữ liệu từ `req.body`, `req.params` rồi tự ép kiểu dễ sinh lỗi runtime), Axum vận hành hoàn toàn dựa trên hệ thống kiểm tra kiểu dữ liệu tĩnh của Rust:
-- Mọi tham số truyền vào hàm xử lý (Handler) đều phải triển khai trait `FromRequest` hoặc `FromRequestParts`:
-```rust
-// Axum tự động xác thực và giải mã kiểu dữ liệu ngay từ chữ ký hàm!
-async fn tao_san_pham(
-    State(app_state): State<Arc<AppState>>, // Trích xuất trạng thái chia sẻ
-    Path(category_id): Path<u32>,          // Trích xuất tham số trên URL
-    Json(payload): Json<CreateProductReq>, // Tự động kiểm tra cú pháp và parse JSON body
-) -> Result<Json<ProductResponse>, AppError> { ... }
-```
-- Nếu client gửi lên một chuỗi JSON sai kiểu dữ liệu (ví dụ trường `price` cần số nguyên nhưng client gửi chuỗi ký tự), Axum sẽ tự động từ chối yêu cầu với mã lỗi `422 Unprocessable Entity` ngay lập tức mà hàm handler của bạn không hề bị gọi, bảo vệ hệ thống tuyệt đối!
-
-### 2. Sự Tiến hóa từ HTTP/1.1 lên HTTP/2 trong gRPC
+### 1. Kiến trúc phân tầng của một Công cụ CLI chuyên nghiệp
+Một công cụ dòng lệnh chuẩn sản xuất (Production-Grade CLI Tool) trong Rust không đơn thuần là một tệp `main.rs` dài 500 dòng lộn xộn. Nó được cấu trúc thành 4 tầng ranh giới rõ rệt:
 
 ```
-HTTP/1.1 (Tuần tự - Head-of-Line Blocking):
-Kết nối TCP: [Yêu cầu 1 ──►] [Đợi Phản hồi 1 ◄──] [Yêu cầu 2 ──►] ...
-
-HTTP/2 trong gRPC (Đa dồn kênh - Multiplexing):
-Kết nối TCP: ──[Stream 1: Req]──[Stream 2: Req]──[Stream 1: Res]──[Stream 3: Req]──►
+┌─────────────────────────────────────────────────────────────┐
+│ 1. CLI INTERFACE LAYER (std::env::args, Flags, Help Menu)   │
+├─────────────────────────────────────────────────────────────┤
+│ 2. STREAMING I/O & BUFFER LAYER (BufRead, Zero-Copy Parser) │
+├─────────────────────────────────────────────────────────────┤
+│ 3. CORE ANALYTICS ENGINE (Metrics, HashMaps, Aggregation)    │
+├─────────────────────────────────────────────────────────────┤
+│ 4. PRESENTATION & FORMATTING (ASCII Tables, Exit Codes)     │
+└─────────────────────────────────────────────────────────────┘
 ```
-- **HTTP/1.1**: Mỗi yêu cầu phải chờ yêu cầu trước đó nhận được phản hồi xong mới được gửi tiếp trên cùng 1 kết nối (hiện tượng Head-of-Line Blocking). Để gửi nhiều yêu cầu, trình duyệt phải mở từ 6 đến 8 kết nối TCP song song, gây lãng phí bộ đệm (buffer) và bắt tay TCP tốn kém.
-- **HTTP/2**: Toàn bộ các cuộc gọi RPC đều được phân chia thành các khung nhị phân (Binary Frames) có đánh số Stream ID, cùng lúc bay trên **duy nhất 1 kết nối TCP**. Dịch vụ A có thể gửi 10,000 lệnh gọi tới Dịch vụ B đồng thời mà không hề bị nghẽn!
 
-### 3. Mô hình Kiến trúc Lai Hiện đại (Hybrid Architecture)
+1. **Tầng giao diện dòng lệnh (CLI Interface Layer)**:
+   - Tiếp nhận tham số người dùng nhập từ bàn phím.
+   - Nhận diện các cờ (flags) như `--verbose`, `--threshold`, hoặc tên đường dẫn tệp tin nhật ký.
+   - Tự động hiển thị thực đơn hướng dẫn sử dụng (`--help`) khi người dùng nhập sai tham số.
+2. **Tầng xử lý dữ liệu và Bộ nhớ đệm (I/O & Buffer Layer)**:
+   - Khi xử lý tệp nhật ký dung lượng lớn (hàng Gigabytes), tuyệt đối không bao giờ nạp toàn bộ tệp vào RAM bằng `fs::read_to_string`.
+   - Sử dụng cơ chế đọc theo dòng qua bộ nhớ đệm (buffer) để giữ mức tiêu thụ RAM luôn cố định ở vài Megabytes, bất kể tệp lớn đến đâu.
+   - Sử dụng các lát cắt chuỗi `&str` để phân tích cú pháp (parsing) mà không cấp phát bộ nhớ mới (Zero-Copy Parsing).
+3. **Động cơ phân tích cốt lõi (Core Analytics Engine)**:
+   - Tính toán các chỉ số nghiệp vụ: Tổng số yêu cầu, phân loại mã trạng thái HTTP (2xx Thành công, 4xx Lỗi phía khách hàng, 5xx Lỗi máy chủ).
+   - Tận dụng cấu trúc bảng băm `HashMap` để đếm tần suất xuất hiện của từng địa chỉ IP người dùng.
+4. **Tầng trình diễn & Mã thoát POSIX (Presentation & Exit Codes)**:
+   - In kết quả ra màn hình dưới dạng bảng ASCII phân chia cột ngay ngắn, dễ đọc cho mắt người.
+   - Trả về mã thoát chuẩn POSIX: Trả về mã `0` khi phân tích thành công; trả về mã khác `0` (ví dụ: `1` hoặc `2`) khi gặp lỗi để các script tự động hóa (CI/CD) có thể phát hiện sự cố.
 
-Trong các tập đoàn công nghệ lớn:
-- **Cổng API Gateway phía ngoài (Public Gateway)**: Sử dụng **Axum** đón các yêu cầu từ Web Browser và Mobile App bằng chuẩn REST/JSON thân thiện.
-- **Mạng lưới Dịch vụ nội bộ (Internal Service Mesh)**: Toàn bộ việc trao đổi giữa Service A, Service B, Service C được thực hiện qua **gRPC Tonic** nhị phân siêu tốc, giúp giảm tới 80% độ trễ mạng nội bộ.
+### 2. Các bước triển khai Vibe Coding thực tế
+Trong dự án này, chúng ta tiến hành tuần tự 4 bước phối hợp cùng AI:
+- **Bước 1**: Phác thảo cấu trúc cấu hình `CliConfig` và bộ dữ liệu `LogEntry`.
+- **Bước 2**: Định nghĩa các trạng thái lỗi trong `LogCliError` và yêu cầu AI viết các bài test kiểm chứng việc phân tích dòng log.
+- **Bước 3**: Nhờ AI sinh mã cho bộ phân tích `LogAnalyzer` với các đường ống hàm Iterator.
+- **Bước 4**: Ghép nối vào hàm `main()` có bắt lỗi hoàn chỉnh, sử dụng Trình biên dịch Rust làm Trọng tài tối cao để triệt tiêu mọi cảnh báo và lỗi cú pháp.
 
 ---
 
-## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
+## Mã nguồn minh họa thực chiến
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Dịch vụ Điều phối API Thông lượng cao (High-Throughput API Gateway Dispatcher)**: Tự tay cài đặt cơ chế định tuyến Type-Safe theo triết lý của Axum, tích hợp chia sẻ trạng thái an toàn đa luồng `Arc`, kết hợp bộ mã hóa nhị phân mô phỏng chuẩn gRPC Protocol Buffers siêu tốc:
+Dưới đây là mã nguồn hoàn chỉnh của công cụ **LogPulse CLI** viết bằng 100% Rust thuần (Pure Rust Standard Library), không phụ thuộc vào bất kỳ thư viện bên ngoài nào, sẵn sàng biên dịch bằng `rustc --edition=2021` và chạy ngay lập tức.
 
 ```rust
+// ============================================================================
+// CHƯƠNG 43: ĐẠI DỰ ÁN CAPSTONE - CÔNG CỤ CLI LOGPULSE CHUẨN SẢN XUẤT
+// Phương pháp: Vibe Coding (Kiến Trúc Sư Hệ Thống + Trợ Lý AI)
+// ============================================================================
+
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
-/// Mô hình Thực thể Sản phẩm trong hệ thống
+// ----------------------------------------------------------------------------
+// 1. MÔ HÌNH DỮ LIỆU & ĐỊNH NGHĨA KIỂU NGHIỆP VỤ (DOMAIN MODELING)
+// ----------------------------------------------------------------------------
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductEntity {
-    pub id: u64,
-    pub name: String,
-    pub price_cents: u64,
-    pub in_stock: bool,
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Other(String),
 }
 
-/// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
-pub struct SharedAppState {
-    pub catalog: Mutex<HashMap<u64, ProductEntity>>,
-}
-
-impl SharedAppState {
-    pub fn new() -> Self {
-        let mut catalog = HashMap::new();
-        catalog.insert(
-            101,
-            ProductEntity {
-                id: 101,
-                name: "Rust Masterclass Hardcover".to_string(),
-                price_cents: 550_000,
-                in_stock: true,
-            },
-        );
-        catalog.insert(
-            102,
-            ProductEntity {
-                id: 102,
-                name: "Mechanical Keyboard 68-Key".to_string(),
-                price_cents: 1_200_000,
-                in_stock: false,
-            },
-        );
-        Self {
-            catalog: Mutex::new(catalog),
+impl HttpMethod {
+    pub fn from_str_slice(s: &str) -> Self {
+        match s.to_ascii_uppercase().as_str() {
+            "GET" => HttpMethod::Get,
+            "POST" => HttpMethod::Post,
+            "PUT" => HttpMethod::Put,
+            "DELETE" => HttpMethod::Delete,
+            other => HttpMethod::Other(other.to_string()),
         }
     }
 }
 
-/// Mô phỏng Bộ mã hóa nhị phân Protocol Buffers chuẩn gRPC (gRPC Binary Wire Encoding)
-pub struct ProtobufWireCodec;
+// Cấu trúc một dòng nhật ký máy chủ web đã được bóc tách
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub client_ip: String,
+    pub method: HttpMethod,
+    pub path: String,
+    pub status_code: u16,
+    pub response_bytes: u64,
+}
 
-impl ProtobufWireCodec {
-    /// Mã hóa sản phẩm thành chuỗi byte nhị phân siêu nén
-    /// Tag 1: ID (8B) | Tag 2: Price (8B) | Tag 3: InStock (1B) | Tag 4: Name (Length + Bytes)
-    pub fn encode_product(product: &ProductEntity) -> Vec<u8> {
-        let mut bytes = Vec::new();
+// Cấu hình tham số dòng lệnh (CLI Options)
+#[derive(Debug, Clone)]
+pub struct CliConfig {
+    pub target_file: String,
+    pub verbose: bool,
+    pub error_only: bool,
+}
 
-        // Field 1: ID
-        bytes.push(0x08); // Tag 1, Type: Varint
-        bytes.extend_from_slice(&product.id.to_le_bytes());
-
-        // Field 2: Price Cents
-        bytes.push(0x10); // Tag 2, Type: Varint
-        bytes.extend_from_slice(&product.price_cents.to_le_bytes());
-
-        // Field 3: In Stock
-        bytes.push(0x18); // Tag 3, Type: Varint
-        bytes.push(if product.in_stock { 1 } else { 0 });
-
-        // Field 4: Name String
-        bytes.push(0x22); // Tag 4, Type: Length-delimited
-        let name_bytes = product.name.as_bytes();
-        bytes.push(name_bytes.len() as u8);
-        bytes.extend_from_slice(name_bytes);
-
-        bytes
-    }
-
-    /// Giải mã nhị phân không sao chép từ chuỗi byte gRPC
-    pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, &'static str> {
-        if bytes.len() < 20 {
-            return Err("Kich thuoc byte protobuf qua ngan!");
+impl CliConfig {
+    // Phân tích danh sách đối số dòng lệnh an toàn, không làm văng panic
+    // Nhận tham chiếu mượn (borrow) lát cắt &[String]
+    pub fn parse_from_args(args: &[String]) -> Result<Self, String> {
+        if args.len() < 2 {
+            return Err("Sử dụng: logpulse <file_path> [--verbose] [--error-only]".to_string());
         }
 
-        let mut id = 0u64;
-        let mut price = 0u64;
-        let mut in_stock = false;
-        let mut name = String::new();
+        let target_file = args[1].clone();
+        let mut verbose = false;
+        let mut error_only = false;
 
-        let mut idx = 0;
-        while idx < bytes.len() {
-            let tag = bytes[idx];
-            idx += 1;
-
-            match tag {
-                0x08 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    id = u64::from_le_bytes(b);
-                    idx += 8;
-                }
-                0x10 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    price = u64::from_le_bytes(b);
-                    idx += 8;
-                }
-                0x18 => {
-                    in_stock = bytes[idx] == 1;
-                    idx += 1;
-                }
-                0x22 => {
-                    let len = bytes[idx] as usize;
-                    idx += 1;
-                    name = String::from_utf8_lossy(&bytes[idx..idx + len]).to_string();
-                    idx += len;
-                }
-                _ => break,
+        for arg in &args[2..] {
+            match arg.as_str() {
+                "--verbose" | "-v" => verbose = true,
+                "--error-only" | "-e" => error_only = true,
+                unknown => return Err(format!("Cờ dòng lệnh không xác định: {}", unknown)),
             }
         }
 
-        Ok(ProductEntity {
-            id,
-            name,
-            price_cents: price,
-            in_stock,
+        Ok(CliConfig {
+            target_file,
+            verbose,
+            error_only,
         })
     }
 }
 
-/// Trình điều phối dịch vụ mô phỏng cách Axum Router định tuyến Type-Safe
-pub struct TypeSafeServiceRouter {
-    state: Arc<SharedAppState>,
+// ----------------------------------------------------------------------------
+// 2. ĐỘNG CƠ PHÂN TÍCH NHẬT KÝ (LOG ANALYZER ENGINE)
+// Áp dụng quyền sở hữu (ownership) và mượn tham chiếu an toàn tuyệt đối
+// ----------------------------------------------------------------------------
+
+pub struct LogAnalyzer {
+    entries: Vec<LogEntry>,
 }
 
-impl TypeSafeServiceRouter {
-    pub fn new(state: Arc<SharedAppState>) -> Self {
-        Self { state }
-    }
-
-    /// Xử lý yêu cầu dạng REST/JSON
-    pub fn handle_rest_get_product(&self, product_id: u64) -> Result<String, &'static str> {
-        let catalog = self.state.catalog.lock().unwrap();
-        if let Some(prod) = catalog.get(&product_id) {
-            // Giả lập trả về chuỗi định dạng JSON
-            Ok(format!(
-                r#"{{"id":{},"name":"{}","price_cents":{},"in_stock":{}}}"#,
-                prod.id, prod.name, prod.price_cents, prod.in_stock
-            ))
-        } else {
-            Err("404 Not Found: Khong tim thay san pham")
+impl LogAnalyzer {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
         }
     }
 
-    /// Xử lý yêu cầu dạng gRPC nhị phân siêu tốc
-    pub fn handle_grpc_get_product(&self, product_id: u64) -> Result<Vec<u8>, &'static str> {
-        let catalog = self.state.catalog.lock().unwrap();
-        if let Some(prod) = catalog.get(&product_id) {
-            // Trả về gói tin nhị phân Protobuf nén gọn
-            Ok(ProtobufWireCodec::encode_product(prod))
-        } else {
-            Err("gRPC Status: NOT_FOUND (Code 5)")
+    // Bóc tách một dòng văn bản thô theo định dạng chuẩn: "IP METHOD PATH STATUS BYTES"
+    // Ví dụ: "192.168.1.1 GET /api/v1/users 200 1024"
+    pub fn parse_line(line: &str) -> Option<LogEntry> {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 5 {
+            return None; // Dòng không hợp lệ hoặc bị lỗi định dạng
+        }
+
+        let client_ip = parts[0].to_string();
+        let method = HttpMethod::from_str_slice(parts[1]);
+        let path = parts[2].to_string();
+        let status_code = parts[3].parse::<u16>().ok()?;
+        let response_bytes = parts[4].parse::<u64>().ok()?;
+
+        Some(LogEntry {
+            client_ip,
+            method,
+            path,
+            status_code,
+            response_bytes,
+        })
+    }
+
+    // Nạp toàn bộ dữ liệu mẫu (hoặc nội dung đọc từ buffer) vào bộ nhớ
+    pub fn load_from_raw_text(&mut self, text: &str) {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                if let Some(entry) = Self::parse_line(trimmed) {
+                    self.entries.push(entry);
+                }
+            }
         }
     }
+
+    // Đếm tổng số lượng yêu cầu
+    pub fn total_requests(&self) -> usize {
+        self.entries.len()
+    }
+
+    // Đếm số lượng lỗi máy chủ (Mã 5xx)
+    pub fn count_server_errors(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| e.status_code >= 500 && e.status_code < 600)
+            .count()
+    }
+
+    // Đếm số lượng lỗi phía khách hàng (Mã 4xx)
+    pub fn count_client_errors(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| e.status_code >= 400 && e.status_code < 500)
+            .count()
+    }
+
+    // Tính tổng số byte dữ liệu máy chủ đã truyền tải
+    pub fn total_data_transferred_bytes(&self) -> u64 {
+        self.entries.iter().map(|e| e.response_bytes).sum()
+    }
+
+    // Tìm địa chỉ IP gửi nhiều yêu cầu nhất thông qua bảng băm HashMap
+    pub fn find_top_client_ip(&self) -> Option<(String, usize)> {
+        let mut frequency_map: HashMap<&str, usize> = HashMap::new();
+
+        for entry in &self.entries {
+            *frequency_map.entry(entry.client_ip.as_str()).or_insert(0) += 1;
+        }
+
+        frequency_map
+            .into_iter()
+            .max_by_key(|&(_, count)| count)
+            .map(|(ip, count)| (ip.to_string(), count))
+    }
 }
+
+// ----------------------------------------------------------------------------
+// 3. TẦNG ĐỊNH DẠNG BẢNG BÁO CÁO (PRESENTATION LAYER)
+// ----------------------------------------------------------------------------
+
+pub struct ReportPrinter;
+
+impl ReportPrinter {
+    // In báo cáo định dạng bảng ASCII sắc nét, chuyên nghiệp
+    pub fn print_summary(analyzer: &LogAnalyzer, config: &CliConfig) {
+        println!("+-------------------------------------------------------------+");
+        println!("|            LOGPULSE - BÁO CÁO PHÂN TÍCH NHẬT KÝ MÁY CHỦ    |");
+        println!("+-------------------------------------------------------------+");
+        println!("| Tệp tin mục tiêu       : {:<34} |", config.target_file);
+        println!("| Tổng số lượt yêu cầu   : {:<34} |", analyzer.total_requests());
+        println!("| Lỗi máy chủ (5xx)      : {:<34} |", analyzer.count_server_errors());
+        println!("| Lỗi người dùng (4xx)   : {:<34} |", analyzer.count_client_errors());
+
+        let total_kb = analyzer.total_data_transferred_bytes() as f64 / 1024.0;
+        println!("| Tổng dung lượng truyền : {:<31.2} KB |", total_kb);
+
+        if let Some((top_ip, count)) = analyzer.find_top_client_ip() {
+            let ip_summary = format!("{} ({} lần)", top_ip, count);
+            println!("| Địa chỉ IP truy cập top: {:<34} |", ip_summary);
+        }
+        println!("+-------------------------------------------------------------+");
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 4. HÀM MAIN: KỊCH BẢN THỰC THI TOÀN DIỆN
+// ----------------------------------------------------------------------------
 
 fn main() {
-    println!("==================================================================");
-    println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
-    println!("==================================================================");
+    println!("=== KHỞI ĐỘNG DỰ ÁN CAPSTONE: CÔNG CỤ LOGPULSE CLI (VIBE CODING) ===\n");
 
-    // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
-    let shared_state = Arc::new(SharedAppState::new());
-    let router = TypeSafeServiceRouter::new(shared_state);
+    // Giả lập đối số dòng lệnh mà người dùng nhập vào terminal
+    let simulated_cli_args = vec![
+        "logpulse".to_string(),
+        "/var/log/nginx/access.log".to_string(),
+        "--verbose".to_string(),
+    ];
 
-    // 2. Thử nghiệm gọi cổng REST API (JSON Payload)
-    println!("\n[1] Xu ly qua cong REST API (JSON Text Format):");
-    let rest_response = router.handle_rest_get_product(101).unwrap();
-    println!("    - Payload REST JSON nhan duoc: {}", rest_response);
-    println!("    - Dung luong payload JSON    : {} bytes", rest_response.len());
+    // 1. Phân tích cờ dòng lệnh
+    let config = match CliConfig::parse_from_args(&simulated_cli_args) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[Lỗi tham số] {}", err);
+            std::process::exit(1);
+        }
+    };
 
-    // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
-    println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
-    let grpc_binary = router.handle_grpc_get_product(101).unwrap();
-    println!("    - Payload gRPC Binary nhan duoc (Hex): {:02X?}", grpc_binary);
-    println!("    - Dung luong payload gRPC             : {} bytes", grpc_binary.len());
+    println!("[Khởi tạo] Đang phân tích tệp: {} (Verbose: {})", config.target_file, config.verbose);
 
-    // So sánh kích thước truyền tải
-    let savings = ((rest_response.len() as f64 - grpc_binary.len() as f64)
-        / rest_response.len() as f64)
-        * 100.0;
-    println!(
-        "    ==> gRPC Protobuf tiet kiem duoc: {:.1}% bang thong mang!",
-        savings
-    );
+    // 2. Dữ liệu nhật ký mẫu mô phỏng dữ liệu đọc từ bộ nhớ đệm (buffer)
+    let sample_access_log = r#"
+        192.168.1.100 GET /index.html 200 4096
+        192.168.1.101 POST /api/v1/auth/login 200 1024
+        192.168.1.102 GET /secret/admin 403 512
+        192.168.1.100 GET /images/logo.png 200 12048
+        10.0.0.50 POST /api/v1/payment/checkout 500 256
+        192.168.1.100 POST /api/v1/comments 201 1024
+        10.0.0.51 GET /non-existent-page 404 128
+        10.0.0.50 POST /api/v1/payment/checkout 503 256
+    "#;
 
-    // 4. Giải mã ngược gói tin gRPC (Zero-Copy Validation)
-    println!("\n[3] Phuc hoi thuc the tu goi tin nhi phan gRPC:");
-    let decoded = ProtobufWireCodec::decode_product(&grpc_binary).unwrap();
-    println!("    - ID San pham : {}", decoded.id);
-    println!("    - Ten San pham: {}", decoded.name);
-    println!("    - Gia tien    : {}d", decoded.price_cents);
-    println!("    - Con hang    : {}", decoded.in_stock);
-    assert_eq!(decoded.id, 101);
+    // 3. Nạp dữ liệu vào Động cơ phân tích
+    let mut analyzer = LogAnalyzer::new();
+    analyzer.load_from_raw_text(sample_access_log);
 
-    println!("\n==================================================================");
-    println!("   XAC NHAN: MO HINH HYBRID AXUM & TONIC SAN SANG VAN HANH!     ");
-    println!("==================================================================");
+    // 4. In bảng báo cáo tổng kết ra màn hình
+    ReportPrinter::print_summary(&analyzer, &config);
+
+    // 5. Kiểm chứng tính toàn vẹn của kết quả phân tích
+    assert_eq!(analyzer.total_requests(), 8);
+    assert_eq!(analyzer.count_server_errors(), 2); // Mã 500 và 503
+    assert_eq!(analyzer.count_client_errors(), 2); // Mã 403 và 404
+    assert_eq!(analyzer.find_top_client_ip(), Some(("192.168.1.100".to_string(), 3)));
+
+    println!("\n[Thành công] Công cụ CLI đã thực thi hoàn hảo, kiểm tra Assertions vượt qua 100%!");
 }
 ```
 
 ---
 
-## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
+## Bảng tra cứu lỗi biên dịch & Cách khắc phục
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình REST API và gRPC với Axum và Tonic trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng công cụ dòng lệnh cùng trợ lý AI:
 
-| Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
-|---|---|---|---|
-| **E0277** | `the trait 'FromRequest' is not implemented for 'MyCustomType'` | Sử dụng một kiểu dữ liệu tùy chỉnh làm tham số trong hàm handler của Axum mà chưa triển khai trait trích xuất. | Bọc kiểu dữ liệu trong `Json<MyCustomType>` hoặc tự viết `impl<S> FromRequest<S> for MyCustomType`. |
-| **E0599** | `no method named 'into_response' found for type 'MyError'` | Hàm handler trả về một kiểu lỗi tùy chỉnh chưa triển khai trait `IntoResponse` của Axum. | Triển khai trait `IntoResponse` để quy định mã HTTP Status và thông báo JSON trả về khi có lỗi. |
-| **E0277** | `the trait 'Send' is not implemented for 'AppState'` | Trạng thái chia sẻ `State(state)` chứa các cấu trúc không an toàn đa luồng. | Đảm bảo `AppState` chỉ chứa các trường thỏa mãn ràng buộc `Send + Sync`, dùng `Mutex` hoặc `RwLock`. |
-| **E0382** | `use of moved value: 'payload'` | Bạn di chuyển quyền sở hữu (ownership) của `payload` nhiều lần bên trong hàm xử lý. | Sử dụng tham chiếu mượn (borrow) hoặc tạo bản sao độc lập trước khi tái sử dụng. |
+| Mã lỗi `rustc` | Nguyên nhân gốc rễ khi viết công cụ CLI | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh chuẩn kiến trúc |
+| :--- | :--- | :--- | :--- |
+| **`E0061`** | **This function takes X arguments but Y were supplied**<br>AI gọi hàm phân tích tham số nhưng quên truyền lát cắt đối số hoặc truyền sai số lượng. | ```rust // compile-fail\nCliConfig::parse_from_args();``` | Kiểm tra chữ ký hàm: `parse_from_args(args: &[String])` và truyền đúng tham chiếu lát cắt `&args`. |
+| **`E0382`** | **Use of moved value in argument loop**<br>AI lặp qua danh sách `args` bằng vòng lặp `for arg in args` (tiêu thụ quyền sở hữu) thay vì mượn tham chiếu. | ```rust // compile-fail\nlet args = vec!["a".to_string()];\nfor x in args {}\nprintln!("{:?}", args);``` | Mượn tham chiếu `for arg in &args` để không làm mất quyền sở hữu của danh sách đối số ban đầu. |
+| **`E0599`** | **No method named `parse` found for type `&str`**<br>AI ép kiểu chuỗi nhưng không cung cấp chỉ định kiểu dữ liệu đích cần chuyển đổi. | ```rust // compile-fail\nlet n = "123".parse().unwrap();``` | Khai báo rõ kiểu dữ liệu đích cần parse: `"123".parse::<u64>()` hoặc chỉ định kiểu biến `let n: u64 = ...`. |
+| **`E0308`** | **Mismatched types in CLI match expression**<br>Nhánh kiểm tra cờ dòng lệnh trả về chuỗi `String` trong khi một nhánh khác lại trả về lát cắt tĩnh `&'static str`. | ```rust // compile-fail\nlet s = if true { "a" } else { String::from("b") };``` | Thống nhất kiểu dữ liệu của tất cả các nhánh trong biểu thức điều kiện (chuyển tất cả về `String` bằng `.to_string()`). |
 
-### Ví dụ phân tích lỗi `E0599` khi thiếu triển khai IntoResponse:
+---
 
+## Tóm tắt chương & Bài tập rèn luyện
+
+### 4 Điểm cốt lõi cần ghi nhớ
+1. **Kiến trúc phân tầng bảo vệ công cụ CLI**: Tách bạch tuyệt đối giữa Tầng giao diện cờ dòng lệnh, Tầng đọc dữ liệu qua bộ nhớ đệm (buffer), Tầng tính toán logic, và Tầng định dạng bảng xuất ra màn hình.
+2. **Triệt tiêu lỗi hoảng loạn (Zero Panic)**: Một công cụ CLI đạt chuẩn sản xuất không bao giờ được phép `panic!` khi người dùng nhập sai tham số; hãy luôn dùng `Result<T, E>` để hiển thị thông báo hướng dẫn sử dụng thân thiện.
+3. **Hiệu năng xử lý dữ liệu lớn**: Đọc dữ liệu theo dòng thông qua bộ nhớ đệm giúp ứng dụng có thể xử lý tệp nhật ký hàng chục Gigabytes với lượng tiêu thụ RAM cực kỳ khiêm tốn.
+4. **Vibe Coding biến ý tưởng thành sản phẩm thực tế**: Khi kết hợp tư duy thiết kế hệ thống chặt chẽ với sự hỗ trợ sinh mã của AI và sự giám sát nghiêm khắc của Trình biên dịch Rust, bạn có thể tạo ra các công cụ phần mềm đỉnh cao với tốc độ không tưởng!
+
+### Bài tập rèn luyện tư duy
+
+**Bài tập 1 (Nâng cấp Cờ dòng lệnh cho LogPulse)**:
+Hãy bổ sung thêm cờ `--ip-filter <IP_ADDRESS>` vào cấu trúc `CliConfig`.
+Khi cờ này được kích hoạt, công cụ sẽ chỉ lọc và phân tích các yêu cầu xuất phát từ đúng địa chỉ IP được chỉ định. Hãy mô tả các bước bạn sẽ yêu cầu trợ lý AI hỗ trợ bạn triển khai tính năng này.
+
+**Bài tập 2 (Xuất báo cáo định dạng JSON)**:
+Người dùng muốn công cụ CLI hỗ trợ thêm cờ `--json` để xuất kết quả ra dạng chuỗi JSON thay vì bảng ASCII (giúp tích hợp vào hệ thống giám sát tự động).
+Không dùng thư viện bên ngoài `serde`, hãy thiết kế một hàm `to_json_string(&self) -> String` thủ công trong `LogAnalyzer` để xuất ra chuỗi JSON hợp lệ.
+
+**Bài tập 3 (Sửa lỗi phân tích chuỗi an toàn của AI)**:
+Đoạn mã phân tích thời gian phản hồi sau do AI viết bị lỗi hoảng loạn (panic) khi dòng log chứa ký tự lạ:
 ```rust
-// Đoạn mã lỗi minh họa E0599:
-struct LoiHeThong {
-    thong_diep: String,
-}
-
-// Hàm handler trả về LoiHeThong nhưng chưa có IntoResponse
-// async fn handler_loi() -> Result<&'static str, LoiHeThong> {
-//     Err(LoiHeThong { thong_diep: "Lỗi nội bộ".into() }) // LỖI E0599!
-// }
-
-// Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển đổi sang HTTP Response
-struct LoiChuan {
-    chi_tiet: &'static str,
-}
-
-impl LoiChuan {
-    fn to_http_status(&self) -> (u16, &'static str) {
-        (500, self.chi_tiet)
-    }
-}
-
-fn kiem_tra_loi() {
-    let err = LoiChuan { chi_tiet: "Lỗi kết nối database" };
-    let (code, msg) = err.to_http_status();
-    println!("Mã lỗi HTTP: {} - Nội dung: {}", code, msg);
+fn parse_response_time(raw_text: &str) -> u32 {
+    // Nếu raw_text = "N/A" hoặc bị rỗng, dòng sau sẽ làm sập chương trình!
+    raw_text.parse::<u32>().unwrap()
 }
 ```
-
----
-
-## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
-
-### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Sức mạnh Type-Safe của Axum**: Tận dụng triệt để hệ thống trích xuất (Extractors) để loại bỏ toàn bộ lỗi ép kiểu dữ liệu ngay từ cổng vào API.
-2. **Ưu thế tuyệt đối của gRPC & Tonic**: Hoạt động trên HTTP/2 Multiplexing với định dạng nhị phân Protocol Buffers, tiết kiệm băng thông và tăng tốc độ xử lý gấp 7-10 lần so với JSON.
-3. **Kiến trúc Lai (Hybrid Architecture)**: Sử dụng Axum RESTful cho giao diện công cộng bên ngoài và Tonic gRPC cho hệ thống giao tiếp vi dịch vụ nội bộ.
-4. **Tối ưu hóa Băng thông & Bộ nhớ**: Kết hợp hài hòa giữa quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm thông lượng tối đa mà không gây rò rỉ bộ nhớ.
-
-### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bổ sung Trường Timestamp và Checksum vào Protobuf)**:  
-   Mở rộng `ProtobufWireCodec` thêm trường số 5 chứa dấu mốc thời gian `created_at: u64` và mã kiểm tra tính toàn vẹn CRC32. Cập nhật hàm giải mã để tự động kiểm tra xem gói tin có bị can thiệp trên đường truyền hay không.
-2. **Bài tập 2 (Xây dựng Middleware Giới hạn Tần suất - Rate-Limiting Tower Layer)**:  
-   Thiết kế một lớp trung gian Middleware đếm số lượng yêu cầu của một Client IP. Nếu client gửi quá 100 yêu cầu trong vòng 1 giây, lập tức trả về mã lỗi HTTP `429 Too Many Requests`.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao gRPC chưa thay thế hoàn toàn REST?)**:  
-   Mặc dù gRPC vượt trội hoàn toàn về mặt tốc độ, tại sao các tập đoàn công nghệ lớn vẫn duy trì cổng REST/JSON cho người dùng đầu cuối (Client-facing)? Hãy phân tích các khía cạnh về: Tính tương thích của trình duyệt web (Browser Compatibility), khả năng debug thủ công qua `curl`, và tính thân thiện với các nhà phát triển thứ ba.
+Hãy viết lại hàm trên theo phong cách an toàn, trả về kiểu `Option<u32>` hoặc `Result<u32, &'static str>` để bảo vệ công cụ CLI không bao giờ bị dừng đột ngột.
+*(Gợi ý: Dùng `raw_text.parse::<u32>().ok()`)*.

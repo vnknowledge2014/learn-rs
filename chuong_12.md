@@ -116,7 +116,83 @@ Khi viết hàm generic, bạn có thể yêu cầu: "Kiểu `T` phải là mộ
   }
   ```
 
-### 4. Hệ thống Crate và Cây Mô-đun (Module Tree)
+### 4. Ba khái niệm nâng cao về Trait bạn sẽ cần rất sớm
+
+**a) Kiểu liên kết (Associated Type)** — khi một trait cần "mang theo" một kiểu:
+
+```rust
+pub trait Iterator {
+    type Item;                              // ← kiểu liên kết
+    fn next(&mut self) -> Option<Self::Item>;
+}
+```
+
+Khác với generic `trait Iterator<T>`, kiểu liên kết bảo đảm **mỗi kiểu chỉ cài đặt trait đúng một lần** với một `Item` duy nhất. Nhờ vậy bạn viết `v.iter().sum()` mà không phải chỉ rõ kiểu phần tử. Chương 16 sẽ khai thác triệt để điều này.
+
+**b) Cài đặt bao trùm (Blanket Implementation)** — cài trait cho *tất cả* kiểu thỏa một điều kiện:
+
+```rust
+impl<T: Display> ToString for T { /* ... */ }   // trong thư viện chuẩn
+```
+
+Chỉ một dòng, và **mọi** kiểu biết tự in ấn đều có ngay `.to_string()` miễn phí.
+
+**c) Quy tắc mồ côi (Orphan Rule)** — luật quan trọng nhất mà người mới hay vấp:
+
+> Để `impl Trait for Kieu`, bạn phải sở hữu **ít nhất một trong hai**: hoặc `Trait` là của bạn, hoặc `Kieu` là của bạn.
+
+Nghĩa là bạn **không thể** viết `impl Display for Vec<i32>` — cả `Display` lẫn `Vec` đều thuộc thư viện chuẩn. Trình biên dịch báo `E0117`.
+
+Vì sao có luật này? Vì nếu không, hai thư viện khác nhau có thể cùng cài `Display for Vec<i32>` theo hai cách khác nhau, và trình biên dịch sẽ không biết chọn cái nào — điều này phá vỡ **tính nhất quán cài đặt (coherence)**.
+
+**Lối thoát chính thức: mẫu kiểu bọc (newtype).** Bọc kiểu của người khác vào một struct của bạn, thế là bạn "sở hữu" nó:
+
+```rust
+struct DanhSachSo(Vec<i32>);            // giờ đây kiểu này là CỦA BẠN
+
+impl std::fmt::Display for DanhSachSo { // hợp lệ 100%
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.0.iter().map(|n| n.to_string())
+                              .collect::<Vec<_>>().join(", "))
+    }
+}
+```
+
+Kiểu bọc là một trong những mẫu thiết kế quan trọng nhất của Rust. Ở **Chương 18** nó giúp một kiểu số mang được hai ý nghĩa đại số khác nhau, và ở **Chương 20** nó trở thành công cụ trung tâm để mô hình hóa nghiệp vụ.
+
+### 5. Bốn trait chuyển đổi kiểu: `From`, `Into`, `TryFrom`, `TryInto`
+
+Rust chuẩn hóa việc chuyển đổi giữa các kiểu bằng bốn trait đi thành hai cặp:
+
+| Trait | Khi nào dùng | Chữ ký |
+|---|---|---|
+| **`From<T>`** | Chuyển đổi **luôn thành công** | `fn from(t: T) -> Self` |
+| `Into<U>` | Bản "lật ngược" — **tự động có** khi đã cài `From` | `fn into(self) -> U` |
+| **`TryFrom<T>`** | Chuyển đổi **có thể thất bại** | `fn try_from(t: T) -> Result<Self, Self::Error>` |
+| `TryInto<U>` | Bản lật ngược của `TryFrom` | `fn try_into(self) -> Result<U, E>` |
+
+```rust
+use std::convert::TryFrom;
+
+struct Tuoi(u8);
+
+impl TryFrom<i64> for Tuoi {
+    type Error = String;
+    fn try_from(n: i64) -> Result<Self, Self::Error> {
+        if (0..=130).contains(&n) {
+            Ok(Tuoi(n as u8))
+        } else {
+            Err(format!("Tuổi {} không hợp lệ", n))
+        }
+    }
+}
+```
+
+> **Quy tắc chọn**: nếu phép chuyển đổi **không bao giờ hỏng**, cài `From`. Nếu có thể hỏng, cài `TryFrom` — đừng bao giờ `panic!` bên trong `From`.
+>
+> Hai điểm thưởng khi cài `From`: bạn được `Into` miễn phí, **và** toán tử `?` (Chương 11) tự động dùng nó để chuyển đổi kiểu lỗi giúp bạn.
+
+### 6. Hệ thống Crate và Cây Mô-đun (Module Tree)
 
 - **Crate**: Đơn vị biên dịch nhỏ nhất của Rust. Gồm 2 loại:
   1. *Binary Crate (Crate nhị phân)*: Có tệp `src/main.rs`, biên dịch thành tệp chạy được.

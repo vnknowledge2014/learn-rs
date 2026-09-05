@@ -101,7 +101,7 @@ Mỗi bóng bán dẫn hoạt động như một van đóng mở dòng điện:
 
 CPU hoạt động theo từng nhịp tim đập đều đặn, được gọi là **Xung nhịp (Clock speed)**. Ví dụ, một con chip có tốc độ `3.5 GHz` đồng nghĩa với việc nó có thể tạo ra `3.5 tỷ nhịp đập mỗi giây`!
 
-Trong mỗi nhịp đập đó, CPU lặp đi lặp lại một chu trình gồm 3 bước cơ bản:
+Dựa trên những nhịp đập đó, CPU lặp đi lặp lại một chu trình gồm 3 bước cơ bản (gọi là **Chu trình lệnh - Instruction Cycle**):
 
 ```
   ┌──────────────────────────────────────────────────────────────────┐
@@ -119,6 +119,8 @@ Trong mỗi nhịp đập đó, CPU lặp đi lặp lại một chu trình gồm
 1. **Tìm nạp (Fetch)**: CPU nhìn vào một con trỏ chỉ thị (Instruction Pointer) để lấy dòng lệnh máy tiếp theo từ RAM nạp vào thanh ghi của mình.
 2. **Giải mã (Decode)**: Khối điều khiển bên trong CPU phân tích chuỗi nhị phân đó: "Lệnh này yêu cầu cộng hai số, hay yêu cầu nhảy sang một địa chỉ khác?".
 3. **Thực thi (Execute)**: Khối tính toán số học & logic (**ALU - Arithmetic Logic Unit**) thực hiện phép tính và ghi kết quả trở lại thanh ghi hoặc mặt bàn RAM.
+
+> **Đừng nhầm hai khái niệm này**: *một nhịp xung nhịp* (clock cycle) **không** bằng *một chu trình lệnh*. Một lệnh đơn giản có thể cần vài nhịp mới xong; ngược lại, CPU hiện đại dùng kỹ thuật **đường ống (pipeline)** và **siêu vô hướng (superscalar)** để cùng lúc xử lý nhiều lệnh ở các giai đoạn khác nhau, nên trung bình vẫn có thể hoàn thành **nhiều hơn 1 lệnh mỗi nhịp**. Con số `3.5 GHz` cho biết tốc độ nhịp đập, không phải số lệnh chạy được mỗi giây.
 
 ### 3. Không gian địa chỉ ô nhớ RAM (Memory Addresses)
 

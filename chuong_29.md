@@ -1,225 +1,295 @@
-# Chương 29: Chỉ mục hiệu năng cao B-Tree & B+ Tree (High-Performance B-Tree & B+ Tree Indexing)
+# Chương 29: Cây, Cây nhị phân tìm kiếm & Duyệt đệ quy an toàn (Trees, Binary Search Trees & Safe Recursive Traversals)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Hãy tưởng tượng một bảng cơ sở dữ liệu lưu trữ thông tin của **50 triệu công dân**. Nếu không có cấu trúc hỗ trợ tìm kiếm, mỗi khi cảnh sát muốn tra cứu thông tin của một người mang số căn cước "079...", hệ thống cơ sở dữ liệu sẽ phải quét lần lượt từ bản ghi số 1 đến bản ghi số 50 triệu (**Quét toàn bộ bảng - Full Table Scan**). Với hàng triệu lần truy cập đĩa cứng SSD/HDD, câu lệnh truy vấn có thể mất hàng chục phút để hoàn thành — một điều không thể chấp nhận được trong thế giới thực!
+Sau khi đã làm quen với các cấu trúc dữ liệu dạng tuyến tính (Linear Data Structures) như Mảng, Danh sách liên kết, Ngăn xếp và Hàng đợi, chúng ta chính thức bước vào thế giới của các cấu trúc dữ liệu dạng phân cấp (Hierarchical Data Structures): **Cấu trúc Cây (Trees)** và đỉnh cao ứng dụng là **Cây nhị phân tìm kiếm (Binary Search Tree - BST)**.
 
-Để biến thời gian chờ đợi hàng chục phút thành **vài mili-giây (thậm chí micro-giây)**, các nhà khoa học máy tính đã phát minh ra **Cấu trúc Chỉ mục (Database Indexing)**, và "vị vua không ngai" ngự trị trên hầu hết các công cụ cơ sở dữ liệu quan hệ (RDBMS) suốt nửa thế kỷ qua chính là: **Cây B-Tree và Cây B+ Tree**.
+Trong thực tế công nghiệp phần mềm, cấu trúc Cây hiện diện ở khắp mọi nơi:
+- Hệ thống tệp tin và thư mục trên ổ đĩa máy tính (thư mục gốc `root`, thư mục con, tệp tin lá).
+- Cây cú pháp trừu tượng (Abstract Syntax Tree - AST) mà trình biên dịch `rustc` phân tích mã nguồn.
+- Cây DOM trong trình duyệt web đại diện cho cấu trúc trang HTML.
+- Các chỉ mục dữ liệu siêu tốc của mọi hệ quản trị cơ sở dữ liệu hiện đại (B-Tree, B+ Tree, LSM-Tree).
 
-Tại sao chúng ta không dùng Cây nhị phân tìm kiếm (BST, Red-Black Tree hay AVL) đã học ở Topic 5 mà lại phải phát minh ra B-Tree và B+ Tree? Câu trả lời nằm ở sự khác biệt giữa **Bộ nhớ RAM** và **Khối trang 4KB trên Đĩa cứng**. Cây nhị phân chỉ có 2 nhánh con khiến cây mọc rất cao (với 50 triệu phần tử, chiều cao lên tới gần 30 tầng, tương đương 30 lần đọc đĩa chậm chạp). Ngược lại, Cây B+ Tree có hàng trăm nhánh con trên mỗi nút, nén chiều cao của cây xuống chỉ còn **3 đến 4 tầng**, khớp hoàn hảo với cấu trúc trang 4KB của bộ nhớ đệm (buffer pool)!
+Tuy nhiên, cấu trúc Cây trong Rust mang đến một vẻ đẹp kiến trúc độc đáo: Làm thế nào để một nút cha có thể sở hữu hai nút con độc lập, và làm thế nào để thực hiện các phép duyệt đệ quy (Recursive Traversals) an toàn mà không làm rò rỉ bộ nhớ hay vi phạm các quy tắc khắt khe của quyền sở hữu (ownership) và vay mượn (borrow)?
 
 Mục tiêu học tập của chương này:
-- Hiểu rõ vì sao Cây nhị phân thất bại trên đĩa cứng và lý do Cây nhiều nhánh (Multi-way Search Tree) như B-Tree và B+ Tree thống trị kiến trúc cơ sở dữ liệu.
-- Phân biệt cấu tạo cốt lõi giữa **B-Tree** và **B+ Tree**: Vì sao B+ Tree tách biệt hoàn toàn nút trong (Internal Node) và nút lá (Leaf Node).
-- Thấu hiểu sức mạnh của **Danh sách liên kết ngang giữa các nút lá** trong việc xử lý truy vấn quét dải dữ liệu (Range Queries).
-- Nắm vững cơ chế tự cân bằng và thuật toán phân tách nút (Node Splitting) khi một trang dữ liệu bị đầy.
-- Tự tay hiện thực mô hình cấu trúc nút B+ Tree trong Rust hỗ trợ tìm kiếm nhị phân và quét dải dữ liệu.
+- Nắm vững các khái niệm hình học và thuật ngữ cốt lõi của cấu trúc Cây: Gốc (Root), Nút cha (Parent), Nút con (Child), Lá (Leaf), Bậc, và Chiều cao cây.
+- Hiểu sâu sắc định nghĩa toán học và tính chất kỳ diệu của **Cây nhị phân tìm kiếm (BST)**: Khóa nhánh trái luôn nhỏ hơn khóa nút cha, khóa nhánh phải luôn lớn hơn khóa nút cha.
+- Tự tay cài đặt cấu trúc `BinarySearchTree` an toàn 100% bằng Rust sử dụng con trỏ thông minh (smart pointer) `Box<T>`.
+- Làm chủ ba phương pháp duyệt cây đệ quy kinh điển: **Tiền thứ tự (Pre-order)**, **Trung thứ tự (In-order)**, và **Hậu thứ tự (Post-order)**; giải thích vì sao duyệt In-order luôn trả về danh sách được sắp xếp tăng dần hoàn hảo.
+- Hiểu được hiện tượng cây suy biến (Degenerate Tree) và lý do các hệ cơ sở dữ liệu chuyển sang dùng Cây cân bằng nhiều nhánh.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng quan sát hệ thống biển báo trên mạng lưới đường cao tốc liên tỉnh để hình dung cách B+ Tree chỉ đường cho cơ sở dữ liệu:
+Hãy cùng hình dung cấu trúc Cây qua hai hình ảnh vô cùng quen thuộc và sinh động:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                   HÌNH TƯỢNG HÓA CHỈ MỤC B+ TREE TRÊN ĐƯỜNG CAO TỐC              │
+│                   HÌNH TƯỢNG HÓA CẤU TRÚC CÂY & CÂY NHỊ PHÂN                      │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [NÚT GỐC - TẦNG 1: BIỂN BÁO LỚN TRÊN TRỜI]                                      │
-│                ┌──────────────────────────────────────────────┐                  │
-│                │ [Khóa rẽ: 100]           [Khóa rẽ: 200]      │                  │
-│                └───────┬──────────────────────┬───────────────┘                  │
-│     Đi lối < 100       │      Từ 100 đến 200  │        Đi lối > 200              │
-│       ┌────────────────┴───────┐              └────────────────┐                 │
-│       ▼                                                        ▼                 │
-│ [NÚT TRONG - TẦNG 2]                                   [NÚT TRONG - TẦNG 2]      │
-│ ┌────────────────────────┐                             ┌───────────────────────┐ │
-│ │ [Khóa: 30]  [Khóa: 70] │                             │ [Khóa: 240] [Khóa:280]│ │
-│ └─────┬───────────┬──────┘                             └─────┬───────────┬─────┘ │
-│       ▼           ▼                                          ▼           ▼       │
-│ [NÚT LÁ - TẦNG 3: BÃI ĐỖ XE CHỨA DỮ LIỆU THỰC TẾ]                                │
-│ ┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌────────────┐ │
-│ │ [10] [20]    │ ═══► │ [30] [50]    │ ═══► │ [70] [90]    │ ═══► │ [100] [150]│ │
-│ └──────────────┘      └──────────────┘      └──────────────┘      └────────────┘ │
-│  ◄──────────────── ĐƯỜNG HẦM LIÊN KẾT XÍCH QUÉT DẢI (RANGE SCAN) ──────────────►  │
+│ [1. CÂY PHẢ HỆ GIA ĐÌNH]                                                         │
+│                                [Cụ Tổ (Root)]                                    │
+│                                      │                                           │
+│                      ┌───────────────┴───────────────┐                           │
+│                      ▼                               ▼                           │
+│                 [Bác Cả]                         [Bác Hai]                       │
+│                    │                                 │                           │
+│              ┌─────┴─────┐                     ┌─────┴─────┐                     │
+│              ▼           ▼                     ▼           ▼                     │
+│           [Cháu A]    [Cháu B]              [Cháu C]    [Cháu D]                 │
+│          (Nút Lá)    (Nút Lá)              (Nút Lá)    (Nút Lá)                  │
+│                                                                                  │
+│ [2. TỦ HỒ SƠ PHÂN LOẠI THÔNG MINH CỦA THƯ VIỆN (BST)]                            │
+│                                                                                  │
+│                          ┌───────────────────────┐                               │
+│                          │  Ngăn trung tâm: #50  │                               │
+│                          └───────────┬───────────┘                               │
+│                   Nhỏ hơn 50         │         Lớn hơn 50                        │
+│             ┌────────────────────────┴────────────────────────┐                  │
+│             ▼                                                 ▼                  │
+│   ┌───────────────────┐                             ┌───────────────────┐        │
+│   │ Ngăn trái: #30    │                             │ Ngăn phải: #70    │        │
+│   └─────────┬─────────┘                             └─────────┬─────────┘        │
+│     < 30    │    > 30                                 < 70    │    > 70          │
+│    ┌────────┴────────┐                               ┌────────┴────────┐         │
+│    ▼                 ▼                               ▼                 ▼         │
+│ [Ngăn #20]       [Ngăn #40]                      [Ngăn #60]        [Ngăn #80]    │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Hệ thống biển báo nhiều tầng trên đường cao tốc
-- Giả sử bạn lái xe tìm địa chỉ số **85 trên đại lộ**:
-  - **Tầng 1 (Nút gốc)**: Biển báo chỉ dẫn ghi hai cột mốc lớn: `[100]` và `[200]`. Vì $85 < 100$, bạn rẽ ngay vào lối đi bên trái. Bạn không cần bận tâm đến hàng triệu ngôi nhà ở lối đi giữa và lối đi bên phải!
-  - **Tầng 2 (Nút trong)**: Biển chỉ đường ghi: `[30]` và `[70]`. Vì $85 > 70$, bạn rẽ tiếp vào ngã ba bên phải.
-  - **Tầng 3 (Nút lá)**: Bạn đỗ xe vào đúng bãi đỗ xe chứa các số từ 70 đến 99. Tại đây, bạn nhìn thấy ngay ngôi nhà số 85!
-- Chỉ qua đúng **3 lần nhìn biển báo**, bạn đã tìm thấy mục tiêu giữa hàng chục triệu số nhà. Mỗi lần nhìn biển báo tương đương đúng 1 lần đọc trang 4KB từ đĩa vào RAM!
+### 1. Cây phả hệ dòng họ — Mối quan hệ phân cấp tự nhiên
+- Hãy nhìn vào cuốn gia phả của dòng họ:
+  - **Nút gốc (Root)**: Cụ tổ của dòng họ — người không có cha mẹ trong cây phả hệ này, đứng ở vị trí cao nhất.
+  - **Nút nhánh (Internal Node)**: Những người con của cụ tổ, vừa là con của cụ, vừa là cha mẹ của thế hệ tiếp theo.
+  - **Nút lá (Leaf)**: Thế hệ con cháu mới sinh ra chưa lập gia đình, nằm ở tận cùng của các nhánh cây và không có con cái nối dõi (`None`).
+- Trong cây phả hệ, quyền sở hữu (ownership) chảy một chiều từ trên xuống dưới: Cụ tổ truyền lại huyết thống và tài sản cho con cháu; con cháu không thể đồng thời làm cha mẹ của cụ tổ (không có chu trình lặp kín - Acyclic).
 
-### 2. Sự khác biệt tinh tế giữa B-Tree và B+ Tree
-- **Trong Cây B-Tree truyền thống**: Mỗi biển báo trên cao (nút trong) lại cõng theo một thùng hàng nặng trịch (dữ liệu bản ghi thực tế). Điều này khiến tấm biển báo trở nên cồng kềnh, một trang 4KB chỉ chứa được vài ba biển báo, làm cây mọc cao lên.
-- **Trong Cây B+ Tree hiện đại**: 
-  - Các nút trên cao chỉ chứa duy nhất các con số chỉ hướng (Khóa - Key) và địa chỉ trang con (`page_id`), cực kỳ thanh thoát và nhẹ nhàng. Một trang 4KB có thể nhồi nhét tới hàng trăm khóa chỉ hướng!
-  - Toàn bộ dữ liệu thực tế (Payload/Value) đều được đưa hết xuống các **Nút lá (Leaf Nodes)** ở tầng trệt.
-  - Đặc biệt nhất: Các nút lá này được nối xích với nhau bằng một **Đường hầm liên kết (Linked List)**. Khi bạn muốn tìm tất cả những người từ 20 đến 80 tuổi, bạn chỉ cần dùng cây tìm ra người 20 tuổi ở nút lá đầu tiên, sau đó cứ thế đi bộ men theo đường hầm từ lá này sang lá khác để lấy hết kết quả mà không cần phải leo ngược lên các tầng trên!
+### 2. Tủ hồ sơ phân loại thông minh (Cây nhị phân tìm kiếm - BST)
+- Hãy tưởng tượng bạn là người thủ thư quản lý hàng vạn tập hồ sơ bệnh án.
+- Tại cửa phòng, bạn đặt một ngăn bàn số 50.
+- Bạn đặt ra một quy tắc sắt đá:
+  - Bất kỳ hồ sơ nào có mã số **nhỏ hơn 50** thì bắt buộc phải chuyển sang **cánh tủ bên trái**.
+  - Bất kỳ hồ sơ nào có mã số **lớn hơn 50** thì bắt buộc phải chuyển sang **cánh tủ bên phải**.
+- Khi một bác sĩ bước vào hỏi: *"Tìm giúp tôi hồ sơ số 40!"*:
+  1. Bạn đứng ở ngăn 50. Vì $40 < 50$, bạn lập tức bước sang cánh tủ bên trái (ngăn 30). Chỉ bằng 1 bước đi, bạn đã loại bỏ hoàn toàn toàn bộ cánh tủ bên phải chứa hàng ngàn hồ sơ lớn hơn 50!
+  2. Tại ngăn 30: Vì $40 > 30$, bạn rẽ phải và tìm thấy ngay hồ sơ 40.
+- Thay vì phải đi lật từng tập hồ sơ một từ đầu đến cuối ($O(N)$), bạn chỉ cần 2 bước rẽ ($O(\log N)$) là tìm ra chính xác kết quả!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Hệ số phân nhánh (Branching Factor) và Chiều cao của cây
+### 1. Bố cục cấu trúc dữ liệu Cây trong Rust
 
-Giả sử một trang dữ liệu có kích thước chuẩn $4096 \text{ bytes}$:
-- Mỗi khóa tìm kiếm (ví dụ ID `u64`) chiếm $8 \text{ bytes}$.
-- Mỗi con trỏ trang con (`page_id`) chiếm $4 \text{ bytes}$.
-- Một cặp `(Key, Pointer)` chiếm khoảng $12 \text{ bytes}$.
-- Một nút trong của B+ Tree có thể chứa tới: $\frac{4096}{12} \approx 340 \text{ nhánh con}$!
+Một nút cây nhị phân cần lưu trữ giá trị của chính nó và hai liên kết trỏ tới cây con bên trái và cây con bên phải. Vì kích thước của một cây con là đệ quy và co giãn động trên Heap, chúng ta sử dụng con trỏ thông minh (smart pointer) `Box<T>`:
 
-Với hệ số phân nhánh (Fan-out) là $M = 300$:
-- **Tầng 1 (Gốc)**: 1 nút -> Quản lý 300 nút con.
-- **Tầng 2**: 300 nút -> Quản lý $300 \times 300 = 90.000$ nút con.
-- **Tầng 3**: $90.000$ nút -> Quản lý $90.000 \times 300 = 27.000.000$ (27 triệu bản ghi)!
-- **Tầng 4**: Quản lý tới **8,1 tỷ bản ghi** (vượt quá dân số toàn cầu)!
+```rust
+pub struct NutCay<T> {
+    pub gia_tri: T,
+    pub trai: Option<Box<NutCay<T>>>,
+    pub phai: Option<Box<NutCay<T>>>,
+}
+```
 
-> **Kết luận sống còn**: Với 50 triệu bản ghi, cây B+ Tree chỉ có chiều cao đúng **3 hoặc 4 tầng**. Nút gốc luôn luôn được ghim chặt trong bộ nhớ đệm (buffer pool) trên RAM. Do đó, để tìm kiếm bất kỳ bản ghi nào trong 50 triệu dòng, hệ thống chỉ tốn tối đa **2 đến 3 lần đọc đĩa SSD**!
+Trên Ngăn xếp (Stack), một `Option<Box<NutCay<T>>>` chỉ chiếm đúng **8 bytes** (nhờ kỹ thuật tối ưu hóa con trỏ rỗng Null Pointer Optimization của Rust: `None` tương đương giá trị nhị phân `0`, và `Some(box)` là địa chỉ con trỏ hợp lệ khác `0`). Dữ liệu thực tế của các nút được phân bổ linh hoạt trên Vùng nhớ tự do (Heap).
 
-### 2. Phép phân tách nút (Node Splitting) khi cây đầy
+```
+          [Root: 50] (Heap 0x1000)
+         /                        \
+ [Left: 30] (Heap 0x2000)     [Right: 70] (Heap 0x3000)
+     /           \
+[Leaf: 20]   [Leaf: 40]
+```
 
-Cây B+ Tree là một cây tự cân bằng hoàn hảo từ dưới lên (Bottom-up growth):
-1. Khi chèn một bản ghi mới vào nút lá, nếu nút lá chưa đầy sức chứa tối đa, ta chèn khóa vào đúng vị trí theo thứ tự tăng dần ($O(M)$).
-2. Khi nút lá bị tràn (ví dụ sức chứa tối đa là 4 phần tử nhưng phần tử thứ 5 được thêm vào):
-   - Nút lá bị chẻ đôi làm hai nửa: 2 phần tử ở lại nút cũ, 2 phần tử sang nút mới.
-   - Phần tử ở giữa được đẩy lên (Promote) làm khóa dẫn đường cho nút cha ở tầng trên.
-   - Nối con trỏ `next_leaf` từ nút cũ sang nút mới để duy trì chuỗi quét dải liên tục.
-3. Nếu nút cha cũng bị tràn, quá trình phân tách tiếp tục lan truyền ngược lên trên. Nếu nút gốc bị phân tách, một nút gốc mới được sinh ra và chiều cao của toàn bộ cây tăng lên 1 tầng.
+### 2. Ba phương pháp duyệt cây đệ quy (Recursive Traversals)
+
+Thứ tự xử lý một nút cha so với các nút con của nó quyết định chiến lược duyệt cây:
+
+1. **Duyệt Trung thứ tự (In-order: Trái ➔ Gốc ➔ Phải)**:
+   - Đi hết sang nhánh bên trái -> Xử lý nút hiện tại -> Đi sang nhánh bên phải.
+   - **Đặc tính thần kỳ**: Đối với Cây nhị phân tìm kiếm (BST), duyệt In-order luôn luôn thăm các phần tử theo thứ tự **tăng dần hoàn hảo** ($20 \rightarrow 30 \rightarrow 40 \rightarrow 50 \rightarrow 70$).
+2. **Duyệt Tiền thứ tự (Pre-order: Gốc ➔ Trái ➔ Phải)**:
+   - Xử lý nút hiện tại trước tiên -> Đi sang nhánh trái -> Đi sang nhánh phải.
+   - Ứng dụng: Sao chép nguyên vẹn cấu trúc cây, hoặc lưu cây xuống đĩa (Serialize).
+3. **Duyệt Hậu thứ tự (Post-order: Trái ➔ Phải ➔ Gốc)**:
+   - Đi hết nhánh trái -> Đi hết nhánh phải -> Mới xử lý nút hiện tại sau cùng.
+   - Ứng dụng: Tính toán dung lượng thư mục (muốn biết thư mục cha nặng bao nhiêu phải cộng tổng dung lượng các tệp con trước), hoặc giải phóng bộ nhớ từ dưới lên.
+
+### 3. Gấp một cái cây: `fold` không chỉ dành cho danh sách
+
+Ở Chương 16 bạn đã dùng `fold` để cô đặc một danh sách thành một giá trị. Nhưng ý tưởng "gấp" tổng quát hơn thế nhiều: **bất kỳ cấu trúc dữ liệu nào duyệt được đều gấp được** — kể cả cây.
+
+```rust
+impl<T: Copy> NutCay<T> {
+    /// Gấp cây theo thứ tự trung thứ tự (trái → gốc → phải).
+    /// `f` nhận (giá trị tích lũy, giá trị nút) và trả về giá trị tích lũy mới.
+    pub fn gap<A>(&self, khoi_tao: A, f: &impl Fn(A, T) -> A) -> A {
+        let mut acc = khoi_tao;
+        if let Some(trai) = &self.trai {
+            acc = trai.gap(acc, f);
+        }
+        acc = f(acc, self.gia_tri);
+        if let Some(phai) = &self.phai {
+            acc = phai.gap(acc, f);
+        }
+        acc
+    }
+}
+```
+
+Một hàm `gap` duy nhất giờ đây thay thế cho hàng loạt hàm chuyên biệt:
+
+```rust
+let tong  = cay.gap(0i64, &|a, x| a + x);            // tính tổng
+let dem   = cay.gap(0usize, &|a, _| a + 1);          // đếm số nút
+let lon   = cay.gap(i64::MIN, &|a, x| a.max(x));     // tìm giá trị lớn nhất
+let ds    = cay.gap(Vec::new(), &|mut a, x| { a.push(x); a }); // xuất ra danh sách đã sắp xếp
+```
+
+Khả năng "gấp được" này có tên chính thức là **Foldable**, và giá trị được tính ra bằng cách gấp một cấu trúc đệ quy gọi là một **catamorphism** (phép gấp). Bạn sẽ gặp lại toàn bộ nhóm khái niệm này ở Chương 18 và 19.
+
+> **Ghi nhớ thiết kế**: khi bạn thấy mình sắp viết hàm thứ tư kiểu `tinh_tong_cay`, `dem_nut_cay`, `tim_max_cay`… hãy dừng lại và viết **một** hàm `gap` duy nhất. Ba hàm kia sẽ tự sinh ra từ nó.
+
+### 4. Vấn đề Cây suy biến (Degenerate Tree)
+
+Nếu bạn thêm các số vào BST theo thứ tự đã được sắp xếp sẵn: `[10, 20, 30, 40, 50]`:
+- 20 lớn hơn 10 -> nằm bên phải 10.
+- 30 lớn hơn 20 -> nằm bên phải 20.
+- Chiếc cây bị "lệch hẳn về một bên", biến tướng thành một Danh sách liên kết thẳng đuột!
+- Lúc này, chiều cao cây bằng $N$, và tốc độ tìm kiếm bị tụt dốc thảm hại từ $O(\log N)$ về lại $O(N)$.
+- Đây chính là lý do vì sao trong các chương sau về Cơ sở dữ liệu (Topic 6), chúng ta sẽ khám phá **Cây B-Tree và B+ Tree** — những cấu trúc cây tự động tái cân bằng (Self-balancing) để luôn giữ vững tốc độ tìm kiếm siêu tốc.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một bản thiết kế mã nguồn Rust hoàn chỉnh, độc lập và mang tính thực chiến cao. Chương trình cài đặt cấu trúc Cây B+ Tree đơn giản hóa (In-Memory B+ Tree Node Model), hỗ trợ thao tác tìm kiếm điểm (Point Query) và quét dải dữ liệu (Range Scan):
+Dưới đây là một chương trình Rust hoàn chỉnh cài đặt cấu trúc Cây nhị phân tìm kiếm (Binary Search Tree - BST), hỗ trợ thêm phần tử mới, tìm kiếm theo khóa, duyệt In-order tăng dần, và tính chiều cao của cây:
 
 ```rust
-/// Dung lượng tối đa của một nút trước khi bị phân tách (đơn giản hóa để minh họa)
-pub const SUC_CHUA_NUT: usize = 3;
-
-/// Cấu tạo của một Nút trong cây B+ Tree
-#[derive(Debug, Clone)]
-pub enum BPlusNode<K: Ord + Copy, V: Clone> {
-    /// NÚT TRONG (Internal Node): Chỉ chứa Khóa chỉ dẫn và con trỏ tới các nút con
-    Internal {
-        keys: Vec<K>,
-        children: Vec<Box<BPlusNode<K, V>>>,
-    },
-    /// NÚT LÁ (Leaf Node): Chứa Khóa và Dữ liệu thực tế
-    Leaf {
-        keys: Vec<K>,
-        values: Vec<V>,
-    },
+/// Cấu trúc một nút bên trong Cây nhị phân tìm kiếm
+#[derive(Debug)]
+pub struct NutCay<T> {
+    pub gia_tri: T,
+    pub trai: Option<Box<NutCay<T>>>,
+    pub phai: Option<Box<NutCay<T>>>,
 }
 
-impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
-    /// Tạo một nút lá mới tinh
-    pub fn new_leaf() -> Self {
-        BPlusNode::Leaf {
-            keys: Vec::new(),
-            values: Vec::new(),
-        }
-    }
-
-    /// Tìm kiếm giá trị theo khóa trong cây con bắt đầu từ nút này
-    pub fn search(&self, key: &K) -> Option<&V> {
-        match self {
-            BPlusNode::Leaf { keys, values } => {
-                // Tại nút lá: Dùng tìm kiếm nhị phân trên mảng khóa đã sắp xếp
-                match keys.binary_search(key) {
-                    Ok(idx) => Some(&values[idx]),
-                    Err(_) => None,
-                }
-            }
-            BPlusNode::Internal { keys, children } => {
-                // Tại nút trong: Tìm nhánh con thích hợp để đi xuống
-                // Nhánh con thứ i quản lý các khóa nhỏ hơn keys[i]
-                let mut idx = 0;
-                while idx < keys.len() && *key >= keys[idx] {
-                    idx += 1;
-                }
-                children[idx].search(key)
-            }
-        }
-    }
-
-    /// Quét dải dữ liệu: Thu thập tất cả các giá trị có khóa trong khoảng [min_key, max_key]
-    pub fn range_scan(&self, min_key: &K, max_key: &K, ket_qua: &mut Vec<(K, V)>) {
-        match self {
-            BPlusNode::Leaf { keys, values } => {
-                for (i, &k) in keys.iter().enumerate() {
-                    if k >= *min_key && k <= *max_key {
-                        ket_qua.push((k, values[i].clone()));
-                    }
-                }
-            }
-            BPlusNode::Internal { keys, children } => {
-                for (i, child) in children.iter().enumerate() {
-                    // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có giao thoa
-                    let gioi_han_duoi_thoa = if i == 0 { true } else { keys[i - 1] <= *max_key };
-                    let gioi_han_tren_thoa = if i == keys.len() { true } else { keys[i] >= *min_key };
-                    if gioi_han_duoi_thoa && gioi_han_tren_thoa {
-                        child.range_scan(min_key, max_key, ket_qua);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Thêm một cặp (key, value) vào nút lá đơn giản hóa
-    pub fn insert_non_full_leaf(&mut self, key: K, value: V) -> bool {
-        match self {
-            BPlusNode::Leaf { keys, values } => {
-                match keys.binary_search(&key) {
-                    Ok(idx) => {
-                        // Khóa đã tồn tại -> Cập nhật đè giá trị mới
-                        values[idx] = value;
-                        false
-                    }
-                    Err(idx) => {
-                        // Chèn vào đúng vị trí để duy trì thứ tự sắp xếp
-                        keys.insert(idx, key);
-                        values.insert(idx, value);
-                        true
-                    }
-                }
-            }
-            _ => panic!("Chỉ được gọi trên nút lá"),
+impl<T> NutCay<T> {
+    pub fn new(gia_tri: T) -> Self {
+        NutCay {
+            gia_tri,
+            trai: None,
+            phai: None,
         }
     }
 }
 
-/// Cấu trúc cây B+ Tree hoàn chỉnh
-pub struct BPlusTree<K: Ord + Copy, V: Clone> {
-    pub root: Box<BPlusNode<K, V>>,
-    pub total_records: usize,
+/// Cấu trúc Cây nhị phân tìm kiếm hoàn chỉnh
+#[derive(Debug)]
+pub struct CayNhiPhanTimKiem<T: Ord> {
+    goc: Option<Box<NutCay<T>>>,
+    so_luong: usize,
 }
 
-impl<K: Ord + Copy, V: Clone> BPlusTree<K, V> {
+impl<T: Ord> CayNhiPhanTimKiem<T> {
+    /// Khởi tạo một cây BST rỗng
     pub fn new() -> Self {
-        Self {
-            root: Box::new(BPlusNode::new_leaf()),
-            total_records: 0,
+        CayNhiPhanTimKiem {
+            goc: None,
+            so_luong: 0,
         }
     }
 
-    /// Tìm kiếm một khóa bất kỳ
-    pub fn get(&self, key: &K) -> Option<&V> {
-        self.root.search(key)
+    /// Thêm một phần tử vào cây - Duy trì tính chất BST
+    pub fn them(&mut self, gia_tri: T) {
+        if Self::them_de_quy(&mut self.goc, gia_tri) {
+            self.so_luong += 1;
+        }
     }
 
-    /// Quét các bản ghi trong khoảng [min_key, max_key]
-    pub fn get_range(&self, min_key: K, max_key: K) -> Vec<(K, V)> {
+    fn them_de_quy(nut: &mut Option<Box<NutCay<T>>>, gia_tri: T) -> bool {
+        match nut {
+            // Khi tìm thấy vị trí lá trống thích hợp: Tạo Box mới
+            None => {
+                *nut = Some(Box::new(NutCay::new(gia_tri)));
+                true
+            }
+            Some(hien_tai) => {
+                if gia_tri < hien_tai.gia_tri {
+                    Self::them_de_quy(&mut hien_tai.trai, gia_tri)
+                } else if gia_tri > hien_tai.gia_tri {
+                    Self::them_de_quy(&mut hien_tai.phai, gia_tri)
+                } else {
+                    // Giá trị đã tồn tại trong cây (không cho phép trùng lặp)
+                    false
+                }
+            }
+        }
+    }
+
+    /// Tìm kiếm một giá trị trong cây - Tốc độ O(log N)
+    pub fn chua_khoa(&self, gia_tri: &T) -> bool {
+        let mut con_tro = &self.goc;
+        while let Some(nut) = con_tro {
+            if gia_tri == &nut.gia_tri {
+                return true;
+            } else if gia_tri < &nut.gia_tri {
+                con_tro = &nut.trai;
+            } else {
+                con_tro = &nut.phai;
+            }
+        }
+        false
+    }
+
+    /// Duyệt cây theo Trung thứ tự (In-order: Trái -> Gốc -> Phải)
+    /// Trả về một Vector chứa các tham chiếu mượn được sắp xếp tăng dần!
+    pub fn duyet_in_order(&self) -> Vec<&T> {
         let mut ket_qua = Vec::new();
-        self.root.range_scan(&min_key, &max_key, &mut ket_qua);
+        Self::thu_thap_in_order(&self.goc, &mut ket_qua);
         ket_qua
     }
+
+    fn thu_thap_in_order<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>) {
+        if let Some(hien_tai) = nut {
+            // 1. Duyệt toàn bộ cây con bên trái
+            Self::thu_thap_in_order(&hien_tai.trai, ket_qua);
+            // 2. Thu thập nút hiện tại
+            ket_qua.push(&hien_tai.gia_tri);
+            // 3. Duyệt toàn bộ cây con bên phải
+            Self::thu_thap_in_order(&hien_tai.phai, ket_qua);
+        }
+    }
+
+    /// Tính chiều cao của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
+    pub fn tinh_chieu_cao(&self) -> usize {
+        Self::chieu_cao_de_quy(&self.goc)
+    }
+
+    fn chieu_cao_de_quy(nut: &Option<Box<NutCay<T>>>) -> usize {
+        match nut {
+            None => 0,
+            Some(hien_tai) => {
+                let cao_trai = Self::chieu_cao_de_quy(&hien_tai.trai);
+                let cao_phai = Self::chieu_cao_de_quy(&hien_tai.phai);
+                1 + cao_trai.max(cao_phai)
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.so_luong
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.so_luong == 0
+    }
 }
 
-impl<K: Ord + Copy, V: Clone> Default for BPlusTree<K, V> {
+impl<T: Ord> Default for CayNhiPhanTimKiem<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -227,62 +297,54 @@ impl<K: Ord + Copy, V: Clone> Default for BPlusTree<K, V> {
 
 fn main() {
     println!("============================================================");
-    println!("     MÔ HÌNH CHỈ MỤC HIỆU NĂNG CAO B-TREE & B+ TREE         ");
+    println!("    HIỆN THỰC CÂY NHỊ PHÂN TÌM KIẾM (BST) AN TOÀN TRONG RUST");
     println!("============================================================");
 
-    // Xây dựng một mô hình B+ Tree thủ công với 1 nút gốc (Internal) và 2 nút lá (Leaf)
-    // Cấu trúc:
-    //                    [Gốc: Khóa rẽ = 50]
-    //                   /                   \
-    //   [Lá 1: (10, "A"), (30, "B")]     [Lá 2: (50, "C"), (70, "D"), (90, "E")]
-    let mut la_trai = BPlusNode::new_leaf();
-    la_trai.insert_non_full_leaf(10, "Alice (Hà Nội)");
-    la_trai.insert_non_full_leaf(30, "Bình (Đà Nẵng)");
+    let mut cay_bst: CayNhiPhanTimKiem<i32> = CayNhiPhanTimKiem::new();
 
-    let mut la_phai = BPlusNode::new_leaf();
-    la_phai.insert_non_full_leaf(50, "Cường (TP.HCM)");
-    la_phai.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
-    la_phai.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
-
-    let nut_goc = BPlusNode::Internal {
-        keys: vec![50],
-        children: vec![Box::new(la_trai), Box::new(la_phai)],
-    };
-
-    let b_tree = BPlusTree {
-        root: Box::new(nut_goc),
-        total_records: 5,
-    };
-
-    println!("[1] Kiểm tra tính năng tìm kiếm điểm (Point Search):");
-    let ket_qua_30 = b_tree.get(&30);
-    println!("    - Tra cứu khóa 30: {:?}", ket_qua_30);
-    assert_eq!(ket_qua_30, Some(&"Bình (Đà Nẵng)"));
-
-    let ket_qua_70 = b_tree.get(&70);
-    println!("    - Tra cứu khóa 70: {:?}", ket_qua_70);
-    assert_eq!(ket_qua_70, Some(&"Dũng (Cần Thơ)"));
-
-    let ket_qua_99 = b_tree.get(&99);
-    println!("    - Tra cứu khóa 99 (không tồn tại): {:?}", ket_qua_99);
-    assert_eq!(ket_qua_99, None);
-
-    println!("\n[2] Kiểm tra tính năng quét dải dữ liệu (Range Scan):");
-    println!("    - Tìm kiếm các bản ghi có khóa từ 25 đến 75:");
-    let danh_sach_dai = b_tree.get_range(25, 75);
-    for (k, v) in &danh_sach_dai {
-        println!("      -> Khóa {}: {}", k, v);
+    // 1. Thêm các phần tử vào cây
+    // Cấu trúc dự kiến:
+    //          50
+    //        /    \
+    //       30     70
+    //      /  \   /  \
+    //     20  40 60  80
+    println!("[1] Nạp các giá trị vào Cây nhị phân tìm kiếm:");
+    let cac_so = [50, 30, 70, 20, 40, 60, 80];
+    for &so in &cac_so {
+        cay_bst.them(so);
+        print!("{} ", so);
     }
+    println!("\n    - Tổng số nút trong cây: {}", cay_bst.len());
+    assert_eq!(cay_bst.len(), 7);
 
-    // Kết quả kỳ vọng: Khóa 30, 50, 70
-    assert_eq!(danh_sach_dai.len(), 3);
-    assert_eq!(danh_sach_dai[0].0, 30);
-    assert_eq!(danh_sach_dai[1].0, 50);
-    assert_eq!(danh_sach_dai[2].0, 70);
-    println!("    => Quét dải dữ liệu hoàn tất thành công vượt trội!");
+    // 2. Kiểm tra chiều cao của cây
+    let chieu_cao = cay_bst.tinh_chieu_cao();
+    println!("\n[2] Chiều cao của cây: {}", chieu_cao);
+    assert_eq!(chieu_cao, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
+
+    // 3. Kiểm tra tính năng tìm kiếm O(log N)
+    println!("\n[3] Kiểm tra tính năng tìm kiếm nhị phân:");
+    println!("    - Tìm số 40: {}", cay_bst.chua_khoa(&40));
+    println!("    - Tìm số 99: {}", cay_bst.chua_khoa(&99));
+    assert!(cay_bst.chua_khoa(&40));
+    assert!(!cay_bst.chua_khoa(&99));
+
+    // 4. Duyệt In-order xác nhận dãy số tăng dần hoàn hảo
+    println!("\n[4] Duyệt cây In-order (Trái -> Gốc -> Phải):");
+    let danh_sach_tang_dan = cay_bst.duyet_in_order();
+    print!("    - Kết quả in: ");
+    for &gia_tri in &danh_sach_tang_dan {
+        print!("{} ", gia_tri);
+    }
+    println!();
+
+    let ky_vong = vec![&20, &30, &40, &50, &60, &70, &80];
+    assert_eq!(danh_sach_tang_dan, ky_vong);
+    println!("    => Dãy số được sắp xếp tăng dần hoàn hảo đúng theo lý thuyết BST!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 29               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 25               ");
     println!("============================================================");
 }
 ```
@@ -291,59 +353,128 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch điển hình khi xây dựng cấu trúc cây B-Tree và B+ Tree trong Rust:
+Khi làm việc với các cấu trúc cây đệ quy trong Rust, lập trình viên thường xuyên đối mặt với các lỗi liên quan đến trait bounds và mượn lồng nhau:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0507** | `cannot move out of a shared reference` | Bạn cố lấy một nút con ra khỏi `children[idx]` bằng cú pháp gán trực tiếp trong khi chỉ có tham chiếu mượn `&self`. | Dùng tham chiếu mượn `&children[idx]` khi duyệt, hoặc dùng `.remove()` nếu hàm có quyền sở hữu (ownership) khả biến `&mut self`. |
-| **E0277** | `the trait bound 'K: Ord' is not satisfied` | B+ Tree bắt buộc các khóa phải có thứ tự sắp xếp tuyệt đối để chia nhánh nhị phân. Nếu kiểu khóa `K` chưa cài trait `Ord`, trình biên dịch sẽ chặn lại. | Bổ sung ràng buộc trait: `impl<K: Ord, V> ...`. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố chèn thêm khóa vào nút lá trong khi biến cây hoặc nút được khai báo bằng `let` bất biến. | Khai báo với từ khóa `let mut`. |
-| **E0004** | `non-exhaustive patterns: 'Internal { .. }' not covered` | Bạn dùng khối lệnh `match` trên enum `BPlusNode` nhưng chỉ xử lý trường hợp `Leaf` mà bỏ sót trường hợp `Internal`. | Bổ sung đầy đủ các nhánh `match` cho cả hai biến thể của enum. |
+| **E0277** | `the trait bound 'T: Ord' is not satisfied` | Cây nhị phân tìm kiếm bắt buộc các phần tử phải so sánh được với nhau (`<`, `>`, `==`). Nếu kiểu `T` không thỏa mãn trait `Ord`, phép so sánh sẽ bị cấm. | Bổ sung ràng buộc trait: `impl<T: Ord> CayNhiPhanTimKiem<T>`. Nếu là struct tự tạo, thêm `#[derive(Ord, PartialOrd, Eq, PartialEq)]`. |
+| **E0502** | `cannot borrow 'hien_tai.trai' as mutable more than once at a time` | Trong thân hàm đệ quy, bạn vừa mượn nhánh trái làm mutable, vừa cố mượn cả nút cha hoặc nhánh phải trong cùng một biểu thức. | Tách rời các bước rẽ nhánh điều kiện `if/else` để mỗi nhánh mượn nằm trong một khối lệnh độc lập. |
+| **E0106** | `missing lifetime specifier` | Khi viết hàm duyệt cây trả về mảng tham chiếu mượn `Vec<&T>`, bạn quên gắn nhãn thời gian sống (lifetime) liên kết giữa cây mượn và danh sách trả về. | Khai báo thời gian sống rõ ràng: `fn thu_thap<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>)`. |
+| **E0382** | `use of moved value: 'gia_tri'` | Trong hàm đệ quy, bạn truyền `gia_tri` bằng giá trị (by value) vào nhánh trái, sau đó lại dùng lại nó trong nhánh phải. | Nếu kiểu `T` không phải là `Copy`, hãy chỉ di chuyển `gia_tri` khi chắc chắn rẽ vào nhánh đó, hoặc truyền mượn tham chiếu `&T` khi tìm kiếm. |
 
-### Ví dụ phân tích lỗi `E0507` khi truy xuất nút con trong B+ Tree:
+### Ví dụ phân tích lỗi `E0277` và cách gắn ràng buộc `Ord`:
 
 ```rust
-enum NutDemo {
-    Leaf(Vec<i32>),
-    Internal(Vec<Box<NutDemo>>),
+// Định nghĩa một kiểu dữ liệu tùy chỉnh chưa có khả năng so sánh
+struct ToaDo {
+    x: i32,
+    y: i32,
 }
 
-// Đoạn mã lỗi minh họa E0507: Cố đoạt quyền sở hữu con trỏ Box từ tham chiếu mượn
-fn lay_con_loi(nut: &NutDemo) {
-    match nut {
-        NutDemo::Internal(children) => {
-            // let con_dau = children[0]; // LỖI E0507: cannot move out of indexed content!
-        }
-        _ => {}
-    }
+// Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
+fn thu_nghiem_loi_bst() {
+    // let mut cay = CayNhiPhanTimKiem::new();
+    // cay.them(ToaDo { x: 1, y: 2 }); // LỖI E0277: ToaDo không thỏa mãn trait Ord!
 }
 
-// Cách sửa chữa đúng chuẩn: Mượn tham chiếu &Box hoặc mượn trực tiếp &NutDemo
-fn lay_con_dung(nut: &NutDemo) {
-    match nut {
-        NutDemo::Internal(children) => {
-            let con_dau: &NutDemo = &children[0]; // Chỉ mượn, không di chuyển quyền sở hữu!
-            println!("Đã mượn nút con thành công.");
-        }
-        _ => {}
-    }
+// Cách sửa chữa đúng chuẩn: Derive các trait so sánh cần thiết
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ToaDoChuan {
+    x: i32,
+    y: i32,
+}
+
+fn thu_nghiem_dung_bst() {
+    let mut cay = CayNhiPhanTimKiem::new();
+    cay.them(ToaDoChuan { x: 10, y: 20 });
+    cay.them(ToaDoChuan { x: 5, y: 15 });
+    println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", cay.len());
 }
 ```
 
 ---
 
+
+
+---
+
+## Kiểm thử tự động (Automated Tests)
+
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+
+```rust
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    fn cay_mau() -> CayNhiPhanTimKiem<i32> {
+        let mut c = CayNhiPhanTimKiem::new();
+        for x in [50, 30, 70, 20, 40, 60, 80] {
+            c.them(x);
+        }
+        c
+    }
+
+    #[test]
+    fn duyet_in_order_luon_tang_dan() {
+        let c = cay_mau();
+        let so: Vec<i32> = c.duyet_in_order().into_iter().copied().collect();
+        assert_eq!(so, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
+    }
+
+    #[test]
+    fn chua_khoa() {
+        let c = cay_mau();
+        assert!(c.chua_khoa(&40));
+        assert!(c.chua_khoa(&80));
+        assert!(!c.chua_khoa(&99));
+        assert!(!c.chua_khoa(&35));
+    }
+
+    #[test]
+    fn khong_chen_trung_lap() {
+        let mut c = CayNhiPhanTimKiem::new();
+        c.them(5);
+        c.them(5); // giá trị trùng bị bỏ qua
+        c.them(5);
+        assert_eq!(c.len(), 1);
+    }
+
+    #[test]
+    fn cay_can_bang_thap_hon_cay_suy_bien() {
+        let mut suy_bien = CayNhiPhanTimKiem::new();
+        for x in 1..=7 {
+            suy_bien.them(x); // chèn tuần tự -> suy biến thành danh sách
+        }
+        assert_eq!(suy_bien.tinh_chieu_cao(), 7);
+        assert_eq!(cay_mau().tinh_chieu_cao(), 3); // cân đối -> ~log N
+    }
+
+    #[test]
+    fn cay_rong() {
+        let c: CayNhiPhanTimKiem<i32> = CayNhiPhanTimKiem::new();
+        assert!(c.is_empty());
+        assert_eq!(c.tinh_chieu_cao(), 0);
+        assert_eq!(c.duyet_in_order().len(), 0);
+    }
+}
+```
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Khắc phục điểm yếu đĩa cứng**: B-Tree và B+ Tree có hệ số phân nhánh lớn (hàng trăm nhánh), nén chiều cao của cây xuống chỉ còn 3-4 tầng, giảm số lần truy xuất đĩa xuống mức tối thiểu.
-2. **B-Tree vs B+ Tree**: B+ Tree chỉ lưu khóa ở các nút trong và dồn toàn bộ dữ liệu xuống nút lá, giúp các nút trong chứa được nhiều khóa hơn và các nút lá có thể nối xích với nhau.
-3. **Thần tốc quét dải (Range Scan)**: Nhờ danh sách liên kết ngang giữa các nút lá, câu lệnh `BETWEEN A AND B` diễn ra cực nhanh bằng cách duyệt tuần tự trên các lá mà không cần quay lại nút gốc.
-4. **Phân tách nút tự cân bằng**: Cây B+ Tree luôn phát triển từ dưới lên thông qua cơ chế chẻ đôi nút khi đầy, đảm bảo mọi nút lá luôn nằm trên cùng một độ sâu (cân bằng 100%).
+1. **Bản chất của BST**: Mọi phần tử nhánh trái đều nhỏ hơn cha, mọi phần tử nhánh phải đều lớn hơn cha. Nhờ đó, thao tác tìm kiếm đạt hiệu năng kỳ diệu $O(\log N)$.
+2. **Con trỏ thông minh `Box`**: Là chìa khóa giải quyết bài toán kích thước đệ quy vô hạn của các nút cây trên Ngăn xếp (Stack).
+3. **Duyệt In-order thần kỳ**: Thăm cây theo thứ tự Trái -> Gốc -> Phải luôn mang lại danh sách các phần tử được sắp xếp tăng dần hoàn hảo.
+4. **Thời gian sống trong duyệt cây**: Khi trả về danh sách các tham chiếu mượn từ cây (`Vec<&T>`), thời gian sống (lifetime) của các tham chiếu bị ràng buộc chặt chẽ vào thời gian sống của bản thân chiếc cây đó.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Tính số lần I/O đĩa)**:  
-   Một bảng cơ sở dữ liệu có 100.000.000 (100 triệu) bản ghi. Sử dụng chỉ mục B+ Tree với hệ số phân nhánh trung bình $M = 200$. Hãy tính xem cây B+ Tree này có chiều cao bao nhiêu tầng? Nếu nút gốc đã được nạp sẵn vào RAM, ta cần đọc đĩa tối đa bao nhiêu lần để tìm thấy một bản ghi?
-2. **Bài tập 2 (Xác thực tính chất B+ Tree)**:  
-   Viết một hàm kiểm thử kiểm tra xem toàn bộ các khóa trong mảng `keys` của một nút lá có luôn luôn được sắp xếp theo thứ tự tăng dần hay không (`keys.windows(2).all(|w| w[0] < w[1])`).
-3. **Bài tập 3 (Tư duy thiết kế)**:  
-   Tại sao các cơ sở dữ liệu lại khuyên người dùng nên chọn Khóa chính (Primary Key) là số nguyên tự tăng (`AUTOINCREMENT` / `SERIAL` / `UUID v7`) thay vì một chuỗi ngẫu nhiên (`UUID v4`) khi sử dụng chỉ mục B+ Tree? Hiện tượng gì sẽ xảy ra với các nút lá nếu ta chèn các khóa ngẫu nhiên liên tục?
+1. **Bài tập 1 (Tìm giá trị nhỏ nhất và lớn nhất)**:  
+   Viết hai phương thức cho `CayNhiPhanTimKiem`:
+   - `fn tim_min(&self) -> Option<&T>`: Lần theo nhánh trái tận cùng để tìm giá trị nhỏ nhất.
+   - `fn tim_max(&self) -> Option<&T>`: Lần theo nhánh phải tận cùng để tìm giá trị lớn nhất.  
+   *(Giải thích: Tại sao hai thao tác này chỉ tốn thời gian tương đương chiều cao của cây?)*
+2. **Bài tập 2 (Đếm số nút lá)**:  
+   Viết phương thức `fn dem_nut_la(&self) -> usize` đếm số lượng nút trong cây không có bất kỳ nút con nào (`trai == None && phai == None`).
+3. **Bài tập 3 (Tư duy mở rộng)**:  
+   Điều gì sẽ xảy ra nếu bạn nạp lần lượt các số `[1, 2, 3, 4, 5, 6, 7]` vào cây BST này? Chiều cao của cây sẽ là bao nhiêu? Làm thế nào để cấu trúc B-Tree trong hệ quản trị cơ sở dữ liệu ngăn chặn được hiện tượng suy biến này?

@@ -1,292 +1,244 @@
-# Chương 26: Bảng băm, Đồ thị & Các thuật toán tìm kiếm, sắp xếp cốt lõi (Hash Tables, Graphs & Core Search/Sort Algorithms)
+# Chương 26: Lưu trữ vùng nhớ liền kề: Mảng cố định, Vector động và Lát cắt (Contiguous Memory: Arrays, Vectors & Slices)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn đến với chương kết thúc của **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust**! Đến thời điểm này, bạn đã nắm vững từ các cấu trúc tuyến tính (Mảng, Vector, Danh sách liên kết, Ngăn xếp, Hàng đợi) đến các cấu trúc phân cấp cây nhị phân. Trong chương này, chúng ta sẽ làm chủ hai cấu trúc dữ liệu và giải thuật tối thượng của ngành khoa học máy tính: **Bảng băm (Hash Table)** và **Đồ thị (Graph)**, cùng hai thuật toán kinh điển đi kèm là **Tìm kiếm theo chiều rộng (BFS)** và **Sắp xếp nhanh (Quicksort)**.
+Trong lập trình hệ thống hiệu năng cao, cách dữ liệu được sắp đặt vật lý trên các thanh RAM đóng vai trò quyết định đến tốc độ của toàn bộ ứng dụng. Một thuật toán dù có độ phức tạp lý thuyết là $O(N)$ nhưng nếu dữ liệu bị xé nhỏ và ném rải rác khắp nơi trong bộ nhớ sẽ chạy chậm hơn gấp hàng chục lần so với một thuật toán cũng $O(N)$ nhưng dữ liệu nằm san sát nhau trên cùng một dải ô nhớ liên tục. Hiện tượng này bắt nguồn từ tính chất phần cứng vi xử lý CPU: **Tính cục bộ không gian (Spatial Locality)** và cơ chế nạp trước của bộ nhớ đệm (buffer cache prefetching).
 
-Nếu như Mảng cho phép truy cập $O(1)$ nhưng phải thông qua số thứ tự, thì Bảng băm (`HashMap`) mang lại phép màu: **Tra cứu dữ liệu bất kỳ bằng từ khóa (Key) bằng chữ trong thời gian tức thì $O(1)$**! Bảng băm là trái tim của mọi hệ thống bộ nhớ đệm (buffer cache), hệ thống từ điển, và cơ sở dữ liệu khóa-giá trị (Key-Value Store).
-
-Trong khi đó, Đồ thị (Graph) là mô hình mạnh mẽ nhất để biểu diễn các mối quan hệ đa chiều trong thế giới thực: Mạng xã hội kết nối bạn bè, bản đồ giao thông đường bộ, mạng lưới các máy chủ Internet, hay chuỗi phụ thuộc giữa các gói thư viện (crate dependencies) trong Cargo. Chúng ta sẽ khám phá cách biểu diễn đồ thị cực kỳ thanh lịch và an toàn bằng Rust mà không sợ vướng vào "cuộc chiến" với trình kiểm tra mượn (Borrow Checker).
+Để khai thác tối đa sức mạnh phần cứng mà vẫn đảm bảo 100% an toàn bộ nhớ (không lo tràn bộ nhớ đệm hay truy cập ngoài biên), Rust cung cấp ba cấu trúc dữ liệu lưu trữ liền kề cốt lõi:
+1. **Mảng cố định (Array - `[T; N]`)**: Kích thước cố định từ lúc biên dịch, nằm trực tiếp trên Ngăn xếp (Stack).
+2. **Mảng động (Vector - `Vec<T>`)**: Tự động co giãn kích thước linh hoạt, quản lý vùng nhớ trên Vùng nhớ tự do (Heap).
+3. **Lát cắt (Slice - `&[T]` và `&mut [T]`)**: Cửa sổ góc nhìn (View) trỏ vào một phần của mảng hoặc vector mà không tốn chi phí sao chép dữ liệu.
 
 Mục tiêu học tập của chương này:
-- Nắm vững cơ chế vận hành của **Bảng băm (Hash Table)**: Hàm băm (Hash function), phân phối xô ô nhớ (Buckets), và nghệ thuật sử dụng Entry API (`.entry().or_insert()`).
-- Hiểu cấu trúc **Đồ thị (Graph)**: Đỉnh (Vertex/Node), Cạnh (Edge), Đồ thị có hướng vs Vô hướng.
-- Làm chủ kỹ thuật biểu diễn Đồ thị an toàn 100% bằng **Danh sách kề dùng chỉ số (Index-based Adjacency List)** thay vì con trỏ chéo.
-- Cài đặt và ứng dụng thuật toán **Tìm kiếm theo chiều rộng (Breadth-First Search - BFS)** để tìm đường đi ngắn nhất giữa hai nút.
-- Cài đặt thuật toán **Sắp xếp nhanh (Quicksort)** tại chỗ (in-place) trên lát cắt mượn `&mut [T]` với độ phức tạp $O(N \log N)$.
+- Thấu hiểu cơ chế tổ chức vật lý của **Vùng nhớ liền kề (Contiguous Memory)** và lý do tại sao nó lại thân thiện tuyệt đối với bộ nhớ đệm (buffer) của CPU.
+- Phân biệt rạch ròi sự khác nhau giữa `Array`, `Vec`, và `Slice` về vị trí bộ nhớ (Stack vs Heap) và chi phí vận hành.
+- Nắm vững cơ chế tăng trưởng tự động của `Vec` (Độ dài `len` vs Sức chứa `capacity`, chiến lược nhân đôi dung lượng và chi phí khấu hao amortized $O(1)$).
+- Làm chủ kỹ thuật sử dụng `with_capacity` để triệt tiêu các lần tái cấp phát bộ nhớ lãng phí.
+- Sử dụng thành thạo lát cắt (`&[T]`) như một cầu nối trừu tượng giúp hàm chấp nhận mọi dạng tập hợp liền kề mà không cần chuyển giao quyền sở hữu (ownership).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy quan sát hai hình ảnh vô cùng sinh động trong đời sống thực tế:
+Hãy tưởng tượng bạn bước vào phòng thay đồ của một phòng tập Gym hiện đại để cất giữ đồ đạc:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA BẢNG BĂM (HASH TABLE) VÀ ĐỒ THỊ (GRAPH)              │
+│              HÌNH TƯỢNG HÓA VÙNG NHỚ LIỀN KỀ: ARRAY, VECTOR VÀ SLICE              │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. BẢNG BĂM: HÒM THƯ BƯU ĐIỆN VÀ ĐẦU ĐỌC QUÉT MÃ VẠCH]                         │
-│                                                                                  │
-│ Tên người nhận: "Nguyễn Văn An"                                                  │
-│        │                                                                         │
-│        ▼ [Máy quét mã vạch (Hàm băm Hash)]                                       │
-│    Mã số tính ra: Hộp #42                                                        │
-│        │                                                                         │
-│        ▼                                                                         │
+│ [ARRAY: DÃY TỦ KHÓA CỐ ĐỊNH TẠI PHÒNG GYM]                                       │
 │ ┌─────────┬─────────┬─────────┬─────────┬─────────┐                              │
-│ │ Hộp #40 │ Hộp #41 │ Hộp #42 │ Hộp #43 │ Hộp #44 │ -> Mở đúng hộp #42 tốn 1 giây│
-│ │ [Trống] │ [Trống] │ [Thư từ]│ [Trống] │ [Trống] │    Bất kể bưu điện có vạn hộp│
+│ │ Ngăn 0  │ Ngăn 1  │ Ngăn 2  │ Ngăn 3  │ Ngăn 4  │ -> Hàn chết vào tường (Stack)│
+│ │ [Áo thun]│ [Giày]  │ [Bình]  │ [Khăn]  │ [Ví]    │    Không thêm/bớt ngăn tủ    │
 │ └─────────┴─────────┴─────────┴─────────┴─────────┘                              │
 │                                                                                  │
-│ [2. ĐỒ THỊ: MẠNG LƯỚI BẢN ĐỒ TÀU ĐIỆN NGẦM ĐÔ THỊ]                               │
+│ [VECTOR: CHIẾC VALI DU LỊCH THÔNG MINH CO GIÃN TRÊN HEAP]                        │
+│ ┌───────────────────────┬─────────────────────────┐                              │
+│ │ Đang dùng: len = 3    │ Còn trống: cap = 6      │ -> Để dưới sàn kho (Heap)    │
+│ │ [Đồ 1] [Đồ 2] [Đồ 3]  │ [Trống] [Trống] [Trống] │    Đầy thì đổi vali to gấp đôi│
+│ └───────────────────────┴─────────────────────────┘                              │
 │                                                                                  │
-│      [Trạm Bến Thành (0)] ══════════════ [Trạm Nhà Hát (1)]                      │
-│               ║                                 ║                                │
-│               ║ Tuyến 1                         ║ Tuyến 2                        │
-│               ║                                 ║                                │
-│      [Trạm Chợ Lớn (2)]   ══════════════ [Trạm Tân Bình (3)]                     │
-│                                                                                  │
-│ - Mỗi trạm dừng chân là một ĐỈNH (Vertex).                                       │
-│ - Mỗi đường ray kết nối giữa 2 trạm là một CẠNH (Edge).                          │
-│ - Muốn đi từ Bến Thành đến Tân Bình nhanh nhất? Dùng thuật toán BFS!             │
+│ [SLICE: KHUNG KÍNH SOI MỘT ĐOẠN NGĂN TỦ]                                         │
+│                 │◄─── lát cắt &[1..4] ───►│                                      │
+│                 ┌─────────┬─────────┬─────┴───┐                                  │
+│                 │ Ngăn 1  │ Ngăn 2  │ Ngăn 3  │   -> Chỉ là thước đo góc nhìn    │
+│                 │ [Giày]  │ [Bình]  │ [Khăn]  │      Không tốn tủ mới!           │
+│                 └─────────┴─────────┴─────────┘                                  │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Bảng băm — Hệ thống phân loại thư tại bưu điện
-- Khi người đưa thư cầm một lá thư gửi tới cho "Nguyễn Văn An":
-  - Thay vì đi gõ cửa từng căn nhà trong thành phố để hỏi ($O(N)$ tìm kiếm tuần tự), người đưa thư đưa bức thư qua một **Máy quét mã bưu chính (Hàm băm - Hash Function)**.
-  - Chiếc máy lập tức tính toán ra một con số toán học: Ví dụ số **42**.
-  - Người đưa thư chỉ việc bước thẳng tới **Hộc tủ số 42** và nhét bức thư vào đó.
-  - Khi người nhận tới lấy thư, họ cũng đưa căn cước quét qua máy, máy báo hộc số 42, mở tủ lấy thư mất đúng 1 giây ($O(1)$).
-  - Dù bưu điện có 100 hộc tủ hay 1 triệu hộc tủ, thời gian lấy thư vẫn không hề thay đổi!
+### 1. Mảng tĩnh (Array) — Dãy tủ khóa cố định gắn chặt vào tường
+- Dãy tủ gồm đúng 5 ngăn được đúc bằng thép nguyên khối và hàn chặt vào tường phòng thay đồ (Stack).
+- Kích thước này là vĩnh cửu: Bạn không thể nào gắn thêm ngăn thứ 6, cũng không thể tháo bớt đi ngăn nào.
+- Đổi lại, vì vị trí các ngăn tủ được đánh số thứ tự liền kề nhau (`0, 1, 2, 3, 4`), bạn chỉ cần bước tới ngăn số 0 là có thể với tay mở ngăn số 1 hay ngăn số 2 ngay lập tức mà không cần đi tìm kiếm quanh phòng.
 
-### 2. Đồ thị — Bản đồ mạng lưới xe buýt / Tàu điện ngầm
-- Hãy nhìn vào bản đồ giao thông của một thành phố:
-  - Các nhà ga, bến xe, hoặc các nút giao là các **Đỉnh (Vertices)**.
-  - Các đoạn đường nối giữa hai địa điểm là các **Cạnh (Edges)**.
-- Khác với Cây (nơi chỉ có quan hệ cha-con một chiều và không có vòng lặp), Đồ thị cho phép các con đường đan xen chằng chịt, có thể quay vòng lại điểm xuất phát (chu trình - Cycle).
-- **Thuật toán BFS (Tìm kiếm theo chiều rộng)** giống như việc bạn ném một viên sỏi xuống mặt hồ nước phẳng lặng: Sóng nước sẽ lan tỏa đều ra xung quanh theo từng vòng tròn đồng tâm: Đầu tiên là các trạm cách bạn 1 chặng đi, sau đó là các trạm cách 2 chặng, rồi 3 chặng... Nhờ cơ chế lan tỏa từng lớp này, lần đầu tiên bạn chạm tới điểm đích cũng chính là con đường ngắn nhất!
+### 2. Mảng động (Vector) — Chiếc vali du lịch có khóa kéo mở rộng
+- Khi chuẩn bị đi du lịch dài ngày, bạn không biết trước mình sẽ mua thêm bao nhiêu món quà lưu niệm. Bạn chọn dùng một chiếc **vali du lịch co giãn** để dưới kho hành lý (Heap).
+- Ban đầu, chiếc vali có sức chứa 4 ngăn đồ (`capacity = 4`). Bạn bỏ vào 3 bộ quần áo (`len = 3`).
+- Khi bạn mua thêm món đồ thứ 5 vượt quá sức chứa, điều gì xảy ra? Chiếc vali thông minh sẽ:
+  1. Yêu cầu khách sạn cấp một chiếc vali mới to gấp đôi (`capacity = 8`).
+  2. Bốc toàn bộ 4 món đồ cũ từ vali cũ chuyển sang vali mới.
+  3. Bỏ món đồ thứ 5 vào, và vứt bỏ chiếc vali cũ vào thùng tái chế.
+- Thao tác chuyển nhà này có tốn công không? Có chứ! Nhưng vì mỗi lần đổi vali kích thước lại nhân đôi (4 -> 8 -> 16 -> 32...), số lần chuyển nhà diễn ra ngày càng thưa thớt, giúp cho chi phí trung bình (Amortized Cost) để thêm một món đồ vẫn đạt $O(1)$.
+
+### 3. Lát cắt (Slice) — Khung kính ngắm một đoạn ngăn tủ
+- Giả sử bạn muốn nhờ người bạn thân: *"Hãy kiểm tra giúp tôi các món đồ từ ngăn số 1 đến ngăn số 3 xem đã giặt sạch chưa"*.
+- Bạn không cần phải cưa đứt dãy tủ khóa mang về nhà bạn ấy, cũng không cần photocopy lại các món đồ.
+- Bạn chỉ cần đưa cho người bạn một mẩu giấy ghi: **"Bắt đầu từ ngăn số 1, đếm đúng 3 ngăn tiếp theo"**. Đó chính là một lát cắt `Slice` — chỉ gồm một con trỏ địa chỉ và một độ dài, cực kỳ nhẹ nhàng và không tiêu tốn thêm một byte bộ nhớ dữ liệu nào.
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Bản chất của Bảng băm (`HashMap`) trong Rust
+### 1. Bố cục bộ nhớ của Array `[T; N]` trên Stack
 
-Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **SwissTable** (nằm trong thư viện nổi tiếng `hashbrown` được tích hợp thẳng vào thư viện chuẩn `std::collections`):
-1. **Hàm băm (Hash Function)**: Mặc định Rust sử dụng thuật toán `SipHash 1-3`, một hàm băm mật mã học được thiết kế đặc biệt để ngăn chặn các cuộc tấn công từ chối dịch vụ **HashDoS** (khi kẻ tấn công cố tình tạo ra hàng triệu khóa có cùng giá trị băm để làm bảng băm suy biến về danh sách liên kết $O(N)$).
-2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
-3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
-   ```rust
-   let mut dem_tu = std::collections::HashMap::new();
-   let tu = "rust";
-   // Đếm số lần xuất hiện của từ chỉ với 1 lần tính băm duy nhất!
-   *dem_tu.entry(tu).or_insert(0) += 1;
-   ```
+Trong Rust, mảng tĩnh được khai báo với cú pháp `[T; N]`, trong đó `T` là kiểu dữ liệu và `N` là số lượng phần tử cố định được biết trước ngay từ lúc biên dịch:
 
-### 2. Giải mã bí mật: Biểu diễn Đồ thị không sợ Borrow Checker
-
-Nếu bạn cố gắng tạo một nút đồ thị chứa các con trỏ trỏ trực tiếp sang các nút khác trong Rust (`struct Node { neighbors: Vec<Rc<RefCell<Node>>> }`), bạn sẽ sớm rơi vào "địa ngục con trỏ": Mã nguồn trở nên rối rắm, bộ nhớ bị rò rỉ do các liên kết vòng (Reference Cycles) ngăn cản cơ chế giải phóng tự động.
-
-**Phương pháp chuẩn công nghiệp trong Rust: Danh sách kề dùng chỉ số (Index-based Adjacency List)**:
-- Toàn bộ các đỉnh trong đồ thị được đánh số thứ tự từ `0, 1, 2, ...` và lưu trong một `Vec`.
-- Mỗi đỉnh chỉ cần lưu một danh sách các số nguyên đại diện cho các đỉnh láng giềng: `Vec<Vec<usize>>`.
+```rust
+let mang: [i32; 4] = [10, 20, 30, 40];
 ```
-Đỉnh 0 (Bến Thành) -> Kề với: [1, 2]
-Đỉnh 1 (Nhà Hát)   -> Kề với: [0, 3]
-Đỉnh 2 (Chợ Lớn)   -> Kề với: [0, 3]
-Đỉnh 3 (Tân Bình)  -> Kề với: [1, 2]
+
+Trên thanh RAM (ngăn xếp Stack), mảng này chiếm đúng $4 \times 4 = 16$ bytes liên tục:
 ```
-Mã nguồn giờ đây là **Safe Rust 100%**: Không có con trỏ, không có `unsafe`, không sợ Borrow Checker, và tốc độ truy cập đạt đỉnh cao nhờ tính liên tục của bộ nhớ RAM!
+Địa chỉ ô nhớ: 0x1000   0x1004   0x1008   0x100C
+Nội dung     : [  10  ] [  20  ] [  30  ] [  40  ]
+Chỉ số index :    0        1        2        3
+```
+Công thức tính địa chỉ của phần tử thứ `i` vô cùng đơn giản:
+$$\text{Địa chỉ}(i) = \text{Địa chỉ gốc} + i \times \text{kích thước kiểu } T$$
+Nhờ công thức này, CPU chỉ cần 1 phép nhân và 1 phép cộng số học để nhảy tới bất kỳ phần tử nào trong thời gian hằng số $O(1)$.
 
-### 3. Thuật toán Sắp xếp nhanh (Quicksort - $O(N \log N)$)
+### 2. Cấu tạo bên trong của `Vec<T>` (Cơ chế 3 từ máy)
 
-Quicksort là một trong những thuật toán sắp xếp thực chiến hiệu quả nhất lịch sử:
-1. **Chọn phần tử chốt (Pivot)**: Chọn một phần tử bất kỳ (ví dụ phần tử cuối cùng của mảng).
-2. **Phân vùng (Partitioning)**: Duyệt qua mảng và dồn tất cả các phần tử nhỏ hơn chốt về bên trái, các phần tử lớn hơn chốt về bên phải. Đặt phần tử chốt vào đúng vị trí ranh giới chính giữa.
-3. **Đệ quy**: Lặp lại quy trình trên cho hai nửa mảng bên trái và bên phải cho đến khi toàn bộ mảng được sắp xếp hoàn tất.
+Một biến `Vec<T>` khi nằm trên Stack thực chất chỉ chiếm đúng **3 từ máy (3 usize words = 24 bytes trên hệ điều hành 64-bit)**:
+1. **Con trỏ `ptr` (Pointer)**: Địa chỉ 8-byte trỏ tới vùng nhớ thực tế chứa các phần tử trên Heap.
+2. **Độ dài `len` (Length)**: Số lượng phần tử thực tế hiện đang có trong vector.
+3. **Sức chứa `capacity` (Capacity)**: Tổng số phần tử mà vùng nhớ Heap hiện tại có thể chứa trước khi bắt buộc phải tái cấp phát (reallocate).
+
+```
+STACK (24 bytes)                      HEAP (Vùng nhớ tự do)
+┌──────────────┬───────┐              ┌────┬────┬────┬────────┬────────┐
+│ Con trỏ ptr  │ 0x5000├─────────────►│ 10 │ 20 │ 30 │ [Trống]│ [Trống]│
+├──────────────┼───────┤              └────┴────┴────┴────────┴────────┘
+│ Chiều dài len│   3   │              Địa chỉ: 0x5000
+├──────────────┼───────┤
+│ Sức chứa cap │   5   │
+└──────────────┴───────┘
+```
+
+> **Tối ưu hóa với `Vec::with_capacity(n)`**:  
+> Nếu bạn biết trước mình cần nạp 10.000 phần tử, việc gọi `Vec::new()` rồi `push` liên tục sẽ khiến vector phải xin cấp phát và sao chép lại toàn bộ dữ liệu khoảng **13 lần** (với kiểu `i32`, sức chứa đi theo dãy $4 \to 8 \to 16 \to 32 \to \dots \to 16.384$ — Rust khởi đầu ở 4 phần tử chứ không phải 1, rồi nhân đôi mỗi lần đầy). Thay vào đó, khởi tạo ngay `Vec::with_capacity(10_000)` sẽ cấp phát đúng 1 lần duy nhất trên Heap, tăng tốc chương trình lên gấp nhiều lần!
+
+### 3. Con trỏ béo (Fat Pointer) của Lát cắt `&[T]`
+
+Một lát cắt (Slice) là một kiểu dữ liệu có kích thước không cố định (Dynamically Sized Type - DST). Do đó, bạn không bao giờ có thể lưu trực tiếp `[T]` vào một biến, mà luôn phải thông qua một tham chiếu mượn (borrow): `&[T]` hoặc `&mut [T]`.
+
+Một tham chiếu lát cắt `&[T]` là một **Con trỏ béo (Fat Pointer)** chiếm đúng 16 bytes trên Stack:
+- **Địa chỉ con trỏ dữ liệu (8 bytes)**: Trỏ tới phần tử bắt đầu của lát cắt (có thể nằm trên Stack nếu cắt từ Array, hoặc nằm trên Heap nếu cắt từ Vec).
+- **Độ dài lát cắt (8 bytes)**: Số lượng phần tử nằm trong phạm vi của lát cắt.
+
+Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Rust sẽ thực hiện phép **Kiểm tra biên an toàn (Bounds Check)** lúc chạy. Nếu `i >= len`, chương trình sẽ báo lỗi hoảng loạn (panic) an toàn thay vì đọc lén bộ nhớ rác như C/C++.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, minh họa trọn vẹn ba nội dung cốt lõi:
-1. Ứng dụng Bảng băm (`HashMap`) thống kê tần suất từ vựng với Entry API.
-2. Cài đặt Đồ thị bằng danh sách kề chỉ số và chạy thuật toán BFS tìm khoảng cách ngắn nhất.
-3. Cài đặt thuật toán Sắp xếp nhanh (Quicksort) in-place trên lát cắt mượn `&mut [T]`:
+Đoạn mã dưới đây là một chương trình độc lập, minh họa toàn diện từ cách cấp phát, quan sát địa chỉ ô nhớ liền kề, theo dõi chu kỳ tăng trưởng dung lượng của `Vec`, đến kỹ thuật trích xuất lát cắt an toàn:
 
 ```rust
-use std::collections::{HashMap, VecDeque};
-
-/// PHẦN 1: THỐNG KÊ TẦN SUẤT TỪ VỚI BẢNG BĂM HASHMAP
-pub fn thong_ke_tu_vung(van_ban: &str) -> HashMap<String, usize> {
-    let mut bang_dem = HashMap::new();
-    for tu in van_ban.split_whitespace() {
-        // Chuẩn hóa từ về chữ thường
-        let tu_chuan = tu.to_lowercase();
-        // Entry API: Tra cứu một lần, nếu chưa có thì khởi tạo giá trị 0, sau đó tăng 1
-        let dem = bang_dem.entry(tu_chuan).or_insert(0);
-        *dem += 1;
+/// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
+/// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
+/// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
+pub fn tinh_tong_lat_cat(du_lieu: &[i32]) -> i64 {
+    let mut tong: i64 = 0;
+    for &gia_tri in du_lieu {
+        tong += gia_tri as i64;
     }
-    bang_dem
+    tong
 }
 
-/// PHẦN 2: CẤU TRÚC ĐỒ THỊ AN TOÀN VÀ THUẬT TOÁN BFS
-pub struct DoThi {
-    danh_sach_ke: Vec<Vec<usize>>,
-    ten_cac_dinh: Vec<String>,
-}
-
-impl DoThi {
-    pub fn new() -> Self {
-        DoThi {
-            danh_sach_ke: Vec::new(),
-            ten_cac_dinh: Vec::new(),
-        }
-    }
-
-    /// Thêm một đỉnh mới vào đồ thị và trả về chỉ số của đỉnh đó
-    pub fn them_dinh(&mut self, ten: &str) -> usize {
-        let chi_so = self.ten_cac_dinh.len();
-        self.ten_cac_dinh.push(ten.to_string());
-        self.danh_sach_ke.push(Vec::new());
-        chi_so
-    }
-
-    /// Thêm một cạnh nối hai chiều giữa hai đỉnh u và v
-    pub fn them_canh(&mut self, u: usize, v: usize) {
-        if u < self.danh_sach_ke.len() && v < self.danh_sach_ke.len() {
-            self.danh_sach_ke[u].push(v);
-            self.danh_sach_ke[v].push(u); // Đồ thị vô hướng 2 chiều
-        }
-    }
-
-    /// Thuật toán BFS tìm đường đi ngắn nhất (Số chặng) giữa hai đỉnh
-    pub fn bfs_khoang_cach_ngan_nhat(&self, diem_dau: usize, diem_dich: usize) -> Option<usize> {
-        if diem_dau >= self.danh_sach_ke.len() || diem_dich >= self.danh_sach_ke.len() {
-            return None;
-        }
-
-        // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
-        let mut da_tham = vec![false; self.danh_sach_ke.len()];
-        // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
-        let mut hang_doi: VecDeque<(usize, usize)> = VecDeque::new();
-
-        da_tham[diem_dau] = true;
-        hang_doi.push_back((diem_dau, 0));
-
-        while let Some((hien_tai, khoang_cach)) = hang_doi.pop_front() {
-            if hien_tai == diem_dich {
-                return Some(khoang_cach); // Tìm thấy đích đến!
-            }
-
-            for &ke in &self.danh_sach_ke[hien_tai] {
-                if !da_tham[ke] {
-                    da_tham[ke] = true;
-                    hang_doi.push_back((ke, khoang_cach + 1));
-                }
-            }
-        }
-
-        None // Không có đường đi kết nối giữa hai đỉnh này
-    }
-
-    pub fn lay_ten(&self, chi_so: usize) -> &str {
-        &self.ten_cac_dinh[chi_so]
-    }
-}
-
-impl Default for DoThi {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// PHẦN 3: THUẬT TOÁN SẮP XẾP NHANH (QUICKSORT) TẠI CHỖ
-pub fn quicksort<T: Ord>(du_lieu: &mut [T]) {
-    if du_lieu.len() <= 1 {
+/// Hàm đảo ngược các phần tử tại chỗ trên một lát cắt khả biến &mut [i32]
+pub fn dao_nguoc_tai_cho(du_lieu: &mut [i32]) {
+    if du_lieu.is_empty() {
         return;
     }
-    let vi_tri_chot = phan_vung(du_lieu);
-    // Chia đôi mảng và đệ quy sắp xếp hai nửa
-    quicksort(&mut du_lieu[0..vi_tri_chot]);
-    quicksort(&mut du_lieu[vi_tri_chot + 1..]);
-}
-
-fn phan_vung<T: Ord>(du_lieu: &mut [T]) -> usize {
-    let do_dai = du_lieu.len();
-    let chi_so_chot = do_dai - 1;
-    let mut i = 0;
-
-    for j in 0..chi_so_chot {
-        if du_lieu[j] <= du_lieu[chi_so_chot] {
-            du_lieu.swap(i, j);
-            i += 1;
-        }
+    let mut trai = 0;
+    let mut phai = du_lieu.len() - 1;
+    while trai < phai {
+        du_lieu.swap(trai, phai);
+        trai += 1;
+        phai -= 1;
     }
-    du_lieu.swap(i, chi_so_chot);
-    i
 }
 
 fn main() {
     println!("============================================================");
-    println!("    BẢNG BĂM, ĐỒ THỊ VÀ CÁC THUẬT TOÁN CỐT LÕI TRONG RUST   ");
+    println!("     KHẢO SÁT VÙNG NHỚ LIỀN KỀ: ARRAY, VECTOR VÀ SLICE      ");
     println!("============================================================");
 
-    // 1. Kiểm thử Bảng băm đếm tần suất từ
-    println!("[1] Thống kê tần suất từ vựng bằng HashMap Entry API:");
-    let van_ban = "học rust thật vui học lập trình rust thật tuyệt vời";
-    let ket_qua_dem = thong_ke_tu_vung(van_ban);
-    for (tu, so_lan) in &ket_qua_dem {
-        println!("    - Từ '{:8}': xuất hiện {} lần", tu, so_lan);
+    // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
+    let mang_tinh: [i32; 5] = [10, 20, 30, 40, 50];
+    println!("[1] Mảng tĩnh trên Stack:");
+    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&mang_tinh));
+    println!("    - Số lượng phần tử  : {}", mang_tinh.len());
+    
+    // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
+    print!("    - Địa chỉ ô nhớ từng phần tử: ");
+    for i in 0..mang_tinh.len() {
+        let dia_chi = &mang_tinh[i] as *const i32 as usize;
+        print!("[Phần tử {}: đuôi ...{:x}] ", i, dia_chi % 0x1000);
     }
-    assert_eq!(ket_qua_dem.get("rust"), Some(&2));
-    assert_eq!(ket_qua_dem.get("học"), Some(&2));
-    assert_eq!(ket_qua_dem.get("vui"), Some(&1));
+    println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
-    // 2. Kiểm thử Mạng lưới Đồ thị và Thuật toán BFS
-    println!("\n[2] Mô phỏng mạng xã hội kết nối bạn bè bằng Đồ thị & BFS:");
-    let mut mang_xa_hoi = DoThi::new();
-    let an = mang_xa_hoi.them_dinh("An");       // Đỉnh 0
-    let binh = mang_xa_hoi.them_dinh("Bình");   // Đỉnh 1
-    let chi = mang_xa_hoi.them_dinh("Chi");     // Đỉnh 2
-    let dung = mang_xa_hoi.them_dinh("Dũng");   // Đỉnh 3
-    let hoa = mang_xa_hoi.them_dinh("Hoa");     // Đỉnh 4 (ở xa)
+    // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
+    println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
+    let mut vec_dong: Vec<i32> = Vec::new();
+    println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
 
-    // Thiết lập các mối quan hệ bạn bè (Cạnh)
-    // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
-    mang_xa_hoi.them_canh(an, binh);
-    mang_xa_hoi.them_canh(binh, chi);
-    mang_xa_hoi.them_canh(chi, dung);
-    mang_xa_hoi.them_canh(an, dung); // Lối tắt trực tiếp từ An đến Dũng!
+    let mut dia_chi_truoc: usize = 0;
+    for i in 1..=9 {
+        vec_dong.push(i * 10);
+        let dia_chi_hien_tai = vec_dong.as_ptr() as usize;
+        
+        // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
+        let thong_bao_doi_nha = if dia_chi_hien_tai != dia_chi_truoc && dia_chi_truoc != 0 {
+            dia_chi_truoc = dia_chi_hien_tai;
+            " -> [ĐỔI NHÀ MỚI TRÊN HEAP!]"
+        } else {
+            dia_chi_truoc = dia_chi_hien_tai;
+            ""
+        };
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", mang_xa_hoi.lay_ten(an), mang_xa_hoi.lay_ten(chi));
-    let khoang_cach_an_chi = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, chi);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng", khoang_cach_an_chi);
-    assert_eq!(khoang_cach_an_chi, Some(2)); // An -> Bình -> Chi hoặc An -> Dũng -> Chi
+        println!(
+            "    - Thêm {:2}: len = {}, cap = {:2}, ptr = {:x}{}",
+            i * 10,
+            vec_dong.len(),
+            vec_dong.capacity(),
+            dia_chi_hien_tai % 0x10000,
+            thong_bao_doi_nha
+        );
+    }
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", mang_xa_hoi.lay_ten(an), mang_xa_hoi.lay_ten(dung));
-    let khoang_cach_an_dung = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, dung);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", khoang_cach_an_dung);
-    assert_eq!(khoang_cach_an_dung, Some(1));
+    // 3. Tối ưu hóa trước với with_capacity
+    println!("\n[3] Tối ưu hóa Vector với with_capacity(100):");
+    let mut vec_toi_uu: Vec<i32> = Vec::with_capacity(100);
+    let ptr_goc = vec_toi_uu.as_ptr() as usize;
+    for i in 0..100 {
+        vec_toi_uu.push(i);
+    }
+    let ptr_sau = vec_toi_uu.as_ptr() as usize;
+    println!("    - Sau khi nạp 100 phần tử: len = {}, cap = {}", vec_toi_uu.len(), vec_toi_uu.capacity());
+    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_goc == ptr_sau { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
+    assert_eq!(ptr_goc, ptr_sau);
 
-    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", mang_xa_hoi.lay_ten(hoa));
-    let khoang_cach_hoa = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, hoa);
-    println!("      => Kết quả: {:?} (Không có đường đi)", khoang_cach_hoa);
-    assert_eq!(khoang_cach_hoa, None);
+    // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
+    println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
+    // Lấy lát cắt từ mảng tĩnh
+    let lat_cat_mang = &mang_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
+    let tong_mang = tinh_tong_lat_cat(lat_cat_mang);
+    println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
+    assert_eq!(tong_mang, 90);
 
-    // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
-    println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
-    let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
-    println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
-    quicksort(&mut mang_so);
-    println!("    - Mảng sau khi sắp xếp   : {:?}", mang_so);
-    assert_eq!(mang_so, [3, 5, 12, 19, 42, 63, 77, 88]);
-    println!("    => Quicksort O(N log N) hoàn tất thành công!");
+    // Lấy lát cắt từ vector động
+    let lat_cat_vec = &vec_dong[0..5]; // Lấy 5 phần tử đầu tiên
+    println!("    - Lát cắt từ vector [0..5]   : {:?}", lat_cat_vec);
+    let tong_vec = tinh_tong_lat_cat(lat_cat_vec);
+    println!("    - Tổng tính từ lát cắt vector: {}", tong_vec);
+    assert_eq!(tong_vec, 150);
+
+    // 5. Thao tác trên lát cắt khả biến &mut [T]
+    let mut mang_can_dao = [1, 2, 3, 4, 5, 6];
+    println!("\n[5] Đảo ngược tại chỗ trên lát cắt khả biến:");
+    println!("    - Mảng ban đầu : {:?}", mang_can_dao);
+    // Đảo ngược chỉ một đoạn ở giữa: từ chỉ số 1 đến 4 (các số 2, 3, 4, 5)
+    dao_nguoc_tai_cho(&mut mang_can_dao[1..5]);
+    println!("    - Sau khi đảo đoạn [1..5]: {:?}", mang_can_dao);
+    assert_eq!(mang_can_dao, [1, 5, 4, 3, 2, 6]);
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 26               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 22               ");
     println!("============================================================");
 }
 ```
@@ -295,55 +247,113 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình Bảng băm và Đồ thị trong Rust:
+Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến quyền sở hữu (ownership), vay mượn (borrow), và kích thước kiểu dữ liệu khi làm việc với Array, Vec và Slice:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait bound 'K: Hash' is not satisfied` | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
-| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang lặp qua danh sách láng giềng mượn bất biến `&graph.danh_sach_ke[u]` nhưng bên trong thân vòng lặp lại gọi `graph.them_canh()` làm thay đổi đồ thị. | Thu thập các chỉ số cần biến đổi vào một vector tạm trước khi thực hiện ghi đè. |
-| **E0382** | `use of moved value: 'tu'` | Bạn gọi `bang_dem.insert(tu, 1)` khiến chuỗi `tu` bị di chuyển quyền sở hữu (ownership), sau đó lại dùng lại `tu` ở dòng lệnh tiếp theo. | Dùng phương thức `.clone()` tạo bản sao độc lập, hoặc lưu tham chiếu mượn chuỗi `&str` nếu chuỗi có thời gian sống (lifetime) dài hơn bảng băm. |
-| **E0308** | `mismatched types: expected '&str', found 'String'` | Bạn truyền một giá trị sở hữu `String` vào phương thức tra cứu `.get()` của HashMap vốn chỉ đòi hỏi một lát cắt tham chiếu `&str`. | Thêm dấu `&` phía trước biến chuỗi: `bang_dem.get(&tu)`. |
+| **E0277** | `the size for values of type '[i32]' cannot be known at compilation time` | Bạn cố gắng truyền một mảng chưa rõ kích thước bằng giá trị `fn xu_ly(arr: [i32])`. Kiểu `[T]` là kiểu kích thước động (DST), không thể nằm trực tiếp trên Stack mà không có con trỏ. | Đổi tham số sang tham chiếu lát cắt `&[i32]` hoặc mảng kích thước cố định `[i32; 10]`. |
+| **E0502** | `cannot borrow 'vec' as mutable because it is also borrowed as immutable` | Bạn tạo một lát cắt `let s = &vec[0..2];` rồi sau đó gọi `vec.push(10);` trong khi `s` vẫn đang được sử dụng. Phép `push` có thể khiến vector đổi nhà trên Heap, biến con trỏ `s` thành con trỏ lơ lửng (Dangling Pointer)! Rust ngăn chặn triệt để điều này. | Kết thúc việc sử dụng lát cắt `s` trước khi gọi các hàm làm biến đổi vector như `.push()`, hoặc sao chép dữ liệu ra nếu cần. |
+| **E0308** | `mismatched types: expected '[i32; 4]', found '[i32; 5]'` | Trong Rust, độ dài của mảng tĩnh là một phần của hệ thống kiểu dữ liệu! Mảng 4 phần tử có kiểu dữ liệu hoàn toàn khác mảng 5 phần tử. | Nếu hàm cần nhận mảng có độ dài bất kỳ, hãy đổi kiểu tham số sang lát cắt `&[i32]`. |
+| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng tạo một lát cắt khả biến `&mut arr[..]` từ một mảng hoặc vector khai báo bằng `let` bất biến. | Thêm từ khóa `mut` khi khai báo biến: `let mut arr = ...;`. |
 
-### Ví dụ phân tích lỗi `E0277` khi dùng struct làm khóa cho `HashMap`:
+### Ví dụ phân tích lỗi `E0502` và cơ chế bảo vệ của Rust:
 
 ```rust
-// Struct chưa thỏa mãn trait Hash và Eq
-struct NguoiDungLoi {
-    id: u32,
+// Đoạn mã lỗi minh họa: Vi phạm an toàn bộ nhớ do vector tái cấp phát
+fn minh_hoa_loi_e0502() {
+    let mut danh_sach = vec![1, 2, 3];
+    // Lát cắt giu_cho đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
+    // let giu_cho = &danh_sach[0]; 
+    
+    // Thao tác push có thể kích hoạt cấp phát vùng nhớ mới to hơn và hủy vùng nhớ cũ!
+    // danh_sach.push(4); 
+    
+    // Nếu dòng này được phép chạy, giu_cho sẽ đọc vào vùng nhớ rác đã bị giải phóng!
+    // println!("Phần tử đầu: {}", giu_cho); // LỖI E0502!
 }
 
-fn thu_nghiem_loi_hash() {
-    let mut bang_hash = std::collections::HashMap::new();
-    // bang_hash.insert(NguoiDungLoi { id: 1 }, "Admin"); // LỖI E0277!
-}
-
-// Cách sửa chữa đúng chuẩn: Derive đầy đủ PartialEq, Eq, Hash
-#[derive(Hash, PartialEq, Eq, Debug)]
-struct NguoiDungChuan {
-    id: u32,
-}
-
-fn thu_nghiem_dung_hash() {
-    let mut bang_hash = std::collections::HashMap::new();
-    bang_hash.insert(NguoiDungChuan { id: 1 }, "Admin");
-    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&NguoiDungChuan { id: 1 }));
+// Cách sửa chữa đúng chuẩn: Sử dụng xong lát cắt trước khi biến đổi
+fn minh_hoa_dung_e0502() {
+    let mut danh_sach = vec![1, 2, 3];
+    
+    // Bước 1: Đọc giá trị và sao chép (copy) ra biến độc lập trên Stack
+    let gia_tri_dau = danh_sach[0];
+    
+    // Bước 2: Tự do biến đổi vector mà không lo xung đột con trỏ
+    danh_sach.push(4);
+    
+    println!("Phần tử đầu đã sao chép an toàn: {}", gia_tri_dau);
+    println!("Danh sách sau khi thêm mới: {:?}", danh_sach);
 }
 ```
 
 ---
 
+
+
+---
+
+## Kiểm thử tự động (Automated Tests)
+
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+
+```rust
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    #[test]
+    fn tong_lat_cat() {
+        assert_eq!(tinh_tong_lat_cat(&[10, 20, 30]), 60);
+        assert_eq!(tinh_tong_lat_cat(&[]), 0);
+    }
+
+    #[test]
+    fn dao_nguoc_tai_cho_khong_cap_phat_moi() {
+        let mut v = vec![1, 2, 3, 4, 5];
+        dao_nguoc_tai_cho(&mut v);
+        assert_eq!(v, vec![5, 4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn dao_nguoc_hai_lan_ve_ban_dau() {
+        let goc = vec![7, 3, 9, 1];
+        let mut v = goc.clone();
+        dao_nguoc_tai_cho(&mut v);
+        dao_nguoc_tai_cho(&mut v);
+        assert_eq!(v, goc); // đảo hai lần = phép đồng nhất
+    }
+
+    #[test]
+    fn dao_nguoc_do_dai_le_giu_nguyen_giua() {
+        let mut v = vec![1, 2, 3];
+        dao_nguoc_tai_cho(&mut v);
+        assert_eq!(v, vec![3, 2, 1]);
+        let mut r = vec![42];
+        dao_nguoc_tai_cho(&mut r);
+        assert_eq!(r, vec![42]);
+    }
+}
+```
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Sức mạnh $O(1)$ của Bảng băm**: `HashMap` mang lại khả năng tra cứu khóa-giá trị tức thời nhờ thuật toán băm phân phối vào các xô ô nhớ (buckets).
-2. **Kỹ thuật Entry API**: Giúp tra cứu, khởi tạo mặc định và cập nhật giá trị chỉ với một lần tính toán băm duy nhất, tối ưu hóa tối đa chu kỳ CPU.
-3. **Đồ thị dùng chỉ số**: Biểu diễn Đồ thị bằng danh sách kề `Vec<Vec<usize>>` là phương pháp chuẩn mực trong Rust để đạt 100% Safe Rust và giải phóng lập trình viên khỏi gánh nặng con trỏ.
-4. **BFS tìm đường ngắn nhất**: Thuật toán Tìm kiếm theo chiều rộng (BFS) kết hợp với Hàng đợi FIFO (`VecDeque`) là công cụ hoàn hảo để tìm khoảng cách chặng ngắn nhất trong đồ thị không trọng số.
+1. **Lợi thế vùng nhớ liền kề**: Dữ liệu nằm liên tục giúp CPU tải trước dữ liệu vào bộ nhớ đệm (buffer cache) siêu tốc, giảm thiểu tối đa hiện tượng trượt cache (Cache Miss).
+2. **Array vs Vector**: Dùng `Array` khi biết trước số lượng phần tử cố định và muốn tiết kiệm tối đa tài nguyên trên Stack; Dùng `Vec` khi dữ liệu co giãn kích thước linh hoạt trên Heap.
+3. **Cơ chế nhân đôi dung lượng**: `Vec` tự động nhân đôi sức chứa khi đầy. Hãy tận dụng `Vec::with_capacity(n)` bất cứ khi nào ước tính được quy mô dữ liệu để tránh tái cấp phát nhiều lần.
+4. **Sức mạnh của Lát cắt (`&[T]`)**: Luôn ưu tiên nhận tham số hàm dưới dạng `&[T]` thay vì `&Vec<T>`, vì `&[T]` có thể nhận cả Array, Vector, lẫn các lát cắt con mà không đòi hỏi cấp phát hay chuyển quyền sở hữu (ownership).
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Tìm kiếm phần tử xuất hiện nhiều nhất)**:  
-   Sử dụng `HashMap`, hãy viết một hàm `fn tim_phan_tu_pho_bien_nhat(ds: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
-2. **Bài tập 2 (Phát hiện đỉnh cô lập trong đồ thị)**:  
-   Viết phương thức `fn tim_dinh_co_lap(&self) -> Vec<usize>` cho cấu trúc `DoThi` để liệt kê tất cả các đỉnh không có bất kỳ cạnh kết nối nào với các đỉnh khác trong mạng lưới (`danh_sach_ke[i].is_empty()`).
-3. **Bài tập 3 (Thuật toán DFS - Tìm kiếm theo chiều sâu)**:  
-   Dựa trên cấu trúc `DoThi` đã học, hãy viết một hàm `fn dfs_kiem_tra_ket_noi(&self, u: usize, v: usize) -> bool` sử dụng đệ quy để kiểm tra xem có tồn tại bất kỳ con đường nào nối giữa hai đỉnh `u` và `v` hay không (không bắt buộc phải là con đường ngắn nhất).
+1. **Bài tập 1 (Phân loại dữ liệu)**:  
+   Trong các tình huống sau, cấu trúc dữ liệu nào (`[T; N]`, `Vec<T>`, hay `&[T]`) là lựa chọn tối ưu nhất?
+   - a) Lưu trữ tọa độ 3 chiều $(x, y, z)$ của một hạt bụi trong không gian trò chơi vật lý.
+   - b) Lưu danh sách các bình luận của người dùng trên một bài đăng mạng xã hội (số lượng bình luận tăng dần theo thời gian).
+   - c) Viết hàm kiểm tra một chuỗi số có phải là chuỗi đối xứng (Palindrome) hay không mà không cần nhân bản dữ liệu.
+2. **Bài tập 2 (Tìm phần tử lớn nhất bằng Lát cắt)**:  
+   Hãy viết một hàm `fn tim_max(du_lieu: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `tim_max` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
+3. **Bài tập 3 (Tối ưu hóa dung lượng)**:  
+   Viết một đoạn mã tạo một vector chứa các số chẵn từ 2 đến 2000. Đo lường số lần vector phải thay đổi địa chỉ con trỏ `as_ptr()` trong hai trường hợp:
+   - Trường hợp A: Sử dụng `Vec::new()` thông thường.
+   - Trường hợp B: Sử dụng `Vec::with_capacity(1000)`.  
+   Quan sát và đưa ra nhận xét về hiệu quả bảo toàn vùng nhớ.

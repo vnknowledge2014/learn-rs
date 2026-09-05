@@ -1,4 +1,4 @@
-# Chương 13: Lập trình hàm là gì? Bất biến và Phong cách khai báo đường ống (Introduction to Functional Programming & Declarative Pipelines)
+# Chương 13: Lập trình hàm là gì? Bất biến, Minh bạch tham chiếu và Hàm toàn phần (Introduction to FP: Immutability, Referential Transparency & Total Functions)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -110,6 +110,7 @@ Một hàm được gọi là **Hàm thuần túy (Pure Function)** nếu nó th
 Tại sao Rust lại yêu thích hàm thuần túy?
 - **Khả năng kiểm thử (Testability)**: Bạn có thể viết kiểm thử đơn vị (unit test) cực kỳ đơn giản vì không cần chuẩn bị môi trường giả lập (mocking).
 - **An toàn song song (Thread Safety)**: Các hàm thuần túy chỉ đọc dữ liệu và trả về giá trị mới, không tranh chấp tài nguyên, giúp việc xử lý đa luồng diễn ra an toàn tuyệt đối mà không cần dùng khóa mutex cồng kềnh.
+  > Đây không phải lời hứa suông. Ở **Chương 16** bạn sẽ thấy: với một đường ống toàn hàm thuần túy, chỉ cần đổi `.iter()` thành `.par_iter()` là chương trình chạy song song trên toàn bộ nhân CPU — và trình biên dịch bảo đảm không có tranh chấp dữ liệu. Đổi đúng **một** từ. Đó là phần thưởng cụ thể nhất mà tính thuần túy mang lại.
 
 ### 3. Tính bất biến (Immutability by Default) trong Rust
 
@@ -120,7 +121,65 @@ Trong Rust, mọi biến khai báo bằng `let` đều **mặc định là bất
 - Nếu bạn truyền một tham chiếu đọc `&T`, bạn trao quyền xem mà không trao quyền sửa.
 - Nhờ vậy, khi một biến đi vào đường ống xử lý của lập trình hàm, bạn có sự đảm bảo chắc chắn rằng dữ liệu gốc ban đầu vẫn nguyên vẹn 100%.
 
-### 4. Triết lý "Mọi thứ đều là Biểu thức" (Expression-Oriented)
+### 4. Minh bạch tham chiếu (Referential Transparency) — trụ cột thứ nhất
+
+Đây là cái tên chính thức của tính chất mà hàm thuần túy mang lại, và là **một trong hai trụ cột** mà cộng đồng lập trình hàm quốc tế đặt ở đầu mọi giáo trình (trụ cột thứ hai là *phép ghép hàm*, học ở Chương 14).
+
+> **Định nghĩa**: một biểu thức là *minh bạch tham chiếu* nếu bạn có thể **thay nó bằng chính giá trị nó trả về** mà chương trình không đổi nghĩa.
+
+```rust
+let x = tinh_thanh_tien(&hang);   // giả sử trả về 90.0
+let tong = x + x;                 // 180.0
+
+// Nếu `tinh_thanh_tien` là hàm thuần túy, ba dòng dưới đây HOÀN TOÀN tương đương:
+let tong = tinh_thanh_tien(&hang) + tinh_thanh_tien(&hang);
+let tong = 90.0 + 90.0;
+let tong = 180.0;
+```
+
+Vì sao điều này quan trọng đến vậy? Vì nó chính là **giấy phép để bạn tái cấu trúc mã nguồn**. Mỗi khi bạn tách một hàm dài thành hai hàm nhỏ, gộp hai biến thành một, hay để trình biên dịch nhớ tạm một kết quả — bạn đang dựa vào tính minh bạch tham chiếu mà có thể chưa biết tên nó. Cách suy luận bằng cách thay thế biểu thức như trên gọi là **suy luận bằng đẳng thức (equational reasoning)**.
+
+Ngược lại, những thứ sau **phá vỡ** tính chất này: đọc đồng hồ hệ thống (`Instant::now()`), sinh số ngẫu nhiên, đọc biến toàn cục có thể thay đổi, đọc tệp. Gọi hai lần cho hai kết quả khác nhau, nên **không thể thay bằng giá trị**.
+
+> **Liên hệ với Rust**: từ khóa `const fn` đánh dấu những hàm thuần túy đến mức trình biên dịch tính được kết quả ngay lúc biên dịch. Còn thuộc tính `#[must_use]` là lời nhắc rằng "hàm này thuần túy — nếu bạn vứt kết quả đi thì nó chẳng làm gì cả".
+
+### 5. Hàm toàn phần và Hàm bộ phận (Total vs Partial Functions)
+
+Đây là khái niệm có giá trị thực dụng cao nhất trong chương, và nó giải thích **vì sao Rust ép bạn dùng `Option` và `Result`**.
+
+- **Hàm toàn phần (total function)**: với **mọi** giá trị đầu vào hợp lệ về kiểu, hàm đều trả về một kết quả. Không sập, không treo.
+- **Hàm bộ phận (partial function)**: có những đầu vào mà hàm **không có câu trả lời** — nó sập, panic, hoặc trả về giá trị vô nghĩa.
+
+Chữ ký hàm thường **nói dối** về điều này:
+
+```rust
+fn chia(a: i32, b: i32) -> i32 { a / b }
+```
+
+Chữ ký hứa hẹn: "đưa tôi hai `i32` bất kỳ, tôi trả về một `i32`". Nhưng `chia(10, 0)` thì sập chương trình. Đây là **hàm bộ phận đội lốt hàm toàn phần** — loại hàm nguy hiểm nhất.
+
+Có đúng **hai cách** biến một hàm bộ phận thành hàm toàn phần:
+
+| Cách | Ý tưởng | Ví dụ trong Rust |
+|---|---|---|
+| **Mở rộng đầu ra** | Thêm một "chỗ" cho trường hợp không có câu trả lời | `fn chia(a: i32, b: i32) -> Option<i32>` |
+| **Thu hẹp đầu vào** | Làm cho đầu vào xấu không thể biểu diễn được | `fn chia(a: i32, b: NonZeroI32) -> i32` |
+
+Cách thứ hai mạnh hơn nhiều — và nó chính là chủ đề trung tâm của Chương 20.
+
+Bảng dưới đây liệt kê các "hàm bộ phận đội lốt" phổ biến nhất trong Rust và bản toàn phần tương ứng:
+
+| Hàm bộ phận (có thể sập) | Bản toàn phần (an toàn) |
+|---|---|
+| `v[i]` | `v.get(i) -> Option<&T>` |
+| `.unwrap()` / `.expect()` | `match`, `unwrap_or`, `unwrap_or_else`, toán tử `?` |
+| `a / b`, `a % b` | `a.checked_div(b) -> Option<i32>` |
+| `a + b` (tràn số ở bản release) | `a.checked_add(b)`, `saturating_add`, `wrapping_add` |
+| `s[0..5]` trên chuỗi UTF-8 | `s.get(0..5) -> Option<&str>` |
+
+> **Quy tắc thực chiến**: mỗi lần bạn gõ `.unwrap()`, bạn đang biến một hàm toàn phần thành hàm bộ phận. Hãy tự hỏi: *"tôi có chứng minh được trường hợp này không bao giờ xảy ra không?"* Nếu không chứng minh được, đừng dùng `.unwrap()`.
+
+### 6. Triết lý "Mọi thứ đều là Biểu thức" (Expression-Oriented)
 
 Rust là ngôn ngữ định hướng biểu thức (Expression-Oriented Language):
 - **Câu lệnh (Statement)**: Là hành động kết thúc bằng dấu chấm phẩy `;`, thực hiện một tác vụ nhưng không sinh ra giá trị (trả về kiểu rỗng unit `()`).
@@ -323,6 +382,8 @@ fn doan_ma_dung() {
 2. **Hàm thuần túy (Pure Functions)**: Nhận đầu vào, trả về đầu ra, không tạo tác dụng phụ ra bên ngoài, mang lại sự tin cậy tuyệt đối và triệt tiêu lỗi ngầm.
 3. **Bất biến mặc định**: Bảo vệ dữ liệu không bị sửa đổi ngoài ý muốn; dữ liệu qua đường ống luôn giữ trọn vẹn trạng thái gốc.
 4. **Mọi thứ là Biểu thức**: Tận dụng triệt để biểu thức trả về giá trị để loại bỏ các biến tạm thời không cần thiết.
+5. **Minh bạch tham chiếu**: thay được biểu thức bằng giá trị của nó mà chương trình không đổi nghĩa — đây chính là giấy phép để tái cấu trúc mã an toàn.
+6. **Hàm toàn phần**: mọi đầu vào đều có câu trả lời. Hoặc *mở rộng đầu ra* bằng `Option`/`Result`, hoặc *thu hẹp đầu vào* bằng kiểu chặt hơn (Chương 20). Mỗi `.unwrap()` là một bước lùi khỏi tính toàn phần.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Chuyển đổi tư duy Mệnh lệnh sang Khai báo)**:  
@@ -338,3 +399,81 @@ fn doan_ma_dung() {
 
 3. **Bài tập 3 (Tư duy thiết kế)**:  
    Tại sao trong các hệ thống xử lý phân tán hoặc tài chính ngân hàng có tính chất quan trọng sống còn, các kiến trúc sư phần mềm luôn ưu tiên sử dụng lập trình hàm và dữ liệu bất biến thay vì cho phép các luồng tiến trình tự do sửa đổi một biến chung trên thanh RAM?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Ba bước của đề bài ứng đúng ba mắt xích: lọc số lẻ là `.filter()`, nhân đôi là `.map()`, tính tổng là `.sum()`. Chú ý `.iter()` trên `Vec<i32>` cho ra `&i32`, nên trong closure của `filter` bạn sẽ gặp `&&i32` — dùng mẫu `|&&x|` hoặc `|x| **x` để bóc hai lớp tham chiếu.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    let danh_sach = vec![3, 8, 12, 5, 20, 7];
+
+    let tong: i32 = danh_sach
+        .iter()
+        .filter(|&&x| x % 2 != 0)   // giữ số lẻ: 3, 5, 7
+        .map(|&x| x * 2)            // nhân đôi : 6, 10, 14
+        .sum();                     // cộng lại : 30
+
+    assert_eq!(tong, 30);
+    println!("Tổng sau khi lọc lẻ và nhân đôi: {}", tong);
+}
+```
+Không một biến `mut` nào, không một chỉ số mảng nào — nên cũng không có cơ hội truy cập ngoài biên.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Hàm chỉ cần hai lời gọi có sẵn của `str`: `.trim()` và `.to_uppercase()`. Điều quan trọng của bài này không phải cách viết, mà là **vì sao nó thuần túy**: nó chỉ đọc tham số, không đụng vào bất cứ thứ gì bên ngoài, không in ra màn hình, không đọc đồng hồ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Hàm THUẦN TÚY: chỉ phụ thuộc tham số đầu vào, không tác dụng phụ.
+pub fn chuan_hoa_ten(ho_ten: &str) -> String {
+    ho_ten.trim().to_uppercase()
+}
+
+fn main() {
+    let tho = "   nguyễn văn an   ";
+
+    // Gọi 3 lần với cùng đầu vào -> luôn cùng kết quả (tính tất định)
+    let a = chuan_hoa_ten(tho);
+    let b = chuan_hoa_ten(tho);
+    let c = chuan_hoa_ten(tho);
+    assert_eq!(a, b);
+    assert_eq!(b, c);
+    assert_eq!(a, "NGUYỄN VĂN AN");
+
+    // Đầu vào gốc KHÔNG hề bị thay đổi:
+    assert_eq!(tho, "   nguyễn văn an   ");
+    println!("{:?} -> {:?}", tho, a);
+}
+```
+
+Lưu ý cách `to_uppercase()` xử lý đúng chữ tiếng Việt có dấu — vì Rust làm việc theo Unicode chứ không phải ASCII (Chương 03).
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải tham khảo</b></summary>
+
+Có bốn lý do, xếp theo mức độ nghiêm trọng:
+
+1. **Triệt tiêu tranh chấp dữ liệu (data race).** Nếu hai luồng cùng sửa một số dư tài khoản, kết quả phụ thuộc vào việc luồng nào chạy trước — một loại lỗi *không lặp lại được*, nên gần như không thể gỡ. Dữ liệu bất biến thì có bao nhiêu luồng đọc cũng không sao, vì không ai ghi cả.
+2. **Kiểm toán được (auditability).** Ngành tài chính bắt buộc phải trả lời câu hỏi *"số dư này đến từ đâu?"*. Nếu mỗi giao dịch sinh ra một **giá trị mới** thay vì ghi đè giá trị cũ, bạn có sẵn toàn bộ lịch sử. Đây chính là nguyên lý *Nhật ký sự kiện (Event Sourcing)* mà Chương 54 sẽ xây dựng.
+3. **Khôi phục sau sự cố.** Dữ liệu bất biến có thể phát lại (replay) từ đầu để dựng lại trạng thái sau khi máy chủ sập — đúng nguyên lý của WAL và LSM-Tree ở Chương 34.
+4. **Suy luận và kiểm thử.** Với hàm thuần túy, muốn biết một hàm làm gì bạn chỉ cần đọc chữ ký và thân hàm, không phải truy vết xem có ai đó ở tệp khác đang sửa trộm biến toàn cục hay không (đây chính là *minh bạch tham chiếu* ở mục 4).
+
+Và trong Rust, ba lý do đầu không phải lời khuyên suông: hệ thống quyền sở hữu **buộc** bạn tuân thủ — muốn chia sẻ dữ liệu khả biến giữa các luồng, bạn phải nói rõ ra bằng `Mutex` hoặc `Arc<Mutex<..>>`, và trình biên dịch sẽ từ chối nếu bạn quên.
+</details>

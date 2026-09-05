@@ -1,301 +1,323 @@
-# Chương 40: Kỹ Nghệ Prompt Kỹ Thuật Hệ Thống & Quản Lý Cửa Sổ Ngữ Cảnh (Systems Prompt Engineering & Context Management)
+# Chương 40: Tự chế công cụ quét cổng mạng đa luồng siêu tốc (High-Speed Concurrent Network Port Scanner Tool)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong chương trước, chúng ta đã thấu hiểu sự chuyển dịch mang tính thời đại từ "người thợ gõ cú pháp" thành "Tổng đạo diễn kiến trúc" trong làn sóng Vibe Coding. Nhưng làm thế nào để một Tổng đạo diễn có thể truyền đạt chính xác 100% ý đồ của mình cho đoàn làm phim AI mà không bị hiểu lầm, không bị sai lệch, và không tạo ra những đoạn mã rác?
+Trong kho vũ khí của bất kỳ kỹ sư quản trị mạng hay chuyên gia bảo mật thâm nhập OSCP nào, công cụ đầu tiên luôn được rút ra khỏi bao chính là **Trình quét cổng mạng (Network Port Scanner)** — với đại diện lừng danh nhất thế giới là `Nmap`. Trước khi có thể bảo vệ hoặc kiểm thử một máy chủ, bạn bắt buộc phải biết máy chủ đó đang "mở những cánh cửa nào" ra thế giới bên ngoài.
 
-Câu trả lời nằm ở hai kỹ năng mang tính sống còn của kỹ sư hệ thống hiện đại: **Kỹ nghệ Prompt hệ thống (Systems Prompt Engineering)** và **Kiểm soát Cửa sổ ngữ cảnh (Context Window Management)**.
-
-Rất nhiều người mới bắt đầu thường nhầm lẫn rằng: *"Muốn AI viết code giỏi thì cứ quăng toàn bộ mã nguồn của cả dự án vào khung chat"*. Đây là một sai lầm chết người! Các mô hình ngôn ngữ lớn (LLM) không phải là những bộ não vô tận; chúng hoạt động dựa trên cơ chế phân bổ sự chú ý (Attention Mechanism) với dung lượng bộ nhớ làm việc hữu hạn. Khi bạn nhồi nhét quá nhiều thông tin rác, AI sẽ rơi vào trạng thái "suy giảm chú ý" (Attention Degradation), bắt đầu sinh ra ảo giác (hallucination), quên các quy ước đã thống nhất từ trước, và vi phạm nghiêm trọng các nguyên tắc về quyền sở hữu (ownership), mượn (borrow), hoặc thời gian sống (lifetime) của Rust.
-
-Mục tiêu học tập của chương:
-- Thấu hiểu cơ chế hoạt động của Cửa sổ ngữ cảnh (Context Window) và hiện tượng suy giảm chú ý trong LLM.
-- Nắm vững công thức 5 thành phần để thiết kế một System Prompt kỹ thuật chuẩn công nghiệp, loại bỏ 99% ảo giác của AI.
-- Thiết lập tệp quy chuẩn dự án tự động (`.cursorrules` hoặc `AGENTS.md`) để kiểm soát hành vi sinh mã của AI trong các IDE hiện đại.
-- Xây dựng tư duy chắt lọc ngữ cảnh: Chỉ cung cấp đúng dữ liệu, đúng kiểu giao ước và đúng thời điểm.
+Tuy nhiên, thay vì chỉ sử dụng các công cụ có sẵn một cách thụ động, việc tự tay lập trình một công cụ quét cổng mạng đa luồng (multi-threaded concurrent port scanner) từ con số không bằng Rust sẽ mang lại cho bạn những hiểu biết vô giá về:
+- Cách thức hoạt động ở tầng giao vận (Transport Layer) của giao thức TCP và cơ chế bắt tay 3 bước (3-way handshake).
+- Kỹ thuật lập trình ổ cắm mạng (Socket Programming) ở mức hệ thống với `std::net::TcpStream`.
+- Mô hình điều phối đa luồng đồng thời bằng Rust: Phân chia công việc giữa các luồng (`std::thread`) và gom kết quả về luồng chính thông qua kênh truyền tin đa người gửi - một người nhận (`std::sync::mpsc`).
+- Tối ưu hóa thời gian chờ (Timeout management) và kiểm soát tài nguyên hệ điều hành (File Descriptors).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-### Bàn làm việc của Bác thợ mộc tài hoa và Căn phòng bừa bộn
+Để hiểu rõ sự khác biệt giữa quét tuần tự đơn luồng và quét đồng thời đa luồng, hãy quan sát câu chuyện của người đưa thư:
 
-Hãy tưởng tượng bạn thuê một Bác thợ mộc cực kỳ khéo tay và làm việc siêu nhanh (đại diện cho trợ lý AI) đến đóng cho bạn một chiếc bàn học gỗ sồi. Bác thợ mộc có một chiếc **bàn gia công** trước mặt với diện tích mặt bàn đúng 1 mét vuông (tượng trưng cho **Cửa sổ ngữ cảnh - Context Window**).
-
-#### Kịch bản 1: Người chủ bừa bãi (Bad Context & Bad Prompt)
-Người chủ bước vào và nói bâng quơ:
-> *"Bác ơi, đóng cho cháu cái bàn đẹp đẹp, chắc chắn nhé, cháu để máy tính với vài cuốn sách!"*
-
-Sau đó, người chủ bê cả một đống đồ cũ từ nhà kho ném bừa bãi lên mặt bàn gia công 1 mét vuông của bác thợ mộc: từ đống quần áo rách, vỏ chai nước ngọt, đĩa CD ca nhạc cũ, đến mấy cái đinh rỉ sét.
-
-Hậu quả là gì?
-1. Mặt bàn bị quá tải (Context Overflow): Các tài liệu quan trọng bị đống rác đè lên và rơi xuống đất (mất dấu vết thông tin).
-2. Bác thợ mộc bị phân tâm (Attention Degradation): Bác không biết phải dùng cái gì, bắt đầu nhầm lẫn giữa gỗ sồi và thanh củi mục, và đóng ra một chiếc bàn ọp ẹp 3 chân vì lời dặn ban đầu quá mập mờ.
-
-#### Kịch bản 2: Vị Kỹ sư trưởng chuyên nghiệp (Systems Prompt & Clean Context)
-Vị Kỹ sư trưởng bước vào phòng làm việc, lau sạch mặt bàn gia công 1 mét vuông, và chỉ đặt lên bàn đúng 3 thứ:
-1. **Tấm thẻ quy chuẩn an toàn (System Persona & Constraints)**: *"Bác là thợ mộc bậc 7. Tiêu chuẩn xưởng: Bắt buộc dùng mộng gỗ truyền thống, tuyệt đối không dùng đinh sắt rẻ tiền, cạnh bàn phải vát tròn 5mm để không gây trầy xước"*.
-2. **Bản vẽ kỹ thuật chi tiết (Domain Contract & Types)**: Một bản vẽ kích thước chuẩn: Dài 120cm, Rộng 60cm, Cao 75cm, chịu tải trọng tối thiểu 50kg.
-3. **Mẫu gỗ chuẩn (Few-shot Example)**: Một thanh gỗ mẫu đã chà nhám mịn để làm mốc so sánh chất lượng.
-
-Bác thợ mộc nhìn vào mặt bàn sạch sẽ, hiểu ngay 100% yêu cầu mà không tốn một giây suy nghĩ vẩn vơ. Chiếc bàn gỗ sồi hoàn mỹ được hoàn thành chỉ sau 30 phút, đạt chuẩn xác từng milimet!
-
----
-
-## Khái niệm & Cơ chế kỹ thuật chuyên sâu
-
-### 1. Bản chất cơ học của Token và Cửa sổ ngữ cảnh (Context Window)
-Trong khoa học máy tính, các mô hình ngôn ngữ lớn (LLM) không đọc văn bản theo từng chữ cái hay từng từ nguyên vẹn như con người, mà chia nhỏ văn bản thành các đơn vị gọi là **Tokens** (thường từ 3-4 ký tự tiếng Anh hoặc 1-2 ký tự tiếng Việt có dấu).
-
-Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **Cửa sổ ngữ cảnh (Context Window)** — ví dụ: 8,000 tokens, 32,000 tokens hoặc 128,000 tokens. Cửa sổ này tương đương với bộ nhớ truy xuất nhanh (RAM) tạm thời của mô hình trong một phiên làm việc:
-- Khi tổng số tokens của Prompt + Lịch sử hội thoại + Mã nguồn tải lên vượt quá giới hạn, những thông tin ở phần đầu sẽ bị đẩy ra ngoài (bị lãng quên vĩnh viễn).
-- Ngay cả khi chưa vượt quá giới hạn, hiện tượng **"Lost in the Middle" (Bị lãng quên ở giữa)** vẫn diễn ra: LLM ghi nhớ rất tốt thông tin ở phần đầu (System Prompt) và phần cuối (câu lệnh vừa gõ), nhưng dễ bỏ qua những chỉ thị nằm ở lưng chừng hàng ngàn dòng code.
-
-### 2. Cấu trúc 5 thành phần của một Systems Prompt chuẩn mực
-Để biến AI thành một lập trình viên Rust cấp cao tuân thủ tuyệt đối quy chuẩn dự án, System Prompt cần được cấu trúc theo 5 khối rõ ràng:
-
-```markdown
-┌─────────────────────────────────────────────────────────────┐
-│ 1. PERSONA & ROLE (Định danh vai trò chuyên gia)            │
-├─────────────────────────────────────────────────────────────┤
-│ 2. HARD CONSTRAINTS (Các điều cấm kỵ bất khả xâm phạm)      │
-├─────────────────────────────────────────────────────────────┤
-│ 3. DOMAIN CONTRACTS (Kiểu dữ liệu, Structs, Enums & Traits) │
-├─────────────────────────────────────────────────────────────┤
-│ 4. INPUT / OUTPUT SPEC (Đặc tả dữ liệu đầu vào & đầu ra)    │
-├─────────────────────────────────────────────────────────────┤
-│ 5. FEW-SHOT EXAMPLES (Ví dụ mẫu chuẩn để AI noi theo)       │
-└─────────────────────────────────────────────────────────────┘
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│             HÌNH TƯỢNG HÓA: ĐỘI ĐƯA THƯ GÕ CỬA TÒA NHÀ 1000 PHÒNG                │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│ [CÁCH 1: ANH ĐƯA THƯ ĐƠN ĐỘC (QUÉT TUẦN TỰ ĐƠN LUỒNG - SYNCHRONOUS)]             │
+│ - Anh đưa thư đi bộ đến Phòng 1 ──► Gõ cửa ──► Đứng đợi 3 giây (Timeout)         │
+│ - Không ai mở cửa (Cổng đóng) ──► Bước sang Phòng 2 ──► Lại đợi 3 giây...        │
+│   ===> Để gõ hết 1,000 phòng, anh ta mất: 1,000 x 3 = 3,000 giây (~50 PHÚT)!     │
+│                                                                                  │
+│ [CÁCH 2: BIỆT ĐỘI 50 NGƯỜI ĐƯA THƯ (QUÉT ĐA LUỒNG - MULTI-THREADED MPSC)]        │
+│ ┌──────────────────────────────────────────────────────────────────────┐         │
+│ │ Đội trưởng chia 1000 phòng cho 50 anh em (Mỗi người 20 phòng)        │         │
+│ │ 50 người đồng loạt tỏa đi gõ cửa cùng một lúc!                       │         │
+│ ├──────────────────────────────────────────────────────────────────────┤         │
+│ │ Ai thấy phòng có người ra mở cửa (Cổng MỞ - TCP SYN-ACK):            │         │
+│ │   Lập tức bấm bộ đàm thông báo về trung tâm (Kênh MPSC Channel)!     │         │
+│ ├──────────────────────────────────────────────────────────────────────┤         │
+│ │ Đội trưởng ngồi tại phòng bảo vệ chỉ việc ghi nhận danh sách phòng mở│         │
+│ └──────────────────────────────────────────────────────────────────────┘         │
+│   ===> Toàn bộ tòa nhà 1,000 phòng được quét sạch trong chưa đầy 5 GIÂY!         │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Chi tiết 5 thành phần:
-1. **Persona & Role**: Xác định tầm nhận thức: *"Bạn là một Kỹ sư Hệ thống Rust cao cấp (Senior Rust Systems Engineer) tuân thủ tiêu chuẩn Rust 2021 Edition"*.
-2. **Hard Constraints**: Các lằn ranh đỏ kỹ thuật:
-   - Nghiêm cấm sử dụng từ khóa `unsafe` trừ khi có sự phê duyệt tường minh.
-   - Nghiêm cấm dùng `.unwrap()` hoặc `.expect()` trong mã nguồn thương mại; bắt buộc lan truyền lỗi bằng `Result<T, E>` và toán tử `?`.
-   - Bắt buộc tuân thủ nguyên tắc quyền sở hữu (ownership) và mượn (borrow), không lạm dụng `.clone()` bừa bãi.
-   - Luôn sử dụng bộ nhớ đệm (buffer) thích hợp khi thao tác đọc/ghi file hoặc luồng mạng.
-3. **Domain Contracts**: Cung cấp các định nghĩa kiểu dữ liệu thuần túy (chỉ gửi chữ ký hàm và cấu trúc struct/trait, không gửi thân hàm cũ làm loãng ngữ cảnh).
-4. **Input/Output Spec**: Yêu cầu định dạng đầu ra rõ ràng: Chỉ trả về mã nguồn Rust hợp lệ, có chú thích tiếng Việt cho từng khối logic, không giải thích lan man.
-5. **Few-Shot Examples**: Đưa ra một ví dụ mẫu ngắn gọn thể hiện phong cách viết mã bạn mong muốn.
+### 1. Cổng mạng (Port) giống như số phòng trong chung cư
+- Địa chỉ IP (ví dụ `192.168.1.10`) giống như địa chỉ của một tòa nhà chung cư lớn.
+- Số cổng mạng (từ `1` đến `65535`) giống như số phòng cụ thể bên trong tòa nhà đó:
+  - Phòng `80` (HTTP): Quầy lễ tân công cộng mở cửa đón khách du lịch xem thông tin.
+  - Phòng `443` (HTTPS): Quầy giao dịch tài chính có nhân viên bảo vệ kiểm tra căn cước (chứng chỉ SSL/TLS).
+  - Phòng `22` (SSH): Phòng điều hành máy chủ bí mật ở tầng áp mái có khóa vân tay.
+  - Các phòng còn lại: Cửa đóng then cài, không có người ở.
 
-### 3. Tự động hóa quy chuẩn dự án qua `.cursorrules` và `AGENTS.md`
-Trong các môi trường làm việc hiện đại (như Cursor IDE, Windsurf, hoặc Antigravity), bạn không cần phải copy-paste System Prompt mỗi lần chat. Bạn có thể lưu trữ chúng vào tệp cấu hình chuyên dụng ở thư mục gốc của dự án:
-- `.cursorrules` hoặc `.agent/rules/*.md`: Tự động được IDE đính kèm vào mỗi lượt suy luận của AI.
-- Cơ chế phân tầng ngữ cảnh thông minh:
-  - **Tầng 1 (Luôn tải)**: Các ràng buộc an toàn bộ nhớ và tiêu chuẩn mã nguồn.
-  - **Tầng 2 (Tải theo ngữ cảnh)**: Các kiểu dữ liệu của mô-đun hiện tại đang chỉnh sửa.
-  - **Tầng 3 (Chỉ tải khi cần)**: Lịch sử lỗi biên dịch để AI sửa chữa.
+### 2. Quét cổng mạng (Port Scanning) giống như gõ cửa từng phòng
+- Khi bạn muốn biết phòng nào đang hoạt động, bạn gõ nhẹ vào cửa phòng (`gửi gói tin TCP SYN`).
+- Nếu phòng có người ra mở cửa và niềm nở chào bạn (`trả về TCP SYN-ACK`), bạn biết ngay phòng đó đang **MỞ (Open)**. Bạn lịch sự cảm ơn và rời đi.
+- Nếu phòng khóa trái cửa im lìm, sau 200 mili-giây không ai trả lời (`Timeout`), bạn kết luận phòng đó đang **ĐÓNG (Closed/Filtered)**.
+- Khi sử dụng Rust đa luồng kết hợp bộ đàm liên lạc (`mpsc`), công việc này diễn ra với tốc độ hàng ngàn phòng mỗi giây mà không bỏ sót bất kỳ dịch vụ nào!
 
 ---
 
-## Mã nguồn minh họa thực chiến
+## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-Dưới đây là một mô-đun Rust hoàn chỉnh, có thể biên dịch và chạy bằng `rustc --edition=2021`. Chương trình này mô phỏng một **Động cơ điều phối ngữ cảnh (Context Engine)** chuyên nghiệp: Tự động phân tích dung lượng token, quản lý ngân sách bộ nhớ ngữ cảnh (token budget), ghép nối các thành phần System Prompt có trọng số, và cắt gọt ngữ cảnh thừa thãi trước khi chuyển giao cho trợ lý AI.
+### 1. Giao thức TCP và Cơ chế Bắt tay 3 bước (TCP 3-Way Handshake)
+
+Giao thức TCP (Transmission Control Protocol) là giao thức truyền thông tin cậy hướng kết nối:
+
+```
+Máy quét (Scanner)                                  Máy chủ mục tiêu (Target)
+      │                                                         │
+      │  1. Gói tin SYN (Xin chào, tôi muốn kết nối)            │
+      ├────────────────────────────────────────────────────────►│
+      │                                                         │
+      │  2. Gói tin SYN-ACK (Đồng ý, tôi mở cửa đón bạn!)       │ ◄── CỔNG MỞ (OPEN)
+      │◄────────────────────────────────────────────────────────┤
+      │                                                         │
+      │  (HOẶC gói tin RST: Cổng này đóng, xin đừng làm phiền) │ ◄── CỔNG ĐÓNG (CLOSED)
+      │◄────────────────────────────────────────────────────────┤
+      │                                                         │
+      │  3. Gói tin ACK (Xác nhận kết nối hoàn tất)             │
+      ├────────────────────────────────────────────────────────►│
+      │                                                         │
+```
+
+Kỹ thuật quét mà chúng ta triển khai mang tên **TCP Connect Scan**:
+- Chương trình của chúng ta yêu cầu Hệ điều hành hoàn thành trọn vẹn quy trình bắt tay 3 bước thông qua lời gọi hàm `TcpStream::connect_timeout`.
+- **Ưu điểm**: Hoạt động được trên mọi hệ điều hành (Linux, macOS, Windows) mà không đòi hỏi quyền hạn Quản trị viên tối cao (Root/Administrator), không cần cấu hình Raw Socket phức tạp.
+- **Tính toán Timeout**: Nếu kết nối tới một cổng đóng bị lọc bởi tường lửa (Firewall), hệ điều hành có thể treo luồng tới 30 giây nếu không có cấu hình timeout. Bằng cách thiết lập `Duration::from_millis(200..500)`, chúng ta có thể quét hàng ngàn cổng trong chớp mắt.
+
+### 2. Kiến trúc Đa luồng và Kênh truyền tin (`std::sync::mpsc`)
+
+Để đạt tốc độ tối đa mà không gây nghẽn (non-blocking), chúng ta áp dụng mô hình phân tán công việc:
+1. **Chia việc (Work Division)**: Dải cổng cần quét (ví dụ từ cổng `1` đến `1024`) được phân bổ cho các luồng độc lập (`std::thread::spawn`).
+2. **Kênh truyền tin (`mpsc: Multi-Producer, Single-Consumer`)**:
+   - `Sender` (Người gửi): Được nhân bản (`tx.clone()`) và chuyển quyền sở hữu (ownership) vào từng luồng con.
+   - Khi một luồng con phát hiện cổng mở, nó gửi số cổng `port: u16` qua kênh truyền tin.
+   - `Receiver` (Người nhận): Nằm tại luồng chính, lắng nghe và thu thập các cổng mở được gửi về.
+3. **Đóng kênh truyền an toàn (Graceful Channel Shutdown)**:
+   - Trong Rust, kênh `mpsc` chỉ thực sự đóng lại khi **tất cả mọi bản sao của `Sender` đều bị tiêu hủy (`drop`)**.
+   - Do đó, luồng chính sau khi nhân bản `tx` cho các luồng con bắt buộc phải gọi `drop(tx)` (tiêu hủy bản sao gốc của chính mình). Khi tất cả các luồng con hoàn thành và tự động `drop(tx_clone)`, bộ lặp `rx.iter()` trên luồng chính sẽ kết thúc vòng lặp một cách êm ái!
+
+### 3. Tương thích Bộ nhớ và Quản lý Tài nguyên Hệ thống
+
+- Mỗi tiến trình trên hệ điều hành đều có một giới hạn về số lượng kết nối mạng mở đồng thời (gọi là giới hạn **File Descriptors**). Giá trị mặc định thay đổi theo hệ điều hành: thường là 1024 trên Linux và chỉ 256 trên macOS. Bạn có thể xem bằng lệnh `ulimit -n`. Vì vậy đừng bao giờ sinh ra hàng nghìn luồng cùng mở socket một lúc — hãy chia dải cổng thành từng lô như mã nguồn bên dưới.
+- Chúng ta sử dụng cấu trúc khối để đảm bảo biến `TcpStream` ngay sau khi kết nối thành công sẽ lập tức được đóng kết nối và giải phóng vùng nhớ thông qua cơ chế RAII, bảo đảm không bao giờ làm tràn bộ nhớ đệm (buffer) mạng của hệ điều hành.
+
+---
+
+## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
+
+Dưới đây là mã nguồn hoàn chỉnh của công cụ **Trình quét cổng mạng (Port Scanner)** đa luồng hiệu năng cao bằng Rust chuẩn mực, không cần thư viện ngoài, có khả năng quét dải cổng mạng song song với thời gian chờ thông minh:
 
 ```rust
-// ============================================================================
-// CHƯƠNG 40: HỆ THỐNG QUẢN LÝ CỬA SỔ NGỮ CẢNH & ĐÓNG GÓI SYSTEM PROMPT CHUẨN MỰC
-// Tác giả: Kỹ Sư Kiến Trúc Hệ Thống Rust
-// ============================================================================
+use std::net::{SocketAddr, TcpStream};
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
+use std::time::Duration;
 
-use std::collections::VecDeque;
-
-// 1. ĐỊNH NGHĨA CÁC PHÂN ĐOẠN NGỮ CẢNH (CONTEXT SEGMENT)
-// Mỗi phần của ngữ cảnh có mức độ ưu tiên khác nhau khi ngân sách bộ nhớ bị giới hạn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PriorityTier {
-    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
-    High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
-    Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
-    Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
-}
-
+/// Cấu hình tham số quét mạng
 #[derive(Debug, Clone)]
-pub struct ContextSegment {
-    pub name: String,
-    pub content: String,
-    pub priority: PriorityTier,
-    pub estimated_tokens: usize,
+pub struct ScanConfig {
+    pub target_ip: String,
+    pub start_port: u16,
+    pub end_port: u16,
+    pub timeout_ms: u64,
+    pub thread_count: usize,
 }
 
-impl ContextSegment {
-    pub fn new(name: &str, content: &str, priority: PriorityTier) -> Self {
-        // Ước tính số token sơ bộ: trung bình khoảng 4 ký tự tương đương 1 token
-        let estimated_tokens = (content.len() + 3) / 4;
-        Self {
-            name: name.to_string(),
-            content: content.to_string(),
-            priority,
-            estimated_tokens,
-        }
+/// Kết quả của một cổng được quét
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortResult {
+    pub port: u16,
+    pub is_open: bool,
+    pub service_hint: &'static str,
+}
+
+/// Hàm phỏng đoán tên dịch vụ phổ biến dựa trên số hiệu cổng
+fn guess_service_name(port: u16) -> &'static str {
+    match port {
+        21 => "FTP (File Transfer Protocol)",
+        22 => "SSH (Secure Shell)",
+        23 => "Telnet (Unencrypted Text)",
+        25 => "SMTP (Simple Mail Transfer)",
+        53 => "DNS (Domain Name System)",
+        80 => "HTTP (Hypertext Transfer)",
+        110 => "POP3 (Post Office Protocol)",
+        143 => "IMAP (Internet Message Access)",
+        443 => "HTTPS (HTTP Secure)",
+        3306 => "MySQL Database Server",
+        5432 => "PostgreSQL Database Server",
+        6379 => "Redis In-Memory Key-Value Store",
+        8080 => "HTTP Alternate / Web Proxy",
+        _ => "Dịch vụ tùy chỉnh (Custom / Unknown)",
     }
 }
 
-// 2. ĐỘNG CƠ QUẢN LÝ CỬA SỔ NGỮ CẢNH (CONTEXT WINDOW ENGINE)
-// Sử dụng con trỏ thông minh (smart pointer) hoặc cấu trúc sở hữu chặt chẽ
-// để quản lý bộ nhớ đệm (buffer) chứa các chỉ thị prompt an toàn.
-pub struct ContextEngine {
-    pub max_token_budget: usize,
-    segments: Vec<ContextSegment>,
+/// Thực hiện kiểm tra trạng thái một cổng đơn lẻ với thời gian chờ xác định
+pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
+    let address_str = format!("{}:{}", ip, port);
+    if let Ok(socket_addr) = address_str.parse::<SocketAddr>() {
+        // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt
+        if let Ok(_stream) = TcpStream::connect_timeout(&socket_addr, timeout) {
+            // Kết nối thành công! _stream sẽ tự động đóng kết nối khi ra khỏi phạm vi
+            return true;
+        }
+    }
+    false
 }
 
-impl ContextEngine {
-    pub fn new(max_token_budget: usize) -> Self {
-        Self {
-            max_token_budget,
-            segments: Vec::new(),
-        }
-    }
+/// Động cơ quét cổng mạng đa luồng tốc độ cao
+pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
+    let (tx, rx) = channel::<PortResult>();
+    let mut thread_handles = Vec::new();
+    let timeout = Duration::from_millis(config.timeout_ms);
 
-    // Thêm một phân đoạn ngữ cảnh vào hàng chờ
-    pub fn add_segment(&mut self, segment: ContextSegment) {
-        self.segments.push(segment);
-    }
+    println!(
+        "[*] Bắt đầu quét đa luồng mục tiêu {} (Dải cổng: {} -> {})...",
+        config.target_ip, config.start_port, config.end_port
+    );
 
-    // Ghép nối prompt tối ưu hóa dựa trên ngân sách token tối đa
-    // Tuân thủ nghiêm ngặt quy tắc mượn (borrow) và quyền sở hữu (ownership)
-    pub fn assemble_system_prompt(&self) -> (String, usize) {
-        // 1. Phân loại các segment theo mức độ ưu tiên
-        let mut critical = Vec::new();
-        let mut high = Vec::new();
-        let mut medium = Vec::new();
-        let mut low = Vec::new();
+    let ports: Vec<u16> = (config.start_port..=config.end_port).collect();
+    let chunk_size = (ports.len() + config.thread_count - 1) / config.thread_count;
 
-        for seg in &self.segments {
-            match seg.priority {
-                PriorityTier::Critical => critical.push(seg),
-                PriorityTier::High => high.push(seg),
-                PriorityTier::Medium => medium.push(seg),
-                PriorityTier::Low => low.push(seg),
-            }
-        }
+    for chunk in ports.chunks(chunk_size) {
+        let chunk_vec = chunk.to_vec();
+        let thread_tx: Sender<PortResult> = tx.clone();
+        let target_ip_clone = config.target_ip.clone();
 
-        let mut assembled_prompt = String::with_capacity(4096);
-        let mut used_tokens = 0;
-
-        // Hàm nội bộ an toàn để nạp các segment theo thứ tự ưu tiên
-        let mut try_include = |segs: &[&ContextSegment]| {
-            for seg in segs {
-                if used_tokens + seg.estimated_tokens <= self.max_token_budget {
-                    assembled_prompt.push_str(&format!("### [{}]\n{}\n\n", seg.name, seg.content));
-                    used_tokens += seg.estimated_tokens;
-                } else {
-                    println!("[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!", seg.name);
+        let handle = thread::spawn(move || {
+            for port in chunk_vec {
+                if check_single_port(&target_ip_clone, port, timeout) {
+                    let result = PortResult {
+                        port,
+                        is_open: true,
+                        service_hint: guess_service_name(port),
+                    };
+                    let _ = thread_tx.send(result);
                 }
             }
-        };
+        });
 
-        // Ưu tiên cao nạp trước, ưu tiên thấp nạp sau
-        try_include(&critical);
-        try_include(&high);
-        try_include(&medium);
-        try_include(&low);
-
-        (assembled_prompt, used_tokens)
+        thread_handles.push(handle);
     }
+
+    // Tiêu hủy bản sao Sender gốc để luồng nhận (Receiver) biết khi nào kết thúc
+    drop(tx);
+
+    // Chờ tất cả các luồng hoàn thành nhiệm vụ
+    for handle in thread_handles {
+        let _ = handle.join();
+    }
+
+    // Thu thập toàn bộ kết quả từ kênh truyền tin MPSC
+    let mut open_ports: Vec<PortResult> = rx.into_iter().collect();
+
+    // Sắp xếp lại danh sách cổng theo thứ tự tăng dần
+    open_ports.sort_by_key(|res| res.port);
+    open_ports
 }
 
-// 3. HÀM MAIN THỰC CHỨC MINH HỌA QUY TRÌNH QUẢN LÝ NGỮ CẢNH
 fn main() {
-    println!("=== CHƯƠNG 40: MINH HỌA ĐỘNG CƠ QUẢN LÝ NGỮ CẢNH & PROMPT HỆ THỐNG ===");
+    println!("==================================================================");
+    println!("   CONG CU QUET CONG MANG DA LUONG SIEU TOC (RUST PORT SCANNER)  ");
+    println!("==================================================================");
 
-    // Giả sử chúng ta đặt ngân sách ngữ cảnh rất chặt chẽ: chỉ 300 tokens
-    let mut engine = ContextEngine::new(300);
+    // Thiết lập cấu hình kiểm thử quét trên máy cục bộ (Localhost 127.0.0.1)
+    let config = ScanConfig {
+        target_ip: "127.0.0.1".to_string(),
+        start_port: 75,
+        end_port: 85,
+        timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
+        thread_count: 4,  // 4 luồng quét song song
+    };
 
-    // Segment 1: Ràng buộc an toàn cốt lõi (Critical)
-    engine.add_segment(ContextSegment::new(
-        "RÀNG BUỘC KỸ THUẬT BẤT BIẾN",
-        "1. Ngôn ngữ: Rust 2021 Edition.\n2. CẤM tuyệt đối dùng `unsafe`.\n3. CẤM dùng `.unwrap()`; bắt buộc xử lý lỗi bằng `Result<T, E>`.\n4. Đảm bảo an toàn quyền sở hữu (ownership) và mượn (borrow).",
-        PriorityTier::Critical,
-    ));
+    println!("    - Dia chi IP muc tieu : {}", config.target_ip);
+    println!("    - Pham vi cong quet   : {} -> {}", config.start_port, config.end_port);
+    println!("    - So luong luong chay : {}", config.thread_count);
+    println!("    - Thoi gian cho toi da: {} ms/port\n", config.timeout_ms);
 
-    // Segment 2: Giao ước Hợp đồng Trait (High)
-    engine.add_segment(ContextSegment::new(
-        "GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ",
-        "pub trait LogStorage {\n    fn append_log(&mut self, message: &str) -> Result<u64, String>;\n}",
-        PriorityTier::High,
-    ));
+    // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
+    let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();
+    if mock_listener.is_some() {
+        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem thu.");
+    }
 
-    // Segment 3: Ví dụ mẫu (Medium)
-    engine.add_segment(ContextSegment::new(
-        "VÍ DỤ MẪU (FEW-SHOT EXAMPLE)",
-        "// Mẫu triển khai xử lý an toàn:\nimpl LogStorage for MemoryStorage {\n    fn append_log(&mut self, msg: &str) -> Result<u64, String> {\n        self.buffer.push(msg.to_string());\n        Ok(self.buffer.len() as u64)\n    }\n}",
-        PriorityTier::Medium,
-    ));
+    let results = execute_concurrent_scan(config);
 
-    // Segment 4: Lịch sử trò chuyện rườm rà (Low - sẽ bị cắt bỏ nếu vượt budget)
-    engine.add_segment(ContextSegment::new(
-        "LỊCH SỬ CHAT CŨ KHÔNG CẦN THIẾT",
-        "Người dùng từng hỏi về thời tiết Hà Nội và cách nấu phở bò gia truyền 3 thế hệ trước khi bắt đầu lập trình...",
-        PriorityTier::Low,
-    ));
+    println!("\n==================================================================");
+    println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
+    println!("==================================================================");
+    if results.is_empty() {
+        println!("    [!] Khong phat hien thay cong nao mo trong pham vi quet.");
+    } else {
+        for res in &results {
+            println!(
+                "    [+] Cong {:5}/TCP : MO (Open) | Dich vu: {}",
+                res.port, res.service_hint
+            );
+        }
+    }
 
-    // Tiến hành ghép nối Prompt
-    let (final_prompt, total_tokens) = engine.assemble_system_prompt();
-
-    println!("\n--- KẾT QUẢ PROMPT HOÀN CHỈNH ĐƯỢC CHẮT LỌC ---");
-    println!("{}", final_prompt);
-    println!("Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa", total_tokens, engine.max_token_budget);
-
-    // Kiểm tra tính đúng đắn của logic
-    assert!(total_tokens <= engine.max_token_budget);
-    assert!(final_prompt.contains("RÀNG BUỘC KỸ THUẬT BẤT BIẾN"));
-    assert!(final_prompt.contains("GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ"));
-
-    println!("\n[Kiểm chứng thành công] Prompt đã được tối ưu hóa hoàn hảo, loại bỏ 100% tạp âm ngữ cảnh!");
+    println!("\n==================================================================");
+    println!("   QUET CONG HOAN TAT AN TOAN: ZERO DATA RACE & ZERO MEMORY LEAK! ");
+    println!("==================================================================");
 }
 ```
 
 ---
 
-## Bảng tra cứu lỗi biên dịch & Cách khắc phục
+## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình viên cung cấp ngữ cảnh bị thiếu sót hoặc prompt sai lệch khiến AI sinh mã lỗi:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng công cụ quét mạng đa luồng trong Rust:
 
-| Mã lỗi `rustc` | Nguyên nhân gốc rễ do sai lệch ngữ cảnh | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh Prompt & Context |
-| :--- | :--- | :--- | :--- |
-| **`E0061`** | **Mismatched number of arguments**<br>AI nhớ phiên bản hàm cũ vì trong context bạn không cung cấp chữ ký hàm hiện tại. | ```rust // compile-fail\nfn process_event(id: u64, name: &str) {}\nprocess_event(10);``` | Luôn đưa chữ ký hàm chính xác vào khối `Domain Contracts` trong System Prompt để AI đối chiếu số lượng tham số. |
-| **`E0425`** | **Cannot find value/function in this scope**<br>AI gọi một hàm tiện ích mà không biết nó nằm ở mô-đun nào vì context bị thiếu thông tin `use`. | ```rust // compile-fail\nlet data = read_file_to_string("config.json");``` | Bổ sung câu lệnh quy chuẩn vào Prompt: *"Mọi hàm bên ngoài bắt buộc phải ghi rõ đường dẫn đầy đủ hoặc khai báo `use std::...` tường minh"*. |
-| **`E0599`** | **No method named found for type**<br>AI gọi một phương thức thuộc về Trait nhưng chưa import Trait đó vào phạm vi tệp tin. | ```rust // compile-fail\nuse std::io;\nlet mut f = io::stdout();\nf.write_all(b"hello");``` | Cung cấp danh sách các Trait cốt lõi trong prompt (ví dụ: `use std::io::Write;`) và nhắc nhở AI luôn đưa Trait vào phạm vi hoạt động. |
-| **`E0382`** | **Use of moved value in loop**<br>AI chuyển quyền sở hữu (ownership) của một chuỗi String vào bên trong phân đoạn ngữ cảnh lặp lại. | ```rust // compile-fail\nlet s = String::from("context");\nfor _ in 0..2 { drop(s); }``` | Nhắc nhở AI áp dụng quy tắc mượn (borrow) tham chiếu `&str` hoặc `&ContextSegment` thay vì tiêu thụ quyền sở hữu trong các thao tác lặp. |
+| Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
+|---|---|---|---|
+| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Bạn cố gắng truyền một con trỏ thông minh (smart pointer) đơn luồng (`Rc<T>`) qua ranh giới luồng trong `thread::spawn`. | Thay thế `Rc<T>` bằng con trỏ thông minh đa luồng an toàn: `Arc<T>` (Atomic Reference Counting). |
+| **E0382** | `use of moved value: 'tx'` | Bạn truyền `tx` vào luồng thứ nhất khiến quyền sở hữu (ownership) bị di chuyển, sau đó lại cố gắng dùng lại `tx` ở luồng thứ hai. | Nhân bản `Sender` trước khi đưa vào luồng: `let tx_clone = tx.clone();`. |
+| **E0597** | `'target_ip' does not live long enough` | Luồng con được tạo bằng `thread::spawn` có thời gian sống (lifetime) `'static`, do đó nó không thể mượn tham chiếu `&str` từ hàm cha. | Sử dụng từ khóa `move` và clone chuỗi thành kiểu có quyền sở hữu độc lập: `let ip = target_ip.clone();`. |
+| **E0507** | `cannot move out of a shared reference` | Cố gắng lấy phần tử ra khỏi một lát cắt mượn `&[T]` mà kiểu dữ liệu không triển khai trait `Copy`. | Sử dụng phương thức `.clone()` hoặc chuyển thành `Vec` riêng biệt. |
 
----
+### Ví dụ phân tích lỗi `E0382` khi truyền Sender vào luồng con:
 
-## Tóm tắt chương & Bài tập rèn luyện
-
-### 4 Điểm cốt lõi cần ghi nhớ
-1. **Chất lượng đầu ra của AI tỷ lệ thuận với độ sạch của ngữ cảnh**: Đưa càng nhiều thông tin rác vào prompt thì AI càng dễ sinh ảo giác và quên lãng các quy tắc quan trọng.
-2. **Cấu trúc System Prompt 5 phần**: Định danh vai trò -> Lằn ranh đỏ (Hard Constraints) -> Hợp đồng dữ liệu (Contracts) -> Đặc tả I/O -> Ví dụ mẫu (Few-shot).
-3. **Ưu tiên phân tầng thông tin**: Luôn ưu tiên các quy tắc an toàn bộ nhớ và giao ước Trait lên hàng đầu (`Critical`); lịch sử hội thoại rườm rà phải được dọn dẹp thường xuyên (`Low`).
-4. **Tự động hóa với `.cursorrules`**: Biến các tiêu chuẩn dự án thành luật lệ bất di bất dịch được nạp tự động, giảm thiểu 80% công sức giao tiếp lặp lại.
-
-### Bài tập rèn luyện tư duy
-
-**Bài tập 1 (Phê bình và Nâng cấp Prompt)**:
-Một lập trình viên gửi câu lệnh sau cho AI:
-> *"Viết cho tôi một hàm đọc file cấu hình config.txt rồi trả về danh sách cổng mạng"*.
-
-Dựa trên 5 thành phần của System Prompt đã học, hãy viết lại câu lệnh trên thành một System Prompt kỹ thuật hoàn chỉnh:
-- Có quy định cấm dùng `unwrap()`.
-- Có quy định xử lý khi file không tồn tại.
-- Có định dạng trả về rõ ràng (`Result<Vec<u16>, std::io::Error>`).
-
-**Bài tập 2 (Tối ưu hóa Cửa sổ ngữ cảnh)**:
-Dự án của bạn có 50 tệp tin mã nguồn với tổng cộng 80,000 dòng code. Bạn đang cần AI viết thêm một phương thức mới cho `struct UserSession`.
-Hãy nêu chiến lược: Bạn sẽ chọn những tệp tin hoặc thông tin nào để đưa vào cửa sổ ngữ cảnh của AI, và bạn sẽ cố tình bỏ lại những gì để tránh gây quá tải bộ nhớ làm việc của mô hình?
-
-**Bài tập 3 (Sửa lỗi thiếu Trait Scope của AI)**:
-Đoạn mã sau do AI sinh ra bị lỗi biên dịch `E0599` vì thiếu khai báo Trait trong phạm vi:
 ```rust
-use std::fs::File;
+use std::sync::mpsc::channel;
+use std::thread;
 
-fn save_data_to_file(path: &str, content: &[u8]) -> Result<(), std::io::Error> {
-    let mut file = File::create(path)?;
-    // Trình biên dịch báo lỗi: no method named `write_all` found for struct `File`
-    file.write_all(content)?;
-    Ok(())
+// Đoạn mã lỗi minh họa E0382:
+fn vi_du_loi_e0382() {
+    let (tx, _rx) = channel::<u16>();
+
+    // Luồng 1 lấy quyền sở hữu tx
+    // thread::spawn(move || { let _ = tx.send(80); });
+
+    // LỖI E0382: tx đã bị di chuyển vào luồng 1, không thể dùng ở luồng 2!
+    // thread::spawn(move || { let _ = tx.send(443); });
+}
+
+// Cách sửa chữa đúng chuẩn: Nhân bản bản sao Sender cho mỗi luồng
+fn vi_du_dung_e0382() {
+    let (tx, _rx) = channel::<u16>();
+
+    let tx1 = tx.clone();
+    thread::spawn(move || { let _ = tx1.send(80); });
+
+    let tx2 = tx.clone();
+    thread::spawn(move || { let _ = tx2.send(443); });
 }
 ```
-Hãy giải thích vì sao lỗi xảy ra và thêm đúng dòng lệnh `use` còn thiếu để mã nguồn biên dịch thành công.
-*(Gợi ý: Phương thức `write_all` nằm trong Trait `std::io::Write`)*.
+
+---
+
+## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
+
+### 4 Điểm cốt lõi cần ghi nhớ:
+1. **Nguyên lý TCP Connect Scan**: Sử dụng cơ chế bắt tay 3 bước chuẩn mực của hệ điều hành để xác định cổng mở mà không cần quyền hạn quản trị viên đặc biệt.
+2. **Sức mạnh Concurrency của Rust**: Phân chia khối lượng công việc cho các luồng độc lập, truyền dữ liệu qua kênh `mpsc` mà không lo ngại tranh chấp dữ liệu (Data Race).
+3. **Quản lý Vòng đời Kênh MPSC**: Luồng chính phải giải phóng bản sao `tx` gốc để vòng lặp đọc `rx` biết thời điểm kết thúc khi tất cả các luồng con hoàn tất.
+4. **An toàn Tài nguyên**: Khái niệm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) kết hợp để đảm bảo các kết nối mạng `TcpStream` được dọn dẹp tức thì, không làm cạn kiệt tài nguyên hệ thống.
+
+### Bài tập rèn luyện tự giải:
+1. **Bài tập 1 (Bổ sung tính năng Banner Grabbing)**:  
+   Khi phát hiện một cổng mở (ví dụ cổng `80` hoặc cổng `21`), hãy cho chương trình gửi một chuỗi ngắn `b"HEAD / HTTP/1.0\r\n\r\n"` và đọc tối đa 128 bytes phản hồi đầu tiên từ máy chủ. In chuỗi thông tin này ra màn hình để biết chính xác phiên bản phần mềm máy chủ đang chạy.
+2. **Bài tập 2 (Tối ưu hóa số luồng động Worker Pool)**:  
+   Thay vì tạo số luồng bằng với số cổng (có thể gây quá tải CPU nếu quét 10,000 cổng), hãy thiết lập một hàng đợi công việc cố định gồm đúng 20 luồng công nhân (Worker Threads), liên tục rút việc từ một kênh chung cho đến khi hết cổng cần quét.
+3. **Bài tập 3 (Suy ngẫm OSCP: Sự khác biệt giữa SYN Stealth Scan và Connect Scan)**:  
+   Tại sao trong các bài thi kiểm thử thâm nhập OSCP thực tế, các chuyên gia lại thích sử dụng kiểu quét `SYN Stealth Scan` (chỉ gửi SYN, nhận SYN-ACK rồi gửi RST hủy ngay thay vì gửi ACK hoàn tất)? Ưu điểm về mặt tàng hình (evasion) của kỹ thuật này đối với các hệ thống ghi nhật ký (Firewall / IDS Log) là gì?

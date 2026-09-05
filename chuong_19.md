@@ -1,309 +1,791 @@
-# Chương 19: Macro thủ tục: syn, quote & Khám phá Cây cú pháp trừu tượng (Procedural Macros: syn, quote & AST Traversal)
+# Chương 19: Hàm tử, Hàm tử áp dụng và Đơn nguyên — bản đồ sang thư viện chuẩn Rust (Functor, Applicative & Monad)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong Chương 17 và 18, chúng ta đã khám phá Macro khai báo (`macro_rules!`) và thấy được sức mạnh của việc so khớp khuôn mẫu (pattern matching) để sinh mã nguồn tự động. Tuy nhiên, khi xây dựng các ứng dụng quy mô công nghiệp — chẳng hạn như tự động chuyển đổi struct thành chuỗi JSON trong `serde`, hay tự động sinh mã kết nối cơ sở dữ liệu trong `sqlx` — bạn sẽ sớm chạm tới bức tường giới hạn của `macro_rules!`:
-- *`macro_rules!` không thể nhìn sâu vào cấu trúc bên trong của một `struct`*: Bạn không thể yêu cầu nó: "Hãy duyệt qua tất cả các trường dữ liệu (fields) của struct này, lấy tên của từng trường và kiểu dữ liệu tương ứng của nó để sinh mã in ấn".
-- *`macro_rules!` không có khả năng tính toán Turing-complete*: Bạn không thể gọi các thuật toán phức tạp, xử lý chuỗi ký tự nâng cao, hay kiểm tra tính hợp lệ logic nghiệp vụ trong quá trình sinh mã.
+Có một sự thật thú vị: **bạn đã dùng Monad từ Chương 11 rồi mà không hề hay biết.**
 
-Để vượt qua giới hạn này, Rust cung cấp vũ khí tối thượng của nghệ thuật siêu lập trình: **Macro thủ tục (Procedural Macros - Proc Macros)**. Thay vì so khớp khuôn mẫu thô sơ, Macro thủ tục thực chất là **những hàm Rust bình thường chạy trực tiếp trong quá trình biên dịch (Compile-time)**. Hàm này nhận đầu vào là một dòng thẻ bài mã nguồn (`TokenStream`), phân tích nó thành **Cây cú pháp trừu tượng (Abstract Syntax Tree - AST)** thông qua thư viện `syn`, tính toán xử lý tùy ý, và dùng thư viện `quote` để xuất ra một dòng thẻ bài mã nguồn mới toanh gắn vào chương trình của bạn!
+Mỗi lần bạn viết `so_du.and_then(|x| rut_tien(x))`, bạn đang gọi phép toán mà cả thế giới lập trình hàm gọi là **bind** — trái tim của Monad. Mỗi lần bạn viết `.map()`, bạn đang dùng **Functor**. Mỗi lần bạn gõ toán tử `?`, bạn đang dùng thứ mà Haskell gọi là **do-notation**.
+
+Vậy tại sao phải học tên gọi của những thứ mình đã biết làm? Ba lý do rất cụ thể:
+
+1. **Nhìn ra điểm chung.** `Option::map`, `Result::map`, `Iterator::map` trông giống nhau không phải do trùng hợp — chúng là *cùng một khuôn mẫu*. Khi bạn thấy khuôn mẫu, bạn đoán được API mà không cần tra tài liệu.
+2. **Mở khóa những công cụ bạn chưa biết là mình cần.** Chương này giới thiệu `collect::<Result<Vec<_>, E>>()` và `transpose()` — hai công cụ mà hầu như mọi chương trình Rust đọc dữ liệu ngoài đều cần, nhưng người tự học thường mất vài năm mới tình cờ gặp.
+3. **Đọc được tài liệu và mã nguồn quốc tế.** Khi đọc một crate Rust hay một bài viết tiếng Anh, các từ *functor*, *applicative*, *monadic* sẽ không còn là bức tường.
+
+Chương này cũng trả lời câu hỏi mà mọi người học Rust nghiêm túc sớm muộn cũng gặp: **"Rust có Monad không?"** — và câu trả lời trung thực hơn bạn tưởng.
 
 Mục tiêu học tập của chương này:
-- Thấu hiểu bản chất **Macro thủ tục (Procedural Macros)**: Hàm biến đổi `TokenStream -> TokenStream` lúc biên dịch.
-- Nắm vững kiến trúc dự án bắt buộc: Crate thư viện riêng biệt với cờ cấu hình **`proc-macro = true`** trong `Cargo.toml`.
-- Khám phá khái niệm **Cây cú pháp trừu tượng (Abstract Syntax Tree - AST)** và cách trình biên dịch `rustc` hiểu mã nguồn.
-- Làm chủ thư viện **`syn`**: Kỹ thuật phân tích cú pháp từ Token thô sang các cấu trúc Rust có kiểu cụ thể (`DeriveInput`, `DataStruct`, `FieldsNamed`).
-- Làm chủ thư viện **`quote`**: Sử dụng macro `quote!` và cơ chế nội suy thẻ bài `#bien` để dập khuôn sinh mã.
-- Báo cáo lỗi biên dịch chính xác tại vị trí dòng mã sai phạm thông qua **`syn::Error`** và **`to_compile_error()`**.
+- Hiểu **Hàm tử (Functor)** là gì, hai **luật Functor**, và bản đồ của nó sang `Option`, `Result`, `Vec`, `Iterator`.
+- Biết **Hàm tử hai ngôi (Bifunctor)** và vì sao `Result::map_err` là "chân còn lại" của `Result::map`.
+- Nắm **Hàm tử áp dụng (Applicative)** và ứng dụng đắt giá nhất của nó: **xác thực tích lũy lỗi** — báo *tất cả* lỗi của biểu mẫu thay vì chỉ lỗi đầu tiên.
+- Làm chủ **Traversable**: `collect::<Result<Vec<_>, E>>()` và `Option::transpose()` — biến `Vec<Result<T,E>>` thành `Result<Vec<T>,E>`.
+- Hiểu **Đơn nguyên (Monad)**: `and_then` chính là `bind`, `flatten` chính là `join`, toán tử `?` chính là do-notation; kèm **ba luật Monad**.
+- Trả lời được câu hỏi **"Vì sao Rust chưa có Monad tổng quát?"** — khái niệm **Kiểu bậc cao (Higher-Kinded Type)** và cách thư viện `fp-core.rs` mô phỏng nó.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục thông qua hình ảnh một **Phòng khám chuyên khoa với Kính hiển vi và Cây bút lông ma thuật**:
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG ĐỜI SỐNG: KÍNH HIỂN VI SYN VÀ BÚT MA THUẬT QUOTE         │
-├────────────────────────────────────────┬─────────────────────────────────────────┤
-│     KÍNH HIỂN VI PHẪU THUẬT: syn       │        CÂY BÚT MA THUẬT: quote          │
-│        (AST Parser & Traversal)        │          (Code Generation)              │
-│                                        │                                         │
-│ - Bác sĩ đặt mẫu sinh thiết (struct)   │ - Sau khi đã có hồ sơ bệnh án chi tiết: │
-│   lên kính hiển vi điện tử             │ - Cây bút lông ma thuật tự động lướt    │
-│ - Phóng đại nhìn rõ từng tế bào:       │   trên trang giấy trắng                 │
-│   + Đây là tên người bệnh: `User`      │ - Viết ra hàng trăm dòng điều lệ mới:   │
-│   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl MoTaChiTiet for User { ... }`   │
-│   + Đây là tế bào 2: `name` kiểu `str` │ - Chuẩn xác từng dấu chấm, dấu phẩy!    │
-│ -> Bóc tách cấu trúc vi mô tường minh! │ -> Sinh mã thần tốc không tốn công sức! │
-└────────────────────────────────────────┴─────────────────────────────────────────┘
+│         HÌNH TƯỢNG ĐỜI SỐNG: HỘP QUÀ NIÊM PHONG VÀ BA CÁCH LÀM VIỆC VỚI NÓ       │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  Một "ngữ cảnh" (context) là chiếc HỘP có thể chứa hoặc không chứa món quà:      │
+│     Option<T>   = hộp có thể RỖNG                                                │
+│     Result<T,E> = hộp có thể chứa PHIẾU BÁO LỖI thay vì quà                      │
+│     Vec<T>      = hộp chứa NHIỀU món cùng lúc                                    │
+│                                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │ 1. FUNCTOR (map)  — "SƠN LẠI MÓN QUÀ MÀ KHÔNG MỞ HỘP"                    │   │
+│  │    Bạn đưa cho nhân viên bưu điện một cây cọ. Họ luồn tay vào sơn món     │   │
+│  │    quà rồi niêm phong lại. Hộp vẫn là hộp. Rỗng thì vẫn rỗng.             │   │
+│  │       [quà] --map(sơn)--> [quà đã sơn]      [rỗng] --map--> [rỗng]        │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │ 2. APPLICATIVE (zip) — "GỘP NHIỀU HỘP ĐỘC LẬP THÀNH MỘT"                 │   │
+│  │    Ba hộp gửi song song từ ba nơi. Chỉ khi CẢ BA cùng tới thì mới ráp     │   │
+│  │    thành bộ quà. Nếu thiếu, bạn biết được TẤT CẢ hộp nào thiếu.           │   │
+│  │       [A] [B] [C]        --zip-->  [A+B+C]                                │   │
+│  │       [A] [∅] [∅]        --zip-->  báo: "thiếu hộp 2 VÀ hộp 3"            │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │ 3. MONAD (and_then) — "MỞ HỘP RA XEM RỒI MỚI QUYẾT ĐỊNH GỬI HỘP TIẾP"    │   │
+│  │    Bước sau PHỤ THUỘC vào nội dung bước trước. Mở hộp thấy "mã đơn hàng"  │   │
+│  │    thì mới gọi được cửa hàng để lấy hộp tiếp theo. Không mở thì không     │   │
+│  │    biết phải làm gì. → Đây là khác biệt cốt lõi so với Applicative!       │   │
+│  │       [quà] --and_then(mở ra, dựa vào đó tạo hộp mới)--> [hộp mới] / [∅]  │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Kính hiển vi phẫu thuật y khoa (Thư viện `syn` - AST Inspection)
-- Hãy tưởng tượng bạn gửi một mẫu hồ sơ struct qua cửa sổ phòng khám:
-  - Ở trạng thái bình thường, đối với máy tính, đoạn mã `struct NhanVien { ten: String, tuoi: u32 }` chỉ là một dãy các ký tự vô hồn hoặc dòng thẻ bài thô.
-  - Thư viện **`syn`** đóng vai trò chiếc kính hiển vi điện tử: Nó phân tích mẫu vật thành một cái cây có cấu trúc rõ ràng:
-    - Gốc cây: Đây là một cấu trúc dữ liệu loại `Struct`.
-    - Thân cây: Tên của struct là định danh `NhanVien`.
-    - Các cành cây: Có 2 nhánh trường dữ liệu (fields), nhánh 1 tên là `ten` có kiểu `String`, nhánh 2 tên là `tuoi` có kiểu `u32`.
-  - Nhờ có kính hiển vi `syn`, bạn có thể duyệt qua từng cành cây để đọc dữ liệu một cách có trật tự!
+### 1. Functor — cây cọ luồn vào hộp
 
-### 2. Cây bút lông ma thuật (Thư viện `quote` - Code Generation)
-- Sau khi bác sĩ đã ghi nhận các nhánh cây từ kính hiển vi:
-  - Thay vì phải tự tay ghép từng chuỗi ký tự rời rạc rất dễ thiếu dấu ngoặc, bạn cầm cây bút lông ma thuật **`quote`**.
-  - Bạn viết một đoạn mã mẫu: *"Với mỗi cành cây `#ten_truong`, hãy in ra dòng chữ: Trường `#ten_truong` có giá trị là `{}`"*.
-  - Cây bút lông ma thuật `quote!` sẽ tự động mở rộng mẫu thiết kế đó, nhân bản nó cho toàn bộ các trường dữ liệu, và dập thành một văn bản mã Rust chuẩn mực để nạp ngược lại vào bộ não của trình biên dịch!
+Bạn có một chiếc hộp niêm phong. Bạn muốn sơn món quà bên trong nhưng **không được phép mở hộp**. Giải pháp: đưa cây cọ (một hàm `A -> B`) cho hộp, hộp tự sơn bên trong rồi trả lại chính nó.
+
+Điều quan trọng: **hình dạng chiếc hộp không đổi**. Hộp rỗng vẫn rỗng, hộp lỗi vẫn lỗi, hộp 5 món vẫn 5 món. Chỉ *nội dung* thay đổi.
+
+### 2. Applicative — ba hộp gửi song song
+
+Bạn đặt ba món hàng từ ba cửa hàng khác nhau, **hoàn toàn độc lập**. Đơn nào cũng đã gửi đi rồi. Khi cả ba tới nơi, bạn ráp thành một bộ quà.
+
+Điểm mấu chốt: vì ba đơn độc lập, nếu có sự cố bạn biết được **tất cả** đơn nào hỏng cùng lúc. Đây chính là nền tảng của kỹ thuật **xác thực tích lũy lỗi** — điều mà toán tử `?` (vốn dừng ngay ở lỗi đầu tiên) không làm được.
+
+### 3. Monad — mở hộp rồi mới biết bước tiếp theo
+
+Lần này khác: bạn mở hộp thứ nhất, thấy bên trong là *"mã đơn hàng ORD-8891"*. Chỉ **sau khi biết mã đó**, bạn mới gọi được cửa hàng để hỏi hộp thứ hai.
+
+Bước sau **phụ thuộc vào nội dung** bước trước. Không thể gửi song song. Đây chính là ranh giới phân biệt Monad với Applicative, và cũng là lý do vì sao chuỗi `and_then` phải chạy tuần tự.
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Kiến trúc Crate đặc biệt của Procedural Macro
+### 1. Hàm tử (Functor) và hai luật của nó
 
-Không giống như các hàm hoặc macro thông thường có thể viết chung trong tệp `main.rs`, **Macro thủ tục bắt buộc phải được khai báo trong một Crate thư viện riêng biệt**.
-Lý do là vì mã của proc macro phải được biên dịch thành một thư viện động (`.dylib` hoặc `.so`) trên máy của lập trình viên (Host Machine), sau đó trình biên dịch `rustc` sẽ nạp thư viện động này vào để thực thi hàm sinh mã trước khi biên dịch mã của dự án chính (Target Machine).
+Một kiểu `F<T>` là **Hàm tử** nếu nó có phép `map` với chữ ký:
 
-Tệp `Cargo.toml` của Crate macro bắt buộc phải có cờ `proc-macro = true`:
-
-```toml
-# my_macro_crate/Cargo.toml
-[package]
-name = "my_macro_crate"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-proc-macro = true # ĐÁNH DẤU ĐÂY LÀ CRATE MACRO THỦ TỤC
-
-[dependencies]
-syn = { version = "2.0", features = ["full", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = "1.0"
+```
+map : F<A> -> (A -> B) -> F<B>
 ```
 
-### 2. Cây cú pháp trừu tượng AST và Kiểu dữ liệu `DeriveInput` trong `syn`
+và tuân đúng **hai luật**:
 
-Khi người dùng đánh dấu `#[derive(MoTa)]` lên một struct:
+```
+(F1) Luật đơn vị: x.map(|a| a)      ==  x
+(F2) Luật ghép   : x.map(f).map(g)  ==  x.map(|a| g(f(a)))
+```
+
+Luật F2 chính là **phép ghép hàm ở Chương 14** được nâng lên cấp ngữ cảnh. Và nó không chỉ là lý thuyết: đó là **giấy phép để trình biên dịch gộp hai vòng `map` thành một** — kỹ thuật *loop fusion* giúp iterator của Rust nhanh ngang vòng lặp C viết tay (Chương 16).
+
+Bản đồ sang Rust:
+
+| Hàm tử | `map` | Ý nghĩa "hộp" |
+|---|---|---|
+| `Option<T>` | `Option::map` | Có thể rỗng |
+| `Result<T, E>` | `Result::map` | Có thể lỗi |
+| `Vec<T>` | `.iter().map(...).collect()` | Chứa nhiều giá trị |
+| `Iterator` | `Iterator::map` | Dòng chảy lười biếng |
+| `Future` | (qua `.await` và các tổ hợp tử) | Giá trị sẽ có trong tương lai (Chương 49) |
+
+> **Mẹo nhận diện**: nếu một kiểu có phương thức tên `map` nhận closure `A -> B` và trả về "cùng loại hộp nhưng chứa B", gần như chắc chắn đó là một Hàm tử.
+
+### 2. Hàm tử hai ngôi (Bifunctor): `Result` có HAI chân
+
+`Result<T, E>` chứa dữ liệu ở **hai vị trí**, nên nó có hai phép `map`:
+
 ```rust
-#[derive(MoTa)]
-struct SinhVien {
-    ho_ten: String,
-    diem: f64,
+let a: Result<i32, String> = Ok(5);
+a.map(|x| x * 2);          // sơn "chân thành công" -> Ok(10)
+
+let b: Result<i32, String> = Err("hỏng".into());
+b.map_err(|e| format!("Lỗi hệ thống: {}", e));  // sơn "chân lỗi"
+```
+
+Một kiểu có `map` cho **cả hai** vị trí gọi là **Bifunctor**. Trong thực chiến, `map_err` là công cụ quan trọng bậc nhất để chuyển đổi lỗi giữa các tầng:
+
+```rust
+// Tầng dưới trả lỗi kỹ thuật, tầng trên cần lỗi nghiệp vụ
+doc_tep(duong_dan)
+    .map_err(|e| LoiNghiepVu::KhongDocDuocCauHinh(e.to_string()))?;
+```
+
+### 3. Hàm tử áp dụng (Applicative) và bài toán "báo hết lỗi một lần"
+
+Toán tử `?` mà bạn học ở Chương 11 có một đặc tính: **ngắn mạch tại lỗi đầu tiên**.
+
+```rust
+fn dang_ky(form: &Form) -> Result<NguoiDung, String> {
+    let ten = kiem_tra_ten(&form.ten)?;      // Hỏng ở đây thì...
+    let mail = kiem_tra_mail(&form.mail)?;   // ...dòng này không bao giờ chạy
+    let tuoi = kiem_tra_tuoi(&form.tuoi)?;   // ...và dòng này cũng vậy
+    Ok(NguoiDung { ten, mail, tuoi })
 }
 ```
-Thư viện `syn` sẽ phân tích đoạn mã trên thành một struct mang tên `syn::DeriveInput`:
+
+Với một máy chủ nội bộ thì không sao. Nhưng với **biểu mẫu đăng ký của người dùng thật**, hành vi này rất tệ: người dùng sửa lỗi tên, bấm gửi, lại báo lỗi email; sửa email, bấm gửi, lại báo lỗi tuổi. Ba vòng qua lại chỉ vì ta báo lỗi từng cái một.
+
+Applicative giải quyết đúng vấn đề này. Vì ba phép kiểm tra **độc lập** với nhau (không cái nào cần kết quả của cái nào), ta có thể chạy cả ba rồi **gom hết lỗi lại**:
+
+```
+Kết quả: Hong(["Tên quá ngắn (cần ít nhất 4 ký tự)",
+               "Email thiếu ký tự @",
+               "Tuổi không phải số nguyên"])
+```
+
+| | Applicative | Monad |
+|---|---|---|
+| Các bước có phụ thuộc nhau? | **Không** — độc lập | **Có** — bước sau cần kết quả bước trước |
+| Xử lý lỗi | Gom **tất cả** lỗi | Dừng ở lỗi **đầu tiên** |
+| Chạy song song được? | Được | Không |
+| Trong Rust | `Option::zip`, kiểu `XacThuc` tự viết | `and_then`, toán tử `?` |
+
+> **Quy tắc chọn**: các trường của một biểu mẫu độc lập nhau → dùng Applicative để báo hết lỗi. Các bước của một quy trình nghiệp vụ nối tiếp nhau → dùng `?` để dừng sớm. Đây là quyết định thiết kế, không phải sở thích.
+
+### 4. Traversable: đảo ngược ngữ cảnh — công cụ bị bỏ quên nhất trong Rust
+
+Bạn có một danh sách chuỗi cần chuyển thành số. Kết quả tự nhiên là `Vec<Result<i32, E>>` — một danh sách các kết quả. Nhưng thứ bạn *thật sự muốn* thường là `Result<Vec<i32>, E>` — "hoặc là cả danh sách đều tốt, hoặc là báo lỗi".
+
+Phép **đảo ngữ cảnh** đó gọi là `sequence` / `traverse`. Trong Rust nó được cài sẵn ngay trong `collect()`:
 
 ```rust
-pub struct DeriveInput {
-    pub attrs: Vec<Attribute>, // Danh sách thuộc tính #[...]
-    pub vis: Visibility,        // pub hay private
-    pub ident: Ident,           // Tên của kiểu dữ liệu (ở đây là "SinhVien")
-    pub generics: Generics,     // Kiểu generic <T, 'a> nếu có
-    pub data: Data,             // Dữ liệu nội dung: Struct, Enum hay Union
+let tho = vec!["10", "20", "30"];
+let so: Result<Vec<i32>, _> = tho.iter().map(|s| s.parse::<i32>()).collect();
+assert_eq!(so, Ok(vec![10, 20, 30]));
+
+let hong = vec!["10", "hai muoi", "30"];
+let so: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
+assert!(so.is_err());   // Cả danh sách hỏng vì MỘT phần tử hỏng
+```
+
+Đây là một trong những dòng mã hữu ích nhất trong toàn bộ thư viện chuẩn Rust, và nó hoạt động vì `Result` cài đặt trait `FromIterator`. Cùng họ với nó:
+
+| Bạn có | Bạn muốn | Dùng |
+|---|---|---|
+| `Vec<Result<T, E>>` | `Result<Vec<T>, E>` | `.collect::<Result<Vec<_>, _>>()` |
+| `Vec<Option<T>>` | `Option<Vec<T>>` | `.collect::<Option<Vec<_>>>()` |
+| `Option<Result<T, E>>` | `Result<Option<T>, E>` | `.transpose()` |
+| `Result<Option<T>, E>` | `Option<Result<T, E>>` | `.transpose()` |
+
+### 5. Đơn nguyên (Monad): `and_then` chính là `bind`
+
+Một Hàm tử `F<T>` là **Đơn nguyên** nếu ngoài `map` nó còn có:
+
+```
+bind (còn gọi là flatMap, chain, and_then) :  F<A> -> (A -> F<B>) -> F<B>
+```
+
+Hãy để ý điểm khác biệt then chốt so với `map`:
+
+```
+map  nhận hàm  A -> B      (trả về giá trị TRẦN)
+bind nhận hàm  A -> F<B>   (trả về một HỘP MỚI)
+```
+
+Nếu bạn dùng nhầm `map` ở chỗ cần `bind`, bạn sẽ nhận về **hộp lồng trong hộp**: `Option<Option<T>>`. Đó chính là lúc `flatten` (tên toán học: `join`) xuất hiện:
+
+```rust
+let long: Option<Option<i32>> = Some(Some(5));
+assert_eq!(long.flatten(), Some(5));
+
+// Và đây là đẳng thức định nghĩa:  bind(x, f)  ==  x.map(f).flatten()
+let x = Some(4);
+let f = |n: i32| if n > 0 { Some(n * 10) } else { None };
+assert_eq!(x.and_then(f), x.map(f).flatten());
+```
+
+**Ba luật Monad:**
+
+```
+(M1) Đơn vị trái : Some(a).and_then(f)        ==  f(a)
+(M2) Đơn vị phải : m.and_then(Some)           ==  m
+(M3) Kết hợp     : m.and_then(f).and_then(g)  ==  m.and_then(|x| f(x).and_then(g))
+```
+
+Luật M3 nói rằng bạn có thể **nhóm lại các bước trong một chuỗi xử lý mà không đổi kết quả** — chính là thứ cho phép bạn tách một hàm dài thành nhiều hàm nhỏ rồi ghép lại một cách an toàn.
+
+### 6. Toán tử `?` chính là do-notation của Rust
+
+Trong Haskell, viết chuỗi bind lồng nhau rất khó đọc nên người ta phát minh ra cú pháp `do`. Rust giải quyết đúng vấn đề đó bằng toán tử `?`:
+
+```rust
+// Viết bằng bind tường minh — "kim tự tháp"
+fn xu_ly_a(s: &str) -> Option<u64> {
+    doc_ma_don(s).and_then(|ma| tra_gia(ma).and_then(|gia| ap_thue(gia)))
+}
+
+// Viết bằng `?` — phẳng phiu, đọc từ trên xuống
+fn xu_ly_b(s: &str) -> Option<u64> {
+    let ma = doc_ma_don(s)?;
+    let gia = tra_gia(ma)?;
+    let cuoi = ap_thue(gia)?;
+    Some(cuoi)
 }
 ```
 
-Từ trường `data: syn::Data`, bạn có thể bóc tách tiếp:
-- Nếu là `Data::Struct(data_struct)`:
-  - Nếu trường có tên `Fields::Named(fields)`: bạn duyệt qua `fields.named` để lấy tên của từng trường dữ liệu!
+Hai hàm này **hoàn toàn tương đương**. `?` không phải phép màu — nó chỉ là đường cú pháp cho `bind`.
 
-### 3. Cú pháp Ma thuật của `quote!` và Nội suy Biến `#...`
-
-Thư viện `quote` cung cấp macro `quote!` cho phép bạn viết mã Rust như bình thường, nhưng có thể chèn các biến AST vào thông qua ký tự `#`:
-
-- **`#ident`**: Chèn một định danh đơn lẻ (ví dụ tên struct).
-- **`#( #danh_sach ),*`**: Cơ chế lặp của `quote!`. Tự động lặp qua một danh sách và ngăn cách các phần tử bởi dấu phẩy!
+Điều này cũng giải thích một giới hạn mà người học hay thắc mắc: **vì sao không trộn được `Option` và `Result` trong cùng một hàm với `?`?** Vì mỗi hàm chỉ "ở trong" đúng một đơn nguyên tại một thời điểm. Muốn chuyển giữa hai thế giới, phải nói rõ:
 
 ```rust
-let ten_struct = &ast.ident;
-let ma_sinh_ra = quote! {
-    impl #ten_struct {
-        pub fn in_ten(&self) {
-            println!("Tôi là thực thể của: {}", stringify!(#ten_struct));
-        }
-    }
-};
+let x = tim_nguoi_dung(id).ok_or("Không tìm thấy người dùng")?;  // Option -> Result
+let y = doc_so(s).ok();                                          // Result -> Option
 ```
 
-### 4. Báo lỗi chuẩn mực với `syn::Error`
+Và một chi tiết ít người biết: toán tử `?` **tự động gọi `From::from` trên kiểu lỗi**. Đó là lý do bạn có thể trả về nhiều loại lỗi khác nhau từ cùng một hàm, miễn là chúng đều `impl From<...> for LoiCuaBan`. (Xem lại Chương 11 và Chương 12.)
 
-Nếu người dùng áp dụng macro của bạn lên một `enum` trong khi macro chỉ hỗ trợ `struct`, bạn không nên làm chương trình bị sập bằng `panic!`. Thay vào đó, hãy trả về một lỗi biên dịch chuẩn được gắn cờ đỏ trực tiếp tại vị trí vi phạm:
+### 7. "Rust có Monad không?" — Câu chuyện Kiểu bậc cao (HKT)
+
+Câu trả lời trung thực: **Rust có rất nhiều monad cụ thể, nhưng chưa có trait `Monad` tổng quát.**
+
+`Option`, `Result`, `Iterator`, `Future` đều là monad — chúng đều có `map` và `and_then`. Nhưng bạn **không thể** viết một hàm dùng chung cho tất cả:
 
 ```rust
-return syn::Error::new_spanned(
-    ast.ident, 
-    "Macro MoTa chỉ hỗ trợ cho kiểu dữ liệu Struct, không hỗ trợ Enum!"
-).to_compile_error().into();
+// Đoạn mã này KHÔNG biên dịch được trong Rust:
+// trait DonNguyen {
+//     fn bind<A, B>(self: Self<A>, f: impl Fn(A) -> Self<B>) -> Self<B>;
+// }
 ```
 
-Trình biên dịch `rustc` sẽ hiển thị thông báo lỗi màu đỏ đẹp mắt trỏ thẳng vào tên của `enum` đó trên màn hình Terminal của người dùng!
+Vấn đề nằm ở `Self<A>`. Rust cho phép generic trên **kiểu** (`T`), nhưng chưa cho phép generic trên **bộ tạo kiểu** (`Option` khi chưa điền `T` vào). Khả năng đó gọi là **Kiểu bậc cao (Higher-Kinded Type — HKT)**, và Rust chưa hỗ trợ.
+
+Cộng đồng có một cách vòng tránh khéo léo, được thư viện **`fp-core.rs`** dùng: mô phỏng HKT bằng **kiểu liên kết (associated types)**.
+
+```rust
+pub trait HKT<U> {
+    type HienTai;  // kiểu đang chứa bên trong, ví dụ T của Option<T>
+    type DichDen;  // "cùng cái hộp đó nhưng chứa U", ví dụ Option<U>
+}
+
+impl<T, U> HKT<U> for Option<T> {
+    type HienTai = T;
+    type DichDen = Option<U>;
+}
+
+pub trait HamTu<U>: HKT<U> {
+    fn anh_xa<F>(self, f: F) -> Self::DichDen
+    where
+        F: FnMut(Self::HienTai) -> U;
+}
+```
+
+Mẹo ở đây: thay vì nói `Self<U>` (không viết được), ta nói `Self::DichDen` và để mỗi kiểu tự khai báo "đích đến" của mình là gì. Chương trình minh họa bên dưới cài đặt đầy đủ mẫu này cho `Option`, `Result` và `Vec`.
+
+> **Tin vui**: tính năng **Generic Associated Types (GAT)** đã ổn định từ Rust 1.65 và thu hẹp đáng kể khoảng cách này. Nhiều thư viện hiện đại đã dùng GAT để biểu diễn những trừu tượng trước đây phải chờ HKT.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là thiết kế hoàn chỉnh gồm hai phần:
-1. **Phần 1: Cấu trúc Crate Proc Macro chuẩn công nghiệp** (với `syn` và `quote`).
-2. **Phần 2: Bản mô phỏng và kiểm chứng cơ chế sinh mã AST hoàn chỉnh** có thể thực thi và chạy trực tiếp bằng `rustc` với 0 cảnh báo.
+Chương trình dưới đây xây dựng **Cổng tiếp nhận Đơn đăng ký (Registration Intake Gateway)**, so sánh trực diện hai chiến lược xử lý lỗi: `?` ngắn mạch (Monad) và tích lũy toàn bộ lỗi (Applicative).
 
 ```rust
 // Tệp: src/main.rs
-// Chương trình thực chiến làm chủ Kiến trúc Macro thủ tục (Procedural Macros), syn, quote và AST
+// Chương trình thực chiến: Functor, Applicative, Monad và bản đồ sang Rust
 
 // ============================================================================
-// PHẦN 1: MÔ HÌNH HÓA ĐỊNH NGHĨA CÂY CÚ PHÁP TRỪU TƯỢNG (AST ANATOMY)
-// Giúp người học thấu hiểu chính xác cấu trúc dữ liệu bên trong của crate `syn`
+// PHẦN 1: MÔ PHỎNG KIỂU BẬC CAO (HKT) THEO CÁCH CỦA fp-core.rs
 // ============================================================================
 
+/// `HKT<U>` trả lời câu hỏi: "cái hộp này đang chứa gì, và nếu đổi ruột
+/// sang kiểu U thì nó trở thành kiểu gì?"
+pub trait HKT<U> {
+    type HienTai; // T trong Option<T>
+    type DichDen; // Option<U>
+}
+
+impl<T, U> HKT<U> for Option<T> {
+    type HienTai = T;
+    type DichDen = Option<U>;
+}
+impl<T, U> HKT<U> for Vec<T> {
+    type HienTai = T;
+    type DichDen = Vec<U>;
+}
+impl<T, U, E> HKT<U> for Result<T, E> {
+    type HienTai = T;
+    type DichDen = Result<U, E>;
+}
+
+/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
+pub trait HamTu<U>: HKT<U> {
+    fn anh_xa<F>(self, f: F) -> Self::DichDen
+    where
+        F: FnMut(Self::HienTai) -> U;
+}
+
+impl<T, U> HamTu<U> for Option<T> {
+    fn anh_xa<F>(self, f: F) -> Option<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        self.map(f)
+    }
+}
+impl<T, U> HamTu<U> for Vec<T> {
+    fn anh_xa<F>(self, f: F) -> Vec<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        self.into_iter().map(f).collect()
+    }
+}
+impl<T, U, E> HamTu<U> for Result<T, E> {
+    fn anh_xa<F>(self, f: F) -> Result<U, E>
+    where
+        F: FnMut(T) -> U,
+    {
+        self.map(f)
+    }
+}
+
+// ============================================================================
+// PHẦN 2: KIỂU XÁC THỰC TÍCH LŨY LỖI (APPLICATIVE VALIDATION)
+// ============================================================================
+
+/// Khác `Result`: khi hỏng, `XacThuc` giữ lại TOÀN BỘ danh sách lỗi.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TruongDuLieuAST {
-    pub ten_truong: &'static str,
-    pub kieu_du_lieu: &'static str,
+pub enum XacThuc<T> {
+    Dat(T),
+    Hong(Vec<String>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructAST {
-    pub ten_struct: &'static str,
-    pub danh_sach_truong: Vec<TruongDuLieuAST>,
-}
-
-impl StructAST {
-    /// Hàm mô phỏng công việc của syn: Duyệt cây AST và trích xuất danh sách tên trường
-    pub fn lay_danh_sach_ten(&self) -> Vec<&'static str> {
-        self.danh_sach_truong
-            .iter()
-            .map(|f| f.ten_truong)
-            .collect()
-    }
-}
-
-// ============================================================================
-// PHẦN 2: TRAIT VÀ MÃ ĐƯỢC TỰ ĐỘNG SINH RA BỞI QUOTE!
-// ============================================================================
-
-/// Trait giao ước mà Macro thủ tục sẽ tự động triển khai
-pub trait MoTaChiTiet {
-    fn in_thong_tin_chi_tiet(&self);
-    fn dem_so_luong_truong() -> usize;
-}
-
-// Giả sử lập trình viên viết Struct này:
-pub struct ThietBiMang {
-    pub dia_chi_ip: String,
-    pub cong_dich_vu: u16,
-    pub dang_hoat_dong: bool,
-}
-
-// Đây là đoạn mã mà proc-macro (syn + quote) sẽ TỰ ĐỘNG SINH RA
-// thay vì bắt lập trình viên phải tự tay gõ từng dòng:
-impl MoTaChiTiet for ThietBiMang {
-    fn in_thong_tin_chi_tiet(&self) {
-        println!("------------------------------------------------------------");
-        println!("THÔNG TIN THỰC THỂ: [ThietBiMang]");
-        println!("  - Trường `dia_chi_ip`      : {}", self.dia_chi_ip);
-        println!("  - Trường `cong_dich_vu`    : {}", self.cong_dich_vu);
-        println!("  - Trường `dang_hoat_dong`  : {}", self.dang_hoat_dong);
-        println!("------------------------------------------------------------");
-    }
-
-    fn dem_so_luong_truong() -> usize {
-        3 // Sinh tự động từ fields.len() của syn!
-    }
-}
-
-// ============================================================================
-// PHẦN 3: BẢN ĐẶC TẢ MÃ NGUỒN CỦA PROC-MACRO CRATE (CHUẨN SYN + QUOTE)
-// Đoạn mã này được lưu trong Crate thư viện riêng biệt (proc-macro = true)
-// ============================================================================
-
-/*
-// [my_macro/src/lib.rs]
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
-
-#[proc_macro_derive(MoTaChiTiet)]
-pub fn mo_ta_chi_tiet_derive(input: TokenStream) -> TokenStream {
-    // 1. Phân tích TokenStream thành Cây cú pháp AST bằng syn
-    let ast = parse_macro_input!(input as DeriveInput);
-    let ten_struct = &ast.ident;
-
-    // 2. Kiểm tra an toàn: Chỉ hỗ trợ Struct có tên trường
-    let fields = match &ast.data {
-        Data::Struct(s) => match &s.fields {
-            Fields::Named(f) => &f.named,
-            _ => return syn::Error::new_spanned(ten_struct, "Chỉ hỗ trợ Struct có tên trường!")
-                .to_compile_error()
-                .into(),
-        },
-        _ => return syn::Error::new_spanned(ten_struct, "Chỉ hỗ trợ kiểu dữ liệu Struct!")
-            .to_compile_error()
-            .into(),
-    };
-
-    // 3. Trích xuất tên các trường
-    let ten_truongs = fields.iter().map(|f| &f.ident);
-    let so_luong = fields.len();
-
-    // 4. Dùng quote! để sinh mã Rust mới
-    let ma_sinh = quote! {
-        impl MoTaChiTiet for #ten_struct {
-            fn in_thong_tin_chi_tiet(&self) {
-                println!("THÔNG TIN THỰC THỂ: [{}]", stringify!(#ten_struct));
-                #(
-                    println!("  - Trường `{}`: {:?}", stringify!(#ten_truongs), self.#ten_truongs);
-                )*
-            }
-
-            fn dem_so_luong_truong() -> usize {
-                #so_luong
-            }
+impl<T> XacThuc<T> {
+    /// FUNCTOR: sơn lại giá trị bên trong mà không đụng tới danh sách lỗi.
+    pub fn anh_xa<U>(self, f: impl FnOnce(T) -> U) -> XacThuc<U> {
+        match self {
+            XacThuc::Dat(x) => XacThuc::Dat(f(x)),
+            XacThuc::Hong(loi) => XacThuc::Hong(loi),
         }
-    };
+    }
 
-    // 5. Chuyển thành TokenStream trả lại cho compiler
-    TokenStream::from(ma_sinh)
+    /// Chuyển từ Result sang XacThuc để bắt đầu tích lũy lỗi.
+    pub fn tu_ket_qua(kq: Result<T, String>) -> Self {
+        match kq {
+            Ok(x) => XacThuc::Dat(x),
+            Err(e) => XacThuc::Hong(vec![e]),
+        }
+    }
+
+    pub fn la_dat(&self) -> bool {
+        matches!(self, XacThuc::Dat(_))
+    }
 }
-*/
+
+/// APPLICATIVE: gộp 2 kết quả ĐỘC LẬP. Nếu cả hai hỏng, giữ lại CẢ HAI lỗi.
+pub fn ghep2<A, B>(a: XacThuc<A>, b: XacThuc<B>) -> XacThuc<(A, B)> {
+    match (a, b) {
+        (XacThuc::Dat(x), XacThuc::Dat(y)) => XacThuc::Dat((x, y)),
+        (XacThuc::Hong(mut e1), XacThuc::Hong(e2)) => {
+            e1.extend(e2); // ← đây chính là chỗ LỖI ĐƯỢC TÍCH LŨY
+            XacThuc::Hong(e1)
+        }
+        (XacThuc::Hong(e), _) => XacThuc::Hong(e),
+        (_, XacThuc::Hong(e)) => XacThuc::Hong(e),
+    }
+}
+
+/// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
+pub fn ghep3<A, B, C>(a: XacThuc<A>, b: XacThuc<B>, c: XacThuc<C>) -> XacThuc<(A, B, C)> {
+    ghep2(ghep2(a, b), c).anh_xa(|((x, y), z)| (x, y, z))
+}
 
 // ============================================================================
-// CHƯƠNG TRÌNH THỰC THI CHÍNH
+// PHẦN 3: MIỀN NGHIỆP VỤ — ĐƠN ĐĂNG KÝ
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DonTho {
+    pub ten: String,
+    pub email: String,
+    pub tuoi: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NguoiDung {
+    pub ten: String,
+    pub email: String,
+    pub tuoi: u32,
+}
+
+pub fn kiem_tra_ten(tho: &str) -> Result<String, String> {
+    let s = tho.trim();
+    if s.chars().count() < 4 {
+        Err(format!("Tên {:?} quá ngắn (cần ít nhất 4 ký tự)", s))
+    } else if s.chars().count() > 30 {
+        Err("Tên quá dài (tối đa 30 ký tự)".to_string())
+    } else {
+        Ok(s.to_string())
+    }
+}
+
+pub fn kiem_tra_email(tho: &str) -> Result<String, String> {
+    let s = tho.trim().to_lowercase();
+    if !s.contains('@') {
+        Err(format!("Email {:?} thiếu ký tự @", s))
+    } else if !s.contains('.') {
+        Err(format!("Email {:?} thiếu tên miền hợp lệ", s))
+    } else {
+        Ok(s)
+    }
+}
+
+pub fn kiem_tra_tuoi(tho: &str) -> Result<u32, String> {
+    let s = tho.trim();
+    match s.parse::<u32>() {
+        Err(_) => Err(format!("Tuổi {:?} không phải số nguyên", s)),
+        Ok(n) if !(16..=100).contains(&n) => {
+            Err(format!("Tuổi {} nằm ngoài khoảng cho phép 16-100", n))
+        }
+        Ok(n) => Ok(n),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CHIẾN LƯỢC A — MONAD: toán tử `?` dừng ngay ở lỗi ĐẦU TIÊN
+// ---------------------------------------------------------------------------
+pub fn dang_ky_ngan_mach(don: &DonTho) -> Result<NguoiDung, String> {
+    let ten = kiem_tra_ten(&don.ten)?;
+    let email = kiem_tra_email(&don.email)?;
+    let tuoi = kiem_tra_tuoi(&don.tuoi)?;
+    Ok(NguoiDung { ten, email, tuoi })
+}
+
+// ---------------------------------------------------------------------------
+// CHIẾN LƯỢC B — APPLICATIVE: chạy cả ba, gom TẤT CẢ lỗi
+// ---------------------------------------------------------------------------
+pub fn dang_ky_tich_luy(don: &DonTho) -> XacThuc<NguoiDung> {
+    let ten = XacThuc::tu_ket_qua(kiem_tra_ten(&don.ten));
+    let email = XacThuc::tu_ket_qua(kiem_tra_email(&don.email));
+    let tuoi = XacThuc::tu_ket_qua(kiem_tra_tuoi(&don.tuoi));
+
+    ghep3(ten, email, tuoi).anh_xa(|(ten, email, tuoi)| NguoiDung { ten, email, tuoi })
+}
+
+// ============================================================================
+// PHẦN 4: HÀM PHỤ TRỢ CHO PHẦN MONAD TUẦN TỰ
+// ============================================================================
+
+pub fn doc_ma_don(s: &str) -> Option<u32> {
+    s.strip_prefix("ORD-")?.parse::<u32>().ok()
+}
+
+pub fn tra_gia(ma: u32) -> Option<u64> {
+    match ma {
+        8891 => Some(250_000),
+        8892 => Some(1_200_000),
+        _ => None,
+    }
+}
+
+pub fn ap_thue(gia: u64) -> Option<u64> {
+    gia.checked_mul(110)?.checked_div(100)
+}
+
+// ============================================================================
+// CHƯƠNG TRÌNH ĐIỀU HÀNH CHÍNH
 // ============================================================================
 
 fn main() {
     println!("============================================================");
-    println!("      KIẾN TRÚC PROCEDURAL MACROS: SYN, QUOTE & AST         ");
+    println!("     HÀM TỬ, HÀM TỬ ÁP DỤNG VÀ ĐƠN NGUYÊN TRONG RUST       ");
     println!("============================================================");
 
-    // 1. Mô phỏng quá trình kính hiển vi `syn` phân tích AST của struct
-    let mo_hinh_ast = StructAST {
-        ten_struct: "ThietBiMang",
-        danh_sach_truong: vec![
-            TruongDuLieuAST { ten_truong: "dia_chi_ip", kieu_du_lieu: "String" },
-            TruongDuLieuAST { ten_truong: "cong_dich_vu", kieu_du_lieu: "u16" },
-            TruongDuLieuAST { ten_truong: "dang_hoat_dong", kieu_du_lieu: "bool" },
-        ],
+    // ------------------------------------------------------------------
+    // 1. FUNCTOR: cùng một `map` cho ba chiếc hộp khác nhau
+    // ------------------------------------------------------------------
+    println!("\n1. HÀM TỬ (Functor) — MỘT `map`, BA CHIẾC HỘP");
+    let hop_option: Option<i32> = Some(21);
+    let hop_result: Result<i32, String> = Ok(21);
+    let hop_vec: Vec<i32> = vec![1, 2, 3];
+
+    println!("   Option : {:?} -> {:?}", hop_option, hop_option.map(|x| x * 2));
+    println!("   Result : {:?} -> {:?}", hop_result.clone(), hop_result.map(|x| x * 2));
+    println!(
+        "   Vec    : {:?} -> {:?}",
+        hop_vec.clone(),
+        hop_vec.iter().map(|x| x * 2).collect::<Vec<_>>()
+    );
+
+    let hop_rong: Option<i32> = None;
+    println!("   Hộp rỗng vẫn rỗng: {:?} -> {:?}", hop_rong, hop_rong.map(|x| x * 2));
+
+    // Dùng trait HamTu tổng quát tự viết (mô phỏng HKT)
+    println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
+    println!("   Option: {:?}", Some(5i32).anh_xa(|x| x + 1));
+    println!("   Vec   : {:?}", vec![1i32, 2, 3].anh_xa(|x| x * 10));
+    let r: Result<i32, String> = Ok(7);
+    println!("   Result: {:?}", r.anh_xa(|x| x - 7));
+
+    // ------------------------------------------------------------------
+    // 2. HAI LUẬT FUNCTOR
+    // ------------------------------------------------------------------
+    println!("\n2. HAI LUẬT FUNCTOR");
+    let x = Some(10i32);
+    assert_eq!(x.map(|a| a), x);
+    println!("   (F1) x.map(identity) == x  ✓");
+
+    let f = |a: i32| a + 3;
+    let g = |a: i32| a * 2;
+    assert_eq!(x.map(f).map(g), x.map(|a| g(f(a))));
+    println!("   (F2) x.map(f).map(g) == x.map(g∘f)  ✓");
+    println!("        → Đây là lý do trình biên dịch gộp được 2 vòng map thành 1!");
+
+    // ------------------------------------------------------------------
+    // 3. BIFUNCTOR: Result có hai chân
+    // ------------------------------------------------------------------
+    println!("\n3. BIFUNCTOR — `Result` CÓ HAI CHÂN");
+    let thanh_cong: Result<i32, String> = Ok(5);
+    let that_bai: Result<i32, String> = Err("mất kết nối".into());
+    println!("   map     (chân Ok) : {:?}", thanh_cong.map(|v| v * 100));
+    println!(
+        "   map_err (chân Err): {:?}",
+        that_bai.map_err(|e| format!("[HỆ THỐNG] {}", e))
+    );
+
+    // ------------------------------------------------------------------
+    // 4. MONAD: `and_then` chính là `bind`
+    // ------------------------------------------------------------------
+    println!("\n4. ĐƠN NGUYÊN — `and_then` CHÍNH LÀ `bind`");
+    for ma in ["ORD-8891", "ORD-9999", "SAI-DINH-DANG"] {
+        let ket_qua = doc_ma_don(ma).and_then(tra_gia).and_then(ap_thue);
+        println!("   {:>14} -> {:?}", ma, ket_qua);
+    }
+
+    println!("\n   Đẳng thức định nghĩa: bind(x,f) == x.map(f).flatten()");
+    let x = Some(4i32);
+    let f = |n: i32| if n > 0 { Some(n * 10) } else { None };
+    assert_eq!(x.and_then(f), x.map(f).flatten());
+    println!("   {:?} == {:?}  ✓", x.and_then(f), x.map(f).flatten());
+
+    // ------------------------------------------------------------------
+    // 5. BA LUẬT MONAD
+    // ------------------------------------------------------------------
+    println!("\n5. BA LUẬT MONAD");
+    let a = 5i32;
+    let m = Some(a);
+    let f = |n: i32| Some(n + 1);
+    let g = |n: i32| if n % 2 == 0 { Some(n / 2) } else { None };
+
+    assert_eq!(Some(a).and_then(f), f(a));
+    println!("   (M1) Đơn vị trái : Some(a).and_then(f) == f(a)  ✓");
+    assert_eq!(m.and_then(Some), m);
+    println!("   (M2) Đơn vị phải : m.and_then(Some) == m  ✓");
+    assert_eq!(m.and_then(f).and_then(g), m.and_then(|x| f(x).and_then(g)));
+    println!("   (M3) Kết hợp     : (m>>=f)>>=g == m>>=(x -> f(x)>>=g)  ✓");
+
+    // ------------------------------------------------------------------
+    // 6. TRAVERSABLE: đảo ngữ cảnh Vec<Result> -> Result<Vec>
+    // ------------------------------------------------------------------
+    println!("\n6. TRAVERSABLE — CÔNG CỤ BỊ BỎ QUÊN NHẤT CỦA RUST");
+    let tot = vec!["10", "20", "30"];
+    let hong = vec!["10", "hai mươi", "30"];
+
+    let kq_tot: Result<Vec<i32>, _> = tot.iter().map(|s| s.parse::<i32>()).collect();
+    let kq_hong: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
+    println!("   Vec<Result> -> Result<Vec> (tốt) : {:?}", kq_tot);
+    println!("   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}", kq_hong.is_err());
+
+    let co_rong: Option<Vec<i32>> = vec![Some(1), None, Some(3)].into_iter().collect();
+    let khong_rong: Option<Vec<i32>> = vec![Some(1), Some(2)].into_iter().collect();
+    println!("   Vec<Option> -> Option<Vec> (có None): {:?}", co_rong);
+    println!("   Vec<Option> -> Option<Vec> (đủ)     : {:?}", khong_rong);
+
+    let lat: Option<Result<i32, String>> = Some(Ok(9));
+    println!("   Option<Result> --transpose--> Result<Option>: {:?}", lat.transpose());
+
+    // ------------------------------------------------------------------
+    // 7. ALTERNATIVE: chuỗi phương án dự phòng
+    // ------------------------------------------------------------------
+    println!("\n7. ALTERNATIVE — CHUỖI PHƯƠNG ÁN DỰ PHÒNG");
+    let tu_bien_moi_truong: Option<&str> = None;
+    let tu_tep_cau_hinh: Option<&str> = Some("8080");
+    let cong = tu_bien_moi_truong.or(tu_tep_cau_hinh).unwrap_or("3000");
+    println!("   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)", cong);
+
+    // ------------------------------------------------------------------
+    // 8. SO SÁNH TRỰC DIỆN: MONAD NGẮN MẠCH vs APPLICATIVE TÍCH LŨY
+    // ------------------------------------------------------------------
+    println!("\n8. NGẮN MẠCH (Monad) vs TÍCH LŨY LỖI (Applicative)");
+    let don_hong = DonTho {
+        ten: "An".into(),             // quá ngắn
+        email: "an-tai-gmail".into(), // thiếu @
+        tuoi: "mười tám".into(),      // không phải số
     };
 
-    println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
-    println!("- Tên cấu trúc được phát hiện: {}", mo_hinh_ast.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", mo_hinh_ast.lay_danh_sach_ten());
+    println!("\n   [A] Dùng toán tử `?` (Monad — dừng ở lỗi đầu tiên):");
+    match dang_ky_ngan_mach(&don_hong) {
+        Ok(nd) => println!("       Thành công: {:?}", nd),
+        Err(e) => println!("       Báo về 1 lỗi duy nhất: {}", e),
+    }
 
-    // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
-    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
-    let router = ThietBiMang {
-        dia_chi_ip: String::from("192.168.1.1"),
-        cong_dich_vu: 443,
-        dang_hoat_dong: true,
+    println!("\n   [B] Dùng `XacThuc` (Applicative — gom hết lỗi):");
+    match dang_ky_tich_luy(&don_hong) {
+        XacThuc::Dat(nd) => println!("       Thành công: {:?}", nd),
+        XacThuc::Hong(loi) => {
+            println!("       Báo về {} lỗi cùng lúc:", loi.len());
+            for (i, l) in loi.iter().enumerate() {
+                println!("         {}. {}", i + 1, l);
+            }
+        }
+    }
+
+    println!("\n   [C] Đơn hợp lệ đi qua cả hai chiến lược:");
+    let don_tot = DonTho {
+        ten: "Nguyễn Văn An".into(),
+        email: "  An.Nguyen@Example.COM ".into(),
+        tuoi: " 28 ".into(),
     };
-
-    // Gọi phương thức được sinh tự động bởi Proc Macro
-    router.in_thong_tin_chi_tiet();
-    println!("Tổng số lượng trường của thực thể: {}", ThietBiMang::dem_so_luong_truong());
+    println!("       Ngắn mạch: {:?}", dang_ky_ngan_mach(&don_tot));
+    println!("       Tích lũy : hợp lệ = {}", dang_ky_tich_luy(&don_tot).la_dat());
 
     println!("\n============================================================");
-    println!("   XÁC MINH KIẾN TRÚC PROCEDURAL MACROS HOÀN TOÀN THÀNH CÔNG");
+    println!("  map = SƠN TRONG HỘP · zip = GỘP HỘP · and_then = MỞ HỘP   ");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ: BIẾN LUẬT FUNCTOR VÀ MONAD THÀNH TEST CHẠY ĐƯỢC
+// ============================================================================
+
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    #[test]
+    fn luat_functor_don_vi() {
+        for x in [Some(1i32), Some(-7), None] {
+            assert_eq!(x.map(|a| a), x);
+        }
+    }
+
+    #[test]
+    fn luat_functor_ghep() {
+        let f = |a: i32| a + 3;
+        let g = |a: i32| a * 2;
+        for x in [Some(0i32), Some(10), Some(-4), None] {
+            assert_eq!(x.map(f).map(g), x.map(|a| g(f(a))));
+        }
+    }
+
+    #[test]
+    fn luat_monad_don_vi_trai_va_phai() {
+        let f = |n: i32| if n > 0 { Some(n * 2) } else { None };
+        for a in [-3i32, 0, 5, 100] {
+            assert_eq!(Some(a).and_then(f), f(a)); // M1
+        }
+        for m in [Some(1i32), None] {
+            assert_eq!(m.and_then(Some), m); // M2
+        }
+    }
+
+    #[test]
+    fn luat_monad_ket_hop() {
+        let f = |n: i32| if n >= 0 { Some(n + 1) } else { None };
+        let g = |n: i32| if n % 2 == 0 { Some(n / 2) } else { None };
+        for m in [Some(-5i32), Some(0), Some(3), Some(8), None] {
+            assert_eq!(
+                m.and_then(f).and_then(g),
+                m.and_then(|x| f(x).and_then(g)) // M3
+            );
+        }
+    }
+
+    #[test]
+    fn bind_bang_map_roi_flatten() {
+        let f = |n: i32| if n > 0 { Some(n * 10) } else { None };
+        for x in [Some(4i32), Some(-1), None] {
+            assert_eq!(x.and_then(f), x.map(f).flatten());
+        }
+    }
+
+    #[test]
+    fn traversable_dao_dung_ngu_canh() {
+        let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert_eq!(tot, Ok(vec![1, 2, 3]));
+
+        let hong: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert!(hong.is_err());
+
+        let co_none: Option<Vec<i32>> = vec![Some(1), None].into_iter().collect();
+        assert_eq!(co_none, None);
+
+        let lat: Option<Result<i32, String>> = Some(Ok(9));
+        assert_eq!(lat.transpose(), Ok(Some(9)));
+    }
+
+    #[test]
+    fn applicative_gom_du_ba_loi() {
+        let don = DonTho {
+            ten: "An".into(),
+            email: "khong-co-a-cong".into(),
+            tuoi: "abc".into(),
+        };
+        match dang_ky_tich_luy(&don) {
+            XacThuc::Hong(loi) => {
+                assert_eq!(loi.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", loi)
+            }
+            XacThuc::Dat(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
+        }
+    }
+
+    #[test]
+    fn monad_chi_bao_mot_loi() {
+        let don = DonTho {
+            ten: "An".into(),
+            email: "khong-co-a-cong".into(),
+            tuoi: "abc".into(),
+        };
+        // Toán tử `?` dừng ngay ở lỗi đầu tiên: chỉ nhận được 1 thông báo.
+        let loi = dang_ky_ngan_mach(&don).unwrap_err();
+        assert!(loi.contains("quá ngắn"), "Phải là lỗi ĐẦU TIÊN, nhận: {}", loi);
+    }
+
+    #[test]
+    fn don_hop_le_qua_ca_hai_chien_luoc() {
+        let don = DonTho {
+            ten: "Nguyễn Văn An".into(),
+            email: " An.Nguyen@Example.COM ".into(),
+            tuoi: " 28 ".into(),
+        };
+        let mong_doi = NguoiDung {
+            ten: "Nguyễn Văn An".to_string(),
+            email: "an.nguyen@example.com".to_string(),
+            tuoi: 28,
+        };
+        assert_eq!(dang_ky_ngan_mach(&don), Ok(mong_doi.clone()));
+        assert_eq!(dang_ky_tich_luy(&don), XacThuc::Dat(mong_doi));
+    }
+
+    #[test]
+    fn ham_tu_tong_quat_hoat_dong_cho_ba_kieu() {
+        assert_eq!(Some(5i32).anh_xa(|x| x + 1), Some(6));
+        assert_eq!(vec![1i32, 2, 3].anh_xa(|x| x * 10), vec![10, 20, 30]);
+        let r: Result<i32, String> = Ok(7);
+        assert_eq!(r.anh_xa(|x| x - 7), Ok(0));
+    }
 }
 ```
 
@@ -311,54 +793,155 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên thường gặp các lỗi cấu hình crate và cú pháp AST đặc thù:
-
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0463** | `can't find crate for 'proc_macro'` | Bạn cố gắng sử dụng `extern crate proc_macro;` hoặc dùng các kiểu của `proc_macro` bên trong một crate nhị phân (`bin`) thông thường mà không phải là crate có cờ `proc-macro = true`. | Tạo một crate thư viện con riêng biệt và bổ sung cấu hình `[lib] proc-macro = true` vào tệp `Cargo.toml`. |
-| **Lỗi biên dịch syn** | `expected ident, found ...` | Khi phân tích cú pháp AST, token tiếp theo không phải là một định danh tên biến/hàm hợp lệ như `syn` mong đợi. | Kiểm tra lại cú pháp người dùng truyền vào hoặc sử dụng `syn::parse::Parse` tùy biến để xử lý các token đặc thù. |
-| **E0277** | `the trait bound '...: ToTokens' is not satisfied` | Trong khối `quote! { #bien }`, biến `#bien` không triển khai Trait `quote::ToTokens` (nghĩa là `quote` không biết cách chuyển biến này thành mã Rust). | Đảm bảo kiểu dữ liệu đưa vào `#bien` là một thành phần AST của `syn` (như `Ident`, `Type`, `TokenStream`) hoặc kiểu nguyên thủy có sẵn `ToTokens`. |
-| **Lỗi vị trí thuộc tính** | `cannot find derive macro '...' in this scope` | Crate ứng dụng chính chưa nhập (import) derive macro từ crate thư viện proc-macro. | Thêm tên crate macro vào `Cargo.toml` của dự án và khai báo `use my_macro_crate::TenMacro;`. |
+| **E0308** | `expected 'Option<i32>', found 'Option<Option<i32>>'` | Bạn dùng `map` ở chỗ cần `and_then`: closure trả về một *hộp mới* nên hộp bị lồng nhau. | Đổi `.map(f)` thành `.and_then(f)`, hoặc giữ `.map(f)` rồi thêm `.flatten()`. |
+| **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn dùng `?` trong hàm trả về kiểu trần. Toán tử `?` là do-notation, nó phải "ở trong" một đơn nguyên. | Đổi kiểu trả về thành `Result<_, _>` / `Option<_>`, hoặc xử lý bằng `match` / `unwrap_or`. |
+| **E0277** | `'?' couldn't convert the error to 'LoiCuaBan'` | `?` tự gọi `From::from` trên kiểu lỗi, nhưng bạn chưa cài `impl From<LoiGoc> for LoiCuaBan`. | Cài `impl From<...>`, hoặc chuyển thủ công bằng `.map_err(...)` ngay trước dấu `?`. |
+| **E0282** | `type annotations needed` khi gọi `.collect()` | Trình biên dịch không biết bạn muốn `Vec<Result<T,E>>` hay `Result<Vec<T>,E>` — cả hai đều hợp lệ! | Ghi rõ kiểu: `let x: Result<Vec<i32>, _> = ...` hoặc dùng turbofish `.collect::<Result<Vec<_>, _>>()`. |
+| **E0599** | `no method named 'flatten' found` | `flatten` có trên `Option<Option<T>>` và `Iterator`; với `Result` thì hai kiểu lỗi phải trùng nhau. | Thống nhất kiểu lỗi trước, hoặc dùng `.and_then(|x| x)`. |
 
-### Phân tích lỗi thực tế: Cố tình dùng Proc Macro trong Crate thông thường
+### Phân tích lỗi thực tế `E0308` (dùng nhầm `map` thay cho `and_then`):
 
 ```rust
-// Đoạn mã lỗi minh họa (trong tệp main.rs thông thường):
-// extern crate proc_macro; // LỖI E0463: can't find crate for proc_macro!
+fn tim_tuoi(s: &str) -> Option<u32> {
+    s.trim().parse::<u32>().ok()
+}
 
-// Cách khắc phục chuẩn:
-// 1. Tổ chức dự án dạng Workspace:
-//    my_project/
-//    ├── Cargo.toml (Workspace)
-//    ├── my_app/ (Crate chính, bin)
-//    └── my_macros/ (Crate phụ, lib với proc-macro = true)
+// ❌ Sai: closure trả về Option nên kết quả bị LỒNG hai lớp
+// fn sai(dau_vao: Option<&str>) -> Option<u32> {
+//     dau_vao.map(|s| tim_tuoi(s))
+//     // LỖI E0308: expected `Option<u32>`, found `Option<Option<u32>>`
+// }
+
+// ✅ Cách 1: dùng and_then (bind) — closure trả về hộp thì dùng bind
+fn dung_1(dau_vao: Option<&str>) -> Option<u32> {
+    dau_vao.and_then(tim_tuoi)
+}
+
+// ✅ Cách 2: giữ map rồi flatten (join) — hoàn toàn tương đương
+fn dung_2(dau_vao: Option<&str>) -> Option<u32> {
+    dau_vao.map(tim_tuoi).flatten()
+}
 ```
+
+**Quy tắc nhớ đời**: nhìn vào closure bạn truyền vào.
+- Closure trả về **giá trị trần** (`A -> B`) → dùng **`map`**.
+- Closure trả về **một chiếc hộp** (`A -> Option<B>` / `A -> Result<B,E>`) → dùng **`and_then`**.
 
 ---
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Procedural Macros là Hàm Compile-time**: Nhận `TokenStream`, trả về `TokenStream`, có quyền năng tính toán Turing-complete đầy đủ trong lúc biên dịch.
-2. **Quy tắc tổ chức Crate**: Luôn phải nằm trong một crate thư viện độc lập có `[lib] proc-macro = true`.
-3. **Bộ đôi song sát `syn` & `quote`**:
-   - `syn`: Kính hiển vi bóc tách mã nguồn thô thành Cây cú pháp trừu tượng AST có kiểu rõ ràng.
-   - `quote`: Cây bút ma thuật dập khuôn và sinh mã Rust mới một cách an toàn thông qua `#bien`.
-4. **Báo lỗi có tâm**: Dùng `syn::Error::new_spanned` kết hợp `to_compile_error()` để định vị chính xác vị trí lỗi đỏ trên màn hình người dùng.
+1. **Ba tầng trừu tượng, ba câu hỏi khác nhau**:
+   - *Functor* (`map`): "sơn lại ruột hộp" — các bước không biết gì về nhau.
+   - *Applicative* (`zip`, `XacThuc`): "gộp nhiều hộp độc lập" — gom được **tất cả** lỗi.
+   - *Monad* (`and_then`, `?`): "mở hộp rồi mới quyết định bước sau" — dừng ở lỗi **đầu tiên**.
+2. **`and_then` chính là `bind`, `flatten` chính là `join`, `?` chính là do-notation.** Bạn đã dùng monad từ Chương 11; chương này chỉ đặt đúng tên và chỉ ra các luật.
+3. **`collect::<Result<Vec<_>, E>>()` và `transpose()` là hai công cụ đắt giá nhất chương.** Chúng biến `Vec<Result>` thành `Result<Vec>` — thao tác mà gần như mọi chương trình đọc dữ liệu ngoài đều cần.
+4. **Rust có nhiều monad cụ thể nhưng chưa có trait `Monad` tổng quát**, vì thiếu Kiểu bậc cao (HKT). Thư viện `fp-core.rs` mô phỏng HKT bằng kiểu liên kết, và GAT (ổn định từ Rust 1.65) đang dần thu hẹp khoảng cách.
+
+> **Còn những cấu trúc nào nữa?** Chương này dạy Functor, Bifunctor, Apply/Applicative, Traversable, Chain/Monad và Alternative. Đặc tả Fantasy Land còn 11 cấu trúc khác — trong đó đáng chú ý nhất là **ChainRec** (vòng lặp đơn nguyên không tràn ngăn xếp), **Comonad** (đối ngẫu của Monad) và **Profunctor** (nền tảng của Lens). Tất cả có tại **[Phụ lục A](./PHU_LUC_A_FANTASY_LAND.md)**, kèm mã chạy được và bài kiểm chứng luật.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bóc tách AST bằng tư duy)**:  
-   Cho một struct sau:
-   ```rust
-   struct TaiKhoan {
-       pub ten: String,
-       so_du: f64,
-   }
-   ```
-   Dựa trên các cấu trúc của `syn` (`DeriveInput`, `DataStruct`, `FieldsNamed`), hãy vẽ sơ đồ hình cây biểu diễn các nút cha - con của struct này trong bộ nhớ của trình phân tích AST.
 
-2. **Bài tập 2 (Thiết kế Ý tưởng Derive Macro)**:  
-   Hãy tưởng tượng bạn đang viết một Derive Macro mang tên `#[derive(XuatFileJson)]`. Theo bạn, macro này sẽ cần bóc tách những thông tin gì từ AST của struct và sẽ dùng `quote!` để sinh ra phương thức gì cho struct đó?
+**Bài tập 1 (`map` hay `and_then`?)**
+Cho ba hàm dưới đây, hãy xây một chuỗi xử lý từ `Option<&str>` ra `Option<String>` và giải thích tại sao mỗi bước bạn chọn `map` hoặc `and_then`:
+```rust
+fn cat(s: &str) -> String;              // luôn thành công
+fn thanh_so(s: String) -> Option<u32>;  // có thể thất bại
+fn dinh_dang(n: u32) -> String;         // luôn thành công
+```
 
-3. **Bài tập 3 (So sánh Kiến trúc)**:  
-   Tại sao Rust lại quy định khắt khe rằng Macro thủ tục phải nằm trong một Crate riêng biệt và biên dịch thành thư viện động lúc Host Time, thay vì cho phép viết lẫn lộn trong `main.rs` như `macro_rules!`?
+<details>
+<summary><b>Gợi ý</b></summary>
+
+Nhìn kiểu trả về của từng hàm: hàm nào trả `Option<...>` thì phải nối bằng `and_then`; hàm nào trả giá trị trần thì nối bằng `map`. Nếu bạn dùng nhầm, `rustc` sẽ báo `Option<Option<...>>`.
+</details>
+
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+fn cat(s: &str) -> String { s.trim().to_string() }
+fn thanh_so(s: String) -> Option<u32> { s.parse::<u32>().ok() }
+fn dinh_dang(n: u32) -> String { format!("{} đồng", n) }
+
+fn xu_ly(dau_vao: Option<&str>) -> Option<String> {
+    dau_vao
+        .map(cat)           // cat trả String (trần)       -> map
+        .and_then(thanh_so) // thanh_so trả Option (hộp)   -> and_then
+        .map(dinh_dang)     // dinh_dang trả String (trần) -> map
+}
+
+fn main() {
+    assert_eq!(xu_ly(Some("  1500 ")), Some("1500 đồng".to_string()));
+    assert_eq!(xu_ly(Some("  abc ")), None);
+    assert_eq!(xu_ly(None), None);
+}
+```
+</details>
+
+**Bài tập 2 (Traversable trong thực chiến)**
+Cho một lát cắt `&[&str]` chứa các dòng cấu hình dạng `"khoa=gia_tri"`. Viết hàm `doc_cau_hinh(dong: &[&str]) -> Result<HashMap<String, String>, String>` sao cho: nếu **mọi** dòng đều hợp lệ thì trả về bảng cấu hình; nếu **bất kỳ** dòng nào thiếu dấu `=` thì trả lỗi kèm nội dung dòng sai. Yêu cầu: dùng `collect()` chứ không dùng vòng lặp `for` với biến `mut`.
+
+<details>
+<summary><b>Gợi ý</b></summary>
+
+`HashMap<K, V>` cài đặt `FromIterator<(K, V)>`, và `Result` cũng cài `FromIterator`. Vì vậy `Result<HashMap<_,_>, E>` thu được trực tiếp từ một iterator các `Result<(String, String), E>`. Dùng `split_once('=')` để tách.
+</details>
+
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+fn doc_cau_hinh(dong: &[&str]) -> Result<HashMap<String, String>, String> {
+    dong.iter()
+        .map(|d| {
+            d.split_once('=')
+                .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+                .ok_or_else(|| format!("Dòng cấu hình sai định dạng: {:?}", d))
+        })
+        .collect() // ← Traversable: Iterator<Result<(K,V),E>> -> Result<HashMap<K,V>, E>
+}
+
+fn main() {
+    let tot = ["cong = 8080", "host=localhost"];
+    let bang = doc_cau_hinh(&tot).unwrap();
+    assert_eq!(bang.get("cong"), Some(&"8080".to_string()));
+
+    let hong = ["cong = 8080", "dong sai khong co dau bang"];
+    assert!(doc_cau_hinh(&hong).is_err());
+    println!("{:?}", doc_cau_hinh(&hong));
+}
+```
+
+Chỉ **một** lời gọi `collect()` đã làm cả ba việc: duyệt, đảo ngữ cảnh `Result` ra ngoài, và dựng `HashMap`. Đó là sức mạnh của Traversable kết hợp `FromIterator`.
+</details>
+
+**Bài tập 3 (Tư duy thiết kế: chọn Applicative hay Monad?)**
+Với mỗi tình huống dưới đây, hãy quyết định nên dùng **Applicative** (gom hết lỗi) hay **Monad** (dừng sớm), và giải thích:
+1. Xác thực 8 trường của biểu mẫu đăng ký người dùng.
+2. Quy trình đặt hàng: kiểm tra tồn kho → trừ tiền → tạo vận đơn.
+3. Đọc 5 tệp cấu hình độc lập lúc khởi động máy chủ.
+4. Xác thực đăng nhập → lấy quyền hạn → kiểm tra quyền truy cập tài nguyên.
+
+<details>
+<summary><b>Gợi ý</b></summary>
+
+Câu hỏi duy nhất cần trả lời cho mỗi tình huống: **bước sau có cần kết quả của bước trước không?** Nếu không cần → độc lập → Applicative. Nếu cần → tuần tự → Monad.
+</details>
+
+<details>
+<summary><b>Lời giải tham khảo</b></summary>
+
+1. **Applicative.** Tám trường độc lập hoàn toàn. Người dùng cần thấy tất cả lỗi trong một lần gửi, không phải sửa tám vòng.
+2. **Monad.** Không được trừ tiền nếu chưa biết còn hàng; không được tạo vận đơn nếu chưa trừ tiền thành công. Bước sau phụ thuộc bước trước → dùng `?`. Hơn nữa, "gom hết lỗi" ở đây là **nguy hiểm**: nó ngụ ý bạn đã thực hiện các bước sau dù bước trước đã hỏng.
+3. **Applicative.** Năm tệp độc lập. Báo hết một lượt "thiếu tệp A, tệp C sai cú pháp" giúp người vận hành sửa một lần rồi khởi động lại, thay vì lặp năm vòng.
+4. **Monad.** Không có danh tính thì không có quyền hạn; không có quyền hạn thì không kiểm tra được truy cập. Ngoài ra, dừng sớm ở đây còn là yêu cầu **bảo mật**: đừng làm lộ thông tin về tài nguyên cho người chưa xác thực.
+
+**Nguyên tắc tổng quát**: *Applicative cho dữ liệu (song song, gom lỗi) — Monad cho quy trình (tuần tự, dừng sớm).*
+</details>

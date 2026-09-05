@@ -1,278 +1,278 @@
-# Chương 35: Kiểm chứng an toàn bộ nhớ Rust vs Unsafe Rust & FFI (Rust Memory Safety Verification vs Unsafe Rust & FFI)
+# Chương 35: Giao dịch, Đảm bảo ACID & Kiểm soát đồng thời MVCC (Transactions, ACID Guarantees & MVCC Concurrency Control)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Ở hai chương trước, chúng ta đã chứng kiến cách kiến trúc không gian địa chỉ ảo vận hành và cách Rust dựng nên một bức tường thép bảo vệ hệ thống khỏi Tam đại hiểm họa tham nhũng bộ nhớ. Một câu hỏi tự nhiên xuất hiện trong tâm trí của mọi kỹ sư: **Nếu Rust an toàn tuyệt đối như vậy, làm thế nào nó có thể giao tiếp trực tiếp với vi mạch phần cứng, điều khiển thanh ghi CPU, hoặc tích hợp với hàng tỷ dòng mã nguồn C/C++ đang vận hành trong nhân hệ điều hành Linux, Windows và macOS?**
+Trong một hệ thống ứng dụng tài chính ngân hàng, thương mại điện tử, hoặc mạng xã hội quy mô lớn, có hàng chục ngàn người dùng cùng lúc truy cập vào cơ sở dữ liệu. Hãy tưởng tượng kịch bản sau: Tài khoản của bạn có 1 triệu đồng. Cùng một tích tắc, bạn vừa chuyển 500 nghìn cho bạn bè qua điện thoại, vừa quẹt thẻ mua sắm 700 nghìn tại siêu thị. Nếu hai luồng xử lý cùng đọc số dư 1 triệu và cùng trừ tiền mà không có sự kiểm soát, hệ thống sẽ cho phép bạn tiêu tới 1,2 triệu (vượt quá số dư thực tế), hoặc ngược lại làm thất thoát tiền bạc!
 
-Câu trả lời nằm ở cánh cổng bí mật của ngôn ngữ: **`unsafe` Rust và Giao diện giao tiếp hàm ngoại lai (Foreign Function Interface - FFI)**. Từ khóa `unsafe` trong Rust không phải là một "lỗ hổng", mà là một công cụ có chủ đích, một hợp đồng phân định trách nhiệm rõ ràng giữa con người và trình biên dịch.
+Để giải quyết triệt để các vấn đề xung đột dữ liệu khi nhiều người dùng cùng thao tác đồng thời, các hệ quản trị cơ sở dữ liệu đưa ra khái niệm tối thượng: **Giao dịch (Transaction)** và bộ tiêu chuẩn vàng **ACID (Atomicity, Consistency, Isolation, Durability)**.
 
-Trong chương này, chúng ta sẽ làm sáng tỏ:
-- Sự khác biệt giữa kiểm chứng tĩnh tự động (Static Verification qua Borrow Checker) và sự can thiệp thủ công có kiểm soát của lập trình viên.
-- **Năm siêu năng lực duy nhất của `unsafe`**: Những điều mà Safe Rust từ chối thực hiện nhưng Unsafe Rust cho phép.
-- Khái niệm **Bất biến an toàn (Safety Invariants)** và nguyên tắc thiết kế **Bao bọc an toàn (Safe Abstraction Wrapper)**: Cách các thư viện cốt lõi (`Vec`, `String`, `Box`) biến mã nguồn cấp thấp thành các API an toàn 100%.
-- Cách thức hoạt động của FFI: Trao đổi dữ liệu hai chiều với ngôn ngữ C thông qua quy ước nhị phân `extern "C"` và định dạng tương thích bộ nhớ `#[repr(C)]`.
-- Các hành vi bất định (Undefined Behavior - UB) nguy hiểm nhất và cách sử dụng công cụ kiểm định Miri để rà soát lỗi bộ nhớ.
+Tuy nhiên, làm thế nào để đảm bảo tính cô lập (Isolation) mà không làm tê liệt hệ thống? Nếu mỗi lần một người sửa dữ liệu ta lại khóa cứng toàn bộ bảng lại (Khóa bi quan - Pessimistic Locking), hàng ngàn người dùng khác sẽ phải đứng xếp hàng chờ đợi, gây tắc nghẽn nghiêm trọng. Để đạt được thông lượng xử lý hàng triệu giao dịch mỗi giây, giải pháp hiện đại bậc nhất chính là **Kiểm soát đồng thời đa phiên bản (Multi-Version Concurrency Control - MVCC)**. Đặc biệt, kiến trúc MVCC kết hợp hoàn hảo một cách tự nhiên với động cơ lưu trữ **LSM-Tree** (với các tầng `MemTable` và `SSTable` bất biến) mà chúng ta đã tìm hiểu.
+
+Mục tiêu học tập của chương này:
+- Nắm vững bản chất 4 thuộc tính vàng của **ACID**: Tính nguyên tử (Atomicity), Tính nhất quán (Consistency), Tính cô lập (Isolation), và Tính bền vững (Durability).
+- Nhận diện các hiện tượng nguy hiểm khi thiếu kiểm soát đồng thời: Đọc rác (Dirty Read), Đọc không thể lặp lại (Non-repeatable Read), và Đọc bóng ma (Phantom Read).
+- Phân biệt cơ chế Khóa bi quan (Pessimistic Locking / 2PL) và triết lý tiến bộ của **MVCC**: *"Người đọc không bao giờ chặn người ghi, người ghi không bao giờ chặn người đọc"*.
+- Hiểu sâu sắc mối quan hệ cộng sinh giữa MVCC và động cơ **LSM-Tree** (`MemTable`, `SSTable`, và tiến trình `Compaction`).
+- Tự tay lập trình một hệ thống lưu trữ đa phiên bản MVCC hoàn chỉnh bằng Rust, kiểm soát tầm nhìn bản ghi (Snapshot Visibility) thông qua mã định danh giao dịch (`tx_id`).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để thấu suốt ranh giới giữa Safe Rust, Unsafe Rust và FFI, hãy hình dung hai bức tranh đời sống sau:
+Hãy quan sát hai câu chuyện đời thường vô cùng quen thuộc để thấu hiểu bản chất của Giao dịch ACID và cơ chế MVCC:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA: PHÒNG ĐIỆN CAO THẾ & CỬA KHẨU QUỐC TẾ               │
+│                   HÌNH TƯỢNG HÓA GIAO DỊCH ACID VÀ CƠ CHẾ MVCC                   │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. PHÒNG BIẾN ÁP CAO THẾ (UNSAFE RUST) VỚI LỚP VỎ CÁCH ĐIỆN (SAFE WRAPPER)]     │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ [Bên Ngoài: Khu dân cư an toàn (Safe Rust)]                          │         │
-│ │ Người dân bật công tắc đèn, cắm phích sạc điện thoại thoải mái       │         │
-│ │ mà không bao giờ sợ bị điện giật.                                    │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ [Cánh Cửa Khóa Cẩn Mật: Khối lệnh unsafe { ... }]                     │         │
-│ │ Chỉ kỹ sư có chứng chỉ, đeo găng tay cách điện chuyên dụng mới vào.  │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ [Bên Trong: Lõi dây đồng 220,000 Volts (Con trỏ thô Raw Pointers)]   │         │
-│ │ Chạm tay trần vào đây là nổ tung lập tức (Undefined Behavior)!       │         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
+│ [1. TÍNH NGUYÊN TỬ (ATOMICITY): GIAO DỊCH MUA BÁN TẬN TAY]                       │
 │                                                                                  │
-│ [2. CỬA KHẨU HẢI QUAN BIÊN GIỚI (FOREIGN FUNCTION INTERFACE - FFI)]             │
-│   Nước Rust (Kỷ luật nghiêm ngặt)  ◄───────►  Nước C (Vùng đất tự do hoang dã)  │
-│                 │                                     │                          │
-│                 ▼                                     ▼                          │
-│   Hàng hóa kiểm tra quét X-quang        Thương lái mang hàng qua lại             │
-│   (#[repr(C)], CString, Pointer check)  (extern "C", Raw pointers, libc)         │
+│         Bạn đưa 50.000đ ══════════════════► Người bán đưa Cốc trà sữa            │
+│                                                                                  │
+│ - TẤT CẢ HOẶC KHÔNG CÓ GÌ (ALL OR NOTHING):                                      │
+│   + Cả 2 việc cùng thành công: Bạn có trà sữa, người bán có tiền (Commit).       │
+│   + Nếu bạn rơi tiền hoặc quán hết trà sữa: Tiền trả về túi bạn (Rollback).      │
+│   + Tuyệt đối KHÔNG BAO GIỜ có chuyện bạn mất tiền mà không nhận được đồ!        │
+│                                                                                  │
+│ [2. CƠ CHẾ MVCC: MÁY PHOTOCOPY BẢN SAO HỢP ĐỒNG KHI SỬA ĐỔI]                     │
+│                                                                                  │
+│ Luật sư đang đọc Hợp đồng v1                 Giám đốc muốn sửa Điều khoản        │
+│          │                                                │                      │
+│          ▼                                                ▼                      │
+│ [Đọc thong thả bản v1]                       [Không giật giấy trên tay luật sư]  │
+│ Không bị ai làm phiền!                       Tạo bản copy mới: Hợp đồng v2       │
+│                                              Sửa xong ký tên: Đóng dấu v2!       │
+│                                                                                  │
+│ => NGƯỜI ĐỌC KHÔNG CHẶN NGƯỜI GHI — NGƯỜI GHI KHÔNG CHẶN NGƯỜI ĐỌC!            │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Phòng biến áp cao thế và Ổ cắm an toàn (Unsafe vs Safe Wrapper)
-- **Safe Rust giống như hệ thống điện dân dụng trong nhà bạn**: Tất cả dây dẫn đều được bọc nhựa cách điện, ổ cắm có nắp che an toàn. Trẻ em có thể cắm sạc điện thoại thoại mái mà không thể bị điện giật.
-- **Unsafe Rust giống như phòng trạm biến áp cao thế `220,000 Volts`**: Để cấp điện cho cả thành phố, bắt buộc phải có những thanh đồng trần mang dòng điện cực lớn.
-- Kỹ sư điện bước vào phòng biến áp phải mặc đồ bảo hộ chuyên dụng (từ khóa `unsafe`). Họ phải tự chịu trách nhiệm 100% về mạng sống của mình.
-- Sau khi đấu nối xong, họ đóng cửa phòng trạm, khóa van bảo vệ lại. Bên ngoài chỉ để lộ ra một chiếc công tắc bật/tắt đơn giản (**Safe Abstraction Wrapper**). Người dân chỉ cần dùng công tắc đó một cách an toàn mà không cần biết bên trong chứa dây điện cao thế nguy hiểm ra sao!
+### 1. Tính nguyên tử (Atomicity) — Mua bán đổi chác trao tay
+- Hãy tưởng tượng bạn đi mua một cốc trà sữa ở góc phố:
+  - Bạn rút tờ tiền 50 nghìn trao cho người bán, đồng thời người bán trao cốc trà sữa mát lạnh vào tay bạn.
+  - Đây là một **hành động nguyên tử (Atomic)**: Không thể chia cắt nhỏ hơn được nữa.
+  - Hoặc là cả hai việc cùng diễn ra trọn vẹn (giao dịch thành công - **Commit**).
+  - Hoặc nếu giữa chừng người bán lỡ tay làm rơi cốc trà sữa xuống đất, người bán lập tức trả lại tờ tiền 50 nghìn vào ví bạn (hoàn tác - **Rollback**).
+  - Không bao giờ có trạng thái lửng lơ: Tiền của bạn bị trừ mà người bán không đưa hàng!
 
-### 2. Trạm kiểm soát hải quan tại cửa khẩu (FFI)
-- Hãy tưởng tượng Safe Rust là một quốc gia có luật lệ giao thông cực kỳ nghiêm ngặt: Mọi người dân đều thắt dây an toàn, đi đúng làn đường.
-- C/C++ là quốc gia láng giềng tự do: Không có biển báo giao thông, xe máy và ô tô có thể chạy bất kỳ tốc độ nào.
-- Khi muốn giao thương giữa hai nước (FFI - Foreign Function Interface), ta phải đặt một **Trạm hải quan quốc tế** (`extern "C"`).
-- Xe chở hàng từ nước C muốn sang nước Rust phải được kiểm tra giấy tờ, cân tải trọng (`#[repr(C)]`), đóng gói quy chuẩn trước khi lăn bánh vào lãnh thổ Rust.
+### 2. MVCC — Máy photocopy hợp đồng trong văn phòng luật
+- Hãy tưởng tượng một văn phòng bận rộn:
+  - Luật sư đang ngồi tại bàn nghiên cứu một bản hợp đồng kinh tế phiên bản 1 (`Version 1`).
+  - Cùng lúc đó, vị Giám đốc bước vào và muốn sửa đổi điều khoản số 5 của hợp đồng.
+  - **Cách làm kiểu cũ (Khóa bi quan - Lock)**: Giám đốc giật phắt tờ hợp đồng trên tay Luật sư, bắt Luật sư ngồi im khoanh tay đợi Giám đốc sửa xong thì mới được đọc tiếp. Văn phòng rơi vào tình trạng đóng băng!
+  - **Cách làm tân tiến kiểu MVCC (Đa phiên bản)**: Giám đốc không làm phiền Luật sư. Ông ấy chụp scan một bản sao mới, sửa thành phiên bản 2 (`Version 2`) rồi ký tên.
+  - Trong suốt thời gian đó, Luật sư vẫn thong thả đọc trọn vẹn phiên bản 1 mà không bị gián đoạn một giây nào. Khi Giám đốc hoàn tất phiên bản 2, các nhân viên mới vào đọc sẽ nhìn thấy phiên bản 2. Người đọc và người ghi làm việc song song tuyệt đối!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Năm Siêu năng lực của Unsafe Rust (The 5 Unsafe Superpowers)
+### 1. Giải mã 4 thuộc tính vàng của ACID
 
-Trình biên dịch `rustc` có một "cảnh sát bộ nhớ" là Borrow Checker. Khi bạn viết từ khóa `unsafe`, bạn **không** làm tắt đi trình biên dịch và cũng **không** làm mất đi hệ thống kiểm tra kiểu dữ liệu. Bạn chỉ mở khóa đúng **5 hành động đặc quyền** sau:
+1. **A - Atomicity (Tính nguyên tử)**: Toàn bộ các thao tác trong một giao dịch (Transaction) được đối xử như một đơn vị logic duy nhất. Hoặc tất cả cùng thành công (`COMMIT`), hoặc nếu có một lỗi nhỏ nhất xảy ra, toàn bộ trạng thái sẽ được hoàn tác về như lúc ban đầu (`ROLLBACK`).
+2. **C - Consistency (Tính nhất quán)**: Dữ liệu chuyển đổi từ một trạng thái hợp lệ này sang một trạng thái hợp lệ khác, không bao giờ vi phạm các quy tắc nghiệp vụ (ví dụ: Tổng số tiền trong hệ thống không thể tự nhiên sinh ra hay mất đi, số dư không được âm).
+3. **I - Isolation (Tính cô lập)**: Xác định mức độ mà các thay đổi trong một giao dịch đang chạy bị ẩn giấu đối với các giao dịch khác.
+4. **D - Durability (Tính bền vững)**: Một khi giao dịch đã được xác nhận thành công (`COMMIT`), các thay đổi của nó sẽ được ghi vĩnh viễn xuống đĩa cứng (thông qua nhật ký WAL) và không bao giờ bị mất mát, kể cả khi hệ thống sập nguồn điện ngay sau đó.
 
-1. **Giải tham chiếu con trỏ thô (Dereferencing raw pointers)**:
-   - Trong Safe Rust, bạn chỉ có tham chiếu an toàn `&T` hoặc `&mut T` (không bao giờ null, luôn trỏ vào ô nhớ hợp lệ).
-   - Trong Unsafe Rust, bạn có con trỏ thô: `*const T` (con trỏ hằng) và `*mut T` (con trỏ khả biến). Chúng có thể trỏ vào bất kỳ địa chỉ số nguyên nào, có thể là `null`, hoặc trỏ vào vùng nhớ đã bị thu hồi. Chỉ khi bạn dùng toán tử `*ptr` để đọc/ghi thì mới bắt buộc phải nằm trong khối `unsafe`.
-2. **Gọi một hàm hoặc phương thức không an toàn (Calling an unsafe function or method)**:
-   - Các hàm có từ khóa `unsafe fn` (ví dụ các hàm cấp phát bộ nhớ cấp thấp, thao tác SIMD, hoặc các hàm gọi qua FFI).
-3. **Hiện thực hóa một Trait không an toàn (Implementing an unsafe trait)**:
-   - Các trait như `Send` và `Sync`. Khi bạn cam kết với trình biên dịch rằng cấu trúc dữ liệu của bạn an toàn khi chuyển qua các luồng (threads), bạn phải chịu trách nhiệm đảm bảo không có Data Race.
-4. **Thay đổi giá trị của một biến tĩnh khả biến (`static mut`)**:
-   - Biến toàn cục khả biến có thể bị đọc/ghi đồng thời bởi nhiều luồng khác nhau mà không có khóa đồng bộ, gây ra xung đột dữ liệu nguy hiểm.
-5. **Truy cập các trường của một `union`**:
-   - `union` chia sẻ chung một vùng nhớ vật lý cho nhiều kiểu dữ liệu khác nhau (thường dùng khi tương thích với mã C). Rust không thể xác minh kiểu dữ liệu nào đang thực sự nằm trong ô nhớ.
+### 2. Các hiện tượng xung đột và Các cấp độ cô lập (Isolation Levels)
 
-### 2. Nguyên tắc Đóng gói Bao bọc An toàn (Safe Abstraction Invariants)
+Khi nhiều giao dịch chạy song song, nếu không cô lập tốt sẽ nảy sinh 3 hiểm họa:
+- **Dirty Read (Đọc dữ liệu rác)**: Giao dịch A đọc một giá trị do Giao dịch B vừa sửa, nhưng sau đó Giao dịch B bị hủy (`Rollback`). Giao dịch A đã hành động dựa trên một dữ liệu ma quỷ không có thật!
+- **Non-repeatable Read (Đọc không nhất quán)**: Giao dịch A đọc dòng số 1 ra giá trị 100. Giao dịch B vào sửa thành 200 và Commit. Giao dịch A đọc lại dòng số 1 thì thấy giá trị biến thành 200.
+- **Phantom Read (Bóng ma xuất hiện)**: Giao dịch A đếm có 5 đơn hàng. Giao dịch B chèn thêm đơn hàng thứ 6. Giao dịch A đếm lại thì thấy xuất hiện thêm dòng mới.
 
-Hãy nhìn vào cách thư viện chuẩn của Rust (`std`) hiện thực hóa kiểu `Vec<T>`:
-- Bản chất `Vec<T>` chứa một con trỏ thô `ptr: *mut T`, sức chứa `cap: usize`, và độ dài `len: usize`.
-- Việc cấp phát ô nhớ và mở rộng dung lượng đều sử dụng mã `unsafe`.
-- Nhưng người dùng bình thường gọi `vec.push(42)` hay `vec[0]` hoàn toàn trong Safe Rust!
-- Tại sao? Bởi vì các kỹ sư Rust đã thiết lập các **Bất biến an toàn (Invariants)**:
-  1. `ptr` luôn trỏ vào vùng nhớ có dung lượng ít nhất `cap * size_of::<T>()`.
-  2. `len` luôn nhỏ hơn hoặc bằng `cap`.
-  3. Mọi phần tử từ chỉ số `0` đến `len - 1` đều đã được khởi tạo hợp lệ.
-  4. Khi `Vec` bị tiêu hủy, phương thức `drop()` sẽ giải phóng chính xác vùng nhớ đó đúng 1 lần duy nhất.
+Hội đồng chuẩn SQL định nghĩa 4 cấp độ cô lập từ yếu đến mạnh:
+1. `Read Uncommitted`: Cho phép đọc dữ liệu chưa commit (nguy hiểm nhất).
+2. `Read Committed`: Chỉ đọc dữ liệu đã commit (chống Dirty Read).
+3. `Repeatable Read`: Đảm bảo đọc một dòng nhiều lần luôn ra cùng kết quả (chuẩn mặc định của MySQL).
+4. `Serializable`: Các giao dịch chạy như thể tuần tự từng cái một (an toàn nhất nhưng chậm nhất).
 
-### 3. Giao diện Giao tiếp Hàm Ngoại lai (FFI - Foreign Function Interface)
+### 3. Cơ chế hoạt động của MVCC trong Động cơ lưu trữ
 
-Khi gọi một hàm viết bằng ngôn ngữ C từ Rust:
-1. **Quy ước gọi hàm C (`extern "C"`)**: Đảm bảo thanh ghi CPU và ngăn xếp tuân thủ đúng chuẩn C ABI (Application Binary Interface) của hệ điều hành.
-2. **Bố cục bộ nhớ tương thích (`#[repr(C)]`)**: Mặc định, trình biên dịch Rust có quyền sắp xếp lại thứ tự các trường trong `struct` để tối ưu hóa bộ nhớ đệm (buffer) (cache). Thuộc tính `#[repr(C)]` buộc Rust phải sắp xếp các trường y hệt như trình biên dịch C (GCC/Clang).
-3. **Xử lý chuỗi ký tự**: Chuỗi trong C kết thúc bằng byte số không (`\0` - Null-terminated string). Trong Rust, chuỗi `&str` và `String` lưu kèm độ dài và không bắt buộc có byte `\0`. Rust cung cấp `std::ffi::CString` (sở hữu vùng nhớ kết thúc bằng `\0`) và `std::ffi::CStr` (tham chiếu mượn (borrow) chuỗi C) để chuyển đổi an toàn tuyệt đối.
+Trong mô hình MVCC, mỗi giao dịch khi bắt đầu được gán một con số nguyên tự tăng đại diện cho dấu mốc thời gian: `tx_id` (Transaction ID).
 
-### 4. Khái niệm Undefined Behavior (UB) & Công cụ Miri
+Mỗi bản ghi trong cơ sở dữ liệu được đính kèm hai trường siêu dữ liệu (metadata):
+- `created_by_tx`: Mã của giao dịch đã tạo ra bản ghi này.
+- `deleted_by_tx`: Mã của giao dịch đã xóa hoặc ghi đè bản ghi này (nếu chưa bị xóa thì bằng `None`).
 
-Hành vi bất định (Undefined Behavior) là cơn ác mộng lớn nhất trong lập trình cấp thấp. Khi chương trình chạm vào UB, trình biên dịch được phép giả định điều đó không bao giờ xảy ra, dẫn tới việc tối ưu hóa sai lệch, sinh ra mã máy kỳ dị hoặc tạo ra lỗ hổng bảo mật.
-- Một số ví dụ về UB trong Rust:
-  - Giải tham chiếu con trỏ thô `null` hoặc con trỏ lơ lửng (dangling).
-  - Vi phạm quy tắc mượn (borrow): Tạo ra hai tham chiếu `&mut` tới cùng một ô nhớ trong cùng một thời điểm.
-  - Ép kiểu một số nguyên thành kiểu `bool` có giá trị khác `0` hoặc `1`.
-- **Miri**: Trình thông dịch trung gian chính thức của Rust (`cargo miri run`/`cargo miri test`), có khả năng phát hiện các hành vi rò rỉ bộ nhớ, Use-After-Free, và vi phạm quyền mượn (borrow) (Stacked Borrows) ngay khi chạy kiểm thử!
+```
+Khóa: "user:101"
+┌──────────────────────┬──────────────────────┬───────────────────────────────┐
+│ created_by_tx: 1     │ deleted_by_tx: 5     │ Giá trị: "Alice (Bản gốc v1)" │
+├──────────────────────┼──────────────────────┼───────────────────────────────┤
+│ created_by_tx: 5     │ deleted_by_tx: None  │ Giá trị: "Alice (Đổi tên v2)" │
+└──────────────────────┴──────────────────────┴───────────────────────────────┘
+```
+
+**Quy tắc khả kiến (Snapshot Visibility Rule)**:
+Khi Giao dịch có mã số `current_tx = 3` thực hiện đọc khóa `"user:101"`:
+- Nó kiểm tra phiên bản 1: Được tạo bởi `tx = 1 <= 3` (hợp lệ) và bị xóa bởi `tx = 5 > 3` (tại thời điểm `tx = 3`, hành động xóa của `tx = 5` chưa hề xảy ra!). Do đó, Giao dịch 3 nhìn thấy phiên bản 1!
+- Giao dịch 3 hoàn toàn không nhìn thấy phiên bản 2 (vì phiên bản 2 sinh ra ở tương lai `tx = 5`).
+
+### 4. Mối liên hệ tự nhiên giữa MVCC và LSM-Tree
+
+Tại sao các hệ thống cơ sở dữ liệu hiện đại sử dụng **LSM-Tree** lại cực kỳ ưa chuộng **MVCC**?
+- Trong LSM-Tree, các tệp **SSTable** trên đĩa cứng là **bất biến (Immutable)**.
+- Khi có lệnh cập nhật hay xóa, LSM-Tree không bao giờ sửa đè lên dữ liệu cũ, mà chỉ ghi một phiên bản mới vào `MemTable` kèm theo `tx_id` hoặc cờ Tombstone.
+- Điều này trùng khớp 100% với nguyên lý của MVCC! Tiến trình nén gộp (**Compaction**) của LSM-Tree sẽ đóng vai trò như một người thu gom rác (Garbage Collector), chỉ dọn dẹp và tiêu hủy các phiên bản cũ khi chắc chắn rằng không còn bất kỳ giao dịch nào đang hoạt động cần đọc các phiên bản đó nữa.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh thể hiện trọn vẹn triết lý: Tự tay xây dựng một cấu trúc **Bộ nhớ đệm (buffer) an toàn** mang tên `SafeRawBuffer` bọc kín mã `unsafe` bên trong, tuân thủ nghiêm ngặt các bất biến an toàn, kết hợp với gọi hàm chuẩn C thông qua FFI:
+Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cài đặt một hệ thống lưu trữ đa phiên bản **MVCC Store** an toàn luồng dữ liệu, hỗ trợ giao dịch đọc cô lập Snapshot Isolation:
 
 ```rust
-use std::alloc::{alloc, dealloc, Layout};
-use std::ffi::CStr;
-use std::os::raw::c_char;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Cấu trúc dữ liệu tương thích 100% với định dạng bộ nhớ C ABI
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct NativePoint {
-    pub x: i32,
-    pub y: i32,
+/// Bộ đếm giao dịch toàn cục tự tăng an toàn luồng
+static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Cấu trúc một bản ghi dữ liệu có gắn phiên bản thời gian (Versioned Record)
+#[derive(Clone, Debug, PartialEq)]
+pub struct BanGhiPhienBan {
+    pub created_by_tx: u64,         // Giao dịch tạo ra bản ghi
+    pub deleted_by_tx: Option<u64>, // Giao dịch xóa bản ghi (None nếu còn hiệu lực)
+    pub gia_tri: String,            // Dữ liệu thực tế
 }
 
-/// Một cấu trúc bao bọc an toàn (Safe Abstraction Wrapper)
-/// tự quản lý con trỏ thô cấp thấp trên Heap mà không gây rò rỉ bộ nhớ
-pub struct SafeRawBuffer {
-    ptr: *mut u8,
-    capacity: usize,
-    layout: Layout,
+/// Hệ thống lưu trữ dữ liệu đa phiên bản MVCC Store
+pub struct MvccStore {
+    du_lieu: HashMap<String, Vec<BanGhiPhienBan>>,
 }
 
-impl SafeRawBuffer {
-    /// Khởi tạo bộ đệm với dung lượng chỉ định (Cấp phát thô an toàn)
-    pub fn with_capacity(capacity: usize) -> Result<Self, &'static str> {
-        if capacity == 0 {
-            return Err("Dung lượng bộ đệm phải lớn hơn 0");
-        }
-
-        // Tạo bố cục bộ nhớ (Memory Layout) với căn lề 8 bytes
-        let layout = Layout::array::<u8>(capacity)
-            .map_err(|_| "Lỗi tính toán kích thước bố cục bộ nhớ")?;
-
-        // Thao tác cấp phát thô nằm trong khối unsafe
-        let raw_ptr = unsafe { alloc(layout) };
-
-        if raw_ptr.is_null() {
-            return Err("Hệ thống cạn kiệt bộ nhớ: Cấp phát con trỏ thô thất bại!");
-        }
-
-        // Khởi tạo các byte về 0 để tránh đọc dữ liệu rác
-        unsafe {
-            std::ptr::write_bytes(raw_ptr, 0, capacity);
-        }
-
-        Ok(Self {
-            ptr: raw_ptr,
-            capacity,
-            layout,
-        })
-    }
-
-    /// Ghi dữ liệu vào vị trí offset với kiểm tra biên tuyệt đối
-    pub fn write_byte(&mut self, offset: usize, value: u8) -> Result<(), &'static str> {
-        if offset >= self.capacity {
-            return Err("Chỉ số vượt quá giới hạn dung lượng bộ đệm!");
-        }
-
-        // Thao tác unsafe được kiểm chứng an toàn 100% bởi ranh giới offset < capacity
-        unsafe {
-            let target_ptr = self.ptr.add(offset);
-            *target_ptr = value;
-        }
-
-        Ok(())
-    }
-
-    /// Đọc dữ liệu tại vị trí offset an toàn
-    pub fn read_byte(&self, offset: usize) -> Option<u8> {
-        if offset >= self.capacity {
-            return None;
-        }
-
-        unsafe {
-            let target_ptr = self.ptr.add(offset);
-            Some(*target_ptr)
+impl MvccStore {
+    pub fn new() -> Self {
+        Self {
+            du_lieu: HashMap::new(),
         }
     }
 
-    pub fn capacity(&self) -> usize {
-        self.capacity
+    /// Khởi động một giao dịch mới - Nhận một mã định danh thời gian duy nhất
+    pub fn bat_dau_giao_dich(&self) -> u64 {
+        GLOBAL_TX_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
-}
 
-// Tự động giải phóng con trỏ thô khi cấu trúc ra khỏi phạm vi (RAII Pattern)
-impl Drop for SafeRawBuffer {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            println!("    [Drop] Đang giải phóng con trỏ thô tại địa chỉ {:p}...", self.ptr);
-            unsafe {
-                dealloc(self.ptr, self.layout);
+    /// THAO TÁC GHI TRONG GIAO DỊCH (Write)
+    pub fn ghi(&mut self, khoa: &str, gia_tri: &str, tx_id: u64) {
+        let danh_sach_phien_ban = self.du_lieu.entry(khoa.to_string()).or_default();
+
+        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi giao dịch hiện tại
+        for pb in danh_sach_phien_ban.iter_mut().rev() {
+            if pb.deleted_by_tx.is_none() {
+                pb.deleted_by_tx = Some(tx_id);
+                break;
             }
-            self.ptr = std::ptr::null_mut();
         }
+
+        // Thêm phiên bản mới vào danh sách
+        danh_sach_phien_ban.push(BanGhiPhienBan {
+            created_by_tx: tx_id,
+            deleted_by_tx: None,
+            gia_tri: gia_tri.to_string(),
+        });
+    }
+
+    /// THAO TÁC ĐỌC CÔ LẬP THEO PHIÊN BẢN (Snapshot Read)
+    /// Áp dụng quy tắc khả kiến: Chỉ đọc bản ghi được tạo TRƯỚC tx_id và CHƯA BỊ XÓA trước tx_id
+    pub fn doc(&self, khoa: &str, current_tx_id: u64) -> Option<&str> {
+        if let Some(danh_sach_phien_ban) = self.du_lieu.get(khoa) {
+            // Duyệt từ phiên bản mới nhất lùi về phiên bản cũ nhất
+            for pb in danh_sach_phien_ban.iter().rev() {
+                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm giao dịch này
+                let hop_le_ve_tao = pb.created_by_tx <= current_tx_id;
+                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một giao dịch xảy ra trong tương lai
+                let hop_le_ve_xoa = match pb.deleted_by_tx {
+                    None => true,
+                    Some(del_tx) => del_tx > current_tx_id,
+                };
+
+                if hop_le_ve_tao && hop_le_ve_xoa {
+                    return Some(&pb.gia_tri);
+                }
+            }
+        }
+        None
+    }
+
+    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn giao dịch nào cần đến
+    pub fn don_dep_rac(&mut self, oldest_active_tx: u64) -> usize {
+        let mut so_ban_ghi_da_xoa = 0;
+        for danh_sach in self.du_lieu.values_mut() {
+            let ban_dau = danh_sach.len();
+            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc giao dịch cũ nhất còn sống
+            danh_sach.retain(|pb| {
+                match pb.deleted_by_tx {
+                    None => true,
+                    Some(del_tx) => del_tx >= oldest_active_tx,
+                }
+            });
+            so_ban_ghi_da_xoa += ban_dau - danh_sach.len();
+        }
+        so_ban_ghi_da_xoa
     }
 }
 
-// Giả lập khai báo hàm FFI tương thích chuẩn C
-extern "C" {
-    // Gọi hàm đo độ dài chuỗi kinh điển strlen trong thư viện C chuẩn (libc)
-    fn strlen(s: *const c_char) -> usize;
+impl Default for MvccStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn main() {
-    println!("==================================================================");
-    println!("   KIEM CHUNG AN TOAN BO NHO: UNSAFE RUST & FFI DONG GOI CHUAN   ");
-    println!("==================================================================");
+    println!("============================================================");
+    println!("  GIAO DỊCH, ĐẢM BẢO ACID & KIỂM SOÁT ĐỒNG THỜI MVCC TRONG RUST");
+    println!("============================================================");
 
-    // -------------------------------------------------------------
-    // 1. THỬ NGHIỆM BỘ ĐỆM CẤP THẤP ĐÓNG GÓI AN TOÀN (SAFE WRAPPER)
-    // -------------------------------------------------------------
-    println!("\n[1] Khoi tao SafeRawBuffer dong goi con tro tho Heap:");
-    {
-        let mut my_buffer = SafeRawBuffer::with_capacity(32).expect("Khoi tao that bai");
-        println!("    - Khoi tao thanh cong bo dem dung luong: {} bytes", my_buffer.capacity());
+    let mut kho_mvcc = MvccStore::new();
 
-        // Ghi dữ liệu an toàn
-        my_buffer.write_byte(0, 0xDE).unwrap();
-        my_buffer.write_byte(1, 0xAD).unwrap();
-        my_buffer.write_byte(2, 0xBE).unwrap();
-        my_buffer.write_byte(3, 0xEF).unwrap();
+    // 1. Dữ liệu ban đầu được nạp bởi Giao dịch số 1 (Giao dịch khởi tạo hệ thống)
+    let tx_khoi_tao = 1;
+    kho_mvcc.ghi("tai_khoan:A", "1000", tx_khoi_tao);
+    println!("[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000", tx_khoi_tao);
 
-        println!("    - Doc byte tai index 0: 0x{:02X}", my_buffer.read_byte(0).unwrap());
-        println!("    - Doc byte tai index 1: 0x{:02X}", my_buffer.read_byte(1).unwrap());
+    // 2. Kịch bản chạy đồng thời hai giao dịch:
+    // - Giao dịch Đọc (TX_DOC = 2): Bắt đầu kiểm toán báo cáo tài chính
+    // - Giao dịch Ghi  (TX_GHI = 3): Khách hàng nạp thêm tiền vào tài khoản
+    let tx_doc = kho_mvcc.bat_dau_giao_dich(); // tx = 2
+    let tx_ghi = kho_mvcc.bat_dau_giao_dich(); // tx = 3
+    println!("\n[2] Hai giao dịch đồng thời xuất hiện:");
+    println!("    - Giao dịch Đọc khởi động tại mốc: tx_id = {}", tx_doc);
+    println!("    - Giao dịch Ghi khởi động tại mốc : tx_id = {}", tx_ghi);
 
-        // Thử nghiệm truy cập ngoài biên an toàn
-        let out_of_bounds = my_buffer.write_byte(100, 0xFF);
-        println!("    - Thu ghi vao index = 100: {:?}", out_of_bounds);
-        assert!(out_of_bounds.is_err());
-        println!("    => Lop vo Safe Wrapper da chan dung hanh vi vi pham bien!");
-    } // my_buffer tự động được giải phóng an toàn tại đây thông qua drop()!
+    // Giao dịch Ghi cập nhật số dư lên 1500 (Tạo phiên bản mới)
+    println!("\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...", tx_ghi);
+    kho_mvcc.ghi("tai_khoan:A", "1500", tx_ghi);
 
-    // -------------------------------------------------------------
-    // 2. THỬ NGHIỆM GIAO TIẾP HÀM NGOẠI LAI (FFI VỚI C ABI)
-    // -------------------------------------------------------------
-    println!("\n[2] Thu nghiem Foreign Function Interface (FFI) voi C Library:");
+    // 3. Kiểm tra tính cô lập Snapshot Isolation của MVCC:
+    // Giao dịch Đọc (tx = 2) đọc lại tài khoản A
+    println!("\n[3] Kiểm tra tính cô lập Snapshot Isolation:");
+    let so_du_doc = kho_mvcc.doc("tai_khoan:A", tx_doc);
+    println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_doc, so_du_doc);
 
-    // Tạo chuỗi an toàn tương thích C kết thúc bằng byte \0
-    let c_greeting = std::ffi::CString::new("Hello from Rust via C ABI!").unwrap();
+    // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
+    let tx_tuong_lai = kho_mvcc.bat_dau_giao_dich(); // tx = 4
+    let so_du_moi = kho_mvcc.doc("tai_khoan:A", tx_tuong_lai);
+    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", tx_tuong_lai, so_du_moi);
 
-    // Gọi hàm strlen của C bên trong khối unsafe có kiểm soát
-    let length_from_c = unsafe {
-        let raw_c_ptr = c_greeting.as_ptr();
-        strlen(raw_c_ptr)
-    };
+    // Xác nhận tính chính xác tuyệt đối:
+    // Người đọc cũ (tx = 2) nhìn thấy phiên bản cũ "1000" mà không bị chặn bởi người ghi!
+    assert_eq!(so_du_doc, Some("1000"));
+    assert_eq!(so_du_moi, Some("1500"));
+    println!("    => KẾT LUẬN: Người đọc không hề bị người ghi chặn, dữ liệu luôn nhất quán!");
 
-    println!("    - Chuoi gui sang C : {:?}", c_greeting);
-    println!("    - Do dai do boi C strlen: {} bytes", length_from_c);
-    assert_eq!(length_from_c, 26);
+    // 4. Kiểm thử tính năng dọn rác Vacuum / Compaction
+    println!("\n[4] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Compaction):");
+    // Khi giao dịch cũ tx=2 đã kết thúc, giao dịch cũ nhất hiện tại là tx=4
+    let so_rac_da_don = kho_mvcc.don_dep_rac(4);
+    println!("    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!", so_rac_da_don);
+    assert_eq!(so_rac_da_don, 1); // Phiên bản v1 đã bị dọn dẹp
 
-    // -------------------------------------------------------------
-    // 3. THỬ NGHIỆM CẤU TRÚC ĐỊNH DẠNG TƯƠNG THÍCH #[repr(C)]
-    // -------------------------------------------------------------
-    println!("\n[3] Kiem tra tuong thich bo cuc bo nho #[repr(C)]:");
-    let pt = NativePoint { x: 100, y: 200 };
-    println!("    - Toa do diem C-compatible: x = {}, y = {}", pt.x, pt.y);
-    println!("    - Kich thuoc struct NativePoint: {} bytes (dung bang 2 * i32)", std::mem::size_of::<NativePoint>());
-    assert_eq!(std::mem::size_of::<NativePoint>(), 8);
-
-    println!("\n==================================================================");
-    println!("   XAC NHAN: UNSAFE & FFI HOAT DONG AN TOAN DUNG QUY CHUAN!      ");
-    println!("==================================================================");
+    println!("============================================================");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 31               ");
+    println!("============================================================");
 }
 ```
 
@@ -280,34 +280,34 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi làm việc với `unsafe` và FFI trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình hệ thống giao dịch đồng thời và MVCC trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0133** | `call to unsafe function requires unsafe function or block` | Bạn gọi một hàm ngoại lai `extern "C"` hoặc giải tham chiếu con trỏ thô mà quên đặt trong khối `unsafe { ... }`. | Bọc dòng lệnh đó vào bên trong một khối lệnh `unsafe { ... }` và bổ sung chú thích lý do an toàn. |
-| **E0606** | `cannot cast '&T' as '*mut T'` | Bạn cố gắng ép kiểu một tham chiếu mượn (borrow) bất biến trực tiếp sang một con trỏ thô khả biến. | Ép kiểu qua con trỏ hằng trước: `&val as *const T as *mut T`, hoặc dùng tham chiếu khả biến `&mut val as *mut T`. |
-| **E0277** | `the trait 'Send' is not implemented for '*const u8'` | Con trỏ thô mặc định không tự động triển khai trait `Send` và `Sync` để ngăn chặn việc truyền dữ liệu bất cẩn qua các luồng. | Đóng gói con trỏ thô bên trong một `struct` và tự triển khai `unsafe impl Send for MyWrapper {}` nếu cam kết đồng bộ an toàn. |
-| **E0507** | `cannot move out of a raw pointer` | Cố gắng lấy quyền sở hữu (ownership) của một giá trị nằm sau con trỏ thô mà không sao chép dữ liệu. | Sử dụng hàm `std::ptr::read(raw_ptr)` để sao chép dữ liệu ra ngoài một cách có ý thức. |
+| **E0502** | `cannot borrow 'kho_mvcc' as mutable because it is also borrowed as immutable` | Bạn đang giữ kết quả tham chiếu mượn của hàm `doc()` (`let val = kho.doc(...)`) nhưng lại gọi phương thức `kho.ghi(...)` làm thay đổi bản đồ bộ nhớ. | Sao chép giá trị chuỗi `.to_string()` hoặc kết thúc phạm vi mượn đọc trước khi thực hiện ghi dữ liệu. |
+| **E0382** | `use of moved value: 'danh_sach_phien_ban'` | Bạn di chuyển quyền sở hữu của vector phiên bản trong vòng lặp bằng cách duyệt qua giá trị thay vì tham chiếu mượn. | Dùng `.iter()` hoặc `.iter_mut()` khi duyệt qua các phiên bản để tránh di chuyển quyền sở hữu (ownership). |
+| **E0596** | `cannot borrow field '...' as mutable` | Bạn cố thay đổi trường `deleted_by_tx` trong khi đang duyệt bằng iterator bất biến `.iter()`. | Chuyển sang sử dụng phương thức `.iter_mut()`. |
+| **E0277** | `the trait bound 'AtomicU64: Clone' is not satisfied` | Kiểu dữ liệu nguyên tử `AtomicU64` đại diện cho một ô nhớ phần cứng cụ thể, không hỗ trợ sao chép (Clone). | Sử dụng tham chiếu `&AtomicU64` hoặc chia sẻ qua con trỏ đếm tham chiếu đa luồng `Arc<AtomicU64>`. |
 
-### Ví dụ phân tích lỗi `E0133` khi gọi hàm ngoại lai không có khối `unsafe`:
+### Ví dụ phân tích lỗi `E0502` khi vừa đọc vừa ghi trong MVCC:
 
 ```rust
-// Giả lập hàm cấp thấp nguy hiểm
-unsafe fn xoa_o_dia_cap_thap() {
-    println!("Thao tác cấp thấp nguy hiểm đã chạy!");
+// Đoạn mã lỗi minh họa E0502: Xung đột mượn đọc và mượn ghi
+fn thu_nghiem_loi_mvcc(store: &mut MvccStore) {
+    // let ket_qua = store.doc("key", 2); // Mượn bất biến store
+    // store.ghi("key", "val_moi", 3);    // LỖI E0502: Mượn khả biến store khi đang bị mượn đọc!
+    // println!("Đã đọc: {:?}", ket_qua);
 }
 
-// Đoạn mã lỗi minh họa E0133:
-fn vi_du_loi_e0133() {
-    // xoa_o_dia_cap_thap(); // LỖI E0133: Trình biên dịch cấm gọi hàm unsafe trực tiếp!
-}
-
-// Cách sửa chữa đúng chuẩn:
-fn vi_du_dung_e0133() {
-    // Phải có khối lệnh unsafe thể hiện trách nhiệm của lập trình viên
-    unsafe {
-        xoa_o_dia_cap_thap();
-    }
+// Cách sửa chữa đúng chuẩn: Chuyển dữ liệu mượn thành kiểu sở hữu độc lập
+fn thu_nghiem_dung_mvcc(store: &mut MvccStore) {
+    // Bước 1: Sao chép kết quả ra biến String độc lập
+    let ket_qua = store.doc("key", 2).map(|s| s.to_string());
+    
+    // Bước 2: Tự do thực hiện thao tác ghi mà không vi phạm quy tắc mượn
+    store.ghi("key", "val_moi", 3);
+    
+    println!("Dữ liệu đọc trước đó: {:?}", ket_qua);
 }
 ```
 
@@ -316,15 +316,15 @@ fn vi_du_dung_e0133() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Unsafe không phải là vô pháp**: Unsafe Rust chỉ mở khóa đúng 5 siêu năng lực cấp thấp. Toàn bộ các quy tắc về kiểu dữ liệu, thời gian sống (lifetime), và cú pháp vẫn được kiểm tra bình thường.
-2. **Nguyên tắc Bao bọc an toàn (Safe Abstraction)**: Mã nguồn cấp thấp nguy hiểm được đóng kín bên trong cấu trúc dữ liệu, chỉ để lộ ra các phương thức công khai an toàn tuyệt đối cho người dùng.
-3. **Cầu nối FFI với C**: Sử dụng `extern "C"`, thuộc tính căn lề bộ nhớ `#[repr(C)]`, cùng các con trỏ thông minh (smart pointer) như `Box` và chuỗi `CString` để giao tiếp mượt mà với thư viện C.
-4. **Triệt tiêu Undefined Behavior**: Tôn trọng các bất biến an toàn và tận dụng công cụ kiểm định Miri để đảm bảo không bao giờ tồn tại lỗi vi phạm bộ nhớ ngầm.
+1. **Tiêu chuẩn ACID**: Là nền móng bảo đảm tính toàn vẹn và độ tin cậy của mọi hệ thống dữ liệu; đảm bảo các giao dịch diễn ra nguyên tử, nhất quán, cô lập và bền vững vĩnh viễn.
+2. **Triết lý MVCC đỉnh cao**: Bằng cách lưu trữ nhiều phiên bản kèm dấu mốc thời gian giao dịch (`tx_id`), MVCC triệt tiêu việc khóa bảng, giúp người đọc và người ghi không bao giờ cản trở lẫn nhau.
+3. **Quy tắc khả kiến (Visibility)**: Một giao dịch chỉ được phép nhìn thấy các bản ghi được tạo ra trước thời điểm nó bắt đầu và chưa bị xóa trước thời điểm đó.
+4. **Cộng sinh hoàn hảo với LSM-Tree**: Tính chất bất biến (Immutable) của các tệp `SSTable` trong LSM-Tree biến nó thành động cơ tự nhiên tối ưu nhất để triển khai MVCC.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Tự viết hàm hoán đổi Swap bằng con trỏ thô)**:  
-   Viết một hàm `unsafe fn raw_swap<T>(a: *mut T, b: *mut T)`. Sử dụng các hàm thao tác con trỏ thô như `std::ptr::read` và `std::ptr::write` để tráo đổi giá trị giữa hai ô nhớ mà không làm hỏng dữ liệu. Hãy viết một hàm bọc an toàn `fn safe_swap<T>(a: &mut T, b: &mut T)` bên ngoài.
-2. **Bài tập 2 (Gọi hàm toán học C qua FFI)**:  
-   Khai báo hàm `sqrt` (tính căn bậc hai) từ thư viện toán học của C: `extern "C" { fn sqrt(x: f64) -> f64; }`. Viết một chương trình Rust gọi hàm này và so sánh kết quả với phương thức `.sqrt()` có sẵn của Rust.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao `Send` và `Sync` lại là `unsafe trait`?)**:  
-   Tại sao trình biên dịch Rust không tự động suy diễn trait `Send` cho các cấu trúc chứa con trỏ thô? Nếu một lập trình viên tự ý đánh dấu `unsafe impl Send` cho một đối tượng chứa con trỏ thô dùng chung mà không có cơ chế khóa bảo vệ (như Mutex), nguy cơ rủi ro nào sẽ xảy ra khi chạy đa luồng?
+1. **Bài tập 1 (Phân tích kịch bản chuyển tiền ACID)**:  
+   Giao dịch $T_1$ chuyển 200 nghìn từ tài khoản A sang tài khoản B gồm hai bước: `A = A - 200` và `B = B + 200`. Nếu máy tính sập nguồn ngay sau khi bước 1 hoàn thành, thuộc tính ACID nào sẽ đảm bảo tài khoản A không bị mất oan 200 nghìn? Quy trình khôi phục diễn ra như thế nào?
+2. **Bài tập 2 (Xử lý Rollback trong MVCC)**:  
+   Hãy thiết kế thêm phương thức `fn rollback_giao_dich(&mut self, tx_id: u64)` cho `MvccStore`: Tìm tất cả các bản ghi có `created_by_tx == tx_id` và xóa chúng khỏi hệ thống, đồng thời khôi phục lại các bản ghi cũ bị đánh dấu `deleted_by_tx == Some(tx_id)` về trạng thái `None`.
+3. **Bài tập 3 (Tư duy mở rộng)**:  
+   Trong các hệ quản trị cơ sở dữ liệu lớn như PostgreSQL, hiện tượng gì sẽ xảy ra nếu một giao dịch đọc kéo dài hàng tuần lễ mà không chịu đóng lại (`commit`/`abort`)? Giao dịch này sẽ gây ảnh hưởng tiêu cực như thế nào đến tiến trình dọn rác (Vacuum / Compaction) của MVCC?

@@ -1,342 +1,291 @@
-# Chương 28: Kiến trúc trang Slotted-Page & Quản lý bộ nhớ đệm Buffer Pool (Slotted-Page Architecture & Buffer Pool Management)
+# Chương 28: Ngăn xếp, Hàng đợi & Hàng đợi hai đầu: Triển khai an toàn và Ứng dụng thực tế (Stacks, Queues & VecDeque)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong chương trước, chúng ta đã hiểu nguyên lý lưu trữ đĩa cứng và kỹ thuật đóng gói nhị phân. Tuy nhiên, nếu mỗi lần thêm một bản ghi mới cơ sở dữ liệu lại thực hiện một thao tác ghi đĩa riêng lẻ, hệ thống sẽ sụp đổ hiệu năng vì nghẽn cổ chai I/O. Hơn nữa, trong thực tế, các bản ghi luôn có kích thước thay đổi (biến thiên): Người có tên 5 ký tự, người có tên 50 ký tự; khi một người dùng xóa tài khoản, khoảng trống ô nhớ bỏ lại sẽ bị phân mảnh nếu không có cách tổ chức khoa học.
+Sau khi đã nắm vững các vùng nhớ liền kề (Array, Vector) và danh sách liên kết, chúng ta bước sang hai cấu trúc dữ liệu kinh điển và phổ biến bậc nhất trong khoa học máy tính: **Ngăn xếp (Stack)** và **Hàng đợi (Queue)**. 
 
-Mọi hệ quản trị cơ sở dữ liệu hàng đầu thế giới (như PostgreSQL, MySQL InnoDB, SQLite) giải quyết bài toán này thông qua hai trụ cột kiến trúc cốt lõi:
-1. **Kiến trúc trang phân khe (Slotted-Page Architecture)**: Phân chia tệp dữ liệu trên đĩa thành các khối có kích thước cố định chuẩn mực là **4KB (4096 bytes)**, cho phép chứa các bản ghi có độ dài co giãn linh hoạt mà không sợ phân mảnh ô nhớ.
-2. **Bộ quản lý bộ nhớ đệm (Buffer Pool Manager)**: Một vùng đệm RAM trung gian giữ các trang dữ liệu nóng (hot pages) để người dùng đọc/ghi tức thì, kết hợp thuật toán **LRU (Least Recently Used)** để tự động trục xuất (evict) các trang cũ về đĩa cứng khi bộ nhớ đệm (buffer) bị đầy.
+Cả Ngăn xếp và Hàng đợi đều là các cấu trúc dữ liệu dạng tuyến tính, nhưng chúng có các quy tắc nghiêm ngặt về thứ tự thêm vào và lấy ra của các phần tử:
+- **Ngăn xếp (Stack)** tuân theo nguyên lý **LIFO (Last-In, First-Out - Vào sau ra trước)**: Phần tử nào được thêm vào cuối cùng sẽ là phần tử đầu tiên được lấy ra.
+- **Hàng đợi (Queue)** tuân theo nguyên lý **FIFO (First-In, First-Out - Vào trước ra trước)**: Phần tử nào đến trước sẽ được phục vụ và rời đi trước.
+
+Trong Rust, người mới bắt đầu thường mắc một sai lầm chết người về mặt hiệu năng: Dùng `Vec` để làm hàng đợi bằng cách gọi `vec.remove(0)`. Thao tác này buộc CPU phải dời toàn bộ hàng triệu phần tử còn lại về phía trước, biến một thao tác lẽ ra phải tốn $O(1)$ thành thảm họa $O(N)$. Để giải quyết triệt để vấn đề này, thư viện chuẩn của Rust cung cấp một vũ khí siêu hạng: **`VecDeque<T>` (Double-Ended Queue)** dựa trên kiến trúc vòng đệm tròn (Circular Ring Buffer).
 
 Mục tiêu học tập của chương này:
-- Nắm vững cấu tạo vật lý của một **Trang dữ liệu cố định 4KB (Fixed 4KB Page)** và lý do kích thước 4KB tương thích hoàn hảo với phần cứng SSD và hệ điều hành.
-- Thấu hiểu cơ chế "hai đầu tiến vào giữa" của kiến trúc **Slotted-Page**: Thư mục khe (Slot Directory) tiến từ trên xuống, dữ liệu bản ghi ghi từ dưới đáy lên.
-- Định vị bản ghi toàn cục trong cơ sở dữ liệu thông qua bộ đôi định danh **Tuple ID / RID `(page_id, slot_id)`**.
-- Xây dựng mô hình **Buffer Pool** với cơ chế quản lý khung trang (Frames), cờ bẩn (Dirty Flag), và số đếm giữ trang (Pin Count).
-- Cài đặt thuật toán loại trừ trang **LRU Page Eviction Policy** an toàn 100% bằng Rust.
+- Nắm vững nguyên lý hoạt động của LIFO (Ngăn xếp) và FIFO (Hàng đợi) thông qua các hình ảnh đời sống trực quan.
+- Nhận biết các bài toán thực tế bắt buộc phải dùng Ngăn xếp (như tính năng Undo/Redo trong trình soạn thảo, kiểm tra dấu ngoặc hợp lệ, hoặc ngăn xếp cuộc gọi Call Stack).
+- Hiểu rõ vì sao `Vec::remove(0)` làm hàng đợi lại gây suy giảm hiệu năng nghiêm trọng và cách `VecDeque<T>` tối ưu hóa bằng con trỏ vòng đệm tròn (Ring Buffer) đạt $O(1)$.
+- Tự tay xây dựng và kiểm thử các cấu trúc Stack và Queue an toàn bằng Rust với quyền sở hữu (ownership) và vay mượn (borrow) chặt chẽ.
+- Làm quen với Hàng đợi ưu tiên (Priority Queue - `BinaryHeap`) trong Rust.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy quan sát hai hình ảnh đời sống trực quan dưới đây để hiểu thấu kiến trúc Slotted-Page và Buffer Pool:
+Hãy quan sát hai khung cảnh vô cùng quen thuộc trong một quán ăn đông đúc vào giờ cao điểm:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                   HÌNH TƯỢNG HÓA SLOTTED-PAGE VÀ BUFFER POOL                     │
+│             HÌNH TƯỢNG HÓA NGĂN XẾP (STACK) VS HÀNG ĐỢI (QUEUE)                  │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. KIẾN TRÚC SLOTTED-PAGE: TRANG SỔ TAY 4KB GHI TỪ HAI ĐẦU]                     │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Header: [Mã trang: #1] [Số khe: 3] [Con trỏ đáy tự do: 3950]         │ 0 bytes │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Khe 0 (Slot 0): Tọa độ = 4050, Dài = 46 bytes                        │         │
-│ │ Khe 1 (Slot 1): Tọa độ = 4000, Dài = 50 bytes    ▼ Tiến dần xuống    │         │
-│ │ Khe 2 (Slot 2): Tọa độ = 3950, Dài = 50 bytes                        │         │
-│ ├ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -┤         │
-│ │                                                                      │         │
-│ │                 VÙNG NHỚ TRỐNG TỰ DO Ở GIỮA (FREE SPACE)             │         │
-│ │                                                                      │         │
-│ ├ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -┤         │
-│ │ Bản ghi 2: [ID: 103, Tên: "Lê Văn C"] (Dài 50B)  ▲ Tiến ngược lên   │ 3950 B  │
-│ │ Bản ghi 1: [ID: 102, Tên: "Trần Thị B"] (Dài 50B)                    │ 4000 B  │
-│ │ Bản ghi 0: [ID: 101, Tên: "Nguyễn Văn A"] (Dài 46B)                  │ 4050 B  │
-│ └──────────────────────────────────────────────────────────────────────┘ 4096 B  │
+│ [NGĂN XẾP - STACK (LIFO: VÀO SAU RA TRƯỚC)]                                      │
 │                                                                                  │
-│ [2. BUFFER POOL: BÀN HỌC THƯ VIỆN CÓ ĐÚNG 3 CHỖ ĐỂ SÁCH]                         │
+│      Lấy ra / Thêm vào (Chỉ ở 1 đầu duy nhất)                                    │
+│             ▲                                                                    │
+│             │                                                                    │
+│        ┌────┴────┐                                                               │
+│        │ Đĩa #3  │ ◄── Vừa mới rửa xong, úp lên trên cùng (Vào sau cùng)         │
+│        ├─────────┤                                                               │
+│        │ Đĩa #2  │                                                               │
+│        ├─────────┤                                                               │
+│        │ Đĩa #1  │ ◄── Nằm ở đáy chồng đĩa từ sáng (Lấy ra sau cùng)             │
+│        └─────────┘                                                               │
 │                                                                                  │
-│ Thư viện có 10.000 cuốn sách (Ổ đĩa đĩa cứng SSD)                                 │
-│ Mặt bàn bạn chỉ để được tối đa 3 cuốn sách (Buffer Pool RAM)                     │
+│ [HÀNG ĐỢI - QUEUE (FIFO: VÀO TRƯỚC RA TRƯỚC)]                                    │
 │                                                                                  │
-│ Muốn đọc cuốn thứ 4?                                                             │
-│ -> Tìm cuốn sách mà bạn LÂU NHẤT KHÔNG ĐỌC (LRU)                                 │
-│ -> Cất cuốn sách đó về giá sách (Evict) để nhường chỗ trống trên bàn!           │
+│  Ra về (Phục vụ)                           Xếp hàng vào (Chờ đợi)                │
+│       ▲                                             ▲                            │
+│       │                                             │                            │
+│   ┌───┴───┐         ┌───────┐         ┌───────┐ ┌───┴───┐                        │
+│   │Khách 1│ ◄────── │Khách 2│ ◄────── │Khách 3│ │Khách 4│                        │
+│   └───────┘         └───────┘         └───────┘ └───────┘                        │
+│  (Đến sớm nhất)                                (Vừa mới tới)                     │
+│                                                                                  │
+│ [VECDEQUE - BĂNG CHUYỀN SUSHI XOAY VÒNG (RING BUFFER)]                           │
+│   - Đầu bếp có thể đặt đĩa mới vào cả đầu trái hoặc đầu phải.                    │
+│   - Thực khách có thể nhấc đĩa ra ở cả hai đầu mà không cần ai phải xê dịch ghế! │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Trang sổ tay Slotted-Page ghi từ hai đầu
-- Hãy tưởng tượng một trang giấy học sinh:
-  - Ở **dòng trên cùng**, bạn ghi "Bảng mục lục": Dòng 1 nằm ở đâu, dài bao nhiêu chữ; Dòng 2 nằm ở đâu, dài bao nhiêu chữ. Mỗi khi có bài viết mới, bạn ghi thêm một dòng vào mục lục này, tiến dần từ trên xuống.
-  - Nhưng nội dung các bài viết (ngắn dài tùy ý) thì bạn lại bắt đầu chép từ **dòng cuối cùng của trang giấy chép ngược dần lên trên**.
-  - Khi mục lục ở trên đầu và bài viết ở dưới đáy chạm nhau, trang giấy đó chính thức hết chỗ (Full Page).
-- **Lợi ích vĩ đại**: Nếu bài viết ở Khe 1 bị xóa, ta chỉ cần đánh dấu khe đó là rỗng trong bảng mục lục ở trên đầu. Tọa độ của các khe khác không bị ảnh hưởng, và người ngoài muốn tìm bài viết chỉ cần nhìn vào số khe mà không cần biết bài viết nằm ở tọa độ byte cụ thể nào!
+### 1. Ngăn xếp (Stack) — Chồng đĩa ăn trong nhà hàng tiệc cưới
+- Sau khi rửa sạch một chiếc đĩa, người phục vụ úp chiếc đĩa đó lên **trên cùng của chồng đĩa** (thao tác `push`).
+- Khi người dọn bàn cần lấy đĩa ra tiếp khách, họ sẽ nhấc ngay chiếc đĩa nằm ở **đỉnh trên cùng** (thao tác `pop`).
+- Chiếc đĩa nào được đặt vào sau cùng (`Last-In`) sẽ là chiếc đĩa đầu tiên được mang đi sử dụng (`First-Out`). Bạn không thể nào rút chiếc đĩa ở đáy chồng đĩa ra trước vì sẽ làm đổ vỡ toàn bộ chồng đĩa!
 
-### 2. Buffer Pool và Bàn học thư viện (LRU Eviction)
-- Thư viện có hàng vạn cuốn sách nằm trên các giá sách khổng lồ dưới tầng hầm (Ổ đĩa).
-- Bàn học của bạn chỉ có diện tích đủ để mở **3 cuốn sách** cùng lúc (Buffer Pool trên RAM).
-- Khi bạn cần nghiên cứu cuốn sách thứ 4:
-  - Bạn không thể nhét thêm vào bàn vì sẽ làm đổ đồ.
-  - Bạn quan sát xem trong 3 cuốn đang để trên bàn, cuốn nào đã để yên lâu nhất mà bạn không lật trang (Thuật toán **LRU - Least Recently Used**).
-  - Bạn đem cuốn sách đó cất trở lại vào giá sách thư viện (trục xuất - **evict**). Nếu cuốn sách đó bạn có ghi chú thêm vào các trang sách (trang bẩn - **dirty page**), bạn phải chép lại cẩn thận xuống đĩa rồi mới cất đi!
+### 2. Hàng đợi (Queue) — Hàng người xếp hàng mua bánh mì buổi sáng
+- Khách hàng tới mua bánh mì phải xếp hàng:
+  - Người đến đầu tiên đứng ở đầu hàng (`Front`), được bán bánh mì và ra về đầu tiên.
+  - Người đến sau phải đứng vào cuối hàng (`Back/Rear`) và kiên nhẫn chờ đến lượt mình.
+- Ai vào trước thì ra trước (`First-In, First-Out`). Đây là quy tắc văn minh và công bằng nhất trong đời sống cũng như trong việc xếp hàng xử lý tin nhắn mạng hoặc lệnh in tài liệu.
+
+### 3. Hàng đợi hai đầu (VecDeque) — Băng chuyền sushi xoay vòng
+- Trong nhà hàng Nhật Bản, băng chuyền sushi chạy theo một vòng tròn khép kín.
+- Người đầu bếp có thể đặt đĩa sushi vào bất kỳ khoảng trống nào phía trước hoặc phía sau.
+- Khách hàng có thể lấy đĩa ra ở cả hai đầu mà không làm gián đoạn chuyển động của băng chuyền. Nhờ cơ chế vòng tròn này, băng chuyền không bao giờ bị "kẹt đuôi", và việc thêm/bớt ở cả hai đầu diễn ra êm ru trong thời gian $O(1)$.
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Tại sao kích thước trang cố định luôn là 4KB?
+### 1. Triển khai Ngăn xếp bằng `Vec<T>` đạt $O(1)$
 
-Hầu hết các hệ quản trị cơ sở dữ liệu và hệ điều hành đều chuẩn hóa kích thước trang là **4096 bytes (4KB)**:
-1. **Kiến trúc phần cứng SSD/HDD**: Các khối khu vực (sectors) vật lý của đĩa hiện đại (Advanced Format) có kích thước 4096 bytes.
-2. **Bộ nhớ ảo (Virtual Memory)**: Đơn vị quản lý bộ nhớ của nhân hệ điều hành Linux/macOS/Windows cũng là các trang 4KB.
-3. Khi kích thước trang của cơ sở dữ liệu khớp hoàn hảo với 4KB của hệ điều hành và phần cứng, một thao tác đọc/ghi trang sẽ diễn ra trong **1 lệnh I/O duy nhất**, triệt tiêu hiện tượng đọc ghi phân mảnh lãng phí.
+Trong Rust, cấu trúc `Vec<T>` bản thân nó đã là một Ngăn xếp hoàn hảo:
+- Phương thức `vec.push(x)`: Thêm phần tử vào cuối vector với thời gian khấu hao amortized $O(1)$.
+- Phương thức `vec.pop()`: Rút phần tử cuối cùng ra và trả về `Option<T>` với thời gian $O(1)$ tuyệt đối, vì không có bất kỳ phần tử nào khác bị xê dịch vị trí ô nhớ!
 
-### 2. Bóc tách giải phẫu một trang Slotted-Page
+```rust
+let mut ngan_xep = Vec::new();
+ngan_xep.push(10); // Đẩy vào đỉnh Stack: [10]
+ngan_xep.push(20); // Đẩy vào đỉnh Stack: [10, 20]
+let dinh = ngan_xep.pop(); // Lấy từ đỉnh Stack: Some(20), còn lại [10]
+```
 
-Trong một mảng byte `[u8; 4096]`:
-- **Phần đầu trang (Page Header - 8 bytes)**:
-  - `page_id (u32)`: Số thứ tự trang trong tệp cơ sở dữ liệu.
-  - `slot_count (u16)`: Số lượng khe bản ghi hiện đang có.
-  - `free_space_pointer (u16)`: Tọa độ byte đáy trống kế tiếp (ban đầu là 4096).
-- **Thư mục khe (Slot Directory - Mỗi khe chiếm 4 bytes)**:
-  - `offset (u16)`: Tọa độ byte bắt đầu của bản ghi.
-  - `length (u16)`: Độ dài của bản ghi.
-- **Định danh bản ghi toàn cục (Tuple ID / RID)**:
-  - Một bản ghi trong cơ sở dữ liệu được định danh duy nhất bởi cặp số: `RID = (page_id, slot_id)`.
-  - Dù bản ghi có bị dịch chuyển vị trí bên trong trang (chẳng hạn khi dọn rác dồn ô nhớ), giá trị `RID` của nó đối với các bảng chỉ mục bên ngoài vẫn hoàn toàn không thay đổi!
+### 2. Thảm họa hiệu năng khi dùng `Vec::remove(0)` làm Hàng đợi
 
-### 3. Cấu trúc và Vòng đời của Buffer Pool
+Giả sử bạn có một `Vec` chứa 1.000.000 phần tử và muốn lấy phần tử đầu tiên ra:
+```rust
+// CẢNH BÁO HIỆU NĂNG THẢM HỌA: O(N)
+let mut danh_sach = vec![1, 2, 3, 4, 5];
+let phan_tu_dau = danh_sach.remove(0); // Buộc CPU phải dời toàn bộ các phần tử phía sau!
+```
+Điều gì diễn ra bên dưới thanh RAM?
+1. Rust lấy phần tử tại ô nhớ chỉ số 0.
+2. Để giữ cho mảng luôn liền kề không bị thủng lỗ, CPU buộc phải thực hiện lệnh sao chép dịch chuyển: phần tử 1 dời về 0, phần tử 2 dời về 1, ..., phần tử 999.999 dời về 999.998.
+3. Tổng cộng **999.999 lượt ghi nhớ** bị kích hoạt! Nếu bạn làm điều này 1.000 lần, chương trình của bạn sẽ bị đơ cứng hoàn toàn.
 
-Buffer Pool là một hệ thống đệm tinh vi gồm:
-1. **Bảng khung trang (Frame Table)**: Mảng các ô nhớ kích thước 4KB trên RAM (`Page Frames`).
-2. **Bảng tra cứu trang (Page Table)**: Bảng băm ánh xạ từ `page_id` trên đĩa sang số thứ tự khung trang `frame_id` trên RAM.
-3. **Cờ bẩn (Dirty Flag)**: Một bit đánh dấu trang đã bị sửa đổi dữ liệu hay chưa. Nếu cờ bẩn bật (`is_dirty == true`), khi trục xuất trang về đĩa cứng, hệ thống bắt buộc phải ghi nội dung đệm xuống đĩa. Nếu chưa bị sửa (`is_dirty == false`), chỉ cần hủy bỏ khỏi RAM mà không tốn lệnh ghi đĩa nào.
-4. **Hàng đợi LRU (LRU List)**: Quản lý thứ tự thời gian sử dụng của các trang. Mỗi lần một trang được đọc hoặc ghi, nó được chuyển xuống cuối danh sách (vừa sử dụng gần nhất). Trang ở đầu danh sách là trang "nguội" nhất, sẽ là nạn nhân đầu tiên bị trục xuất khi bộ nhớ đầy.
+### 3. Bí mật bên trong của `VecDeque<T>` (Vòng đệm tròn - Circular Buffer)
+
+`VecDeque<T>` giải quyết triệt để bài toán trên bằng cách biến một mảng phẳng thành một **vòng tròn khép kín** sử dụng hai con trỏ chỉ số: `head` (đầu) và `tail` (đuôi):
+
+```
+       Chỉ số:   0      1      2      3      4      5      6      7
+               ┌──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┐
+Mảng vật lý:   │  D   │  E   │Trống │Trống │Trống │  A   │  B   │  C   │
+               └──────┴──────┴──────┴──────┴──────┴──────┴──────┴──────┘
+                              ▲                    ▲
+                              │                    │
+                             tail                 head
+```
+- Khi bạn gọi `pop_front()`: `VecDeque` không hề dịch chuyển mảng! Nó chỉ đơn giản tăng con trỏ `head` lên 1 nấc: `head = (head + 1) % capacity`. Thời gian tốn đúng $O(1)$!
+- Khi bạn gọi `push_front()`: Con trỏ `head` lùi về 1 nấc theo vòng tròn: `head = (head - 1 + capacity) % capacity`.
+- Dữ liệu không bao giờ bị dời chỗ. Toàn bộ chi phí chỉ là một vài phép tính số học trên chỉ số!
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cài đặt cả hai cấu trúc:
-1. Cấu trúc `SlottedPage` chuẩn 4096 bytes với khả năng thêm bản ghi, đọc bản ghi qua `slot_id`.
-2. Hệ thống `BufferPool` hoàn chỉnh với dung lượng giới hạn, bảng băm tra cứu, cờ bẩn `is_dirty`, và cơ chế trục xuất trang theo thuật toán `LRU`:
+Dưới đây là một chương trình hoàn chỉnh, minh họa cả hai cấu trúc:
+1. Sử dụng Ngăn xếp (`Vec`) để giải quyết bài toán kinh điển: **Kiểm tra tính hợp lệ của các dấu ngoặc đóng mở trong chuỗi biểu thức**.
+2. Xây dựng một **Hệ thống hàng đợi in ấn / xử lý đơn hàng** theo thời gian thực bằng `VecDeque<T>` đạt chuẩn $O(1)$:
 
 ```rust
-use std::convert::TryInto;
-use std::collections::HashMap;
+use std::collections::VecDeque;
 
-/// Kích thước trang chuẩn của cơ sở dữ liệu (4KB)
-pub const PAGE_SIZE: usize = 4096;
+/// ỨNG DỤNG 1 CỦA STACK: Kiểm tra dấu ngoặc hợp lệ
+/// Thuật toán sử dụng Ngăn xếp (LIFO):
+/// - Gặp dấu mở '(', '[', '{': Đẩy vào đỉnh ngăn xếp.
+/// - Gặp dấu đóng ')', ']', '}': Rút phần tử trên đỉnh ra so khớp.
+///   Nếu không khớp hoặc ngăn xếp rỗng -> Biểu thức sai cú pháp!
+/// - Kết thúc chuỗi, nếu ngăn xếp rỗng -> Biểu thức hợp lệ.
+pub fn kiem_tra_ngoac_hop_le(bieu_thuc: &str) -> bool {
+    let mut ngan_xep: Vec<char> = Vec::new();
 
-/// Cấu trúc khe lưu trữ trong thư mục Slotted-Page (4 bytes)
-#[derive(Debug, Clone, Copy)]
-pub struct KheBanGhi {
-    pub offset: u16,
-    pub length: u16,
-}
-
-/// Cấu trúc Trang dữ liệu phân khe chuẩn 4KB (Slotted-Page)
-pub struct SlottedPage {
-    pub page_id: u32,
-    pub du_lieu: [u8; PAGE_SIZE],
-}
-
-impl SlottedPage {
-    /// Khởi tạo một trang mới tinh kích thước 4096 bytes
-    pub fn new(page_id: u32) -> Self {
-        let mut trang = Self {
-            page_id,
-            du_lieu: [0u8; PAGE_SIZE],
-        };
-        // Ghi Header ban đầu:
-        // Byte 0..4: page_id
-        trang.du_lieu[0..4].copy_from_slice(&page_id.to_le_bytes());
-        // Byte 4..6: slot_count = 0
-        trang.du_lieu[4..6].copy_from_slice(&0u16.to_le_bytes());
-        // Byte 6..8: free_space_pointer = 4096 (đáy trang)
-        trang.du_lieu[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
-        trang
-    }
-
-    pub fn lay_so_khe(&self) -> u16 {
-        u16::from_le_bytes(self.du_lieu[4..6].try_into().unwrap())
-    }
-
-    fn gan_so_khe(&mut self, count: u16) {
-        self.du_lieu[4..6].copy_from_slice(&count.to_le_bytes());
-    }
-
-    pub fn lay_con_tro_day(&self) -> u16 {
-        u16::from_le_bytes(self.du_lieu[6..8].try_into().unwrap())
-    }
-
-    fn gan_con_tro_day(&mut self, ptr: u16) {
-        self.du_lieu[6..8].copy_from_slice(&ptr.to_le_bytes());
-    }
-
-    /// Thêm một bản ghi nhị phân vào trang - Trả về slot_id (chỉ số khe)
-    pub fn them_ban_ghi(&mut self, bytes_ban_ghi: &[u8]) -> Option<u16> {
-        let so_khe_hien_tai = self.lay_so_khe();
-        let con_tro_day = self.lay_con_tro_day();
-        let do_dai_ghi = bytes_ban_ghi.len() as u16;
-
-        // Tính toán vị trí tiêu tốn của Slot Directory ở trên đầu trang:
-        // Header: 8 bytes. Mỗi khe: 4 bytes.
-        let vi_tri_khe_moi = 8 + (so_khe_hien_tai as usize * 4);
-        let dung_luong_con_lai = con_tro_day as usize - (vi_tri_khe_moi + 4);
-
-        // Kiểm tra xem trang còn đủ chỗ cho cả Slot mới lẫn thân dữ liệu không
-        if do_dai_ghi as usize > dung_luong_con_lai {
-            return None; // Trang đã đầy (Page Full)!
-        }
-
-        // 1. Tính tọa độ đáy mới và ghi dữ liệu từ đáy trang ngược lên
-        let offset_day_moi = con_tro_day - do_dai_ghi;
-        let bat_dau = offset_day_moi as usize;
-        let ket_thuc = con_tro_day as usize;
-        self.du_lieu[bat_dau..ket_thuc].copy_from_slice(bytes_ban_ghi);
-
-        // 2. Ghi thông tin Khe vào Slot Directory ở đầu trang
-        self.du_lieu[vi_tri_khe_moi..vi_tri_khe_moi + 2].copy_from_slice(&offset_day_moi.to_le_bytes());
-        self.du_lieu[vi_tri_khe_moi + 2..vi_tri_khe_moi + 4].copy_from_slice(&do_dai_ghi.to_le_bytes());
-
-        // 3. Cập nhật Header
-        self.gan_so_khe(so_khe_hien_tai + 1);
-        self.gan_con_tro_day(offset_day_moi);
-
-        Some(so_khe_hien_tai)
-    }
-
-    /// Đọc bản ghi qua slot_id - O(1)
-    pub fn doc_ban_ghi(&self, slot_id: u16) -> Option<&[u8]> {
-        let so_khe = self.lay_so_khe();
-        if slot_id >= so_khe {
-            return None;
-        }
-
-        let vi_tri_khe = 8 + (slot_id as usize * 4);
-        let offset = u16::from_le_bytes(self.du_lieu[vi_tri_khe..vi_tri_khe + 2].try_into().unwrap()) as usize;
-        let length = u16::from_le_bytes(self.du_lieu[vi_tri_khe + 2..vi_tri_khe + 4].try_into().unwrap()) as usize;
-
-        Some(&self.du_lieu[offset..offset + length])
-    }
-}
-
-/// Khung trang quản lý bên trong Buffer Pool
-pub struct Frame {
-    pub trang: SlottedPage,
-    pub is_dirty: bool,
-}
-
-/// Hệ thống quản lý bộ nhớ đệm Buffer Pool với thuật toán LRU Eviction
-pub struct BufferPool {
-    suc_chua: usize,
-    frames: HashMap<u32, Frame>,
-    lru_danh_sach: Vec<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
-}
-
-impl BufferPool {
-    pub fn new(suc_chua: usize) -> Self {
-        Self {
-            suc_chua,
-            frames: HashMap::new(),
-            lru_danh_sach: Vec::new(),
-        }
-    }
-
-    /// Cập nhật trang vừa được truy cập xuống cuối danh sách LRU
-    fn cap_nhat_lru(&mut self, page_id: u32) {
-        self.lru_danh_sach.retain(|&id| id != page_id);
-        self.lru_danh_sach.push(page_id);
-    }
-
-    /// Lấy trang từ bộ nhớ đệm (nếu có)
-    pub fn get_page(&mut self, page_id: u32) -> Option<&SlottedPage> {
-        if self.frames.contains_key(&page_id) {
-            self.cap_nhat_lru(page_id);
-            return self.frames.get(&page_id).map(|f| &f.trang);
-        }
-        None
-    }
-
-    /// Đưa trang vào Buffer Pool - Nếu đầy, tự động trục xuất (evict) trang cũ nhất
-    pub fn put_page(&mut self, trang: SlottedPage, is_dirty: bool) {
-        let id = trang.page_id;
-
-        // Nếu trang chưa có trong buffer và buffer đã đầy sức chứa
-        if !self.frames.contains_key(&id) && self.frames.len() >= self.suc_chua {
-            // Trục xuất trang ở đầu danh sách LRU (nguội nhất)
-            let evict_id = self.lru_danh_sach.remove(0);
-            if let Some(khung_cu) = self.frames.remove(&evict_id) {
-                if khung_cu.is_dirty {
-                    println!("    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...", evict_id);
-                } else {
-                    println!("    [EVICT]: Trang #{} sạch (chưa sửa) -> Hủy khỏi RAM tức thì mà không cần ghi đĩa.", evict_id);
+    for ky_tu in bieu_thuc.chars() {
+        match ky_tu {
+            '(' | '[' | '{' => {
+                ngan_xep.push(ky_tu);
+            }
+            ')' => {
+                if ngan_xep.pop() != Some('(') {
+                    return false;
                 }
             }
+            ']' => {
+                if ngan_xep.pop() != Some('[') {
+                    return false;
+                }
+            }
+            '}' => {
+                if ngan_xep.pop() != Some('{') {
+                    return false;
+                }
+            }
+            // Bỏ qua các ký tự chữ cái, số, hoặc khoảng trắng
+            _ => {}
         }
-
-        self.frames.insert(id, Frame { trang, is_dirty });
-        self.cap_nhat_lru(id);
     }
 
-    pub fn so_trang_hien_co(&self) -> usize {
-        self.frames.len()
+    // Biểu thức chỉ đúng khi mọi dấu ngoặc mở đều đã được đóng khớp hết
+    ngan_xep.is_empty()
+}
+
+/// Mô hình Đơn hàng trong hệ thống thương mại điện tử
+#[derive(Debug, PartialEq, Clone)]
+pub struct DonHang {
+    pub ma_don: u32,
+    pub ten_khach: String,
+    pub tong_tien: f64,
+}
+
+/// ỨNG DỤNG 2 CỦA QUEUE: Hệ thống quản lý hàng đợi đơn hàng chuẩn FIFO
+pub struct HangDoiDonHang {
+    danh_sach: VecDeque<DonHang>,
+}
+
+impl HangDoiDonHang {
+    pub fn new() -> Self {
+        Self {
+            danh_sach: VecDeque::new(),
+        }
+    }
+
+    /// Khách đặt hàng: Xếp vào cuối hàng đợi - O(1)
+    pub fn them_don(&mut self, don: DonHang) {
+        self.danh_sach.push_back(don);
+    }
+
+    /// Đơn hàng VIP (Ưu tiên khẩn cấp): Chèn thẳng vào đầu hàng đợi - O(1)
+    pub fn them_don_vip(&mut self, don: DonHang) {
+        self.danh_sach.push_front(don);
+    }
+
+    /// Nhà bếp / Kho xuất hàng: Phục vụ đơn đến trước - O(1)
+    pub fn xu_ly_don_ke_tiep(&mut self) -> Option<DonHang> {
+        self.danh_sach.pop_front()
+    }
+
+    /// Xem trước đơn sắp được phục vụ mà không xóa khỏi hàng đợi
+    pub fn xem_don_dau(&self) -> Option<&DonHang> {
+        self.danh_sach.front()
+    }
+
+    pub fn so_don_dang_cho(&self) -> usize {
+        self.danh_sach.len()
+    }
+}
+
+impl Default for HangDoiDonHang {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 fn main() {
     println!("============================================================");
-    println!("  KIẾN TRÚC SLOTTED-PAGE 4KB & QUẢN LÝ BỘ NHỚ ĐỆM BUFFER POOL");
+    println!("   ỨNG DỤNG THỰC CHIẾN CỦA NGĂN XẾP (STACK) & HÀNG ĐỢI (QUEUE)");
     println!("============================================================");
 
-    // 1. Khảo sát cấu trúc trang SlottedPage kích thước 4KB
-    println!("[1] Thao tác trên Trang phân khe Slotted-Page (4096 bytes):");
-    let mut trang_1 = SlottedPage::new(1);
-    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", trang_1.du_lieu.len());
-    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", trang_1.lay_con_tro_day());
+    // 1. Kiểm thử thuật toán kiểm tra dấu ngoặc với Stack
+    println!("[1] Kiểm tra tính hợp lệ của biểu thức toán học:");
+    let bieu_thuc_1 = "{ a + [ b * ( c + d ) ] }";
+    let bieu_thuc_2 = "( a + b ]";
+    let bieu_thuc_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
-    // Nạp các bản ghi có kích thước chuỗi thay đổi
-    let ban_ghi_a = b"NguoiDung: Nguyen Van An - Ha Noi";
-    let ban_ghi_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
-    let ban_ghi_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
+    println!("    - Biểu thức 1 '{}': {}", bieu_thuc_1, kiem_tra_ngoac_hop_le(bieu_thuc_1));
+    println!("    - Biểu thức 2 '{}': {}", bieu_thuc_2, kiem_tra_ngoac_hop_le(bieu_thuc_2));
+    println!("    - Biểu thức 3 '{}': {}", bieu_thuc_3, kiem_tra_ngoac_hop_le(bieu_thuc_3));
 
-    let slot_a = trang_1.them_ban_ghi(ban_ghi_a).expect("Lỗi chèn khe A");
-    let slot_b = trang_1.them_ban_ghi(ban_ghi_b).expect("Lỗi chèn khe B");
-    let slot_c = trang_1.them_ban_ghi(ban_ghi_c).expect("Lỗi chèn khe C");
+    assert!(kiem_tra_ngoac_hop_le(bieu_thuc_1));
+    assert!(!kiem_tra_ngoac_hop_le(bieu_thuc_2));
+    assert!(!kiem_tra_ngoac_hop_le(bieu_thuc_3));
 
-    println!("    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_a);
-    println!("    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_b);
-    println!("    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_c);
-    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", trang_1.lay_so_khe(), trang_1.lay_con_tro_day());
+    // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
+    println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
+    let mut he_thong = HangDoiDonHang::new();
 
-    // Đọc lại nội dung qua Slot ID
-    let doc_b = trang_1.doc_ban_ghi(slot_b).unwrap();
-    println!("    - Đọc nội dung qua Slot ID {}: '{}'", slot_b, String::from_utf8_lossy(doc_b));
-    assert_eq!(doc_b, ban_ghi_b);
+    // Khách hàng thông thường đặt hàng lần lượt
+    he_thong.them_don(DonHang {
+        ma_don: 101,
+        ten_khach: String::from("Nguyễn Văn A"),
+        tong_tien: 150.0,
+    });
+    he_thong.them_don(DonHang {
+        ma_don: 102,
+        ten_khach: String::from("Trần Thị B"),
+        tong_tien: 80.0,
+    });
 
-    // 2. Khảo sát hệ thống Buffer Pool và thuật toán trục xuất LRU Eviction
-    println!("\n[2] Vận hành Buffer Pool với sức chứa tối đa 2 trang:");
-    let mut buffer_pool = BufferPool::new(2);
+    println!("    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}", he_thong.so_don_dang_cho());
 
-    // Đưa Trang 1 và Trang 2 vào Buffer Pool
-    println!("    - Nạp Trang #1 (đã sửa đổi -> dirty=true) vào Buffer Pool");
-    buffer_pool.put_page(trang_1, true);
+    // Đơn hàng hỏa tốc VIP xuất hiện! Đưa thẳng vào đầu hàng đợi
+    he_thong.them_don_vip(DonHang {
+        ma_don: 999,
+        ten_khach: String::from("Khách VIP Kim Cương"),
+        tong_tien: 500.0,
+    });
+    println!("    - Nhận đơn hỏa tốc VIP 999 (chen lên đầu hàng)!");
 
-    let trang_2 = SlottedPage::new(2);
-    println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
-    buffer_pool.put_page(trang_2, false);
+    // Xem trước đơn hàng kế tiếp
+    if let Some(don_dau) = he_thong.xem_don_dau() {
+        println!("    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})", don_dau.ma_don, don_dau.ten_khach);
+        assert_eq!(don_dau.ma_don, 999);
+    }
 
-    println!("    - Số trang hiện có trong Buffer: {}", buffer_pool.so_trang_hien_co());
-    assert_eq!(buffer_pool.so_trang_hien_co(), 2);
+    // Tiến hành xuất kho lần lượt theo đúng thứ tự ưu tiên
+    println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
+    let mut thu_tu_xu_ly = Vec::new();
+    while let Some(don) = he_thong.xu_ly_don_ke_tiep() {
+        println!("    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k", don.ma_don, don.ten_khach, don.tong_tien);
+        thu_tu_xu_ly.push(don.ma_don);
+    }
 
-    // Người dùng truy cập lại Trang 1 -> Trang 1 trở thành trang dùng gần nhất
-    println!("\n    - Người dùng đọc Trang #1 -> Cập nhật thứ tự ưu tiên LRU cho Trang #1!");
-    assert!(buffer_pool.get_page(1).is_some());
-
-    // Giờ đây, Trang #2 là trang "nguội nhất" (lâu nhất không dùng).
-    // Khi nạp thêm Trang #3 vào, Buffer Pool sẽ kích hoạt trục xuất (evict) Trang #2!
-    println!("\n    - Nạp Trang #3 mới tinh vào (Vượt quá sức chứa 2 trang):");
-    let trang_3 = SlottedPage::new(3);
-    buffer_pool.put_page(trang_3, false);
-
-    // Kiểm tra: Trang 2 đã bị loại bỏ, Trang 1 và Trang 3 vẫn nằm trong Buffer Pool
-    assert!(buffer_pool.get_page(2).is_none());
-    assert!(buffer_pool.get_page(1).is_some());
-    assert!(buffer_pool.get_page(3).is_some());
-    println!("    => Thuật toán LRU Eviction vận hành chuẩn xác 100%!");
+    // Xác nhận thứ tự xử lý: Đơn VIP 999 trước, sau đó là 101, rồi đến 102
+    assert_eq!(thu_tu_xu_ly, vec![999, 101, 102]);
+    assert_eq!(he_thong.so_don_dang_cho(), 0);
+    println!("    => Toàn bộ hàng đợi đã được xử lý sạch sẽ!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 28               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 24               ");
     println!("============================================================");
 }
 ```
@@ -345,49 +294,93 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch điển hình khi thiết kế Slotted-Page và hệ thống Buffer Pool trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi thao tác với Stack, Queue và `VecDeque`:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0382** | `use of moved value: 'trang'` | Bạn truyền `trang` vào hàm `put_page()` khiến quyền sở hữu (ownership) bị chuyển giao, sau đó lại dùng lại biến `trang` ở dòng dưới. | Gọi hàm đọc thông qua Buffer Pool `buffer_pool.get_page(id)` thay vì sử dụng trực tiếp biến cũ đã bị di chuyển. |
-| **E0502** | `cannot borrow 'buffer_pool' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến một trang `let p = pool.get_page(1);`, vừa gọi hàm làm thay đổi bộ nhớ đệm `pool.put_page(...)` trong cùng phạm vi. | Giới hạn phạm vi mượn đọc hoặc sao chép dữ liệu cần thiết ra trước khi thực hiện thêm trang mới. |
-| **E0277** | `the trait bound '[u8; 4096]: Default' is not satisfied` | Trong các phiên bản Rust rất cũ, mảng kích thước lớn hơn 32 không tự động derive một số trait. Trong Rust hiện đại (const generics), `[0u8; PAGE_SIZE]` hoàn toàn hợp lệ. | Khởi tạo mảng tường minh: `[0u8; PAGE_SIZE]`. |
-| **E0308** | `mismatched types: expected 'u16', found 'usize'` | Các chỉ số trong Header của Slotted-Page dùng `u16` để tiết kiệm byte đĩa, trong khi độ dài của mảng trên RAM là `usize`. | Thực hiện ép kiểu tường minh an toàn: `len as u16` sau khi kiểm tra không vượt quá 4096 bytes. |
+| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gọi `.push()` trên `Vec` hoặc `.push_back()` trên `VecDeque` nhưng biến tập hợp được khai báo bằng `let` bất biến. | Thêm từ khóa `mut`: `let mut hang_doi = VecDeque::new();`. |
+| **E0308** | `mismatched types: expected 'char', found 'Option<char>'` | Bạn gán trực tiếp kết quả trả về của `ngan_xep.pop()` vào một biến kiểu `char` mà quên rằng `pop()` trả về `Option<T>` (vì ngăn xếp có thể rỗng). | Sử dụng `match`, `if let Some(x)`, hoặc so sánh với `Some(...)`. |
+| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang giữ tham chiếu mượn bất biến xem phần tử đầu `front()` nhưng lại gọi hàm ghi chèn `push_back()` trong cùng phạm vi. | Kết thúc phạm vi tham chiếu đọc trước khi thực hiện thao tác thay đổi hàng đợi. |
+| **E0432** | `unresolved import 'std::collections::Queue'` | Trong thư viện chuẩn của Rust không có kiểu tên là `Queue`. Rust dùng `VecDeque` làm cấu trúc hàng đợi chuẩn. | Sửa dòng khai báo thư viện thành: `use std::collections::VecDeque;`. |
 
-### Ví dụ phân tích lỗi `E0382` khi quản lý quyền sở hữu trang:
+### Ví dụ phân tích lỗi `E0308` khi xử lý giá trị trả về từ `pop()`:
 
 ```rust
-// Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu trang vào Buffer Pool
-fn thu_nghiem_loi_trang(mut pool: BufferPool, trang: SlottedPage) {
-    // pool.put_page(trang, false); // Quyền sở hữu trang bị chuyển vào HashMap!
-    // println!("Mã trang: {}", trang.page_id); // LỖI E0382: trang đã bị moved!
+// Đoạn mã lỗi minh họa: Quên xử lý trường hợp ngăn xếp bị rỗng
+fn lay_dinh_loi(mut stack: Vec<i32>) {
+    // let gia_tri: i32 = stack.pop(); // LỖI E0308: pop() trả về Option<i32>, không phải i32!
 }
 
-// Cách sửa chữa đúng chuẩn: Lấy mã ID ra trước hoặc truy cập qua Pool
-fn thu_nghiem_dung_trang(mut pool: BufferPool, trang: SlottedPage) {
-    let id = trang.page_id;
-    pool.put_page(trang, false);
-    println!("Mã trang vừa nạp: {}", id);
-    if let Some(p) = pool.get_page(id) {
-        println!("Đọc lại trang từ bộ nhớ đệm thành công: #{}", p.page_id);
+// Cách sửa chữa đúng chuẩn: Xử lý an toàn với Option
+fn lay_dinh_dung(mut stack: Vec<i32>) {
+    match stack.pop() {
+        Some(gia_tri) => println!("Đã lấy được giá trị: {}", gia_tri),
+        None => println!("Ngăn xếp đang rỗng, không có gì để lấy!"),
     }
 }
 ```
 
 ---
 
+
+
+---
+
+## Kiểm thử tự động (Automated Tests)
+
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+
+```rust
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    fn don(ma: u32, ten: &str) -> DonHang {
+        DonHang { ma_don: ma, ten_khach: ten.into(), tong_tien: 100.0 }
+    }
+
+    #[test]
+    fn kiem_tra_ngoac() {
+        assert!(kiem_tra_ngoac_hop_le("(a[b]{c})"));
+        assert!(kiem_tra_ngoac_hop_le(""));
+        assert!(!kiem_tra_ngoac_hop_le("(a]"));
+        assert!(!kiem_tra_ngoac_hop_le("((("));
+        assert!(!kiem_tra_ngoac_hop_le(")("));
+    }
+
+    #[test]
+    fn hang_doi_fifo_va_uu_tien_vip() {
+        let mut hd = HangDoiDonHang::new();
+        hd.them_don(don(1, "A"));
+        hd.them_don(don(2, "B"));
+        hd.them_don_vip(don(9, "VIP")); // chen lên đầu
+        assert_eq!(hd.so_don_dang_cho(), 3);
+        assert_eq!(hd.xem_don_dau().map(|d| d.ma_don), Some(9));
+
+        // VIP ra trước, phần còn lại giữ đúng thứ tự FIFO
+        assert_eq!(hd.xu_ly_don_ke_tiep().map(|d| d.ma_don), Some(9));
+        assert_eq!(hd.xu_ly_don_ke_tiep().map(|d| d.ma_don), Some(1));
+        assert_eq!(hd.xu_ly_don_ke_tiep().map(|d| d.ma_don), Some(2));
+        assert_eq!(hd.xu_ly_don_ke_tiep().map(|d| d.ma_don), None);
+    }
+}
+```
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Trang chuẩn 4KB**: Là viên gạch nền tảng của mọi hệ thống cơ sở dữ liệu, đồng bộ hoàn hảo với khối khu vực ổ đĩa SSD và trang bộ nhớ ảo của hệ điều hành.
-2. **Kiến trúc Slotted-Page**: Thư mục khe (Slot Directory) tiến từ đầu trang xuống, dữ liệu tiến từ đáy trang lên. Giải quyết triệt để vấn đề bản ghi có độ dài biến thiên mà không gây phân mảnh ô nhớ.
-3. **Định danh Tuple ID `(page_id, slot_id)`**: Cho phép các bảng chỉ mục trỏ chính xác tới bản ghi mà không phụ thuộc vào vị trí byte vật lý bên trong trang.
-4. **Buffer Pool và LRU**: Giữ các trang nóng trên RAM để tăng tốc x1000 lần; tự động chọn trang nguội nhất để trục xuất (evict) về đĩa cứng khi bộ nhớ đệm (buffer) đầy.
+1. **LIFO vs FIFO**: Ngăn xếp (Stack) lấy phần tử mới nhất ra trước (LIFO); Hàng đợi (Queue) lấy phần tử cũ nhất ra trước (FIFO).
+2. **Dùng `Vec` cho Stack**: `Vec::push` và `Vec::pop` thao tác ở đuôi mảng với hiệu năng tuyệt hảo $O(1)$.
+3. **Tuyệt đối tránh `Vec::remove(0)`**: Việc dời toàn bộ mảng gây thảm họa $O(N)$. Luôn sử dụng `VecDeque<T>` khi cần cấu trúc hàng đợi.
+4. **Cơ chế Vòng đệm tròn**: `VecDeque` sử dụng con trỏ vòng đệm tròn để thêm và xóa ở cả hai đầu (`front` và `back`) trong thời gian hằng số $O(1)$ mà không cần di dời dữ liệu trong bộ nhớ đệm (buffer).
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Tính toán dung lượng Slotted-Page)**:  
-   Giả sử mỗi bản ghi có kích thước trung bình là 100 bytes. Hãy tính xem một trang Slotted-Page 4096 bytes (với Header 8 bytes và mỗi khe Slot chiếm 4 bytes) có thể chứa tối đa bao nhiêu bản ghi?
-2. **Bài tập 2 (Xóa bản ghi trong Slotted-Page)**:  
-   Hãy viết thêm phương thức `fn xoa_ban_ghi(&mut self, slot_id: u16) -> bool` cho `SlottedPage`. Để xóa bản ghi, ta chỉ cần gán độ dài khe `length = 0` trong Slot Directory (đánh dấu Tombstone) mà không cần phải dời dữ liệu bên dưới đáy.
-3. **Bài tập 3 (Cơ chế Pin Count)**:  
-   Tại sao trong các hệ quản trị cơ sở dữ liệu thực tế, Buffer Pool phải có thêm trường `pin_count: usize` (số luồng đang đọc trang)? Nếu một trang có `pin_count > 0` thì thuật toán LRU có được phép trục xuất (evict) trang đó không? Vì sao?
+1. **Bài tập 1 (Bộ chuyển đổi cơ số 10 sang nhị phân)**:  
+   Áp dụng nguyên lý Ngăn xếp (LIFO), hãy viết một hàm `fn doi_thap_phan_sang_nhi_phan(mut so: u32) -> String`:
+   - Liên tục chia `so` cho 2, lấy phần dư đẩy vào một Stack.
+   - Khi `so == 0`, lần lượt rút (`pop`) các phần dư ra khỏi Stack và ghép thành chuỗi kết quả.
+   *(Giải thích: Tại sao cơ chế LIFO của Stack lại đảo ngược chính xác các số dư thành chuỗi nhị phân chuẩn?)*
+2. **Bài tập 2 (Mô phỏng bộ đệm bàn phím)**:  
+   Sử dụng `VecDeque<char>` để viết cấu trúc `BoDemPhim` có sức chứa tối đa 10 ký tự. Khi người dùng gõ ký tự thứ 11, ký tự cũ nhất ở đầu hàng đợi sẽ tự động bị loại bỏ (`pop_front`) để nhường chỗ cho ký tự mới ở cuối hàng đợi (`push_back`).
+3. **Bài tập 3 (Tư duy thiết kế: Hàng đợi bằng 2 Ngăn xếp)**:  
+   Làm thế nào để bạn có thể giả lập một Hàng đợi (Queue - FIFO) chỉ bằng cách sử dụng **hai Ngăn xếp (Stack 1 và Stack 2)**? Hãy mô tả quy trình nạp dữ liệu vào Stack 1 và đổ ngược dữ liệu sang Stack 2 khi cần lấy ra.

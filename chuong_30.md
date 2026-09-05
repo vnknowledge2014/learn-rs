@@ -1,278 +1,301 @@
-# Chương 30: Nhật ký ghi trước WAL & Động cơ lưu trữ hiện đại LSM-Tree (Write-Ahead Logging & LSM-Tree Engine)
+# Chương 30: Bảng băm, Đồ thị & Các thuật toán tìm kiếm, sắp xếp cốt lõi (Hash Tables, Graphs & Core Search/Sort Algorithms)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong các chương trước, bạn đã thấy cấu trúc B+ Tree hoạt động xuất sắc như thế nào trong việc đọc dữ liệu với độ trễ thấp. Tuy nhiên, khi đối mặt với các hệ thống hiện đại có khối lượng ghi dữ liệu khổng lồ (hàng trăm ngàn đến hàng triệu thao tác ghi mỗi giây, như hệ thống tin nhắn mạng xã hội, nhật ký máy chủ viễn thông, hay cảm biến IoT), kiến trúc B+ Tree bộc lộ một điểm yếu chí mạng: **Nó phải thực hiện ghi ngẫu nhiên (Random I/O) xuống các khối trang 4KB trên đĩa cứng**. Tệ hơn nữa, nếu cỗ máy tính bất ngờ bị rút phích cắm điện (sập nguồn - crash) ngay giữa lúc đang ghi dở dang một trang dữ liệu, trang đó sẽ bị biến thành dữ liệu rác không thể cứu vãn (hiện tượng Torn Page)!
+Chào mừng bạn đến với chương kết thúc của **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust**! Đến thời điểm này, bạn đã nắm vững từ các cấu trúc tuyến tính (Mảng, Vector, Danh sách liên kết, Ngăn xếp, Hàng đợi) đến các cấu trúc phân cấp cây nhị phân. Trong chương này, chúng ta sẽ làm chủ hai cấu trúc dữ liệu và giải thuật tối thượng của ngành khoa học máy tính: **Bảng băm (Hash Table)** và **Đồ thị (Graph)**, cùng hai thuật toán kinh điển đi kèm là **Tìm kiếm theo chiều rộng (BFS)** và **Sắp xếp nhanh (Quicksort)**.
 
-Làm thế nào để các kỹ sư hệ thống vừa đạt được tốc độ ghi dữ liệu thần tốc, vừa đảm bảo dữ liệu không bao giờ bị mất mát dù máy chủ có nổ cầu chì?
+Nếu như Mảng cho phép truy cập $O(1)$ nhưng phải thông qua số thứ tự, thì Bảng băm (`HashMap`) mang lại phép màu: **Tra cứu dữ liệu bất kỳ bằng từ khóa (Key) bằng chữ trong thời gian tức thì $O(1)$**! Bảng băm là trái tim của mọi hệ thống bộ nhớ đệm (buffer cache), hệ thống từ điển, và cơ sở dữ liệu khóa-giá trị (Key-Value Store).
 
-Giải pháp kinh điển mang tính cách mạng gồm hai thành phần:
-1. **Nhật ký ghi trước (Write-Ahead Logging - WAL)**: Một nguyên tắc bất di bất dịch: *"Luôn luôn ghi chép nối đuôi tuần tự hành động xuống đĩa trước khi dám sửa bất kỳ byte nào trên thanh RAM"*. Nhờ đó, việc phục hồi (crash recovery) sau tai nạn trở nên dễ dàng tuyệt đối.
-2. **Động cơ cây sáp nhập có cấu trúc nhật ký (Log-Structured Merge-Tree - LSM-Tree)**: Kiến trúc đứng sau sự thành công của Google Bigtable, Apache Cassandra, RocksDB, và TiKV, biến 100% thao tác ghi thành ghi tuần tự (Sequential I/O) thông qua bộ đôi **MemTable** (trên RAM) và **SSTable** (trên đĩa).
+Trong khi đó, Đồ thị (Graph) là mô hình mạnh mẽ nhất để biểu diễn các mối quan hệ đa chiều trong thế giới thực: Mạng xã hội kết nối bạn bè, bản đồ giao thông đường bộ, mạng lưới các máy chủ Internet, hay chuỗi phụ thuộc giữa các gói thư viện (crate dependencies) trong Cargo. Chúng ta sẽ khám phá cách biểu diễn đồ thị cực kỳ thanh lịch và an toàn bằng Rust mà không sợ vướng vào "cuộc chiến" với trình kiểm tra mượn (Borrow Checker).
 
 Mục tiêu học tập của chương này:
-- Nắm vững nguyên lý hoạt động và tầm quan trọng sống còn của **Nhật ký ghi trước (WAL - Write-Ahead Logging)** trong việc bảo đảm an toàn dữ liệu và phục hồi sau sự cố.
-- Hiểu cấu trúc 4 tầng của động cơ **LSM-Tree**: `MemTable`, `WAL`, `SSTable` (Sorted String Table), và tiến trình nén gộp ngầm (`Compaction`).
-- Giải thích vì sao việc biến ghi ngẫu nhiên thành ghi tuần tự giúp LSM-Tree đạt tốc độ ghi nhanh gấp 10 lần so với B+ Tree truyền thống.
-- Nhận diện cơ chế xóa mềm thông qua "Bia mộ" (**Tombstone**) trong các tệp dữ liệu bất biến.
-- Tự tay lập trình một động cơ Mini-LSM trong Rust có ghi WAL, cập nhật MemTable, và có khả năng phục hồi dữ liệu 100% sau khi giả lập sập nguồn hệ thống.
+- Nắm vững cơ chế vận hành của **Bảng băm (Hash Table)**: Hàm băm (Hash function), phân phối xô ô nhớ (Buckets), và nghệ thuật sử dụng Entry API (`.entry().or_insert()`).
+- Hiểu cấu trúc **Đồ thị (Graph)**: Đỉnh (Vertex/Node), Cạnh (Edge), Đồ thị có hướng vs Vô hướng.
+- Làm chủ kỹ thuật biểu diễn Đồ thị an toàn 100% bằng **Danh sách kề dùng chỉ số (Index-based Adjacency List)** thay vì con trỏ chéo.
+- Cài đặt và ứng dụng thuật toán **Tìm kiếm theo chiều rộng (Breadth-First Search - BFS)** để tìm đường đi ngắn nhất giữa hai nút.
+- Cài đặt thuật toán **Sắp xếp nhanh (Quicksort)** tại chỗ (in-place) trên lát cắt mượn `&mut [T]` với độ phức tạp $O(N \log N)$.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy quan sát hai câu chuyện đời thực vô cùng gần gũi để hình dung cách vận hành của WAL và LSM-Tree:
+Hãy quan sát hai hình ảnh vô cùng sinh động trong đời sống thực tế:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                   HÌNH TƯỢNG HÓA WAL VÀ ĐỘNG CƠ HIỆN ĐẠI LSM-TREE                │
+│              HÌNH TƯỢNG HÓA BẢNG BĂM (HASH TABLE) VÀ ĐỒ THỊ (GRAPH)              │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. NGUYÊN LÝ WAL: CUỐN SỔ TAY GHI NỢ CÀI THẮT LƯNG BÁC BÁN PHỞ]                 │
+│ [1. BẢNG BĂM: HÒM THƯ BƯU ĐIỆN VÀ ĐẦU ĐỌC QUÉT MÃ VẠCH]                         │
 │                                                                                  │
-│ Khách vào ăn phở ồ ạt: "Cho bát tái nạm, ghi nợ nhé!"                            │
+│ Tên người nhận: "Nguyễn Văn An"                                                  │
+│        │                                                                         │
+│        ▼ [Máy quét mã vạch (Hàm băm Hash)]                                       │
+│    Mã số tính ra: Hộp #42                                                        │
 │        │                                                                         │
 │        ▼                                                                         │
-│ Bác rút cây bút chì ngoáy nhanh vào sổ cài thắt lưng (WAL):                      │
-│        ┌────────────────────────────────────────────────────────┐                │
-│        │ [08:00] Bàn 1 nợ 50k                                   │                │
-│        │ [08:02] Bàn 4 nợ 70k  ◄── Ghi nối đuôi (Append-only)   │                │
-│        │ [08:05] Bàn 2 nợ 45k      Cực nhanh, bút không rời giấy│                │
-│        └────────────────────────────────────────────────────────┘                │
-│        │                                                                         │
-│        ▼                                                                         │
-│ SẬP NGUỒN! Cả khu phố mất điện tối om!                                           │
-│ -> Bác mở cuốn sổ tay ra: Toàn bộ lịch sử nợ nần vẫn còn nguyên, không mất 1 xu!│
+│ ┌─────────┬─────────┬─────────┬─────────┬─────────┐                              │
+│ │ Hộp #40 │ Hộp #41 │ Hộp #42 │ Hộp #43 │ Hộp #44 │ -> Mở đúng hộp #42 tốn 1 giây│
+│ │ [Trống] │ [Trống] │ [Thư từ]│ [Trống] │ [Trống] │    Bất kể bưu điện có vạn hộp│
+│ └─────────┴─────────┴─────────┴─────────┴─────────┘                              │
 │                                                                                  │
-│ [2. LSM-TREE: GIẤY NHỚ DÁN BÀN VÀ THÙNG HỒ SƠ LƯU TRỮ TRONG KHO]                 │
+│ [2. ĐỒ THỊ: MẠNG LƯỚI BẢN ĐỒ TÀU ĐIỆN NGẦM ĐÔ THỊ]                               │
 │                                                                                  │
-│ ┌───────────────────────────────────────┐                                        │
-│ │ 1. MEMTABLE (Giấy nhớ dán trên bàn)   │ -> Viết và sắp xếp A-Z trên RAM        │
-│ └───────────────────┬───────────────────┘                                        │
-│                     │ Khi giấy nhớ đầy bàn (Flush)                               │
-│                     ▼                                                            │
-│ ┌───────────────────────────────────────┐                                        │
-│ │ 2. SSTABLE (Thùng sắt lưu trữ ở kho)  │ -> Đã cất vào kho thì KHÔNG BAO GIỜ    │
-│ │ [A-E: Thùng 1]  [F-M: Thùng 2]        │    mở ra sửa (Bất biến - Immutable)    │
-│ └───────────────────┬───────────────────┘                                        │
-│                     │ Định kỳ cuối tuần (Compaction)                             │
-│                     ▼                                                            │
-│ ┌───────────────────────────────────────┐                                        │
-│ │ 3. COMPACTION (Dọn dẹp gộp kho)       │ -> Gộp nhiều thùng nhỏ thành thùng to, │
-│ │                                       │    ném bỏ các giấy nợ đã được trả tiền │
-│ └───────────────────────────────────────┘                                        │
+│      [Trạm Bến Thành (0)] ══════════════ [Trạm Nhà Hát (1)]                      │
+│               ║                                 ║                                │
+│               ║ Tuyến 1                         ║ Tuyến 2                        │
+│               ║                                 ║                                │
+│      [Trạm Chợ Lớn (2)]   ══════════════ [Trạm Tân Bình (3)]                     │
+│                                                                                  │
+│ - Mỗi trạm dừng chân là một ĐỈNH (Vertex).                                       │
+│ - Mỗi đường ray kết nối giữa 2 trạm là một CẠNH (Edge).                          │
+│ - Muốn đi từ Bến Thành đến Tân Bình nhanh nhất? Dùng thuật toán BFS!             │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Cuốn sổ tay cài thắt lưng của bác bán phở (WAL)
-- Vào 8 giờ sáng, khách hàng đổ xô vào quán phở. Khách hô: *"Cho bát tái chín, tí tính tiền sau nhé!"*.
-- Bác bán phở không thể chạy ngay vào bàn làm việc, bật máy tính, mở phần mềm kế toán để gõ từng dòng (khách sẽ nổi giận vì chờ phở quá lâu).
-- Bác làm một thao tác cực nhanh: Rút mẩu bút chì cài ở thắt lưng, ghi ngoáy vào cuốn sổ tay con: `[08:05 Bàn 3 nợ 50k]`.
-- Cuốn sổ tay con này chính là **WAL (Write-Ahead Log)**:
-  - Nó chỉ ghi nối tiếp vào cuối trang (Append-only), bút không rời giấy, tốc độ tức thời!
-  - Giả sử quán phở bất ngờ bị cúp điện toàn phần (Crash), máy tính bị tắt phụt. Bác chủ quán không hề hoang mang: Chỉ cần mở cuốn sổ tay cài thắt lưng ra, bác có thể đọc lại từng dòng và **phục hồi (recover)** lại chính xác 100% doanh thu của quán!
+### 1. Bảng băm — Hệ thống phân loại thư tại bưu điện
+- Khi người đưa thư cầm một lá thư gửi tới cho "Nguyễn Văn An":
+  - Thay vì đi gõ cửa từng căn nhà trong thành phố để hỏi ($O(N)$ tìm kiếm tuần tự), người đưa thư đưa bức thư qua một **Máy quét mã bưu chính (Hàm băm - Hash Function)**.
+  - Chiếc máy lập tức tính toán ra một con số toán học: Ví dụ số **42**.
+  - Người đưa thư chỉ việc bước thẳng tới **Hộc tủ số 42** và nhét bức thư vào đó.
+  - Khi người nhận tới lấy thư, họ cũng đưa căn cước quét qua máy, máy báo hộc số 42, mở tủ lấy thư mất đúng 1 giây ($O(1)$).
+  - Dù bưu điện có 100 hộc tủ hay 1 triệu hộc tủ, thời gian lấy thư vẫn không hề thay đổi!
 
-### 2. Giấy nhớ và Thùng sắt lưu trữ (LSM-Tree)
-- Khi có thông tin mới, bạn viết nhanh vào các tờ giấy nhớ dán trên mặt bàn làm việc (Bộ nhớ đệm **MemTable** trên RAM). Trên mặt bàn, bạn dễ dàng xếp các tờ giấy nhớ theo thứ tự chữ cái A-Z.
-- Khi giấy nhớ dán kín mặt bàn: Bạn gom toàn bộ giấy nhớ lại, đóng thành một tập hồ sơ ngăn nắp rồi đem cất vào thùng sắt dưới tầng hầm (**SSTable** trên đĩa cứng).
-- **Quy tắc vàng của SSTable**: Một khi thùng sắt đã đóng nắp cất vào kho, bạn **không bao giờ mở ra tẩy xóa hay sửa đổi** (Dữ liệu bất biến - Immutable). Nếu khách hàng muốn đổi số điện thoại, bạn viết một tờ giấy nhớ mới ghi đè lên ở trên bàn.
-- **Tiến trình nén gộp (Compaction)**: Định kỳ vào cuối tháng, người thủ kho đem 5 thùng sắt nhỏ ra, gộp lại thành 1 thùng sắt lớn, đồng thời xé bỏ các tờ giấy nợ cũ đã được thanh toán hoặc đã bị hủy (Tombstone). Kho tài liệu lại trở nên gọn gàng tinh tươm!
+### 2. Đồ thị — Bản đồ mạng lưới xe buýt / Tàu điện ngầm
+- Hãy nhìn vào bản đồ giao thông của một thành phố:
+  - Các nhà ga, bến xe, hoặc các nút giao là các **Đỉnh (Vertices)**.
+  - Các đoạn đường nối giữa hai địa điểm là các **Cạnh (Edges)**.
+- Khác với Cây (nơi chỉ có quan hệ cha-con một chiều và không có vòng lặp), Đồ thị cho phép các con đường đan xen chằng chịt, có thể quay vòng lại điểm xuất phát (chu trình - Cycle).
+- **Thuật toán BFS (Tìm kiếm theo chiều rộng)** giống như việc bạn ném một viên sỏi xuống mặt hồ nước phẳng lặng: Sóng nước sẽ lan tỏa đều ra xung quanh theo từng vòng tròn đồng tâm: Đầu tiên là các trạm cách bạn 1 chặng đi, sau đó là các trạm cách 2 chặng, rồi 3 chặng... Nhờ cơ chế lan tỏa từng lớp này, lần đầu tiên bạn chạm tới điểm đích cũng chính là con đường ngắn nhất!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Nguyên lý vàng của WAL: Độ bền vững trước khi biến đổi
+### 1. Bản chất của Bảng băm (`HashMap`) trong Rust
 
-Trong mọi hệ thống cơ sở dữ liệu quan hệ và phi quan hệ, quy tắc bất biến là:
-$$\text{Ghi WAL xuống đĩa cứng} \longrightarrow \text{Ép đĩa (flush/fsync)} \longrightarrow \text{Mới được phép cập nhật RAM}$$
+Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **SwissTable** (nằm trong thư viện nổi tiếng `hashbrown` được tích hợp thẳng vào thư viện chuẩn `std::collections`):
+1. **Hàm băm (Hash Function)**: Mặc định Rust sử dụng thuật toán `SipHash 1-3`, một hàm băm mật mã học được thiết kế đặc biệt để ngăn chặn các cuộc tấn công từ chối dịch vụ **HashDoS** (khi kẻ tấn công cố tình tạo ra hàng triệu khóa có cùng giá trị băm để làm bảng băm suy biến về danh sách liên kết $O(N)$).
+2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
+3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
+   ```rust
+   let mut dem_tu = std::collections::HashMap::new();
+   let tu = "rust";
+   // Đếm số lần xuất hiện của từ chỉ với 1 lần tính băm duy nhất!
+   *dem_tu.entry(tu).or_insert(0) += 1;
+   ```
 
-Cấu trúc của một bản ghi trong tệp WAL:
+### 2. Giải mã bí mật: Biểu diễn Đồ thị không sợ Borrow Checker
+
+Nếu bạn cố gắng tạo một nút đồ thị chứa các con trỏ trỏ trực tiếp sang các nút khác trong Rust (`struct Node { neighbors: Vec<Rc<RefCell<Node>>> }`), bạn sẽ sớm rơi vào "địa ngục con trỏ": Mã nguồn trở nên rối rắm, bộ nhớ bị rò rỉ do các liên kết vòng (Reference Cycles) ngăn cản cơ chế giải phóng tự động.
+
+**Phương pháp chuẩn công nghiệp trong Rust: Danh sách kề dùng chỉ số (Index-based Adjacency List)**:
+- Toàn bộ các đỉnh trong đồ thị được đánh số thứ tự từ `0, 1, 2, ...` và lưu trong một `Vec`.
+- Mỗi đỉnh chỉ cần lưu một danh sách các số nguyên đại diện cho các đỉnh láng giềng: `Vec<Vec<usize>>`.
 ```
-┌───────────────┬────────────────┬───────────────┬─────────────┬──────────────┐
-│ Mã CRC32 (4B) │ Chiều dài (4B) │ Kiểu lệnh(1B) │ Khóa (Key)  │ Giá trị (Val)│
-└───────────────┴────────────────┴───────────────┴─────────────┴──────────────┘
+Đỉnh 0 (Bến Thành) -> Kề với: [1, 2]
+Đỉnh 1 (Nhà Hát)   -> Kề với: [0, 3]
+Đỉnh 2 (Chợ Lớn)   -> Kề với: [0, 3]
+Đỉnh 3 (Tân Bình)  -> Kề với: [1, 2]
 ```
-- **Mã kiểm tra toàn vẹn CRC32 (4 bytes)**: Ngăn chặn lỗi khi máy tính sập nguồn giữa lúc đang ghi dở một dòng nhật ký. Khi khởi động lại, nếu mã CRC32 không khớp, hệ thống biết ngay dòng nhật ký đó bị rách (corrupted) và an toàn cắt bỏ nó.
-- **Hàm `fsync` / `flush`**: Hệ điều hành thường giữ dữ liệu trong bộ nhớ đệm (buffer cache) của kernel. Hàm `flush()` trong Rust ép buộc dữ liệu phải rời khỏi RAM và ghi thực sự vào các chip nhớ vật lý của đĩa SSD.
+Mã nguồn giờ đây là **Safe Rust 100%**: Không có con trỏ, không có `unsafe`, không sợ Borrow Checker, và tốc độ truy cập đạt đỉnh cao nhờ tính liên tục của bộ nhớ RAM!
 
-### 2. Giải phẫu kiến trúc 4 tầng của LSM-Tree
+### 3. Thuật toán Sắp xếp nhanh (Quicksort - trung bình $O(N \log N)$, xấu nhất $O(N^2)$)
 
-LSM-Tree phân tách rạch ròi quy trình xử lý dữ liệu theo thời gian:
+Quicksort là một trong những thuật toán sắp xếp thực chiến hiệu quả nhất lịch sử:
+1. **Chọn phần tử chốt (Pivot)**: Chọn một phần tử bất kỳ (ví dụ phần tử cuối cùng của mảng).
+2. **Phân vùng (Partitioning)**: Duyệt qua mảng và dồn tất cả các phần tử nhỏ hơn chốt về bên trái, các phần tử lớn hơn chốt về bên phải. Đặt phần tử chốt vào đúng vị trí ranh giới chính giữa.
+3. **Đệ quy**: Lặp lại quy trình trên cho hai nửa mảng bên trái và bên phải cho đến khi toàn bộ mảng được sắp xếp hoàn tất.
 
-1. **Tầng 1: MemTable (Memory Table)**:
-   - Nằm trên RAM, duy trì dữ liệu luôn luôn được sắp xếp theo thứ tự khóa tăng dần.
-   - Trong Rust, `std::collections::BTreeMap` là sự lựa chọn hoàn hảo nhất cho MemTable nhờ tính chất tự sắp xếp $O(\log N)$ và thân thiện với bộ nhớ đệm (buffer) của CPU.
-2. **Tầng 2: Write-Ahead Log (WAL)**:
-   - Nằm trên đĩa SSD, nhận các bản ghi tuần tự song song với MemTable để phòng ngừa rủi ro mất điện.
-3. **Tầng 3: SSTable (Sorted String Table)**:
-   - Khi MemTable đạt ngưỡng kích thước (ví dụ 64MB), nó bị đóng băng (Frozen MemTable) và một tiến trình chạy ngầm sẽ xả (Flush) toàn bộ dữ liệu xuống đĩa thành một tệp SSTable mới.
-   - SSTable gồm 2 phần: Dữ liệu đã sắp xếp và **Chỉ mục thưa (Sparse Index)** giúp nhảy cóc tìm nhanh dữ liệu trên đĩa.
-4. **Tầng 4: Tiến trình nén gộp (Compaction)**:
-   - Sử dụng thuật toán sáp nhập nhiều danh sách (K-way Merge Sort) tương tự hàm merge của Merge Sort.
-   - Đọc tuần tự các tệp SSTable cũ, loại bỏ các bản ghi bị ghi đè nhiều lần hoặc các bản ghi bị đánh dấu cờ xóa (**Tombstone - Bia mộ**), và sinh ra tệp SSTable tầng cao hơn hoàn toàn tinh gọn.
+> **Cạm bẫy phải biết — Quicksort KHÔNG phải lúc nào cũng $O(N \log N)$:**
+> Con số $O(N \log N)$ chỉ đúng ở **trường hợp trung bình**, khi phần tử chốt chia mảng thành hai nửa tương đối cân bằng.
+> Nếu bạn luôn chọn phần tử cuối làm chốt và đưa vào một mảng **đã được sắp xếp sẵn**, mỗi lần phân vùng chỉ tách ra được 1 phần tử —
+> cây đệ quy suy biến thành một chuỗi thẳng đúng như hiện tượng *Cây suy biến* ở Chương 29, và độ phức tạp tụt xuống **$O(N^2)$**.
+> Cách hóa giải trong thực chiến: chọn chốt ngẫu nhiên, hoặc dùng kỹ thuật "trung vị của ba" (median-of-three).
+> Đây cũng là lý do `slice::sort()` của thư viện chuẩn Rust dùng thuật toán lai **Timsort** (ổn định, $O(N \log N)$ ở mọi trường hợp),
+> còn `slice::sort_unstable()` dùng **pattern-defeating quicksort** — một biến thể tự động phát hiện và thoát khỏi trường hợp xấu nhất.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, mô phỏng một động cơ lưu trữ Mini-LSM Engine với cơ chế ghi trước WAL tuần tự, cập nhật MemTable trên RAM, và quy trình phục hồi sau sự cố (Crash Recovery):
+Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, minh họa trọn vẹn ba nội dung cốt lõi:
+1. Ứng dụng Bảng băm (`HashMap`) thống kê tần suất từ vựng với Entry API.
+2. Cài đặt Đồ thị bằng danh sách kề chỉ số và chạy thuật toán BFS tìm khoảng cách ngắn nhất.
+3. Cài đặt thuật toán Sắp xếp nhanh (Quicksort) in-place trên lát cắt mượn `&mut [T]`:
 
 ```rust
-use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::collections::{HashMap, VecDeque};
 
-/// ĐỘNG CƠ MINI LSM-TREE KẾT HỢP GHI NHẬT KÝ WAL
-pub struct MiniLsmEngine {
-    memtable: BTreeMap<String, String>, // Bộ nhớ đệm RAM tự sắp xếp
-    wal_file: File,                     // Tệp nhật ký an toàn trên đĩa
-    wal_path: String,
+/// PHẦN 1: THỐNG KÊ TẦN SUẤT TỪ VỚI BẢNG BĂM HASHMAP
+pub fn thong_ke_tu_vung(van_ban: &str) -> HashMap<String, usize> {
+    let mut bang_dem = HashMap::new();
+    for tu in van_ban.split_whitespace() {
+        // Chuẩn hóa từ về chữ thường
+        let tu_chuan = tu.to_lowercase();
+        // Entry API: Tra cứu một lần, nếu chưa có thì khởi tạo giá trị 0, sau đó tăng 1
+        let dem = bang_dem.entry(tu_chuan).or_insert(0);
+        *dem += 1;
+    }
+    bang_dem
 }
 
-impl MiniLsmEngine {
-    /// Khởi động động cơ: Mở tệp WAL và tự động phục hồi nếu tệp đã tồn tại
-    pub fn open(wal_path: &str) -> io::Result<Self> {
-        let mut memtable = BTreeMap::new();
+/// PHẦN 2: CẤU TRÚC ĐỒ THỊ AN TOÀN VÀ THUẬT TOÁN BFS
+pub struct DoThi {
+    danh_sach_ke: Vec<Vec<usize>>,
+    ten_cac_dinh: Vec<String>,
+}
 
-        // 1. TIẾN TRÌNH PHỤC HỒI SAU SỰ CỐ (Crash Recovery):
-        // Nếu tệp WAL đã có sẵn từ phiên chạy trước, đọc lại toàn bộ nhật ký
-        if Path::new(wal_path).exists() {
-            let file_doc = File::open(wal_path)?;
-            let reader = BufReader::new(file_doc);
-            for line_res in reader.lines() {
-                let line = line_res?;
-                if let Some((lenh, phan_con_lai)) = line.split_once(':') {
-                    if lenh == "SET" {
-                        if let Some((k, v)) = phan_con_lai.split_once('=') {
-                            memtable.insert(k.to_string(), v.to_string());
-                        }
-                    } else if lenh == "DEL" {
-                        memtable.remove(phan_con_lai);
-                    }
+impl DoThi {
+    pub fn new() -> Self {
+        DoThi {
+            danh_sach_ke: Vec::new(),
+            ten_cac_dinh: Vec::new(),
+        }
+    }
+
+    /// Thêm một đỉnh mới vào đồ thị và trả về chỉ số của đỉnh đó
+    pub fn them_dinh(&mut self, ten: &str) -> usize {
+        let chi_so = self.ten_cac_dinh.len();
+        self.ten_cac_dinh.push(ten.to_string());
+        self.danh_sach_ke.push(Vec::new());
+        chi_so
+    }
+
+    /// Thêm một cạnh nối hai chiều giữa hai đỉnh u và v
+    pub fn them_canh(&mut self, u: usize, v: usize) {
+        if u < self.danh_sach_ke.len() && v < self.danh_sach_ke.len() {
+            self.danh_sach_ke[u].push(v);
+            self.danh_sach_ke[v].push(u); // Đồ thị vô hướng 2 chiều
+        }
+    }
+
+    /// Thuật toán BFS tìm đường đi ngắn nhất (Số chặng) giữa hai đỉnh
+    pub fn bfs_khoang_cach_ngan_nhat(&self, diem_dau: usize, diem_dich: usize) -> Option<usize> {
+        if diem_dau >= self.danh_sach_ke.len() || diem_dich >= self.danh_sach_ke.len() {
+            return None;
+        }
+
+        // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
+        let mut da_tham = vec![false; self.danh_sach_ke.len()];
+        // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
+        let mut hang_doi: VecDeque<(usize, usize)> = VecDeque::new();
+
+        da_tham[diem_dau] = true;
+        hang_doi.push_back((diem_dau, 0));
+
+        while let Some((hien_tai, khoang_cach)) = hang_doi.pop_front() {
+            if hien_tai == diem_dich {
+                return Some(khoang_cach); // Tìm thấy đích đến!
+            }
+
+            for &ke in &self.danh_sach_ke[hien_tai] {
+                if !da_tham[ke] {
+                    da_tham[ke] = true;
+                    hang_doi.push_back((ke, khoang_cach + 1));
                 }
             }
-            println!("    [RECOVERY]: Đã phục hồi thành công {} khóa từ tệp WAL!", memtable.len());
         }
 
-        // 2. Mở tệp WAL ở chế độ ghi chèn (Append-only)
-        let wal_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(wal_path)?;
-
-        Ok(Self {
-            memtable,
-            wal_file,
-            wal_path: wal_path.to_string(),
-        })
+        None // Không có đường đi kết nối giữa hai đỉnh này
     }
 
-    /// Thao tác Ghi: BẮT BUỘC ghi WAL trước, sau đó mới cập nhật MemTable
-    pub fn set(&mut self, key: &str, value: &str) -> io::Result<()> {
-        // BƯỚC 1: Ghi tuần tự vào WAL (Write-Ahead)
-        let dong_nhat_ky = format!("SET:{}={}\n", key, value);
-        self.wal_file.write_all(dong_nhat_ky.as_bytes())?;
-        // Ép dữ liệu từ bộ đệm phần mềm xuống phần cứng đĩa
-        self.wal_file.flush()?;
-
-        // BƯỚC 2: Cập nhật MemTable trên RAM
-        self.memtable.insert(key.to_string(), value.to_string());
-        Ok(())
-    }
-
-    /// Thao tác Xóa: Ghi nhận Tombstone vào WAL và xóa khỏi MemTable
-    pub fn delete(&mut self, key: &str) -> io::Result<bool> {
-        if self.memtable.contains_key(key) {
-            // Ghi nhận bia mộ (Tombstone) vào WAL
-            let dong_nhat_ky = format!("DEL:{}\n", key);
-            self.wal_file.write_all(dong_nhat_ky.as_bytes())?;
-            self.wal_file.flush()?;
-
-            self.memtable.remove(key);
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Thao tác Đọc: Đọc siêu tốc từ MemTable trên RAM - O(log N)
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.memtable.get(key)
-    }
-
-    pub fn total_keys(&self) -> usize {
-        self.memtable.len()
+    pub fn lay_ten(&self, chi_so: usize) -> &str {
+        &self.ten_cac_dinh[chi_so]
     }
 }
 
-fn main() -> io::Result<()> {
-    println!("============================================================");
-    println!("   NHẬT KÝ GHI TRƯỚC WAL & ĐỘNG CƠ LƯU TRỮ HIỆN ĐẠI LSM-TREE ");
-    println!("============================================================");
-
-    let duong_dan_wal = "mini_engine.wal";
-
-    // Đảm bảo dọn dẹp tệp cũ trước khi bắt đầu thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
-
-    // GIAI ĐOẠN 1: Khởi động động cơ và ghi chép dữ liệu
-    println!("[1] Khởi động động cơ MiniLsmEngine lần đầu:");
-    {
-        let mut engine = MiniLsmEngine::open(duong_dan_wal)?;
-        
-        println!("    - Ghi khóa 'user:1' -> 'Alice'");
-        engine.set("user:1", "Alice")?;
-        
-        println!("    - Ghi khóa 'user:2' -> 'Bob'");
-        engine.set("user:2", "Bob")?;
-        
-        println!("    - Ghi đè khóa 'user:1' -> 'Alice Nguyen'");
-        engine.set("user:1", "Alice Nguyen")?;
-        
-        println!("    - Ghi khóa 'user:3' -> 'Charlie'");
-        engine.set("user:3", "Charlie")?;
-        
-        println!("    - Xóa khóa 'user:2' (Ghi Tombstone vào WAL)");
-        engine.delete("user:2")?;
-
-        println!("    - Tổng số khóa hợp lệ trên RAM: {}", engine.total_keys());
-        assert_eq!(engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
-        assert_eq!(engine.get("user:2"), None);
-        assert_eq!(engine.get("user:3"), Some(&"Charlie".to_string()));
-
-        println!("\n    => ĐỘT NGỘT SẬP NGUỒN! (Cỗ máy tính bị ngắt điện)");
-        // engine bị drop tại đây, tương đương tiến trình bị tắt đột ngột
+impl Default for DoThi {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    // GIAI ĐOẠN 2: Khởi động lại sau sự cố và kiểm tra tính năng phục hồi
-    println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
-    {
-        let engine_phuc_hoi = MiniLsmEngine::open(duong_dan_wal)?;
-        
-        println!("    - Kiểm tra dữ liệu sau phục hồi:");
-        println!("      + 'user:1' = {:?}", engine_phuc_hoi.get("user:1"));
-        println!("      + 'user:2' = {:?}", engine_phuc_hoi.get("user:2"));
-        println!("      + 'user:3' = {:?}", engine_phuc_hoi.get("user:3"));
-
-        // Xác nhận dữ liệu được phục hồi chuẩn xác 100%
-        assert_eq!(engine_phuc_hoi.get("user:1"), Some(&"Alice Nguyen".to_string()));
-        assert_eq!(engine_phuc_hoi.get("user:2"), None);
-        assert_eq!(engine_phuc_hoi.get("user:3"), Some(&"Charlie".to_string()));
-        assert_eq!(engine_phuc_hoi.total_keys(), 2);
-        
-        println!("    => Toàn bộ trạng thái dữ liệu đã được phục hồi hoàn hảo nhờ WAL!");
+/// PHẦN 3: THUẬT TOÁN SẮP XẾP NHANH (QUICKSORT) TẠI CHỖ
+pub fn quicksort<T: Ord>(du_lieu: &mut [T]) {
+    if du_lieu.len() <= 1 {
+        return;
     }
+    let vi_tri_chot = phan_vung(du_lieu);
+    // Chia đôi mảng và đệ quy sắp xếp hai nửa
+    quicksort(&mut du_lieu[0..vi_tri_chot]);
+    quicksort(&mut du_lieu[vi_tri_chot + 1..]);
+}
 
-    // Dọn dẹp tệp thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
+fn phan_vung<T: Ord>(du_lieu: &mut [T]) -> usize {
+    let do_dai = du_lieu.len();
+    let chi_so_chot = do_dai - 1;
+    let mut i = 0;
+
+    for j in 0..chi_so_chot {
+        if du_lieu[j] <= du_lieu[chi_so_chot] {
+            du_lieu.swap(i, j);
+            i += 1;
+        }
+    }
+    du_lieu.swap(i, chi_so_chot);
+    i
+}
+
+fn main() {
+    println!("============================================================");
+    println!("    BẢNG BĂM, ĐỒ THỊ VÀ CÁC THUẬT TOÁN CỐT LÕI TRONG RUST   ");
+    println!("============================================================");
+
+    // 1. Kiểm thử Bảng băm đếm tần suất từ
+    println!("[1] Thống kê tần suất từ vựng bằng HashMap Entry API:");
+    let van_ban = "học rust thật vui học lập trình rust thật tuyệt vời";
+    let ket_qua_dem = thong_ke_tu_vung(van_ban);
+    for (tu, so_lan) in &ket_qua_dem {
+        println!("    - Từ '{:8}': xuất hiện {} lần", tu, so_lan);
+    }
+    assert_eq!(ket_qua_dem.get("rust"), Some(&2));
+    assert_eq!(ket_qua_dem.get("học"), Some(&2));
+    assert_eq!(ket_qua_dem.get("vui"), Some(&1));
+
+    // 2. Kiểm thử Mạng lưới Đồ thị và Thuật toán BFS
+    println!("\n[2] Mô phỏng mạng xã hội kết nối bạn bè bằng Đồ thị & BFS:");
+    let mut mang_xa_hoi = DoThi::new();
+    let an = mang_xa_hoi.them_dinh("An");       // Đỉnh 0
+    let binh = mang_xa_hoi.them_dinh("Bình");   // Đỉnh 1
+    let chi = mang_xa_hoi.them_dinh("Chi");     // Đỉnh 2
+    let dung = mang_xa_hoi.them_dinh("Dũng");   // Đỉnh 3
+    let hoa = mang_xa_hoi.them_dinh("Hoa");     // Đỉnh 4 (ở xa)
+
+    // Thiết lập các mối quan hệ bạn bè (Cạnh)
+    // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
+    mang_xa_hoi.them_canh(an, binh);
+    mang_xa_hoi.them_canh(binh, chi);
+    mang_xa_hoi.them_canh(chi, dung);
+    mang_xa_hoi.them_canh(an, dung); // Lối tắt trực tiếp từ An đến Dũng!
+
+    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", mang_xa_hoi.lay_ten(an), mang_xa_hoi.lay_ten(chi));
+    let khoang_cach_an_chi = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, chi);
+    println!("      => Khoảng cách ngắn nhất: {:?} chặng", khoang_cach_an_chi);
+    assert_eq!(khoang_cach_an_chi, Some(2)); // An -> Bình -> Chi hoặc An -> Dũng -> Chi
+
+    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", mang_xa_hoi.lay_ten(an), mang_xa_hoi.lay_ten(dung));
+    let khoang_cach_an_dung = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, dung);
+    println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", khoang_cach_an_dung);
+    assert_eq!(khoang_cach_an_dung, Some(1));
+
+    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", mang_xa_hoi.lay_ten(hoa));
+    let khoang_cach_hoa = mang_xa_hoi.bfs_khoang_cach_ngan_nhat(an, hoa);
+    println!("      => Kết quả: {:?} (Không có đường đi)", khoang_cach_hoa);
+    assert_eq!(khoang_cach_hoa, None);
+
+    // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
+    println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
+    let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
+    println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
+    quicksort(&mut mang_so);
+    println!("    - Mảng sau khi sắp xếp   : {:?}", mang_so);
+    assert_eq!(mang_so, [3, 5, 12, 19, 42, 63, 77, 88]);
+    println!("    => Quicksort O(N log N) hoàn tất thành công!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 30               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 26               ");
     println!("============================================================");
-    Ok(())
 }
 ```
 
@@ -280,62 +303,126 @@ fn main() -> io::Result<()> {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp khi cài đặt WAL và động cơ LSM-Tree trong Rust:
+Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình Bảng băm và Đồ thị trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0599** | `no method named 'lines' found for struct 'BufReader<File>'` | Bạn gọi phương thức `.lines()` để đọc từng dòng của tệp WAL nhưng chưa đưa trait `BufRead` vào phạm vi. | Thêm khai báo: `use std::io::BufRead;` ở đầu tệp mã nguồn. |
-| **E0382** | `use of moved value: 'wal_file'` | Bạn truyền đối tượng `wal_file` vào một hàm phụ trợ khiến quyền sở hữu (ownership) bị chuyển đi, sau đó cố sử dụng lại trong struct. | Truyền tham chiếu mượn `&mut wal_file` vào hàm phụ trợ. |
-| **E0596** | `cannot borrow 'engine' as mutable, as it is not declared as mutable` | Phương thức `.set()` đòi hỏi ghi vào tệp WAL và sửa đổi `MemTable`, bắt buộc đối tượng phải là `&mut self`. | Khai báo biến với `let mut engine = ...`. |
-| **E0716** | `temporary value dropped while borrowed` | Bạn tạo một chuỗi định dạng tạm thời `format!(...).as_bytes()` và gán vào một biến mượn có thời gian sống (lifetime) dài hơn biểu thức tạm. | Tách riêng việc lưu trữ chuỗi `String` vào một biến cục bộ trước khi lấy mảng byte của nó. |
+| **E0277** | `the trait bound 'K: Hash' is not satisfied` | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
+| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang lặp qua danh sách láng giềng mượn bất biến `&graph.danh_sach_ke[u]` nhưng bên trong thân vòng lặp lại gọi `graph.them_canh()` làm thay đổi đồ thị. | Thu thập các chỉ số cần biến đổi vào một vector tạm trước khi thực hiện ghi đè. |
+| **E0382** | `use of moved value: 'tu'` | Bạn gọi `bang_dem.insert(tu, 1)` khiến chuỗi `tu` bị di chuyển quyền sở hữu (ownership), sau đó lại dùng lại `tu` ở dòng lệnh tiếp theo. | Dùng phương thức `.clone()` tạo bản sao độc lập, hoặc lưu tham chiếu mượn chuỗi `&str` nếu chuỗi có thời gian sống (lifetime) dài hơn bảng băm. |
+| **E0308** | `mismatched types: expected '&str', found 'String'` | Bạn truyền một giá trị sở hữu `String` vào phương thức tra cứu `.get()` của HashMap vốn chỉ đòi hỏi một lát cắt tham chiếu `&str`. | Thêm dấu `&` phía trước biến chuỗi: `bang_dem.get(&tu)`. |
 
-### Ví dụ phân tích lỗi `E0599` và cách khắc phục:
+### Ví dụ phân tích lỗi `E0277` khi dùng struct làm khóa cho `HashMap`:
 
 ```rust
-use std::fs::File;
-use std::io::BufReader;
-// Thiếu use std::io::BufRead;
-
-// Đoạn mã lỗi minh họa E0599: Quên import trait BufRead
-fn doc_dong_loi(f: File) {
-    let reader = BufReader::new(f);
-    // for line in reader.lines() { ... } // LỖI E0599: no method named `lines`!
+// Struct chưa thỏa mãn trait Hash và Eq
+struct NguoiDungLoi {
+    id: u32,
 }
 
-// Cách sửa chữa đúng chuẩn: Import trait BufRead
-use std::io::BufRead;
+fn thu_nghiem_loi_hash() {
+    let mut bang_hash = std::collections::HashMap::new();
+    // bang_hash.insert(NguoiDungLoi { id: 1 }, "Admin"); // LỖI E0277!
+}
 
-fn doc_dong_dung(f: File) -> std::io::Result<()> {
-    let reader = BufReader::new(f);
-    for line in reader.lines() {
-        println!("Dòng nhật ký: {}", line?);
-    }
-    Ok(())
+// Cách sửa chữa đúng chuẩn: Derive đầy đủ PartialEq, Eq, Hash
+#[derive(Hash, PartialEq, Eq, Debug)]
+struct NguoiDungChuan {
+    id: u32,
+}
+
+fn thu_nghiem_dung_hash() {
+    let mut bang_hash = std::collections::HashMap::new();
+    bang_hash.insert(NguoiDungChuan { id: 1 }, "Admin");
+    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&NguoiDungChuan { id: 1 }));
 }
 ```
 
 ---
 
+
+
+---
+
+## Kiểm thử tự động (Automated Tests)
+
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+
+```rust
+#[cfg(test)]
+mod kiem_thu {
+    use super::*;
+
+    #[test]
+    fn dem_tan_suat_tu() {
+        let bang = thong_ke_tu_vung("rust rust an toan rust");
+        assert_eq!(bang.get("rust"), Some(&3));
+        assert_eq!(bang.get("an"), Some(&1));
+        assert_eq!(bang.get("khong-co"), None);
+    }
+
+    #[test]
+    fn quicksort_khop_voi_sort_chuan() {
+        let mut a = vec![5, 2, 9, 1, 5, 6, 3, 3, 8];
+        let mut b = a.clone();
+        quicksort(&mut a);
+        b.sort();
+        assert_eq!(a, b); // kiểm chứng chéo với thư viện chuẩn
+    }
+
+    #[test]
+    fn quicksort_truong_hop_bien() {
+        let mut rong: Vec<i32> = vec![];
+        quicksort(&mut rong);
+        assert!(rong.is_empty());
+
+        let mut mot = vec![42];
+        quicksort(&mut mot);
+        assert_eq!(mot, vec![42]);
+
+        // Trường hợp XẤU NHẤT O(N^2): mảng đã sắp xếp sẵn — vẫn phải đúng
+        let mut da_sap: Vec<i32> = (1..=100).collect();
+        quicksort(&mut da_sap);
+        assert_eq!(da_sap, (1..=100).collect::<Vec<i32>>());
+    }
+
+    #[test]
+    fn bfs_tim_duong_ngan_nhat() {
+        let mut g = DoThi::new();
+        let a = g.them_dinh("A");
+        let b = g.them_dinh("B");
+        let c = g.them_dinh("C");
+        let d = g.them_dinh("D");
+        g.them_canh(a, b);
+        g.them_canh(b, c);
+        g.them_canh(a, d);
+        g.them_canh(d, c);
+        assert_eq!(g.bfs_khoang_cach_ngan_nhat(a, c), Some(2));
+        assert_eq!(g.bfs_khoang_cach_ngan_nhat(a, a), Some(0));
+    }
+
+    #[test]
+    fn bfs_khong_co_duong_di() {
+        let mut g = DoThi::new();
+        let a = g.them_dinh("A");
+        let b = g.them_dinh("B"); // cô lập
+        assert_eq!(g.bfs_khoang_cach_ngan_nhat(a, b), None);
+    }
+}
+```
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Nguyên lý WAL tối thượng**: Không bao giờ được phép sửa dữ liệu trên RAM trước khi ghi nhận thành công thao tác vào tệp nhật ký nối đuôi (Append-only) trên đĩa cứng.
-2. **Sức mạnh ghi tuần tự của LSM-Tree**: Bằng cách tiếp nhận dữ liệu trên RAM (`MemTable`) và ghi tuần tự (`WAL`), LSM-Tree đạt thông lượng ghi vượt trội hàng chục lần so với B+ Tree.
-3. **Tính chất bất biến của SSTable**: Các tệp trên đĩa không bao giờ bị ghi đè; các bản ghi cập nhật hoặc bị xóa được đánh dấu bằng khóa mới hoặc cờ Tombstone.
-4. **Tiến trình Compaction**: Đóng vai trò như người dọn dẹp vệ sinh chạy ngầm, sáp nhập nhiều tệp SSTable nhỏ thành tệp lớn và loại bỏ rác để giải phóng dung lượng đĩa.
+1. **Sức mạnh $O(1)$ của Bảng băm**: `HashMap` mang lại khả năng tra cứu khóa-giá trị tức thời nhờ thuật toán băm phân phối vào các xô ô nhớ (buckets).
+2. **Kỹ thuật Entry API**: Giúp tra cứu, khởi tạo mặc định và cập nhật giá trị chỉ với một lần tính toán băm duy nhất, tối ưu hóa tối đa chu kỳ CPU.
+3. **Đồ thị dùng chỉ số**: Biểu diễn Đồ thị bằng danh sách kề `Vec<Vec<usize>>` là phương pháp chuẩn mực trong Rust để đạt 100% Safe Rust và giải phóng lập trình viên khỏi gánh nặng con trỏ.
+4. **BFS tìm đường ngắn nhất**: Thuật toán Tìm kiếm theo chiều rộng (BFS) kết hợp với Hàng đợi FIFO (`VecDeque`) là công cụ hoàn hảo để tìm khoảng cách chặng ngắn nhất trong đồ thị không trọng số.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Phục hồi sau sự cố)**:  
-   Giả sử tệp WAL có nội dung sau:
-   ```
-   SET:a=10
-   SET:b=20
-   SET:a=30
-   DEL:b
-   SET:c=40
-   ```
-   Hãy cho biết sau khi chạy quy trình phục hồi `open()`, trong `MemTable` sẽ còn lại những khóa nào và giá trị tương ứng của chúng là bao nhiêu?
-2. **Bài tập 2 (Xả dữ liệu Flush MemTable)**:  
-   Viết phương thức `fn flush_to_sstable(&mut self, sstable_path: &str) -> io::Result<()>`: Khi số lượng khóa trong `memtable` vượt quá 5 phần tử, ghi toàn bộ các cặp khóa-giá trị đã được sắp xếp từ `memtable` ra một tệp văn bản mới, sau đó xóa sạch `memtable` và tạo lại tệp WAL mới rỗng.
-3. **Bài tập 3 (Tư duy thiết kế)**:  
-   Tại sao các hệ thống Big Data phân tán như Apache Cassandra hay Google Bigtable lại chọn kiến trúc LSM-Tree làm động cơ lưu trữ chính thay vì dùng B+ Tree? Trong trường hợp đọc dữ liệu ngẫu nhiên (Random Read), LSM-Tree có nhược điểm gì so với B+ Tree và kỹ thuật Bộ lọc Bloom (Bloom Filter) giúp khắc phục nhược điểm đó như thế nào?
+1. **Bài tập 1 (Tìm kiếm phần tử xuất hiện nhiều nhất)**:  
+   Sử dụng `HashMap`, hãy viết một hàm `fn tim_phan_tu_pho_bien_nhat(ds: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
+2. **Bài tập 2 (Phát hiện đỉnh cô lập trong đồ thị)**:  
+   Viết phương thức `fn tim_dinh_co_lap(&self) -> Vec<usize>` cho cấu trúc `DoThi` để liệt kê tất cả các đỉnh không có bất kỳ cạnh kết nối nào với các đỉnh khác trong mạng lưới (`danh_sach_ke[i].is_empty()`).
+3. **Bài tập 3 (Thuật toán DFS - Tìm kiếm theo chiều sâu)**:  
+   Dựa trên cấu trúc `DoThi` đã học, hãy viết một hàm `fn dfs_kiem_tra_ket_noi(&self, u: usize, v: usize) -> bool` sử dụng đệ quy để kiểm tra xem có tồn tại bất kỳ con đường nào nối giữa hai đỉnh `u` và `v` hay không (không bắt buộc phải là con đường ngắn nhất).

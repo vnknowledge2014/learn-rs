@@ -1,264 +1,463 @@
-# Chương 36: Tự chế công cụ quét cổng mạng đa luồng siêu tốc (High-Speed Concurrent Network Port Scanner Tool)
+# Chương 36: Dự án lớn: Xây dựng động cơ lưu trữ Mini-Bitcask Key-Value bền vững (Capstone Project: Building a Persistent Mini-Bitcask Key-Value Engine)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong kho vũ khí của bất kỳ kỹ sư quản trị mạng hay chuyên gia bảo mật thâm nhập OSCP nào, công cụ đầu tiên luôn được rút ra khỏi bao chính là **Trình quét cổng mạng (Network Port Scanner)** — với đại diện lừng danh nhất thế giới là `Nmap`. Trước khi có thể bảo vệ hoặc kiểm thử một máy chủ, bạn bắt buộc phải biết máy chủ đó đang "mở những cánh cửa nào" ra thế giới bên ngoài.
+Chúc mừng bạn đã tiến tới chặng đường cuối cùng của **Chủ đề 6: Kiến trúc & Thiết kế Cơ sở Dữ liệu**! Trong suốt 11 chương vừa qua của hai chủ đề DSA và Database Internals, bạn đã trang bị cho mình một kho tàng kiến thức đồ sộ: Từ độ phức tạp Big-O, mảng liền kề, danh sách liên kết, cây nhị phân, bảng băm, đến thao tác nhị phân trên đĩa cứng, kiến trúc Slotted-Page, bộ đệm Buffer Pool, cây B+ Tree, nhật ký WAL, LSM-Tree và giao dịch MVCC.
 
-Tuy nhiên, thay vì chỉ sử dụng các công cụ có sẵn một cách thụ động, việc tự tay lập trình một công cụ quét cổng mạng đa luồng (multi-threaded concurrent port scanner) từ con số không bằng Rust sẽ mang lại cho bạn những hiểu biết vô giá về:
-- Cách thức hoạt động ở tầng giao vận (Transport Layer) của giao thức TCP và cơ chế bắt tay 3 bước (3-way handshake).
-- Kỹ thuật lập trình ổ cắm mạng (Socket Programming) ở mức hệ thống với `std::net::TcpStream`.
-- Mô hình điều phối đa luồng đồng thời bằng Rust: Phân chia công việc giữa các luồng (`std::thread`) và gom kết quả về luồng chính thông qua kênh truyền tin đa người gửi - một người nhận (`std::sync::mpsc`).
-- Tối ưu hóa thời gian chờ (Timeout management) và kiểm soát tài nguyên hệ điều hành (File Descriptors).
+Giờ là lúc chúng ta ghép nối tất cả những mảnh ghép rời rạc đó thành một cỗ máy hoàn chỉnh mang tính sản xuất: **Tự tay xây dựng một Động cơ Cơ sở Dữ liệu Khóa-Giá trị Bền vững (Persistent Key-Value Store) mang tên Mini-Bitcask từ con số không!**
+
+Mô hình **Bitcask** là kiến trúc động cơ lưu trữ lừng danh được sáng chế bởi hãng Basho Technologies (được sử dụng làm trái tim cho cơ sở dữ liệu phân tán quy mô lớn Riak). Bitcask sở hữu một triết lý thiết kế thanh lịch đến kinh ngạc:
+- **Tốc độ ghi siêu khủng**: Toàn bộ thao tác ghi chỉ là nối đuôi tuần tự vào cuối tệp tin trên đĩa cứng (Append-only Log).
+- **Tốc độ đọc tức thì**: Tra cứu vị trí trên RAM thông qua Bảng băm mục lục (**KeyDir**) chỉ mất $O(1)$, sau đó nhảy thẳng tới đúng tọa độ byte trên đĩa để đọc giá trị chỉ với **duy nhất 1 lần đọc đĩa (Single Disk Seek)**!
+
+Mục tiêu học tập của chương dự án lớn này:
+- Nắm vững kiến trúc lai (Hybrid Architecture) kết hợp giữa Bảng băm trên RAM (`KeyDir`) và Tệp dữ liệu ghi nối đuôi trên Đĩa cứng (Append-only Data File).
+- Tự tay lập trình đầy đủ các thao tác cơ bản: `set(key, value)`, `get(key)`, và `delete(key)` với định dạng đóng gói nhị phân tùy chỉnh.
+- Hiện thực hóa cơ chế **Khởi động và Phục hồi sau sự cố (Crash Recovery & Startup Index Rebuild)**: Tự động quét lại tệp dữ liệu để dựng lại chỉ mục RAM khi máy chủ khởi động lại.
+- Xây dựng tiến trình **Nén gộp và Dọn dẹp dữ liệu (Compaction & Merge)** giúp loại bỏ các bản ghi cũ bị ghi đè hoặc bị xóa, thu nhỏ dung lượng tệp đĩa tối đa.
+- Rèn luyện kỹ năng viết mã nguồn Rust hướng module chuyên nghiệp, xử lý lỗi an toàn với `Result<T, io::Error>`, và kiểm thử tự động (Integration Testing).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu rõ sự khác biệt giữa quét tuần tự đơn luồng và quét đồng thời đa luồng, hãy quan sát câu chuyện của người đưa thư:
+Hãy cùng quan sát cách người chủ tiệm tạp hóa quản lý sổ sách nợ nần để hiểu thấu kiến trúc Bitcask:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│             HÌNH TƯỢNG HÓA: ĐỘI ĐƯA THƯ GÕ CỬA TÒA NHÀ 1000 PHÒNG                │
+│              HÌNH TƯỢNG HÓA KIẾN TRÚC ĐỘNG CƠ LƯU TRỮ BITCASK                    │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [CÁCH 1: ANH ĐƯA THƯ ĐƠN ĐỘC (QUÉT TUẦN TỰ ĐƠN LUỒNG - SYNCHRONOUS)]             │
-│ - Anh đưa thư đi bộ đến Phòng 1 ──► Gõ cửa ──► Đứng đợi 3 giây (Timeout)         │
-│ - Không ai mở cửa (Cổng đóng) ──► Bước sang Phòng 2 ──► Lại đợi 3 giây...        │
-│   ===> Để gõ hết 1,000 phòng, anh ta mất: 1,000 x 3 = 3,000 giây (~50 PHÚT)!     │
-│                                                                                  │
-│ [CÁCH 2: BIỆT ĐỘI 50 NGƯỜI ĐƯA THƯ (QUÉT ĐA LUỒNG - MULTI-THREADED MPSC)]        │
+│ [1. TRÊN RAM: BẢNG MỤC LỤC DÁN NGOÀI BÌA SỔ (KEYDIR INDEX)]                      │
+│ ┌──────────────────────┬────────────────────────┬──────────────────────┐         │
+│ │ Tên khách hàng (Key) │ Tọa độ trang (Offset)  │ Độ dài chữ (ValSize) │         │
+│ ├──────────────────────┼────────────────────────┼──────────────────────┤         │
+│ │ "Bác Ba"             │ Byte #450              │ 12 bytes             │         │
+│ │ "Chị Năm"            │ Byte #780              │ 15 bytes             │         │
+│ │ "Chú Bảy"            │ Byte #920              │ 10 bytes             │         │
+│ └──────────────────────┴────────────────────────┴──────────────────────┘         │
+│            │                                                                     │
+│            │ Tra cứu trên bìa sổ mất 1 tích tắc O(1)!                            │
+│            ▼                                                                     │
+│ [2. DƯỚI ĐĨA CỨNG: CUỐN SỔ CÁI GHI NỐI ĐUÔI (APPEND-ONLY DATA FILE)]             │
 │ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Đội trưởng chia 1000 phòng cho 50 anh em (Mỗi người 20 phòng)        │         │
-│ │ 50 người đồng loạt tỏa đi gõ cửa cùng một lúc!                       │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Ai thấy phòng có người ra mở cửa (Cổng MỞ - TCP SYN-ACK):            │         │
-│ │   Lập tức bấm bộ đàm thông báo về trung tâm (Kênh MPSC Channel)!     │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Đội trưởng ngồi tại phòng bảo vệ chỉ việc ghi nhận danh sách phòng mở│         │
+│ │ Byte 0: [Khởi tạo sổ ngày 01/01]                                     │         │
+│ │ Byte 200: Giao dịch cũ: "Bác Ba nợ 20k" (Bị ghi đè)                  │         │
+│ │ Byte 450: Giao dịch mới: "Bác Ba nợ 50k" ◄── Nhảy thẳng tới đọc 1 lần│         │
+│ │ Byte 780: Giao dịch: "Chị Năm nợ 100k"                               │         │
+│ │ Byte 920: Giao dịch: "Chú Bảy nợ 30k"                                │         │
+│ │ Byte 1100: [Ghi tiếp vào đuôi sổ...] ◄── Ghi mới không cần sửa trang cũ│        │
 │ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> Toàn bộ tòa nhà 1,000 phòng được quét sạch trong chưa đầy 5 GIÂY!         │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Cổng mạng (Port) giống như số phòng trong chung cư
-- Địa chỉ IP (ví dụ `192.168.1.10`) giống như địa chỉ của một tòa nhà chung cư lớn.
-- Số cổng mạng (từ `1` đến `65535`) giống như số phòng cụ thể bên trong tòa nhà đó:
-  - Phòng `80` (HTTP): Quầy lễ tân công cộng mở cửa đón khách du lịch xem thông tin.
-  - Phòng `443` (HTTPS): Quầy giao dịch tài chính có nhân viên bảo vệ kiểm tra căn cước (chứng chỉ SSL/TLS).
-  - Phòng `22` (SSH): Phòng điều hành máy chủ bí mật ở tầng áp mái có khóa vân tay.
-  - Các phòng còn lại: Cửa đóng then cài, không có người ở.
+### 1. Cuốn sổ cái ghi nợ kèm Bảng mục lục dán ngoài bìa
+- **Dưới đĩa cứng (Cuốn sổ cái)**:
+  - Mọi giao dịch phát sinh trong ngày đều được ghi nối tiếp vào các dòng trống tiếp theo ở cuối cuốn sổ (thao tác `append`).
+  - Bạn không bao giờ lấy tẩy xóa dòng cũ (vì việc tẩy xóa làm bẩn giấy và mất thời gian). Nếu Bác Ba nợ thêm tiền hoặc trả bớt nợ, bạn chỉ việc ghi một dòng mới toanh ở cuối sổ: *"Hôm nay Bác Ba nợ 50k"*.
+- **Trên RAM (Bảng mục lục dán ngoài bìa sổ - KeyDir)**:
+  - Để không phải lật từng trang sổ tìm tên Bác Ba, bạn dán một tờ giấy nhớ ở ngoài bìa cuốn sổ.
+  - Trên tờ giấy nhớ ghi rõ: `"Bác Ba -> Xem trang 45 dòng 3 (Byte #450), đọc đúng 12 chữ"`.
+  - Mỗi khi ghi một dòng mới vào cuối sổ, bạn chỉ cần lấy bút gạch số trang cũ trên tờ giấy nhớ và ghi đè số trang mới vào.
+- **Tốc độ đọc**: Khi khách hỏi nợ, bạn liếc tờ giấy nhớ ngoài bìa (RAM tốn $O(1)$), biết ngay trang 45, bạn lật phắt một cái đến đúng trang 45 đọc to số nợ (**đúng 1 lần lật sổ - 1 Disk Seek**).
+- **Tốc độ ghi**: Viết tiếp vào cuối sổ trong 1 giây mà không làm phiền bất kỳ trang sổ nào trước đó.
 
-### 2. Quét cổng mạng (Port Scanning) giống như gõ cửa từng phòng
-- Khi bạn muốn biết phòng nào đang hoạt động, bạn gõ nhẹ vào cửa phòng (`gửi gói tin TCP SYN`).
-- Nếu phòng có người ra mở cửa và niềm nở chào bạn (`trả về TCP SYN-ACK`), bạn biết ngay phòng đó đang **MỞ (Open)**. Bạn lịch sự cảm ơn và rời đi.
-- Nếu phòng khóa trái cửa im lìm, sau 200 mili-giây không ai trả lời (`Timeout`), bạn kết luận phòng đó đang **ĐÓNG (Closed/Filtered)**.
-- Khi sử dụng Rust đa luồng kết hợp bộ đàm liên lạc (`mpsc`), công việc này diễn ra với tốc độ hàng ngàn phòng mỗi giây mà không bỏ sót bất kỳ dịch vụ nào!
+### 2. Dọn dẹp sổ nợ (Compaction & Merge)
+- Sau 6 tháng, cuốn sổ cái dày cộm lên hàng ngàn trang, trong đó chứa rất nhiều dòng nợ cũ đã lỗi thời của Bác Ba và Chị Năm.
+- Cuối năm, bác chủ tiệm mua một cuốn sổ mới tinh, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ tinh tươm!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Giao thức TCP và Cơ chế Bắt tay 3 bước (TCP 3-Way Handshake)
+### 1. Định dạng bản ghi nhị phân trên Đĩa cứng (On-Disk Record Format)
 
-Giao thức TCP (Transmission Control Protocol) là giao thức truyền thông tin cậy hướng kết nối:
+Mỗi bản ghi được lưu xuống tệp dữ liệu tuân theo cấu trúc nhị phân chuẩn hóa sau:
 
 ```
-Máy quét (Scanner)                                  Máy chủ mục tiêu (Target)
-      │                                                         │
-      │  1. Gói tin SYN (Xin chào, tôi muốn kết nối)            │
-      ├────────────────────────────────────────────────────────►│
-      │                                                         │
-      │  2. Gói tin SYN-ACK (Đồng ý, tôi mở cửa đón bạn!)       │ ◄── CỔNG MỞ (OPEN)
-      │◄────────────────────────────────────────────────────────┤
-      │                                                         │
-      │  (HOẶC gói tin RST: Cổng này đóng, xin đừng làm phiền) │ ◄── CỔNG ĐÓNG (CLOSED)
-      │◄────────────────────────────────────────────────────────┤
-      │                                                         │
-      │  3. Gói tin ACK (Xác nhận kết nối hoàn tất)             │
-      ├────────────────────────────────────────────────────────►│
-      │                                                         │
+┌───────────────┬────────────────┬────────────────┬────────────────┬──────────────┬────────────────┐
+│ Dấu mốc (8B)  │ Cờ xóa (1B)    │ Dài Khóa (4B)  │ Dài Giá trị(4B)│ Khóa (Key)   │ Giá trị (Val)  │
+│ timestamp u64 │ is_deleted u8  │ key_len u32    │ val_len u32    │ [u8; key_len]│ [u8; val_len]  │
+└───────────────┴────────────────┴────────────────┴────────────────┴──────────────┴────────────────┘
 ```
+- **`timestamp` (8 bytes)**: Dấu mốc thời gian Unix Epoch (nanoseconds) ghi nhận thời điểm bản ghi được tạo ra.
+- **`is_deleted` (1 byte)**: Cờ đánh dấu bản ghi đã bị xóa (Tombstone). Giá trị `0` là hợp lệ, `1` là đã bị xóa.
+- **`key_len` (4 bytes)** và **`val_len` (4 bytes)**: Kích thước của khóa và giá trị theo định dạng Little-Endian.
+- **Tổng kích thước Header cố định**: $8 + 1 + 4 + 4 = 17 \text{ bytes}$.
 
-Kỹ thuật quét mà chúng ta triển khai mang tên **TCP Connect Scan**:
-- Chương trình của chúng ta yêu cầu Hệ điều hành hoàn thành trọn vẹn quy trình bắt tay 3 bước thông qua lời gọi hàm `TcpStream::connect_timeout`.
-- **Ưu điểm**: Hoạt động được trên mọi hệ điều hành (Linux, macOS, Windows) mà không đòi hỏi quyền hạn Quản trị viên tối cao (Root/Administrator), không cần cấu hình Raw Socket phức tạp.
-- **Tính toán Timeout**: Nếu kết nối tới một cổng đóng bị lọc bởi tường lửa (Firewall), hệ điều hành có thể treo luồng tới 30 giây nếu không có cấu hình timeout. Bằng cách thiết lập `Duration::from_millis(200..500)`, chúng ta có thể quét hàng ngàn cổng trong chớp mắt.
+### 2. Cấu trúc Chỉ mục bộ nhớ trong (`KeyDir`)
 
-### 2. Kiến trúc Đa luồng và Kênh truyền tin (`std::sync::mpsc`)
+Trên thanh RAM, `KeyDir` là một bảng băm ánh xạ từ Khóa sang cấu trúc chỉ dẫn vị trí ô nhớ:
+```rust
+pub struct KeyDirEntry {
+    pub file_offset: u64,    // Tọa độ byte bắt đầu của phần thân giá trị
+    pub value_size: usize,   // Độ dài byte của giá trị để đọc đúng số lượng
+    pub timestamp: u64,      // Dấu mốc thời gian của bản ghi
+}
+```
+Khi người dùng gọi `get("user:101")`:
+1. Tra cứu `"user:101"` trong `HashMap` trên RAM -> Nhận về `KeyDirEntry { file_offset: 1024, value_size: 40 }`.
+2. Gọi lệnh `file.seek(SeekFrom::Start(1024))` để nhảy đầu đọc đĩa tới byte thứ 1024.
+3. Gọi lệnh `file.read_exact(&mut buffer)` đọc đúng 40 bytes dữ liệu.
+4. Trả về kết quả tức thì. Toàn bộ thao tác chỉ tiêu tốn đúng **1 lần I/O đĩa**!
 
-Để đạt tốc độ tối đa mà không gây nghẽn (non-blocking), chúng ta áp dụng mô hình phân tán công việc:
-1. **Chia việc (Work Division)**: Dải cổng cần quét (ví dụ từ cổng `1` đến `1024`) được phân bổ cho các luồng độc lập (`std::thread::spawn`).
-2. **Kênh truyền tin (`mpsc: Multi-Producer, Single-Consumer`)**:
-   - `Sender` (Người gửi): Được nhân bản (`tx.clone()`) và chuyển quyền sở hữu (ownership) vào từng luồng con.
-   - Khi một luồng con phát hiện cổng mở, nó gửi số cổng `port: u16` qua kênh truyền tin.
-   - `Receiver` (Người nhận): Nằm tại luồng chính, lắng nghe và thu thập các cổng mở được gửi về.
-3. **Đóng kênh truyền an toàn (Graceful Channel Shutdown)**:
-   - Trong Rust, kênh `mpsc` chỉ thực sự đóng lại khi **tất cả mọi bản sao của `Sender` đều bị tiêu hủy (`drop`)**.
-   - Do đó, luồng chính sau khi nhân bản `tx` cho các luồng con bắt buộc phải gọi `drop(tx)` (tiêu hủy bản sao gốc của chính mình). Khi tất cả các luồng con hoàn thành và tự động `drop(tx_clone)`, bộ lặp `rx.iter()` trên luồng chính sẽ kết thúc vòng lặp một cách êm ái!
+### 3. Quy trình Nén gộp và Hợp nhất (Compaction & Merge)
 
-### 3. Tương thích Bộ nhớ và Quản lý Tài nguyên Hệ thống
+Khi số lượng thao tác cập nhật và xóa tăng cao, tệp dữ liệu sẽ bị phình to bởi các bản ghi "rác" (bản ghi cũ đã bị ghi đè hoặc bị đánh dấu cờ xóa `is_deleted = 1`).
 
-- Mỗi tiến trình trên hệ điều hành đều có một giới hạn về số lượng kết nối mạng mở đồng thời (gọi là giới hạn File Descriptors, thường mặc định là 1024 trên Linux/macOS).
-- Chúng ta sử dụng cấu trúc khối để đảm bảo biến `TcpStream` ngay sau khi kết nối thành công sẽ lập tức được đóng kết nối và giải phóng vùng nhớ thông qua cơ chế RAII, bảo đảm không bao giờ làm tràn bộ nhớ đệm (buffer) mạng của hệ điều hành.
+Thuật toán Compaction diễn ra tuần tự như sau:
+1. Tạo một tệp dữ liệu mới tạm thời: `data.db.compact`.
+2. Duyệt qua từng cặp `(key, entry)` hiện có trong bảng mục lục `KeyDir` trên RAM (đây là những bản ghi mới nhất và còn hiệu lực sống).
+3. Đọc dữ liệu từ tệp cũ tại `entry.file_offset` và ghi nối tiếp sang tệp mới `data.db.compact`.
+4. Cập nhật lại `file_offset` trong `KeyDir` trỏ sang tọa độ mới trong tệp nén.
+5. Đóng tệp, thực hiện hoán đổi nguyên tử (Atomic Rename): Đổi tên `data.db.compact` đè lên tệp `data.db` ban đầu. Dung lượng đĩa được giải phóng hoàn toàn!
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn hoàn chỉnh của công cụ **Trình quét cổng mạng (Port Scanner)** đa luồng hiệu năng cao bằng Rust chuẩn mực, không cần thư viện ngoài, có khả năng quét dải cổng mạng song song với thời gian chờ thông minh:
+Dưới đây là mã nguồn hoàn chỉnh của động cơ lưu trữ **Mini-Bitcask Engine** được viết bằng Safe Rust 100%, hỗ trợ đầy đủ các tính năng: Ghi nối đuôi nhị phân, tra cứu RAM 1 lần đọc đĩa, xóa mềm Tombstone, phục hồi tự động khi mở tệp, và nén gộp dọn rác Compaction:
 
 ```rust
-use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Sender};
-use std::thread;
-use std::time::Duration;
+use std::convert::TryInto;
+use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Cấu hình tham số quét mạng
-#[derive(Debug, Clone)]
-pub struct ScanConfig {
-    pub target_ip: String,
-    pub start_port: u16,
-    pub end_port: u16,
-    pub timeout_ms: u64,
-    pub thread_count: usize,
+/// Cấu trúc mục lục chỉ dẫn vị trí bản ghi nằm trên RAM
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyDirEntry {
+    pub file_offset: u64,  // Tọa độ byte bắt đầu của phần Giá trị (Value) trên đĩa
+    pub value_size: usize, // Độ dài byte của Giá trị
+    pub timestamp: u64,    // Thời điểm ghi nhận
 }
 
-/// Kết quả của một cổng được quét
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PortResult {
-    pub port: u16,
-    pub is_open: bool,
-    pub service_hint: &'static str,
+/// Động cơ lưu trữ Mini-Bitcask Engine
+pub struct MiniBitcask {
+    file: File,
+    keydir: HashMap<String, KeyDirEntry>,
+    file_path: String,
+    current_offset: u64,
 }
 
-/// Hàm phỏng đoán tên dịch vụ phổ biến dựa trên số hiệu cổng
-fn guess_service_name(port: u16) -> &'static str {
-    match port {
-        21 => "FTP (File Transfer Protocol)",
-        22 => "SSH (Secure Shell)",
-        23 => "Telnet (Unencrypted Text)",
-        25 => "SMTP (Simple Mail Transfer)",
-        53 => "DNS (Domain Name System)",
-        80 => "HTTP (Hypertext Transfer)",
-        110 => "POP3 (Post Office Protocol)",
-        143 => "IMAP (Internet Message Access)",
-        443 => "HTTPS (HTTP Secure)",
-        3306 => "MySQL Database Server",
-        5432 => "PostgreSQL Database Server",
-        6379 => "Redis In-Memory Key-Value Store",
-        8080 => "HTTP Alternate / Web Proxy",
-        _ => "Dịch vụ tùy chỉnh (Custom / Unknown)",
+impl MiniBitcask {
+    /// Mở hoặc tạo mới cơ sở dữ liệu Bitcask tại đường dẫn chỉ định
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let path_str = path.as_ref().to_str().unwrap().to_string();
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path)?;
+
+        let file_len = file.seek(SeekFrom::End(0))?;
+        let mut bitcask = Self {
+            file,
+            keydir: HashMap::new(),
+            file_path: path_str,
+            current_offset: file_len,
+        };
+
+        // Khôi phục lại toàn bộ chỉ mục KeyDir trên RAM từ tệp đĩa
+        bitcask.rebuild_keydir()?;
+        Ok(bitcask)
     }
-}
 
-/// Thực hiện kiểm tra trạng thái một cổng đơn lẻ với thời gian chờ xác định
-pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
-    let address_str = format!("{}:{}", ip, port);
-    if let Ok(socket_addr) = address_str.parse::<SocketAddr>() {
-        // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt
-        if let Ok(_stream) = TcpStream::connect_timeout(&socket_addr, timeout) {
-            // Kết nối thành công! _stream sẽ tự động đóng kết nối khi ra khỏi phạm vi
-            return true;
+    /// Quét tuần tự toàn bộ tệp từ byte 0 để dựng lại chỉ mục RAM (Startup Recovery)
+    fn rebuild_keydir(&mut self) -> io::Result<()> {
+        let file_len = self.file.seek(SeekFrom::End(0))?;
+        if file_len == 0 {
+            return Ok(());
         }
-    }
-    false
-}
 
-/// Động cơ quét cổng mạng đa luồng tốc độ cao
-pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
-    let (tx, rx) = channel::<PortResult>();
-    let mut thread_handles = Vec::new();
-    let timeout = Duration::from_millis(config.timeout_ms);
+        self.file.seek(SeekFrom::Start(0))?;
+        let mut con_tro: u64 = 0;
 
-    println!(
-        "[*] Bắt đầu quét đa luồng mục tiêu {} (Dải cổng: {} -> {})...",
-        config.target_ip, config.start_port, config.end_port
-    );
-
-    let ports: Vec<u16> = (config.start_port..=config.end_port).collect();
-    let chunk_size = (ports.len() + config.thread_count - 1) / config.thread_count;
-
-    for chunk in ports.chunks(chunk_size) {
-        let chunk_vec = chunk.to_vec();
-        let thread_tx: Sender<PortResult> = tx.clone();
-        let target_ip_clone = config.target_ip.clone();
-
-        let handle = thread::spawn(move || {
-            for port in chunk_vec {
-                if check_single_port(&target_ip_clone, port, timeout) {
-                    let result = PortResult {
-                        port,
-                        is_open: true,
-                        service_hint: guess_service_name(port),
-                    };
-                    let _ = thread_tx.send(result);
+        // Header: [Timestamp: 8B] [is_deleted: 1B] [k_len: 4B] [v_len: 4B] = 17 bytes
+        while con_tro < file_len {
+            let mut header = [0u8; 17];
+            if let Err(e) = self.file.read_exact(&mut header) {
+                if e.kind() == io::ErrorKind::UnexpectedEof {
+                    break; // Hết tệp
                 }
+                return Err(e);
             }
-        });
 
-        thread_handles.push(handle);
+            let timestamp = u64::from_le_bytes(header[0..8].try_into().unwrap());
+            let is_deleted = header[8];
+            let k_len = u32::from_le_bytes(header[9..13].try_into().unwrap()) as usize;
+            let v_len = u32::from_le_bytes(header[13..17].try_into().unwrap()) as usize;
+
+            // Đọc khóa (Key)
+            let mut k_buf = vec![0u8; k_len];
+            self.file.read_exact(&mut k_buf)?;
+            let key = String::from_utf8_lossy(&k_buf).to_string();
+
+            // Tọa độ bắt đầu của phần Value trên đĩa
+            let value_offset = con_tro + 17 + k_len as u64;
+
+            // Nhảy cóc qua phần Value để đến bản ghi tiếp theo
+            self.file.seek(SeekFrom::Current(v_len as i64))?;
+            con_tro = value_offset + v_len as u64;
+
+            // Cập nhật KeyDir trên RAM
+            if is_deleted == 1 {
+                self.keydir.remove(&key);
+            } else {
+                self.keydir.insert(
+                    key,
+                    KeyDirEntry {
+                        file_offset: value_offset,
+                        value_size: v_len,
+                        timestamp,
+                    },
+                );
+            }
+        }
+
+        self.current_offset = file_len;
+        println!("    [REBUILD]: Đã phục hồi thành công {} khóa hợp lệ vào RAM!", self.keydir.len());
+        Ok(())
     }
 
-    // Tiêu hủy bản sao Sender gốc để luồng nhận (Receiver) biết khi nào kết thúc
-    drop(tx);
+    /// THAO TÁC GHI (Set): Ghi nối đuôi vào tệp và cập nhật RAM
+    pub fn set(&mut self, key: &str, value: &str) -> io::Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
 
-    // Chờ tất cả các luồng hoàn thành nhiệm vụ
-    for handle in thread_handles {
-        let _ = handle.join();
+        let k_bytes = key.as_bytes();
+        let v_bytes = value.as_bytes();
+        let k_len = k_bytes.len() as u32;
+        let v_len = v_bytes.len() as u32;
+
+        // Đóng gói bản ghi nhị phân
+        let mut buffer = Vec::with_capacity(17 + k_bytes.len() + v_bytes.len());
+        buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
+        buffer.push(0);                               // is_deleted = 0 (1B)
+        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
+        buffer.extend_from_slice(&v_len.to_le_bytes());// Val length (4B)
+        buffer.extend_from_slice(k_bytes);            // Key
+        buffer.extend_from_slice(v_bytes);            // Value
+
+        // 1. Nhảy đến cuối tệp để ghi nối đuôi (Append-only)
+        self.file.seek(SeekFrom::End(0))?;
+        let record_offset = self.current_offset;
+        self.file.write_all(&buffer)?;
+        self.file.flush()?;
+
+        let value_offset = record_offset + 17 + k_bytes.len() as u64;
+        self.current_offset += buffer.len() as u64;
+
+        // 2. Cập nhật mục lục KeyDir trên RAM
+        self.keydir.insert(
+            key.to_string(),
+            KeyDirEntry {
+                file_offset: value_offset,
+                value_size: v_bytes.len(),
+                timestamp: now,
+            },
+        );
+
+        Ok(())
     }
 
-    // Thu thập toàn bộ kết quả từ kênh truyền tin MPSC
-    let mut open_ports: Vec<PortResult> = rx.into_iter().collect();
-
-    // Sắp xếp lại danh sách cổng theo thứ tự tăng dần
-    open_ports.sort_by_key(|res| res.port);
-    open_ports
-}
-
-fn main() {
-    println!("==================================================================");
-    println!("   CONG CU QUET CONG MANG DA LUONG SIEU TOC (RUST PORT SCANNER)  ");
-    println!("==================================================================");
-
-    // Thiết lập cấu hình kiểm thử quét trên máy cục bộ (Localhost 127.0.0.1)
-    let config = ScanConfig {
-        target_ip: "127.0.0.1".to_string(),
-        start_port: 75,
-        end_port: 85,
-        timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
-        thread_count: 4,  // 4 luồng quét song song
-    };
-
-    println!("    - Dia chi IP muc tieu : {}", config.target_ip);
-    println!("    - Pham vi cong quet   : {} -> {}", config.start_port, config.end_port);
-    println!("    - So luong luong chay : {}", config.thread_count);
-    println!("    - Thoi gian cho toi da: {} ms/port\n", config.timeout_ms);
-
-    // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
-    let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();
-    if mock_listener.is_some() {
-        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem thu.");
-    }
-
-    let results = execute_concurrent_scan(config);
-
-    println!("\n==================================================================");
-    println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
-    println!("==================================================================");
-    if results.is_empty() {
-        println!("    [!] Khong phat hien thay cong nao mo trong pham vi quet.");
-    } else {
-        for res in &results {
-            println!(
-                "    [+] Cong {:5}/TCP : MO (Open) | Dich vu: {}",
-                res.port, res.service_hint
-            );
+    /// THAO TÁC ĐỌC (Get): Tra cứu RAM và nhảy đúng 1 lần đọc đĩa
+    pub fn get(&mut self, key: &str) -> io::Result<Option<String>> {
+        if let Some(entry) = self.keydir.get(key).cloned() {
+            // Nhảy thẳng tới tọa độ byte của Value trên đĩa
+            self.file.seek(SeekFrom::Start(entry.file_offset))?;
+            let mut v_buf = vec![0u8; entry.value_size];
+            self.file.read_exact(&mut v_buf)?;
+            let val_str = String::from_utf8(v_buf).map_err(|e| {
+                io::Error::new(io::ErrorKind::InvalidData, e.to_string())
+            })?;
+            Ok(Some(val_str))
+        } else {
+            Ok(None)
         }
     }
 
-    println!("\n==================================================================");
-    println!("   QUET CONG HOAN TAT AN TOAN: ZERO DATA RACE & ZERO MEMORY LEAK! ");
-    println!("==================================================================");
+    /// THAO TÁC XÓA (Delete): Ghi bản ghi Tombstone xuống tệp và xóa khỏi RAM
+    pub fn delete(&mut self, key: &str) -> io::Result<bool> {
+        if !self.keydir.contains_key(key) {
+            return Ok(false);
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+
+        let k_bytes = key.as_bytes();
+        let k_len = k_bytes.len() as u32;
+
+        let mut buffer = Vec::with_capacity(17 + k_bytes.len());
+        buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
+        buffer.push(1);                               // is_deleted = 1 (Tombstone!)
+        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
+        buffer.extend_from_slice(&0u32.to_le_bytes()); // Val length = 0 (4B)
+        buffer.extend_from_slice(k_bytes);
+
+        self.file.seek(SeekFrom::End(0))?;
+        self.file.write_all(&buffer)?;
+        self.file.flush()?;
+
+        self.current_offset += buffer.len() as u64;
+        self.keydir.remove(key);
+
+        Ok(true)
+    }
+
+    /// TIẾN TRÌNH NÉN GỘP VÀ DỌN RÁC (Compaction & Merge)
+    pub fn compact(&mut self) -> io::Result<()> {
+        let compact_path = format!("{}.compact", self.file_path);
+        {
+            let mut new_file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&compact_path)?;
+
+            let mut new_keydir = HashMap::new();
+            let mut new_offset: u64 = 0;
+
+            // Đọc các bản ghi còn hiệu lực từ tệp cũ và ghi sang tệp mới
+            for (key, entry) in &self.keydir {
+                self.file.seek(SeekFrom::Start(entry.file_offset))?;
+                let mut v_buf = vec![0u8; entry.value_size];
+                self.file.read_exact(&mut v_buf)?;
+
+                let k_bytes = key.as_bytes();
+                let k_len = k_bytes.len() as u32;
+                let v_len = v_buf.len() as u32;
+
+                let mut buffer = Vec::with_capacity(17 + k_bytes.len() + v_buf.len());
+                buffer.extend_from_slice(&entry.timestamp.to_le_bytes());
+                buffer.push(0); // Không bị xóa
+                buffer.extend_from_slice(&k_len.to_le_bytes());
+                buffer.extend_from_slice(&v_len.to_le_bytes());
+                buffer.extend_from_slice(k_bytes);
+                buffer.extend_from_slice(&v_buf);
+
+                new_file.write_all(&buffer)?;
+                let new_val_offset = new_offset + 17 + k_bytes.len() as u64;
+                new_offset += buffer.len() as u64;
+
+                new_keydir.insert(
+                    key.clone(),
+                    KeyDirEntry {
+                        file_offset: new_val_offset,
+                        value_size: v_buf.len(),
+                        timestamp: entry.timestamp,
+                    },
+                );
+            }
+            new_file.flush()?;
+        }
+
+        // Hoán đổi tệp nén mới đè lên tệp cũ
+        std::fs::rename(&compact_path, &self.file_path)?;
+
+        // Mở lại tệp dữ liệu đã nén
+        self.file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.file_path)?;
+        let new_len = self.file.seek(SeekFrom::End(0))?;
+        self.current_offset = new_len;
+
+        // Dựng lại chỉ mục từ tệp mới
+        self.keydir.clear();
+        self.rebuild_keydir()?;
+        Ok(())
+    }
+
+    pub fn total_keys(&self) -> usize {
+        self.keydir.len()
+    }
+
+    pub fn file_size(&self) -> u64 {
+        self.current_offset
+    }
+}
+
+fn main() -> io::Result<()> {
+    println!("============================================================");
+    println!("  DỰ ÁN LỚN: ĐỘNG CƠ LƯU TRỮ PERSISTENT MINI-BITCASK TRONG RUST");
+    println!("============================================================");
+
+    let db_path = "mini_bitcask_test.db";
+    let _ = std::fs::remove_file(db_path);
+
+    // GIAI ĐOẠN 1: Khởi tạo cơ sở dữ liệu và thực hiện ghi chép
+    println!("[1] Mở MiniBitcask và thêm các cặp khóa - giá trị:");
+    {
+        let mut db = MiniBitcask::open(db_path)?;
+
+        db.set("user:101", "Alice - Ha Noi")?;
+        db.set("user:102", "Bob - Da Nang")?;
+        db.set("user:103", "Charlie - TP Ho Chi Minh")?;
+
+        // Ghi đè cập nhật giá trị (tạo ra dữ liệu cũ trên đĩa)
+        db.set("user:101", "Alice Nguyen - Ha Noi (Updated)")?;
+
+        // Xóa một khóa (tạo Tombstone trên đĩa)
+        db.delete("user:102")?;
+
+        println!("    - Kích thước tệp đĩa hiện tại: {} bytes", db.file_size());
+        println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
+
+        // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
+        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db.get("user:102")?, None);
+        assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
+    } // db đóng tệp an toàn tại đây
+
+    // GIAI ĐOẠN 2: Kiểm thử tính năng phục hồi sau sự cố (Crash Recovery)
+    println!("\n[2] Kiểm tra phục hồi dữ liệu khi khởi động lại ứng dụng:");
+    {
+        let mut db_recovered = MiniBitcask::open(db_path)?;
+        println!("    - Đã mở lại tệp '{}'", db_path);
+        println!("    - Kiểm tra dữ liệu sau phục hồi:");
+        println!("      + 'user:101' = {:?}", db_recovered.get("user:101")?);
+        println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
+        println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
+
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:102")?, None);
+        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        assert_eq!(db_recovered.total_keys(), 2);
+        println!("    => Khôi phục chỉ mục KeyDir trên RAM từ đĩa thành công 100%!");
+
+        // GIAI ĐOẠN 3: Kiểm thử tiến trình nén gộp dọn rác (Compaction & Merge)
+        println!("\n[3] Thực thi tiến trình nén gộp dọn rác Compaction:");
+        let dung_luong_truoc = db_recovered.file_size();
+        db_recovered.compact()?;
+        let dung_luong_sau = db_recovered.file_size();
+
+        println!("    - Dung lượng tệp TRƯỚC nén gộp: {} bytes", dung_luong_truoc);
+        println!("    - Dung lượng tệp SAU nén gộp   : {} bytes", dung_luong_sau);
+        assert!(dung_luong_sau < dung_luong_truoc);
+
+        // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
+    }
+
+    // Dọn dẹp tệp thử nghiệm
+    let _ = std::fs::remove_file(db_path);
+
+    println!("============================================================");
+    println!("     CHÚC MỪNG BẠN ĐÃ HOÀN THÀNH XUẤT SẮC DỰ ÁN LỚN 6!     ");
+    println!("============================================================");
+    Ok(())
 }
 ```
 
@@ -266,41 +465,41 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng công cụ quét mạng đa luồng trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi hiện thực hóa động cơ Bitcask trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Bạn cố gắng truyền một con trỏ thông minh (smart pointer) đơn luồng (`Rc<T>`) qua ranh giới luồng trong `thread::spawn`. | Thay thế `Rc<T>` bằng con trỏ thông minh đa luồng an toàn: `Arc<T>` (Atomic Reference Counting). |
-| **E0382** | `use of moved value: 'tx'` | Bạn truyền `tx` vào luồng thứ nhất khiến quyền sở hữu (ownership) bị di chuyển, sau đó lại cố gắng dùng lại `tx` ở luồng thứ hai. | Nhân bản `Sender` trước khi đưa vào luồng: `let tx_clone = tx.clone();`. |
-| **E0597** | `'target_ip' does not live long enough` | Luồng con được tạo bằng `thread::spawn` có thời gian sống (lifetime) `'static`, do đó nó không thể mượn tham chiếu `&str` từ hàm cha. | Sử dụng từ khóa `move` và clone chuỗi thành kiểu có quyền sở hữu độc lập: `let ip = target_ip.clone();`. |
-| **E0507** | `cannot move out of a shared reference` | Cố gắng lấy phần tử ra khỏi một lát cắt mượn `&[T]` mà kiểu dữ liệu không triển khai trait `Copy`. | Sử dụng phương thức `.clone()` hoặc chuyển thành `Vec` riêng biệt. |
+| **E0502** | `cannot borrow '*self' as mutable because it is also borrowed as immutable` | Bạn gọi `self.keydir.get(key)` trả về tham chiếu mượn, sau đó gọi tiếp `self.file.seek(...)` làm mượn khả biến toàn bộ struct `self`. | Sử dụng `.cloned()` để sao chép cấu trúc nhẹ `KeyDirEntry` ra biến độc lập trên Stack trước khi thao tác với tệp tin. |
+| **E0599** | `no method named 'seek' found for struct 'File'` | Bạn sử dụng phương thức `.seek()` để nhảy tọa độ byte trên đĩa nhưng quên đưa trait `Seek` vào phạm vi hoạt động. | Thêm dòng khai báo: `use std::io::Seek;` ở đầu tệp mã nguồn. |
+| **E0382** | `use of moved value: 'compact_path'` | Bạn truyền `compact_path` vào hàm `rename()` khiến chuỗi bị di chuyển, sau đó lại dùng lại nó ở dòng lệnh kế tiếp. | Truyền mượn tham chiếu `&compact_path` vào hàm `std::fs::rename`. |
+| **E0061** | `this function takes 1 argument but 0 arguments were supplied` | Gọi hàm `UNIX_EPOCH` hoặc `SystemTime::now()` sai cú pháp. | Dùng chuẩn: `SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()`. |
 
-### Ví dụ phân tích lỗi `E0382` khi truyền Sender vào luồng con:
+### Ví dụ phân tích lỗi `E0502` khi vừa tra cứu KeyDir vừa đọc File:
 
 ```rust
-use std::sync::mpsc::channel;
-use std::thread;
+use std::fs::File;
+use std::collections::HashMap;
 
-// Đoạn mã lỗi minh họa E0382:
-fn vi_du_loi_e0382() {
-    let (tx, _rx) = channel::<u16>();
-
-    // Luồng 1 lấy quyền sở hữu tx
-    // thread::spawn(move || { let _ = tx.send(80); });
-
-    // LỖI E0382: tx đã bị di chuyển vào luồng 1, không thể dùng ở luồng 2!
-    // thread::spawn(move || { let _ = tx.send(443); });
+struct DemoStore {
+    file: File,
+    index: HashMap<String, u64>,
 }
 
-// Cách sửa chữa đúng chuẩn: Nhân bản bản sao Sender cho mỗi luồng
-fn vi_du_dung_e0382() {
-    let (tx, _rx) = channel::<u16>();
+// Đoạn mã lỗi minh họa E0502: Mượn lồng nhau gây xung đột
+impl DemoStore {
+    fn doc_loi(&mut self, key: &str) {
+        // let offset = self.index.get(key); // Mượn bất biến self.index
+        // self.file.set_len(100).unwrap();  // LỖI E0502: Mượn khả biến self.file!
+        // println!("Offset: {:?}", offset);
+    }
 
-    let tx1 = tx.clone();
-    thread::spawn(move || { let _ = tx1.send(80); });
-
-    let tx2 = tx.clone();
-    thread::spawn(move || { let _ = tx2.send(443); });
+    // Cách sửa chữa đúng chuẩn: Sao chép (copy) giá trị số nguyên ra trước
+    fn doc_dung(&mut self, key: &str) {
+        let offset = self.index.get(key).copied(); // offset là biến độc lập trên Stack
+        if let Some(pos) = offset {
+            println!("Đã lấy được tọa độ an toàn: {}", pos);
+        }
+    }
 }
 ```
 
@@ -309,15 +508,15 @@ fn vi_du_dung_e0382() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Nguyên lý TCP Connect Scan**: Sử dụng cơ chế bắt tay 3 bước chuẩn mực của hệ điều hành để xác định cổng mở mà không cần quyền hạn quản trị viên đặc biệt.
-2. **Sức mạnh Concurrency của Rust**: Phân chia khối lượng công việc cho các luồng độc lập, truyền dữ liệu qua kênh `mpsc` mà không lo ngại tranh chấp dữ liệu (Data Race).
-3. **Quản lý Vòng đời Kênh MPSC**: Luồng chính phải giải phóng bản sao `tx` gốc để vòng lặp đọc `rx` biết thời điểm kết thúc khi tất cả các luồng con hoàn tất.
-4. **An toàn Tài nguyên**: Khái niệm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) kết hợp để đảm bảo các kết nối mạng `TcpStream` được dọn dẹp tức thì, không làm cạn kiệt tài nguyên hệ thống.
+1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp tinh hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
+2. **Đúng 1 lần đọc đĩa (Single Disk Seek)**: Nhờ biết chính xác tọa độ byte (`offset`) và độ dài (`value_size`) từ RAM, thao tác đọc dữ liệu bỏ qua mọi tầng trung gian, nhảy thẳng tới vị trí đĩa cần đọc.
+3. **Cơ chế Tombstone**: Thay vì tìm xóa tại chỗ trên đĩa (gây phân mảnh và chậm chạp), Bitcask ghi một bản ghi đánh dấu xóa (Tombstone) vào cuối tệp và xóa khỏi RAM.
+4. **Nén gộp Compaction**: Tiến trình dọn dẹp định kỳ đọc lại các khóa còn sống và ghi sang tệp mới, giữ cho cơ sở dữ liệu luôn nhỏ gọn và loại bỏ hoàn toàn các phiên bản dữ liệu cũ.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bổ sung tính năng Banner Grabbing)**:  
-   Khi phát hiện một cổng mở (ví dụ cổng `80` hoặc cổng `21`), hãy cho chương trình gửi một chuỗi ngắn `b"HEAD / HTTP/1.0\r\n\r\n"` và đọc tối đa 128 bytes phản hồi đầu tiên từ máy chủ. In chuỗi thông tin này ra màn hình để biết chính xác phiên bản phần mềm máy chủ đang chạy.
-2. **Bài tập 2 (Tối ưu hóa số luồng động Worker Pool)**:  
-   Thay vì tạo số luồng bằng với số cổng (có thể gây quá tải CPU nếu quét 10,000 cổng), hãy thiết lập một hàng đợi công việc cố định gồm đúng 20 luồng công nhân (Worker Threads), liên tục rút việc từ một kênh chung cho đến khi hết cổng cần quét.
-3. **Bài tập 3 (Suy ngẫm OSCP: Sự khác biệt giữa SYN Stealth Scan và Connect Scan)**:  
-   Tại sao trong các bài thi kiểm thử thâm nhập OSCP thực tế, các chuyên gia lại thích sử dụng kiểu quét `SYN Stealth Scan` (chỉ gửi SYN, nhận SYN-ACK rồi gửi RST hủy ngay thay vì gửi ACK hoàn tất)? Ưu điểm về mặt tàng hình (evasion) của kỹ thuật này đối với các hệ thống ghi nhật ký (Firewall / IDS Log) là gì?
+1. **Bài tập 1 (Bổ sung mã kiểm tra toàn vẹn CRC32)**:  
+   Mở rộng phần Header của bản ghi trong `MiniBitcask` thêm 4 bytes chứa mã kiểm tra toàn vẹn CRC32 (`crc32fast::Hasher` hoặc tự cài đặt thuật toán kiểm tra tổng kiểm tra checksum đơn giản). Khi đọc lại tệp trong hàm `rebuild_keydir`, tính toán lại mã CRC32 của bản ghi, nếu không khớp thì dừng lại và bỏ qua bản ghi bị lỗi.
+2. **Bài tập 2 (Tạo tệp Hint File tối ưu hóa)**:  
+   Sau khi tiến trình `compact()` hoàn tất, hãy cho ghi thêm một tệp gợi ý `data.db.hint` chỉ chứa các cặp `(key, KeyDirEntry)`. Khi hệ thống khởi động lại, thay vì phải quét toàn bộ tệp dữ liệu lớn, hệ thống chỉ cần đọc tệp Hint File nhỏ bé để khôi phục RAM trong vài mili-giây.
+3. **Bài tập 3 (Giới hạn của Bitcask)**:  
+   Điểm yếu lớn nhất của mô hình Bitcask là gì? Nếu cơ sở dữ liệu có 1 tỷ khóa khác nhau thì thanh RAM có thể chứa nổi `KeyDir` không? Trong trường hợp đó, người ta sẽ chuyển sang sử dụng mô hình nào (B+ Tree hay LSM-Tree)?

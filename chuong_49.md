@@ -1,308 +1,290 @@
-# Chương 49: Nền tảng hệ phân tán, Định lý CAP & Thuật toán đồng thuận Raft (Distributed Consensus, CAP Theorem & Raft Protocol)
+# Chương 49: Động cơ bất đồng bộ Tokio Runtime, Vòng lặp sự kiện & Cơ chế Epoll (Asynchronous Tokio Runtime, Event Loops & Epoll)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong một máy tính đơn lẻ, việc xác định "sự thật" rất đơn giản: Bạn đọc một ô nhớ trên RAM hoặc một khối dữ liệu trên đĩa cứng, dữ liệu đó là duy nhất và nhất quán. Nhưng khi hệ thống của bạn mở rộng thành một cụm gồm 10, 100 hay 1,000 máy chủ đặt rải rác ở Tokyo, Frankfurt và California, thế giới trở nên vô cùng hỗn loạn: **Cáp quang dưới biển có thể bị đứt (Network Partition), máy chủ có thể bị sập đột ngột (Crash Fault), và đồng hồ nguyên tử giữa các trung tâm dữ liệu không bao giờ khớp nhau từng phần tỉ giây.**
+Trong thập niên 2000, thế giới điện toán đối mặt với một bức tường giới hạn nổi tiếng mang tên **Bài toán C10K (C10K Problem)**: Làm thế nào một máy chủ đơn lẻ có thể duy trì và phục vụ đồng thời 10,000 kết nối mạng cùng lúc mà không bị sập nguồn vì cạn kiệt bộ nhớ? Ngày nay, với sự bùng nổ của mạng xã hội, ứng dụng chat thời gian thực và mạng phân tán, thách thức đó đã nâng lên thành **Bài toán C1000K (1 triệu kết nối đồng thời)**.
 
-Làm thế nào hàng chục cỗ máy độc lập có thể cùng nhau thống nhất được một trạng thái duy nhất — ví dụ: *"Tài khoản của Alice còn 1 triệu đồng hay đã chuyển tiền cho Bob?"* — mà không bị xung đột dữ liệu? Câu trả lời nằm ở trái tim của toàn bộ ngành khoa học hệ thống phân tán: **Định lý CAP** và **Thuật toán Đồng thuận Raft (Raft Consensus Protocol)**.
+Mô hình đa luồng truyền thống "1 luồng hệ điều hành = 1 kết nối" (One-Thread-Per-Connection) đã hoàn toàn phá sản trước bài toán này. Để giải quyết triệt để, ngành công nghiệp chuyển dịch sang mô hình **I/O Đa dồn kênh bất đồng bộ (Asynchronous Non-blocking I/O)**. Và trong vũ trụ Rust, vị vua thống trị tuyệt đối lĩnh vực này chính là **Tokio Runtime**.
 
-Trong chương này, chúng ta sẽ chinh phục:
-- Bản chất khắc nghiệt của môi trường phân tán: Sự cố mạng là điều tất yếu chứ không phải ngoại lệ.
-- **Định lý CAP (Consistency, Availability, Partition Tolerance)**: Phân tích vì sao không một hệ thống nào trên thế giới có thể đồng thời đạt được cả tính Nhất quán tuyệt đối và Tính sẵn sàng 100% khi xảy ra đứt gãy mạng (Sự lựa chọn giữa CP và AP).
-- **Thuật toán đồng thuận Raft trực quan**: Ba trạng thái của Node (Follower, Candidate, Leader), vòng đời nhiệm kỳ (Term), và cơ chế bỏ phiếu bầu cử quá bán (Quorum).
-- Cơ chế **Sao chép Sổ nhật ký (Log Replication)** và Cam kết giao dịch (Commitment): Bảo đảm mọi nút trong mạng đều thực thi cùng một chuỗi câu lệnh theo đúng thứ tự.
-- Tự tay lập trình một mô hình mô phỏng cụm Raft Node hoàn chỉnh bằng Rust an toàn, không có điều kiện tranh chấp dữ liệu.
+Trong chương này, chúng ta sẽ mở nắp ca-pô cỗ máy Tokio để khám phá:
+- Tại sao luồng hệ điều hành (OS Thread) lại tốn kém và nguyên nhân gây ra sự chậm trễ từ việc hoán đổi ngữ cảnh (Context Switching).
+- Cơ chế đa dồn kênh I/O tầng nhân hệ điều hành: `epoll` (trên Linux), `kqueue` (trên macOS), và `IOCP` (trên Windows).
+- Cốt lõi của Rust Async: Trait `Future`, Máy trạng thái hữu hạn (State Machine) được sinh tự động, `Poll::Ready` vs `Poll::Pending`, và cơ chế đánh thức `Waker`.
+- Kiến trúc điều phối cắp việc (Work-Stealing Scheduler) của Tokio: Làm thế nào hàng chục ngàn Task siêu nhẹ (Green Threads chỉ tốn vài trăm byte RAM) có thể chạy mượt mà trên một số ít nhân CPU thực tế.
+- Kỹ thuật lập trình bất đồng bộ thực chiến: Tự tay dựng một Động cơ Mini-Runtime và hiểu thấu đáo cách vận hành của vòng lặp sự kiện (Event Loop).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu định lý CAP và thuật toán Raft mà không cần bất kỳ công thức toán học ma trận nào, hãy quan sát hai câu chuyện đời thường:
+Để hiểu rõ sự khác biệt giữa mô hình Đồng bộ chặn (Blocking Sync) và Bất đồng bộ dựa trên sự kiện (Async Event-Driven), hãy quan sát hai quán ăn sau:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA: ĐOÀN DU LỊCH 5 NGƯỜI BẦU TRƯỞNG ĐOÀN (RAFT)         │
+│              HÌNH TƯỢNG HÓA: QUÁN PHỞ TRUYỀN THỐNG VS QUÁN CÀ PHÊ THẺ RUNG       │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. ĐOÀN XE 5 NGƯỜI VÀ BẦU CỬ QUÁ BÁN QUORUM (LEADER ELECTION)]                  │
-│ 5 người bạn lái 5 chiếc xe đi xuyên Việt: An, Bình, Cường, Dũng, Em.            │
+│ [1. MÔ HÌNH ĐỒNG BỘ CHẶN (BLOCKING SYNC: 1 LUỒNG = 1 KẾT NỐI)]                   │
 │ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Bình thường: An làm Trưởng đoàn (Leader). An định kỳ bấm bộ đàm:    │         │
-│ │   "Alo alo, tôi vẫn khỏe, đoàn cứ chạy thẳng nhé!" (Heartbeat).      │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Biến cố: Xe của An bị nổ lốp, mất liên lạc quá 5 phút (Timeout)!     │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ 1. Bình thấy mất dấu An ──► Bình giơ tay ứng cử (Candidate, Term 2)! │         │
-│ │ 2. Bình phát loa: "Ai đồng ý bầu tôi làm Trưởng đoàn mới thì bấm còi!│         │
-│ │ 3. Cường và Dũng bấm còi đồng ý.                                     │         │
-│ │    ===> 3/5 người đồng ý (ĐỦ QUÁ BÁN QUORUM = 5/2 + 1 = 3 PHIẾU)!    │         │
-│ │ 4. Bình chính thức đắc cử làm TRƯỞNG ĐOÀN MỚI (LEADER)!              │         │
+│ │ Khách bước vào bàn ──► 1 Bồi bàn đứng kè kè bên cạnh:                │         │
+│ │ - Khách gọi món phở gà ──► Bồi bàn đi xuống bếp.                     │         │
+│ │ - Nồi nước sôi mất 10 phút: Bồi bàn ĐỨNG BẤT ĐỘNG CHỜ ĐỢI 10 PHÚT!  │         │
+│ │ - Bồi bàn bưng bát phở ra ──► Khách ăn xong ──► Bồi bàn mới rảnh tay!│         │
 │ └──────────────────────────────────────────────────────────────────────┘         │
+│   ===> 100 khách cần tới 100 bồi bàn đứng đợi đờ đẫn (Lãng phí tài nguyên khủng)!│
 │                                                                                  │
-│ [2. ĐỊNH LÝ CAP: CƠN BÃO LÀM ĐỨT ĐƯỜNG DÂY ĐIỆN THOẠI (NETWORK PARTITION)]       │
-│ Một hòn đảo bị bão cắt đứt liên lạc với đất liền (Phân rã mạng P):               │
-│ - LỰA CHỌN CP (Nhất quán): Đảo từ chối cho rút tiền vì không thể xác nhận số dư  │
-│   với trụ sở chính (Từ chối phục vụ để bảo vệ tiền).                           │
-│ - LỰA CHỌN AP (Sẵn sàng): Đảo vẫn cho người dân rút tiền thoải mái, nhưng chấp   │
-│   nhận rủi ro tài khoản bị âm tiền khi nối lại cáp mạng (Bảo đảm phục vụ liên tục).│
+│ [2. MÔ HÌNH BẤT ĐỒNG BỘ (ASYNC TOKIO / EPOLL: EVENT-DRIVEN VỚI THẺ RUNG)]        │
+│ ┌──────────────────────────────────────────────────────────────────────┐         │
+│ │ 1. Bạn tới quầy gọi trà sữa ──► Thu ngân trao bạn một THẺ RUNG TỰ ĐỘNG│        │
+│ │    (Đây chính là tấm vé hẹn tương lai: Trait Future)!                │         │
+│ │ 2. Bạn cầm thẻ về bàn ngồi lướt điện thoại thoải mái.               │         │
+│ │ 3. Anh thu ngân LẬP TỨC phục vụ khách hàng tiếp theo (Không hề đợi)! │         │
+│ │ 4. Bếp pha xong ──► Thẻ kêu "TÍT TÍT TÍT!" (Cơ chế Waker đánh thức)  │         │
+│ │ 5. Bạn thong thả ra quầy nhận cốc trà sữa (Poll::Ready)!             │         │
+│ └──────────────────────────────────────────────────────────────────────┘         │
+│   ===> CHỈ CẦN 1 ANH THU NGÂN PHỤC VỤ CẢ NGÀN KHÁCH MÀ KHÔNG AI PHẢI ĐỢI!        │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Bầu trưởng đoàn đi xuyên Việt (Raft Leader Election)
-- Một cụm máy chủ Raft thường có số lượng nút lẻ: `3`, `5` hoặc `7` máy chủ.
-- **Quy tắc Quá bán (Quorum = $N/2 + 1$)**: Để đưa ra bất kỳ quyết định nào (bầu cử Trưởng đoàn hoặc ghi thêm dữ liệu vào sổ cái), hệ thống bắt buộc phải nhận được sự đồng thuận của hơn một nửa số thành viên (ít nhất 3/5 nút).
-- Nhờ quy tắc này, dù có 2 máy chủ bị sét đánh cháy nguồn, 3 máy chủ còn lại vẫn chiếm đa số và duy trì hệ thống hoạt động bình thường!
+### 1. Quán phở truyền thống (OS Thread Per Connection)
+- Mỗi khi có một kết nối mạng mở ra, hệ điều hành cấp phát một luồng thực thi (OS Thread) riêng biệt.
+- Mỗi luồng này ngốn sẵn từ `2MB` đến `8MB` bộ nhớ ngăn xếp (Stack). Nếu có 10,000 kết nối, riêng bộ nhớ Stack đã "ngốn" sạch `20GB` đến `80GB` RAM!
+- Tệ hơn nữa, khi một kết nối đang chờ người dùng gõ phím hay chờ dữ liệu từ đĩa cứng (thao tác I/O), luồng đó hoàn toàn bị chặn (`blocked`). CPU phải liên tục hoán đổi qua lại giữa hàng ngàn luồng (Context Switching), tiêu tốn phần lớn năng lượng chỉ để ghi chép sổ sách thay vì xử lý dữ liệu.
 
-### 2. Định lý CAP: Hòn đảo bị bão cô lập
-- Giả sử bạn gửi 10 triệu đồng vào ngân hàng ở Hà Nội. Cùng lúc đó bạn của bạn ở Đảo Phú Quốc cầm thẻ ATM ra cây rút tiền.
-- Bất ngờ một cơn bão biển giật đứt đường cáp quang nối Phú Quốc với đất liền (**Sự cố Phân tách mạng - Network Partitioning**). Cây ATM ở Phú Quốc không thể gọi điện về Hà Nội để hỏi: *"Tài khoản này còn tiền không?"*.
-- Ngân hàng buộc phải chọn một trong hai con đường:
-  - **Con đường 1: Chọn Tính Nhất quán (C - Consistency)**: Cây ATM báo lỗi: *"Mạng bị gián đoạn, xin quý khách quay lại sau"*. Ngân hàng bảo vệ số dư tuyệt đối chính xác, nhưng hy sinh Tính sẵn sàng (Availability). Hệ thống này gọi là hệ thống **CP**.
-  - **Con đường 2: Chọn Tính Sẵn sàng (A - Availability)**: Cây ATM vẫn nhả tiền cho bạn rút, nhưng chấp nhận rủi ro: Nếu ở Hà Nội bạn vừa rút hết tiền rồi, thì ở Phú Quốc người bạn rút thêm sẽ làm tài khoản bị âm. Hệ thống này gọi là hệ thống **AP**.
-- Bạn không thể chọn cả hai. Sự cố đứt mạng là quy luật vật lý, bạn bắt buộc phải đánh đổi!
+### 2. Quán cà phê phát thẻ rung tự động (Async Event Loop & Epoll)
+- **Thẻ rung tự động (Trait `Future`)**: Đại diện cho một kết quả chưa hoàn thành ở hiện tại nhưng cam kết sẽ có trong tương lai.
+- **Tiếng kêu "Tít tít!" (Cơ chế `Waker`)**: Khi dữ liệu mạng từ card mạng thực sự cập bến (gói tin đã về tới buffer), hệ điều hành (qua `epoll`) phát tín hiệu đánh thức `Waker`.
+- **Anh thu ngân siêu tốc (Tokio Event Loop / Executor)**: Chỉ cần vài nhân CPU (thường bằng số nhân phần cứng của máy), Tokio luân phiên kiểm tra và thực thi các Task sẵn sàng chạy, đạt hiệu suất phục vụ hàng triệu kết nối mà mỗi Task chỉ tiêu tốn vỏn vẹn khoảng `300 bytes` RAM!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Phân tích Chi tiết Định lý CAP (Brewer's CAP Theorem)
+### 1. Cơ chế Đa dồn kênh I/O tầng Nhân: Epoll và Kqueue
 
+Thay vì chương trình phải chủ động đi hỏi từng ổ cắm mạng (Socket Polling làm nóng ran CPU):
+- **Cơ chế `epoll` (trên Linux)**: Chương trình đăng ký 100,000 socket vào một "Bảng theo dõi sự kiện" của nhân Linux qua lệnh `epoll_ctl`.
+- Sau đó, chương trình chỉ cần gọi duy nhất một lệnh `epoll_wait` và đi ngủ.
+- Khi có bất kỳ socket nào nhận được dữ liệu, card mạng gửi tín hiệu ngắt phần cứng (Hardware Interrupt), nhân Linux đánh thức chương trình dậy và trả về đúng danh sách những socket đã sẵn sàng đọc/ghi. Đây là nền tảng giúp máy chủ xử lý hàng triệu kết nối với mức tiêu thụ CPU gần như bằng không khi rảnh rỗi.
+
+### 2. Bản chất của Trait `Future` trong Rust
+
+Trong Rust, lập trình bất đồng bộ tuân theo triết lý **Kéo dữ liệu (Poll-based Model)** thay vì Đẩy dữ liệu (Push-based như JavaScript Promises):
+
+```rust
+pub trait Future {
+    type Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
+}
+
+pub enum Poll<T> {
+    Ready(T),   // Tác vụ đã hoàn thành, trả về kết quả
+    Pending,    // Dữ liệu chưa sẵn sàng, hãy chờ Waker đánh thức lại!
+}
 ```
-        Tính Nhất quán (Consistency)
-               /\
-              /  \
-             /    \
-            /  CP  \
-           /        \
-          /__________\
-Tính Sẵn sàng       Tính Chịu Phân Rã
-(Availability)      (Partition Tolerance)
-```
 
-- **Tính Nhất quán (Consistency - C)**: Mọi thao tác đọc đều nhận được dữ liệu của lần ghi mới nhất hoặc trả về lỗi. Tuyệt đối không bao giờ trả về dữ liệu cũ đã lỗi thời.
-- **Tính Sẵn sàng (Availability - A)**: Mọi yêu cầu gửi tới các nút còn sống đều nhận được phản hồi thành công (không bị lỗi hoặc timeout), nhưng không đảm bảo đó là dữ liệu mới nhất.
-- **Tính Chịu đựng Phân rã mạng (Partition Tolerance - P)**: Hệ thống vẫn tiếp tục vận hành ngay cả khi các gói tin mạng giữa các máy chủ bị rơi rớt hoặc chậm trễ vô hạn.
-- **Kết luận thực tiễn**: Vì trong thế giới thực, mạng viễn thông chắc chắn sẽ có lúc bị đứt hoặc trễ (P luôn xảy ra), mọi kiến trúc sư phân tán chỉ có thể chọn: **Hệ thống CP** (như Raft, etcd, ZooKeeper, CockroachDB) hoặc **Hệ thống AP** (như DynamoDB, Cassandra, CouchDB).
+- **Tính lười biếng (Futures are Lazy)**: Một `Future` trong Rust sẽ **hoàn toàn không làm gì cả** cho đến khi nó được nạp vào một Executor (như Tokio) và được gọi phương thức `.poll()`.
 
-### 2. Ba Trạng Thái & Nhiệm Kỳ của Thuật toán Raft
+> **`Future` cũng là một chiếc "hộp" — và `.await` chính là `?` của thế giới bất đồng bộ.**
+> Nếu bạn đã học Chương 19, hãy để ý điểm tương đồng này, nó sẽ giúp bạn hiểu `async` nhanh hơn rất nhiều:
+>
+> | Ngữ cảnh (hộp) | Nghĩa là gì | Lấy giá trị ra bằng |
+> |---|---|---|
+> | `Option<T>` | có thể rỗng | `?` |
+> | `Result<T, E>` | có thể lỗi | `?` |
+> | `Future<Output = T>` | **giá trị sẽ có trong tương lai** | `.await` |
+>
+> Cả ba đều là **hàm tử** (có phép `map`) và đều là **đơn nguyên** (có phép nối tiếp phụ thuộc). Và cả ba đều **lười biếng theo cách riêng**: iterator không chạy cho tới khi có consumer; `Future` không chạy cho tới khi được `poll`.
+>
+> Chuỗi `async` sau đây chính là một chuỗi `bind` được viết bằng cú pháp thuận mắt:
+> ```rust
+> async fn xu_ly(id: u64) -> Result<HoaDon, LoiHeThong> {
+>     let nguoi_dung = tim_nguoi_dung(id).await?;   // bind trong CẢ HAI ngữ cảnh cùng lúc
+>     let don = tim_don_hang(&nguoi_dung).await?;   // (Future và Result lồng nhau)
+>     Ok(lap_hoa_don(&don))
+> }
+> ```
+> Chữ ký `-> Result<HoaDon, LoiHeThong>` của một `async fn` thực chất là `Future<Output = Result<HoaDon, LoiHeThong>>` — hai chiếc hộp lồng nhau. Đây chính là tình huống mà thế giới Haskell gọi là *chồng đơn nguyên* (monad stack), và `.await?` là cách Rust cho bạn bóc cả hai lớp chỉ bằng ba ký tự.
+- **Máy trạng thái không chi phí (Zero-Cost State Machine)**:
+  - Khi một tác vụ bất đồng bộ được biên dịch, Rust biến tác vụ đó thành một `enum` máy trạng thái.
+  - Mỗi bước tạm dừng tương ứng với một trạng thái của `enum`.
+  - Không có bộ nhớ Heap nào bị cấp phát ngầm; toàn bộ kích thước của máy trạng thái được tính toán chính xác ngay khi biên dịch!
 
-Mỗi máy chủ (Node) trong cụm Raft luôn nằm ở 1 trong 3 trạng thái:
-1. **Follower (Người phục tùng)**: Trạng thái mặc định ban đầu. Chỉ thụ động lắng nghe yêu cầu từ Leader và Candidate. Định kỳ nhận thông điệp nhịp tim (`Heartbeat / AppendEntries`).
-2. **Candidate (Ứng viên tranh cử)**: Khi không nhận được Heartbeat trong khoảng thời gian **Election Timeout** (ngẫu nhiên từ 150ms đến 300ms), Follower tự nâng cấp mình lên thành Candidate, tăng số thứ tự Nhiệm kỳ (`current_term += 1`), tự bỏ phiếu cho mình và gửi RPC `RequestVote` tới tất cả các nút khác.
-3. **Leader (Trưởng đoàn điều hành)**: Nếu Candidate nhận được đủ số phiếu quá bán ($N/2 + 1$), nó chính thức trở thành Leader. Leader bắt đầu gửi Heartbeat định kỳ để duy trì quyền lực và tiếp nhận mọi yêu cầu ghi từ Client.
+### 3. Kiến trúc Động cơ Điều phối Tokio (Tokio Runtime Architecture)
 
-### 3. Quy trình Sao chép Sổ nhật ký (Log Replication)
-
-```
-Client ──► [LEADER (Node 1)] ──(AppendEntries)──► [FOLLOWER (Node 2)] (Ghi đệm)
-                 │
-                 └──(AppendEntries)──────────────► [FOLLOWER (Node 3)] (Ghi đệm)
-                 │
-           (Đủ 2/3 nút xác nhận!)
-                 ▼
-        [LEADER COMMIT!] ──► Cập nhật State Machine ──► Trả kết quả về Client
-```
-1. Client gửi lệnh: `set("tai_khoan", "1000k")` tới Leader.
-2. Leader ghi lệnh vào cuối cuốn Sổ nhật ký (Log) của mình ở trạng thái Chưa cam kết (Uncommitted).
-3. Leader gửi bản sao lệnh đó tới tất cả các Follower thông qua RPC `AppendEntries`.
-4. Khi đa số các Follower (Quorum) đã ghi nhận bản ghi vào đĩa của họ và phản hồi thành công, Leader chính thức **Cam kết bản ghi (Commit)** và nạp vào máy trạng thái (State Machine).
-5. Leader trả lời Client: *"Ghi dữ liệu thành công!"*. Ở nhịp Heartbeat tiếp theo, Leader thông báo cho các Follower biết chỉ số Commit Index để các Follower cũng cam kết bản ghi vào máy trạng thái của họ. Dữ liệu trên toàn cụm đạt trạng thái nhất quán tuyệt đối!
+Runtime Tokio được chia thành hai thành phần cộng sinh hoàn hảo:
+1. **Bộ phản ứng (The Reactor)**: Giao tiếp trực tiếp với hệ điều hành thông qua `mio` (`epoll`/`kqueue`), chịu trách nhiệm theo dõi các sự kiện mạng, bộ đếm thời gian (timers), và kích hoạt `Waker` khi sự kiện xảy ra.
+2. **Bộ điều hành (The Executor)**:
+   - Sử dụng thuật toán **Cắp việc (Work-Stealing Algorithm)**: Mỗi nhân CPU quản lý một hàng đợi tác vụ cục bộ (Local Run Queue).
+   - Nếu nhân số 1 xử lý hết việc trong hàng đợi của mình, nó sẽ "liếc sang" hàng đợi của nhân số 2 và cắp bớt một nửa số Task về xử lý, đảm bảo tất cả các nhân CPU luôn hoạt động với tải trọng cân bằng tuyệt đối.
+3. **Đa nhiệm cộng tác (Cooperative Multitasking)**:
+   - Mỗi Task chạy cho đến khi gặp điểm tạm dừng thì tự nguyện nhường quyền điều khiển CPU cho Task khác.
+   - Cơ chế này kết hợp cùng quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm tài nguyên luôn được giải phóng kịp thời khi task hoàn tất.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Động cơ Đồng thuận Raft thu nhỏ (Educational Raft Consensus Simulation)**: Mô phỏng đầy đủ 3 vai trò (Follower, Candidate, Leader), cơ chế tính toán nhiệm kỳ (Term), quy tắc bầu cử đạt ngưỡng quá bán Quorum ($N/2 + 1$), và tiến trình sao chép sổ nhật ký an toàn:
+Dưới đây là mã nguồn Rust hoàn chỉnh xây dựng một **Động cơ Bất đồng bộ thu nhỏ (Educational Mini-Runtime)**: Tự tay cài đặt máy trạng thái `Future`, cơ chế trả về `Poll::Pending` / `Poll::Ready`, và bộ điều phối thực thi tuần tự các tác vụ mà không cần thư viện bên ngoài:
 
 ```rust
-/// Ba vai trò khả dĩ của một nút trong cụm đồng thuận Raft
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum RaftRole {
-    Follower,
-    Candidate,
-    Leader,
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::time::{Duration, Instant};
+
+/// Một Future đếm ngược thời gian tùy chỉnh mô phỏng I/O bất đồng bộ
+pub struct AsyncTimerFuture {
+    target_time: Instant,
+    polled_count: usize,
 }
 
-/// Một bản ghi nhật ký giao dịch trong sổ cái Raft
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogEntry {
-    pub term: u64,
-    pub index: u64,
-    pub command: String,
-}
-
-/// Thực thể một nút mạng trong cụm Raft (Raft Cluster Node)
-pub struct RaftNode {
-    pub node_id: u64,
-    pub current_term: u64,
-    pub voted_for: Option<u64>,
-    pub role: RaftRole,
-    pub log: Vec<LogEntry>,
-    pub commit_index: u64,
-    pub votes_received: usize,
-}
-
-impl RaftNode {
-    pub fn new(node_id: u64) -> Self {
+impl AsyncTimerFuture {
+    pub fn new(duration: Duration) -> Self {
         Self {
-            node_id,
-            current_term: 0,
-            voted_for: None,
-            role: RaftRole::Follower,
-            log: Vec::new(),
-            commit_index: 0,
-            votes_received: 0,
+            target_time: Instant::now() + duration,
+            polled_count: 0,
         }
     }
+}
 
-    /// Kích hoạt khi hết thời gian chờ bầu cử (Election Timeout)
-    pub fn handle_election_timeout(&mut self, total_cluster_nodes: usize) {
-        self.role = RaftRole::Candidate;
-        self.current_term += 1;
-        self.voted_for = Some(self.node_id); // Tự bỏ 1 phiếu cho chính mình
-        self.votes_received = 1;
+impl Future for AsyncTimerFuture {
+    type Output = String;
 
-        println!(
-            "    [Node {}] Hết hạn chờ! Chuyển thành CANDIDATE ở Nhiệm kỳ (Term) #{}",
-            self.node_id, self.current_term
-        );
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.polled_count += 1;
+        let now = Instant::now();
 
-        // Tính toán ngưỡng quá bán Quorum: (N / 2) + 1
-        let quorum = (total_cluster_nodes / 2) + 1;
-        if self.votes_received >= quorum {
-            self.role = RaftRole::Leader;
-            println!(
-                "    [Node {}] Nhận đủ {}/{} phiếu quá bán: ĐẮC CỬ LÀM LEADER!",
-                self.node_id, self.votes_received, total_cluster_nodes
-            );
-        }
-    }
-
-    /// Xử lý yêu cầu xin phiếu bầu từ một ứng viên khác (RequestVote RPC)
-    pub fn handle_request_vote(
-        &mut self,
-        candidate_id: u64,
-        candidate_term: u64,
-    ) -> bool {
-        // 1. Nếu nhiệm kỳ của ứng viên thấp hơn nhiệm kỳ hiện tại: Từ chối ngay
-        if candidate_term < self.current_term {
-            println!(
-                "    [Node {}] Từ chối bầu cho Node {}: Term {} < Term hiện tại {}",
-                self.node_id, candidate_id, candidate_term, self.current_term
-            );
-            return false;
-        }
-
-        // 2. Nếu nhiệm kỳ của ứng viên cao hơn: Cập nhật nhiệm kỳ và quay về làm Follower
-        if candidate_term > self.current_term {
-            self.current_term = candidate_term;
-            self.role = RaftRole::Follower;
-            self.voted_for = None;
-        }
-
-        // 3. Nếu chưa bỏ phiếu cho ai trong nhiệm kỳ này: Đồng ý bỏ phiếu!
-        if self.voted_for.is_none() || self.voted_for == Some(candidate_id) {
-            self.voted_for = Some(candidate_id);
-            println!(
-                "    [Node {}] ĐÃ BỎ PHIẾU ĐỒNG Ý cho Ứng viên Node {} ở Term {}",
-                self.node_id, candidate_id, self.current_term
-            );
-            true
+        if now >= self.target_time {
+            // Tác vụ đã hoàn tất! Trả về kết quả
+            Poll::Ready(format!(
+                "Tac vu hoan thanh sau {} lan tham do (Poll)!",
+                self.polled_count
+            ))
         } else {
-            false
+            // Dữ liệu chưa sẵn sàng: Nhường quyền điều khiển
+            Poll::Pending
         }
     }
+}
 
-    /// Tiếp nhận lệnh ghi từ Client (Chỉ Leader mới có quyền tiếp nhận)
-    pub fn append_client_command(&mut self, command: &str) -> Result<u64, &'static str> {
-        if self.role != RaftRole::Leader {
-            return Err("Nút này không phải Leader: Từ chối tiếp nhận lệnh ghi!");
+/// Mô phỏng máy trạng thái tổ hợp gồm 2 bước tuần tự (Composite State Machine)
+pub struct CompositeAsyncTask {
+    step: usize,
+    timer1: AsyncTimerFuture,
+    timer2: AsyncTimerFuture,
+}
+
+impl CompositeAsyncTask {
+    pub fn new() -> Self {
+        Self {
+            step: 0,
+            timer1: AsyncTimerFuture::new(Duration::from_millis(30)),
+            timer2: AsyncTimerFuture::new(Duration::from_millis(40)),
         }
+    }
+}
 
-        let new_index = (self.log.len() as u64) + 1;
-        let entry = LogEntry {
-            term: self.current_term,
-            index: new_index,
-            command: command.to_string(),
-        };
+impl Future for CompositeAsyncTask {
+    type Output = String;
 
-        self.log.push(entry);
-        println!(
-            "    [Leader Node {}] Đã thêm lệnh mới vào Log ở index #{}: '{}'",
-            self.node_id, new_index, command
-        );
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        loop {
+            match self.step {
+                0 => {
+                    // Thăm dò bước 1
+                    let timer1_pin = unsafe { Pin::new_unchecked(&mut self.timer1) };
+                    match timer1_pin.poll(cx) {
+                        Poll::Ready(msg) => {
+                            println!("    [CompositeTask] Buoc 1 xong: {}", msg);
+                            self.step = 1;
+                            // Tiếp tục vòng lặp sang bước 2
+                        }
+                        Poll::Pending => return Poll::Pending,
+                    }
+                }
+                1 => {
+                    // Thăm dò bước 2
+                    let timer2_pin = unsafe { Pin::new_unchecked(&mut self.timer2) };
+                    match timer2_pin.poll(cx) {
+                        Poll::Ready(msg) => {
+                            println!("    [CompositeTask] Buoc 2 xong: {}", msg);
+                            self.step = 2;
+                        }
+                        Poll::Pending => return Poll::Pending,
+                    }
+                }
+                2 => {
+                    return Poll::Ready("Toan bo chuoi tac vu da thanh cong 100%!".to_string());
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
 
-        Ok(new_index)
+/// Tạo một Waker đơn giản cho mục đích mô phỏng (No-op Dummy Waker)
+fn create_dummy_waker() -> Waker {
+    fn no_op(_: *const ()) {}
+    fn clone(p: *const ()) -> RawWaker {
+        RawWaker::new(p, &VTABLE)
     }
 
-    /// Kiểm tra và xác nhận cam kết bản ghi khi đủ số nút sao chép (Quorum Commit)
-    pub fn check_and_commit(&mut self, successful_replications: usize, total_nodes: usize) {
-        let quorum = (total_nodes / 2) + 1;
-        if successful_replications >= quorum {
-            self.commit_index = self.log.len() as u64;
-            println!(
-                "    [Leader Node {}] Đạt Quorum ({}/{} nút): CAM KẾT LOG INDEX #{} VÀO MÁY TRẠNG THÁI!",
-                self.node_id, successful_replications, total_nodes, self.commit_index
-            );
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, no_op, no_op, no_op);
+    let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
+    unsafe { Waker::from_raw(raw_waker) }
+}
+
+/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất
+pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
+    let waker = create_dummy_waker();
+    let mut context = Context::from_waker(&waker);
+
+    // Ghim cố định Future vào bộ nhớ Stack (Pinning)
+    let mut pinned_future = unsafe { Pin::new_unchecked(&mut future) };
+
+    let mut poll_iterations = 0;
+    loop {
+        poll_iterations += 1;
+        match pinned_future.as_mut().poll(&mut context) {
+            Poll::Ready(result) => {
+                println!("    [MiniRuntime] Da nhan Poll::Ready o vong lap #{}", poll_iterations);
+                return result;
+            }
+            Poll::Pending => {
+                // Nhường quyền CPU mô phỏng sự kiện I/O Epoll đang diễn ra
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
     }
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   DONG THUAN PHAN TAN RAFT & CAP THEOREM SIMULATION TRONG RUST   ");
+    println!("   DONG CO BAT DONG BO TOKIO, EVENT LOOP & EPOLL MECHANICS RUST   ");
     println!("==================================================================");
 
-    // 1. Khởi tạo một cụm gồm 3 nút mạng phân tán (Node 1, Node 2, Node 3)
-    let total_nodes = 3;
-    let mut node1 = RaftNode::new(1);
-    let mut node2 = RaftNode::new(2);
-    let mut node3 = RaftNode::new(3);
+    // 1. Thử nghiệm Custom Future đơn lẻ
+    println!("\n[1] Thuc thi Custom Future don le tren Mini-Runtime:");
+    let single_future = AsyncTimerFuture::new(Duration::from_millis(50));
+    let outcome = block_on_mini_runtime(single_future);
+    println!("    - Ket qua Future: {}", outcome);
 
-    println!("\n[1] Khoi tao cum 3 nut mang (Tat ca deu la Follower ban dau):");
-    println!("    - Node 1 Role: {:?} | Term: {}", node1.role, node1.current_term);
-    println!("    - Node 2 Role: {:?} | Term: {}", node2.role, node2.current_term);
-    println!("    - Node 3 Role: {:?} | Term: {}", node3.role, node3.current_term);
+    // 2. Thử nghiệm Composite State Machine
+    println!("\n[2] Thuc thi Composite State Machine gom 2 giai doan I/O:");
+    let composite_task = CompositeAsyncTask::new();
+    let final_report = block_on_mini_runtime(composite_task);
+    println!("    - Ket qua chuoi nhiem vu: {}", final_report);
 
-    // 2. Mô phỏng Node 1 bị hết hạn chờ (Election Timeout) và phát động tranh cử
-    println!("\n[2] Node 1 bi Timeout va khoi dong tranh cu lanh dao (Election):");
-    node1.handle_election_timeout(total_nodes);
-
-    // Node 1 gửi RequestVote tới Node 2 và Node 3
-    let vote_from_2 = node2.handle_request_vote(node1.node_id, node1.current_term);
-    let vote_from_3 = node3.handle_request_vote(node1.node_id, node1.current_term);
-
-    if vote_from_2 {
-        node1.votes_received += 1;
-    }
-    if vote_from_3 {
-        node1.votes_received += 1;
-    }
-
-    let quorum = (total_nodes / 2) + 1;
-    if node1.votes_received >= quorum {
-        node1.role = RaftRole::Leader;
-        println!(
-            "\n    [+] Chuc mung Node 1 da tro thanh LEADER hop phap cua Term {} voi {}/{} phieu!",
-            node1.current_term, node1.votes_received, total_nodes
-        );
-    }
-    assert_eq!(node1.role, RaftRole::Leader);
-
-    // 3. Mô phỏng Client gửi lệnh ghi dữ liệu tới Leader
-    println!("\n[3] Mo phong Client gui giao dich 'CHUYEN_TIEN_100K' toi Leader:");
-    let log_idx = node1.append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K").unwrap();
-
-    // Leader sao chép sang Node 2 thành công
-    println!("    - Leader Node 1 sao chep ban ghi sang Node 2...");
-    let replication_success_count = 2; // Node 1 (chính nó) + Node 2 đồng ý
-
-    // Leader kiểm tra Quorum để quyết định Commit
-    node1.check_and_commit(replication_success_count, total_nodes);
-    assert_eq!(node1.commit_index, log_idx);
+    // 3. Phân tích so sánh tài nguyên
+    println!("\n[3] Phan tich so sanh kien truc tai nguyen bo nho:");
+    println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
+    println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
+    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
+    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: THUAT TOAN RAFT HOAT DONG DUNG QUY CHUAN DONG THUAN! ");
+    println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");
     println!("==================================================================");
 }
 ```
@@ -311,35 +293,42 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình các thuật toán đồng thuận và quản lý trạng thái phân tán trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình bất đồng bộ trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0506** | `cannot assign to 'self.current_term' because it is borrowed` | Cố gắng thay đổi trường dữ liệu trong khi đang mượn tham chiếu đọc trường khác trong cùng struct. | Tách nhỏ các phương thức hoặc sao chép giá trị số nguyên (`u64`) ra biến cục bộ độc lập trên Stack. |
-| **E0382** | `use of moved value: 'node1'` | Di chuyển quyền sở hữu (ownership) của nút mạng vào luồng khác mà không dùng con trỏ đếm tham chiếu đa luồng. | Sử dụng con trỏ thông minh (smart pointer) `Arc<Mutex<RaftNode>>` khi chia sẻ một Node qua nhiều luồng mạng. |
-| **E0277** | `the trait 'Clone' is not implemented for 'LogEntry'` | Cố gắng nhân bản danh sách nhật ký `log.clone()` mà struct chưa triển khai trait `Clone`. | Bổ sung derive tự động: `#[derive(Clone, Debug, PartialEq, Eq)]` lên trên định nghĩa `LogEntry`. |
-| **E0599** | `no method named 'len' found for struct 'LogEntry'` | Gọi nhầm phương thức `.len()` trên một phần tử đơn lẻ thay vì trên mảng vector `self.log`. | Kiểm tra lại cú pháp: Dùng `self.log.len()` để đếm số lượng bản ghi nhật ký. |
+| **E0277** | `the trait 'Future' is not implemented for 'MyType'` | Truyền một kiểu dữ liệu không triển khai trait `Future` vào một hàm đòi hỏi Future. | Triển khai trait `Future` cho struct với phương thức `fn poll(...) -> Poll<Self::Output>`. |
+| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Lưu trữ một kiểu dữ liệu không an toàn cho luồng (`Rc<T>`, `RefCell<T>`) qua một điểm gọi trong một task bất đồng bộ đa luồng. | Thay thế bằng kiểu tương đương an toàn đa luồng: dùng `Arc<T>` và `tokio::sync::Mutex<T>`. |
+| **E0382** | `use of moved value: 'client'` | Biến bị di chuyển quyền sở hữu (ownership) vào một block bất đồng bộ, sau đó lại được dùng ở bên ngoài. | Nhân bản dữ liệu trước khi di chuyển: `let client_clone = client.clone();`. |
+| **E0507** | `cannot move out of a mutable pin` | Cố gắng di chuyển một trường dữ liệu ra khỏi một cấu trúc đã bị ghim (`Pin<&mut Self>`). | Sử dụng các phương thức an toàn của `Pin` hoặc truy cập qua tham chiếu mượn (borrow). |
 
-### Ví dụ phân tích lỗi `E0506` khi vừa duyệt mảng log vừa thay đổi term:
+### Ví dụ phân tích lỗi `E0277` khi thiếu triển khai Trait Future:
 
 ```rust
-struct ViDuNode {
-    term: u64,
-    log: Vec<String>,
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+struct KhongPhaiFuture;
+
+// Đoạn mã lỗi minh họa E0277:
+fn chay_thu_loi() {
+    // let k = KhongPhaiFuture;
+    // block_on_mini_runtime(k); // LỖI E0277: KhongPhaiFuture không triển khai trait Future!
 }
 
-// Đoạn mã lỗi minh họa E0506:
-fn cap_nhat_loi(node: &mut ViDuNode) {
-    // let first_cmd = node.log.first(); // Mượn bất biến node.log
-    // node.term += 1;                   // LỖI E0506: Mượn khả biến node để sửa term!
-    // println!("Lệnh: {:?}", first_cmd);
+// Cách sửa chữa đúng chuẩn: Triển khai trait Future đầy đủ
+struct LaFuture;
+
+impl std::future::Future for LaFuture {
+    type Output = i32;
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(100)
+    }
 }
 
-// Cách sửa chữa đúng chuẩn: Sao chép dữ liệu hoặc thu hẹp phạm vi mượn
-fn cap_nhat_dung(node: &mut ViDuNode) {
-    let first_cmd = node.log.first().cloned(); // Sao chép giá trị ra biến riêng
-    node.term += 1;                            // Sửa term an toàn 100%
-    println!("Lệnh đã trích xuất: {:?}", first_cmd);
+fn chay_thu_dung() {
+    let f = LaFuture;
+    println!("Đã sẵn sàng triển khai Future chuẩn mực!");
 }
 ```
 
@@ -348,15 +337,15 @@ fn cap_nhat_dung(node: &mut ViDuNode) {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Định lý CAP không thể phá vỡ**: Khi mạng bị phân tách (Partition), hệ thống phân tán bắt buộc phải lựa chọn giữa Tính Nhất quán (CP) hoặc Tính Sẵn sàng (AP).
-2. **Quy tắc Quá bán Quorum**: Bất kỳ quyết định bầu cử hay cam kết dữ liệu nào trong Raft cũng đòi hỏi sự đồng thuận của hơn một nửa số nút ($N/2 + 1$), loại bỏ triệt để xung đột não đôi (Split-Brain).
-3. **Sao chép Sổ nhật ký (Log Replication)**: Dữ liệu chỉ được cam kết chính thức vào máy trạng thái khi đã được ghi nhận trên đa số các nút trong cụm.
-4. **Độ an toàn Nhất quán trong Rust**: Sự phối hợp giữa quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) giúp mô phỏng và vận hành cỗ máy đồng thuận Raft mà không bao giờ gặp lỗi rò rỉ dữ liệu hay xung đột luồng.
+1. **Giải pháp cho bài toán C10K/C1M**: Chuyển đổi từ mô hình luồng đồng bộ sang mô hình bất đồng bộ hướng sự kiện dựa trên `epoll`/`kqueue`.
+2. **Bản chất của Future trong Rust**: Là máy trạng thái tĩnh lười biếng (Lazy State Machine), không tốn chi phí cấp phát Heap ngầm, chỉ thực thi khi được thăm dò (`poll`).
+3. **Cơ chế Waker**: Cho phép Reactor đánh thức Executor một cách chính xác ngay khi dữ liệu sẵn sàng trên card mạng, loại bỏ hoàn toàn việc thăm dò liên tục gây lãng phí CPU.
+4. **Kiến trúc Tokio Work-Stealing**: Điều phối hàng triệu Task siêu nhẹ trên một nhóm nhỏ luồng công nhân, kết hợp cùng cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để đạt thông lượng I/O cao nhất thế giới.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Mô phỏng Phân chia Não đôi - Split-Brain Prevention)**:  
-   Tạo một cụm 5 nút mạng. Giả lập tình huống mạng bị chia cắt thành 2 cụm con: Cụm A gồm 2 nút (Node 1, 2) và Cụm B gồm 3 nút (Node 3, 4, 5). Chứng minh bằng mã nguồn rằng Cụm A sẽ không bao giờ có thể bầu được Leader mới vì không thể đạt đủ 3 phiếu Quorum ($5/2 + 1 = 3$).
-2. **Bài tập 2 (Phục hồi Đồng bộ Nhật ký khi Node sống lại)**:  
-   Giả sử Node 3 bị sập nguồn trong 1 tiếng và bị thiếu mất 10 bản ghi nhật ký. Hãy viết hàm `sync_follower_log` cho phép Leader tự động phát hiện vị trí bản ghi không khớp và gửi lại các bản ghi còn thiếu để đưa Node 3 về trạng thái nhất quán với toàn cụm.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Raft lại thay thế Paxos?)**:  
-   Trước khi Raft ra đời vào năm 2014, Paxos là thuật toán đồng thuận thống trị thế giới. Tại sao tác giả Diego Ongaro lại sáng tạo ra Raft với mục tiêu hàng đầu là "Tính dễ hiểu (Understandability)"? Hãy phân tích sự khác biệt giữa cấu trúc có Leader độc tôn của Raft so với tính đối xứng phức tạp của Multi-Paxos.
+1. **Bài tập 1 (Xây dựng Bộ đếm nhịp bất đồng bộ - Async Interval)**:  
+   Tạo một cấu trúc `AsyncInterval` triển khai trait `Future`, kích hoạt sự kiện sau mỗi khoảng thời gian định kỳ (ví dụ mỗi 100ms phát ra một nhịp đếm), lặp lại đúng 5 lần rồi dừng lại.
+2. **Bài tập 2 (Bộ ghép nối hai luồng Future đồng thời - Join Two Futures)**:  
+   Viết một hàm nhận vào hai Future độc lập `fut_a` và `fut_b`. Hãy thực thi thăm dò cả hai luồng sao cho khi cả hai đều trả về `Poll::Ready` thì hàm mới trả về kết quả gộp `(OutputA, OutputB)`.
+3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao không dùng `std::sync::Mutex` trong mã Async?)**:  
+   Tại sao các chuyên gia Tokio luôn khuyến cáo tuyệt đối không giữ khóa `std::sync::Mutex` qua các điểm gọi chờ I/O? Nếu một luồng bị dừng trong khi vẫn đang giữ khóa, hiện tượng nghẽn luồng (Thread Starvation / Deadlock) sẽ bùng phát như thế nào trong toàn bộ hệ thống?

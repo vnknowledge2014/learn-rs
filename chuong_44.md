@@ -1,378 +1,301 @@
-# Chương 44: Kiến trúc hệ thống: Từ khối đơn Monolith đến Microservices phân tán hiệu năng cao (Monolithic vs High-Performance Microservices)
+# Chương 44: Kỹ Nghệ Prompt Kỹ Thuật Hệ Thống & Quản Lý Cửa Sổ Ngữ Cảnh (Systems Prompt Engineering & Context Management)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn đến với đỉnh cao của giáo trình Rust Masterclass: **Chủ đề 9: Thiết kế Hệ thống phân tán & Hiệu năng cao (System Design & High-Performance Distributed Systems)**! Nếu như ở các chủ đề trước bạn đã làm chủ từng viên gạch, thanh thép của ngôn ngữ — từ cú pháp, quản lý bộ nhớ, kiểm thử an ninh, đến lập trình mạng cấp thấp — thì trong chủ đề này, bạn sẽ khoác lên mình chiếc áo của một **Tổng công trình sư kiến trúc hệ thống (Lead System Architect)**.
+Trong chương trước, chúng ta đã thấu hiểu sự chuyển dịch mang tính thời đại từ "người thợ gõ cú pháp" thành "Tổng đạo diễn kiến trúc" trong làn sóng Vibe Coding. Nhưng làm thế nào để một Tổng đạo diễn có thể truyền đạt chính xác 100% ý đồ của mình cho đoàn làm phim AI mà không bị hiểu lầm, không bị sai lệch, và không tạo ra những đoạn mã rác?
 
-Một câu hỏi mang tính sống còn mà mọi tập đoàn công nghệ lớn (như Amazon, Netflix, Discord, Cloudflare) đều phải giải quyết khi mở rộng quy mô phục vụ hàng trăm triệu người dùng là: **Lựa chọn kiến trúc nào giữa Khối đơn thống nhất (Monolithic) và Hệ thống Vi dịch vụ phân tán (Microservices)? Và tại sao việc chuyển đổi các dịch vụ lõi sang Rust lại tạo nên một cuộc cách mạng về hiệu năng và tiết kiệm hàng triệu USD chi phí hạ tầng đám mây?**
+Câu trả lời nằm ở hai kỹ năng mang tính sống còn của kỹ sư hệ thống hiện đại: **Kỹ nghệ Prompt hệ thống (Systems Prompt Engineering)** và **Kiểm soát Cửa sổ ngữ cảnh (Context Window Management)**.
 
-Trong chương mở đầu của Topic 9, chúng ta sẽ phân tích:
-- Sự tiến hóa của kiến trúc phần mềm: Từ Khối đơn (Monolith), Khối đơn hướng module (Modular Monolith), đến Hệ thống vi dịch vụ phân tán (Microservices).
-- Ranh giới nghiệp vụ (Bounded Contexts) theo phương pháp Domain-Driven Design (DDD): Khi nào nên tách dịch vụ và khi nào tách dịch vụ là một thảm họa tự sát.
-- Phân tích bài toán kinh tế hạ tầng đám mây: Đối chiếu mức tiêu thụ tài nguyên thực tế giữa một Microservice viết bằng Java Spring Boot / Node.js (ngốn 500MB-1GB RAM) với cùng chức năng viết bằng Rust (chỉ tốn 15MB RAM và khởi động trong 5 mili-giây).
-- Ngân sách độ trễ mạng (Latency Budget) và chi phí chuyển đổi dữ liệu (Serialization Overhead) trong môi trường phân tán.
-- Các mô thức phòng vệ chống sập dây chuyền: Ngắt mạch tự động (Circuit Breaker) và Phân vùng chống tràn (Bulkhead).
+Rất nhiều người mới bắt đầu thường nhầm lẫn rằng: *"Muốn AI viết code giỏi thì cứ quăng toàn bộ mã nguồn của cả dự án vào khung chat"*. Đây là một sai lầm chết người! Các mô hình ngôn ngữ lớn (LLM) không phải là những bộ não vô tận; chúng hoạt động dựa trên cơ chế phân bổ sự chú ý (Attention Mechanism) với dung lượng bộ nhớ làm việc hữu hạn. Khi bạn nhồi nhét quá nhiều thông tin rác, AI sẽ rơi vào trạng thái "suy giảm chú ý" (Attention Degradation), bắt đầu sinh ra ảo giác (hallucination), quên các quy ước đã thống nhất từ trước, và vi phạm nghiêm trọng các nguyên tắc về quyền sở hữu (ownership), mượn (borrow), hoặc thời gian sống (lifetime) của Rust.
+
+Mục tiêu học tập của chương:
+- Thấu hiểu cơ chế hoạt động của Cửa sổ ngữ cảnh (Context Window) và hiện tượng suy giảm chú ý trong LLM.
+- Nắm vững công thức 5 thành phần để thiết kế một System Prompt kỹ thuật chuẩn công nghiệp, loại bỏ 99% ảo giác của AI.
+- Thiết lập tệp quy chuẩn dự án tự động (`.cursorrules` hoặc `AGENTS.md`) để kiểm soát hành vi sinh mã của AI trong các IDE hiện đại.
+- Xây dựng tư duy chắt lọc ngữ cảnh: Chỉ cung cấp đúng dữ liệu, đúng kiểu giao ước và đúng thời điểm.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu thấu đáo bản chất của Monolith và Microservices mà không bị rối loạn bởi thuật ngữ kỹ thuật, hãy quan sát hai mô hình kinh doanh quen thuộc trong đời sống:
+### Bàn làm việc của Bác thợ mộc tài hoa và Căn phòng bừa bộn
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│         HÌNH TƯỢNG HÓA: ĐẠI SIÊU THỊ ĐA NĂNG VS TUYẾN PHỐ CHUYÊN DOANH           │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│ [1. KIẾN TRÚC KHỐI ĐƠN MONOLITH: ĐẠI SIÊU THỊ BÁCH HÓA TẬP TRUNG]                │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Tòa nhà siêu thị 5 tầng:                                             │         │
-│ │ Tầng 1: Thực phẩm & Rau củ (User Service)                            │         │
-│ │ Tầng 2: Quần áo thời trang (Catalog Service)                         │         │
-│ │ Tầng 3: Thiết bị điện máy  (Order Service)                           │         │
-│ │ Tầng 4: Rạp chiếu phim     (Payment Service)                         │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Ưu điểm: Đi lại giữa các tầng rất nhanh bằng thang cuốn (In-Memory). │         │
-│ │ Nhược điểm: Nếu chập điện cháy tầng 1, CẢ SIÊU THỊ BẮT BUỘC ĐÓNG CỬA!│         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│                                                                                  │
-│ [2. KIẾN TRÚC VI DỊCH VỤ PHÂN TÁN MICROSERVICES: TUYẾN PHỐ CHUYÊN DOANH]         │
-│ Tuyến phố dài có các cửa hàng độc lập:                                           │
-│ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐     │
-│ │ Tiệm Bánh Mì   │ │ Tiệm Thuốc Tây │ │ Tiệm Quần Áo   │ │ Quầy Thu Ngân  │     │
-│ │ (Auth Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
-│ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘     │
-│ Ưu điểm: Nếu Tiệm Bánh Mì mất điện, Tiệm Thuốc vẫn mở cửa bán bình thường!      │
-│ Nhược điểm: Khách muốn mua cả bánh và thuốc phải đi bộ qua lại (Độ trễ mạng)!    │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+Hãy tưởng tượng bạn thuê một Bác thợ mộc cực kỳ khéo tay và làm việc siêu nhanh (đại diện cho trợ lý AI) đến đóng cho bạn một chiếc bàn học gỗ sồi. Bác thợ mộc có một chiếc **bàn gia công** trước mặt với diện tích mặt bàn đúng 1 mét vuông (tượng trưng cho **Cửa sổ ngữ cảnh - Context Window**).
 
-### 1. Đại siêu thị tập trung (Monolithic Architecture)
-- Hãy tưởng tượng bạn bước vào một Trung tâm thương mại 5 tầng đồ sộ: Mọi thứ từ quầy rau, tiệm bánh, cửa hàng quần áo, đến rạp chiếu phim đều nằm chung dưới một mái nhà.
-- **Ưu điểm**: Mọi thứ kết nối cực kỳ nhanh. Nhân viên giao hàng chỉ cần đi thang máy từ tầng 1 lên tầng 3 (gọi hàm trực tiếp trên bộ nhớ RAM tốn vài nano-giây). Quản lý, tuyển dụng nhân sự tập trung dễ dàng.
-- **Nhược điểm**: Toàn bộ tòa nhà dùng chung một hệ thống đường điện và máy bơm nước (dùng chung một Database). Nếu đường ống nước tầng 1 bị vỡ, ban quản lý buộc phải ngắt nước toàn bộ tòa nhà, khiến rạp chiếu phim tầng 4 cũng phải dừng chiếu.
+#### Kịch bản 1: Người chủ bừa bãi (Bad Context & Bad Prompt)
+Người chủ bước vào và nói bâng quơ:
+> *"Bác ơi, đóng cho cháu cái bàn đẹp đẹp, chắc chắn nhé, cháu để máy tính với vài cuốn sách!"*
 
-### 2. Tuyến phố chuyên doanh độc lập (Microservices Architecture)
-- Bây giờ, thay vì nhét tất cả vào một tòa nhà, người ta quy hoạch một khu phố gồm các ngôi nhà riêng biệt: Nhà làm bánh mì riêng, nhà bán thuốc tây riêng, nhà sửa xe riêng.
-- **Ưu điểm**: Mỗi chủ tiệm tự trang bị máy phát điện và bể nước riêng (Database per Service). Nếu tiệm bánh mì bị sự cố hết bột, tiệm thuốc tây vẫn mở cửa đón khách bình thường mà không hề hay biết. Tiệm nào đông khách (ví dụ mùa dịch tiệm thuốc đông) có thể xây thêm tầng cơi nới mà không ảnh hưởng tới các nhà bên cạnh (Scale độc lập).
-- **Nhược điểm**: Khách hàng muốn mua bánh mì xong mua thuốc tây thì phải ra đường đi bộ qua lại giữa trời mưa nắng. Đây chính là **Độ trễ mạng (Network Latency)** và chi phí đóng gói thông điệp qua dây cáp.
+Sau đó, người chủ bê cả một đống đồ cũ từ nhà kho ném bừa bãi lên mặt bàn gia công 1 mét vuông của bác thợ mộc: từ đống quần áo rách, vỏ chai nước ngọt, đĩa CD ca nhạc cũ, đến mấy cái đinh rỉ sét.
+
+Hậu quả là gì?
+1. Mặt bàn bị quá tải (Context Overflow): Các tài liệu quan trọng bị đống rác đè lên và rơi xuống đất (mất dấu vết thông tin).
+2. Bác thợ mộc bị phân tâm (Attention Degradation): Bác không biết phải dùng cái gì, bắt đầu nhầm lẫn giữa gỗ sồi và thanh củi mục, và đóng ra một chiếc bàn ọp ẹp 3 chân vì lời dặn ban đầu quá mập mờ.
+
+#### Kịch bản 2: Vị Kỹ sư trưởng chuyên nghiệp (Systems Prompt & Clean Context)
+Vị Kỹ sư trưởng bước vào phòng làm việc, lau sạch mặt bàn gia công 1 mét vuông, và chỉ đặt lên bàn đúng 3 thứ:
+1. **Tấm thẻ quy chuẩn an toàn (System Persona & Constraints)**: *"Bác là thợ mộc bậc 7. Tiêu chuẩn xưởng: Bắt buộc dùng mộng gỗ truyền thống, tuyệt đối không dùng đinh sắt rẻ tiền, cạnh bàn phải vát tròn 5mm để không gây trầy xước"*.
+2. **Bản vẽ kỹ thuật chi tiết (Domain Contract & Types)**: Một bản vẽ kích thước chuẩn: Dài 120cm, Rộng 60cm, Cao 75cm, chịu tải trọng tối thiểu 50kg.
+3. **Mẫu gỗ chuẩn (Few-shot Example)**: Một thanh gỗ mẫu đã chà nhám mịn để làm mốc so sánh chất lượng.
+
+Bác thợ mộc nhìn vào mặt bàn sạch sẽ, hiểu ngay 100% yêu cầu mà không tốn một giây suy nghĩ vẩn vơ. Chiếc bàn gỗ sồi hoàn mỹ được hoàn thành chỉ sau 30 phút, đạt chuẩn xác từng milimet!
 
 ---
 
-## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
+## Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
-### 1. So sánh Ba Hình thái Kiến trúc Cốt lõi
+### 1. Bản chất cơ học của Token và Cửa sổ ngữ cảnh (Context Window)
+Trong khoa học máy tính, các mô hình ngôn ngữ lớn (LLM) không đọc văn bản theo từng chữ cái hay từng từ nguyên vẹn như con người, mà chia nhỏ văn bản thành các đơn vị gọi là **Tokens** (thường từ 3-4 ký tự tiếng Anh hoặc 1-2 ký tự tiếng Việt có dấu).
 
+Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **Cửa sổ ngữ cảnh (Context Window)** — ví dụ: 8,000 tokens, 32,000 tokens hoặc 128,000 tokens. Cửa sổ này tương đương với bộ nhớ truy xuất nhanh (RAM) tạm thời của mô hình trong một phiên làm việc:
+- Khi tổng số tokens của Prompt + Lịch sử hội thoại + Mã nguồn tải lên vượt quá giới hạn, những thông tin ở phần đầu sẽ bị đẩy ra ngoài (bị lãng quên vĩnh viễn).
+- Ngay cả khi chưa vượt quá giới hạn, hiện tượng **"Lost in the Middle" (Bị lãng quên ở giữa)** vẫn diễn ra: LLM ghi nhớ rất tốt thông tin ở phần đầu (System Prompt) và phần cuối (câu lệnh vừa gõ), nhưng dễ bỏ qua những chỉ thị nằm ở lưng chừng hàng ngàn dòng code.
+
+### 2. Cấu trúc 5 thành phần của một Systems Prompt chuẩn mực
+Để biến AI thành một lập trình viên Rust cấp cao tuân thủ tuyệt đối quy chuẩn dự án, System Prompt cần được cấu trúc theo 5 khối rõ ràng:
+
+```markdown
+┌─────────────────────────────────────────────────────────────┐
+│ 1. PERSONA & ROLE (Định danh vai trò chuyên gia)            │
+├─────────────────────────────────────────────────────────────┤
+│ 2. HARD CONSTRAINTS (Các điều cấm kỵ bất khả xâm phạm)      │
+├─────────────────────────────────────────────────────────────┤
+│ 3. DOMAIN CONTRACTS (Kiểu dữ liệu, Structs, Enums & Traits) │
+├─────────────────────────────────────────────────────────────┤
+│ 4. INPUT / OUTPUT SPEC (Đặc tả dữ liệu đầu vào & đầu ra)    │
+├─────────────────────────────────────────────────────────────┤
+│ 5. FEW-SHOT EXAMPLES (Ví dụ mẫu chuẩn để AI noi theo)       │
+└─────────────────────────────────────────────────────────────┘
 ```
-[Monolith Đơn thuần]  ──►  [Modular Monolith]  ──►  [Distributed Microservices]
-(Tất cả trộn lẫn)           (Mã tách module rõ,      (Mỗi dịch vụ là tiến trình
-                             chạy chung tiến trình)   riêng, kết nối qua mạng)
-```
 
-1. **Khối đơn truyền thống (Classic Monolith)**:
-   - Toàn bộ giao diện (UI), logic nghiệp vụ (Business Logic), và truy cập cơ sở dữ liệu được đóng gói thành một tệp nhị phân duy nhất.
-   - **Thách thức**: Khi nhóm kỹ sư tăng lên 50 người, việc commit mã nguồn thường xuyên gây xung đột (Merge Conflicts), một lập trình viên thực tập sửa lỗi nhỏ có thể làm sập toàn bộ hệ thống sản xuất.
-2. **Khối đơn hướng Module (Modular Monolith)**:
-   - Vẫn biên dịch thành 1 tệp nhị phân duy nhất chạy trên máy chủ, nhưng mã nguồn được phân chia thành các crate hoặc module Rust độc lập với ranh giới giao tiếp công khai (Public Trait APIs) rõ ràng.
-   - **Đây là điểm khởi đầu lý tưởng nhất**: Tận dụng tốc độ gọi hàm trực tiếp trong bộ nhớ (In-memory zero-cost abstraction) mà vẫn sẵn sàng tách thành Microservice bất kỳ lúc nào!
-3. **Vi dịch vụ phân tán (Microservices)**:
-   - Mỗi dịch vụ chạy như một tiến trình mạng độc lập (Network Process), có cơ sở dữ liệu riêng, giao tiếp với nhau qua HTTP REST API (Axum) hoặc gRPC (Tonic).
+#### Chi tiết 5 thành phần:
+1. **Persona & Role**: Xác định tầm nhận thức: *"Bạn là một Kỹ sư Hệ thống Rust cao cấp (Senior Rust Systems Engineer) tuân thủ tiêu chuẩn Rust 2021 Edition"*.
+2. **Hard Constraints**: Các lằn ranh đỏ kỹ thuật:
+   - Nghiêm cấm sử dụng từ khóa `unsafe` trừ khi có sự phê duyệt tường minh.
+   - Nghiêm cấm dùng `.unwrap()` hoặc `.expect()` trong mã nguồn thương mại; bắt buộc lan truyền lỗi bằng `Result<T, E>` và toán tử `?`.
+   - Bắt buộc tuân thủ nguyên tắc quyền sở hữu (ownership) và mượn (borrow), không lạm dụng `.clone()` bừa bãi.
+   - Luôn sử dụng bộ nhớ đệm (buffer) thích hợp khi thao tác đọc/ghi file hoặc luồng mạng.
+3. **Domain Contracts**: Cung cấp các định nghĩa kiểu dữ liệu thuần túy (chỉ gửi chữ ký hàm và cấu trúc struct/trait, không gửi thân hàm cũ làm loãng ngữ cảnh).
+4. **Input/Output Spec**: Yêu cầu định dạng đầu ra rõ ràng: Chỉ trả về mã nguồn Rust hợp lệ, có chú thích tiếng Việt cho từng khối logic, không giải thích lan man.
+5. **Few-Shot Examples**: Đưa ra một ví dụ mẫu ngắn gọn thể hiện phong cách viết mã bạn mong muốn.
 
-### 2. Cuộc cách mạng Rust trong Kinh tế học Đám mây (Cloud Economics)
-
-Trong kỷ nguyên điện toán đám mây (AWS, Google Cloud, Kubernetes), chi phí hạ tầng máy chủ tỷ lệ thuận với lượng RAM và CPU mà ứng dụng tiêu thụ:
-
-| Tiêu chí so sánh | Java Spring Boot / Node.js | Rust Microservice | Lợi thế vượt trội của Rust |
-|---|---|---|---|
-| **Bộ nhớ RAM khi khởi động** | 350MB – 800MB | 8MB – 15MB | **Tiết kiệm 95% RAM** |
-| **Thời gian khởi động lạnh (Cold Start)**| 5 – 20 giây | 2 – 5 mili-giây | Hoàn hảo cho Serverless & Auto-scaling |
-| **Dừng hệ thống do dọn rác (GC Pause)** | 50ms – 500ms ngẫu nhiên | **0 giây (Không có GC)** | Độ trễ đuôi $p99$ ổn định tuyệt đối |
-| **Mật độ Pod trên 1 máy chủ Kubernetes**| 10 – 20 pods | 200 – 400 pods | Tăng mật độ gấp **20 lần**, giảm chi phí máy chủ |
-
-### 3. Ngân sách Độ trễ mạng (Latency Budget) & Serialization Overhead
-
-- Khi gọi một hàm nội bộ trên RAM: Tốn khoảng **10 nano-giây**.
-- Khi gọi qua mạng nội bộ Datacenter (RPC Call): Tốn khoảng **1 đến 5 mili-giây** (chậm hơn **100,000 lần**!).
-- Do đó, nếu một yêu cầu của khách hàng phải nhảy qua 10 microservices liên tiếp, tổng độ trễ đã là 50ms chỉ riêng thời gian di chuyển trên dây mạng.
-- Sử dụng các định dạng tuần tự hóa nhị phân tốc độ cao (như Protocol Buffers trong gRPC hoặc MessagePack) thay vì JSON cồng kềnh giúp thu nhỏ kích thước gói tin và triệt tiêu gánh nặng CPU khi chuyển đổi chuỗi.
-
-### 4. Mẫu Thiết kế Chống sập dây chuyền (Circuit Breaker Pattern)
-
-Trong hệ thống phân tán, sự cố mạng là điều chắc chắn sẽ xảy ra. Nếu Dịch vụ Bị đơ phản hồi, Dịch vụ A tiếp tục gửi hàng ngàn yêu cầu sẽ dẫn tới cạn kiệt luồng và sập lan truyền (Cascading Failure):
-- **Trạng thái Closed (Đóng)**: Hệ thống hoạt động bình thường, các yêu cầu được chuyển qua mạng.
-- **Trạng thái Open (Mở / Ngắt mạch)**: Khi tỷ lệ lỗi vượt quá ngưỡng (ví dụ 50% lỗi trong 10 giây qua), ngắt mạch lập tức chặn đứng mọi yêu cầu mới, trả về lỗi ngay tức thì hoặc dữ liệu mặc định (Fallback) mà không gửi qua mạng nữa, giúp dịch vụ đích có thời gian phục hồi.
-- **Trạng thái Half-Open (Nửa mở)**: Sau một khoảng thời gian chờ (ví dụ 30 giây), ngắt mạch cho phép một vài yêu cầu thử nghiệm đi qua để kiểm tra xem dịch vụ đích đã hồi phục hay chưa.
+### 3. Tự động hóa quy chuẩn dự án qua `.cursorrules` và `AGENTS.md`
+Trong các môi trường làm việc hiện đại (như Cursor IDE, Windsurf, hoặc Antigravity), bạn không cần phải copy-paste System Prompt mỗi lần chat. Bạn có thể lưu trữ chúng vào tệp cấu hình chuyên dụng ở thư mục gốc của dự án:
+- `.cursorrules` hoặc `.agent/rules/*.md`: Tự động được IDE đính kèm vào mỗi lượt suy luận của AI.
+- Cơ chế phân tầng ngữ cảnh thông minh:
+  - **Tầng 1 (Luôn tải)**: Các ràng buộc an toàn bộ nhớ và tiêu chuẩn mã nguồn.
+  - **Tầng 2 (Tải theo ngữ cảnh)**: Các kiểu dữ liệu của mô-đun hiện tại đang chỉnh sửa.
+  - **Tầng 3 (Chỉ tải khi cần)**: Lịch sử lỗi biên dịch để AI sửa chữa.
 
 ---
 
-## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
+## Mã nguồn minh họa thực chiến
 
-Dưới đây là mã nguồn hoàn chỉnh của một kiến trúc **Modular Monolith sẵn sàng chuyển dịch sang Microservices phân tán**: Minh họa sự trừu tượng hóa ranh giới nghiệp vụ qua Trait `UserService`, `OrderService`, cùng cơ chế phòng thủ **Ngắt mạch chống sập dây chuyền (Circuit Breaker)**:
+Dưới đây là một mô-đun Rust hoàn chỉnh, có thể biên dịch và chạy bằng `rustc --edition=2021`. Chương trình này mô phỏng một **Động cơ điều phối ngữ cảnh (Context Engine)** chuyên nghiệp: Tự động phân tích dung lượng token, quản lý ngân sách bộ nhớ ngữ cảnh (token budget), ghép nối các thành phần System Prompt có trọng số, và cắt gọt ngữ cảnh thừa thãi trước khi chuyển giao cho trợ lý AI.
 
 ```rust
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+// ============================================================================
+// CHƯƠNG 40: HỆ THỐNG QUẢN LÝ CỬA SỔ NGỮ CẢNH & ĐÓNG GÓI SYSTEM PROMPT CHUẨN MỰC
+// Tác giả: Kỹ Sư Kiến Trúc Hệ Thống Rust
+// ============================================================================
 
-/// Mô hình Dữ liệu Người dùng
+use std::collections::VecDeque;
+
+// 1. ĐỊNH NGHĨA CÁC PHÂN ĐOẠN NGỮ CẢNH (CONTEXT SEGMENT)
+// Mỗi phần của ngữ cảnh có mức độ ưu tiên khác nhau khi ngân sách bộ nhớ bị giới hạn.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserProfile {
-    pub user_id: u64,
-    pub username: String,
-    pub email: String,
+pub enum PriorityTier {
+    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
+    High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
+    Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
+    Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
 }
 
-/// Mô hình Dữ liệu Đơn hàng
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OrderRecord {
-    pub order_id: u64,
-    pub user_id: u64,
-    pub item_name: String,
-    pub price_cents: u64,
+#[derive(Debug, Clone)]
+pub struct ContextSegment {
+    pub name: String,
+    pub content: String,
+    pub priority: PriorityTier,
+    pub estimated_tokens: usize,
 }
 
-/// Giao diện Hợp đồng Dịch vụ Người dùng (Domain Service Interface)
-pub trait UserService: Send + Sync {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str>;
-}
-
-/// Trạng thái hoạt động của Ngắt mạch (Circuit Breaker States)
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum CircuitState {
-    Closed,   // Bình thường: Cho phép yêu cầu đi qua
-    Open,     // Ngắt mạch: Từ chối ngay lập tức để bảo vệ hệ thống
-    HalfOpen, // Nửa mở: Cho phép thử nghiệm vài yêu cầu
-}
-
-/// Bộ ngắt mạch chống sập lan truyền cho các cuộc gọi mạng phân tán
-pub struct CircuitBreaker {
-    state: CircuitState,
-    failure_count: usize,
-    failure_threshold: usize,
-    last_state_change: Instant,
-    cooldown_duration: Duration,
-}
-
-impl CircuitBreaker {
-    pub fn new(failure_threshold: usize, cooldown_ms: u64) -> Self {
+impl ContextSegment {
+    pub fn new(name: &str, content: &str, priority: PriorityTier) -> Self {
+        // Ước tính số token sơ bộ: trung bình khoảng 4 ký tự tương đương 1 token
+        let estimated_tokens = (content.len() + 3) / 4;
         Self {
-            state: CircuitState::Closed,
-            failure_count: 0,
-            failure_threshold,
-            last_state_change: Instant::now(),
-            cooldown_duration: Duration::from_millis(cooldown_ms),
+            name: name.to_string(),
+            content: content.to_string(),
+            priority,
+            estimated_tokens,
+        }
+    }
+}
+
+// 2. ĐỘNG CƠ QUẢN LÝ CỬA SỔ NGỮ CẢNH (CONTEXT WINDOW ENGINE)
+// Sử dụng con trỏ thông minh (smart pointer) hoặc cấu trúc sở hữu chặt chẽ
+// để quản lý bộ nhớ đệm (buffer) chứa các chỉ thị prompt an toàn.
+pub struct ContextEngine {
+    pub max_token_budget: usize,
+    segments: Vec<ContextSegment>,
+}
+
+impl ContextEngine {
+    pub fn new(max_token_budget: usize) -> Self {
+        Self {
+            max_token_budget,
+            segments: Vec::new(),
         }
     }
 
-    /// Kiểm tra xem yêu cầu có được phép thực thi hay không
-    pub fn allow_request(&mut self) -> bool {
-        match self.state {
-            CircuitState::Closed => true,
-            CircuitState::Open => {
-                // Kiểm tra xem đã hết thời gian hồi sức (Cooldown) chưa
-                if self.last_state_change.elapsed() >= self.cooldown_duration {
-                    println!("    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!");
-                    self.state = CircuitState::HalfOpen;
-                    self.last_state_change = Instant::now();
-                    true
+    // Thêm một phân đoạn ngữ cảnh vào hàng chờ
+    pub fn add_segment(&mut self, segment: ContextSegment) {
+        self.segments.push(segment);
+    }
+
+    // Ghép nối prompt tối ưu hóa dựa trên ngân sách token tối đa
+    // Tuân thủ nghiêm ngặt quy tắc mượn (borrow) và quyền sở hữu (ownership)
+    pub fn assemble_system_prompt(&self) -> (String, usize) {
+        // 1. Phân loại các segment theo mức độ ưu tiên
+        let mut critical = Vec::new();
+        let mut high = Vec::new();
+        let mut medium = Vec::new();
+        let mut low = Vec::new();
+
+        for seg in &self.segments {
+            match seg.priority {
+                PriorityTier::Critical => critical.push(seg),
+                PriorityTier::High => high.push(seg),
+                PriorityTier::Medium => medium.push(seg),
+                PriorityTier::Low => low.push(seg),
+            }
+        }
+
+        let mut assembled_prompt = String::with_capacity(4096);
+        let mut used_tokens = 0;
+
+        // Hàm nội bộ an toàn để nạp các segment theo thứ tự ưu tiên
+        let mut try_include = |segs: &[&ContextSegment]| {
+            for seg in segs {
+                if used_tokens + seg.estimated_tokens <= self.max_token_budget {
+                    assembled_prompt.push_str(&format!("### [{}]\n{}\n\n", seg.name, seg.content));
+                    used_tokens += seg.estimated_tokens;
                 } else {
-                    false // Vẫn ngắt mạch, từ chối cuộc gọi mạng
+                    println!("[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!", seg.name);
                 }
             }
-            CircuitState::HalfOpen => true,
-        }
-    }
+        };
 
-    /// Báo cáo cuộc gọi mạng thành công
-    pub fn record_success(&mut self) {
-        if self.state == CircuitState::HalfOpen {
-            println!("    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!");
-        }
-        self.state = CircuitState::Closed;
-        self.failure_count = 0;
-    }
+        // Ưu tiên cao nạp trước, ưu tiên thấp nạp sau
+        try_include(&critical);
+        try_include(&high);
+        try_include(&medium);
+        try_include(&low);
 
-    /// Báo cáo cuộc gọi mạng thất bại
-    pub fn record_failure(&mut self) {
-        self.failure_count += 1;
-        println!("    [CircuitBreaker] Ghi nhận thất bại #{}", self.failure_count);
-
-        if self.failure_count >= self.failure_threshold {
-            println!("    [!] [CẢNH BÁO] Số lỗi vượt ngưỡng: KÍCH HOẠT NGẮT MẠCH (OPEN)!");
-            self.state = CircuitState::Open;
-            self.last_state_change = Instant::now();
-        }
+        (assembled_prompt, used_tokens)
     }
 }
 
-/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation)
-pub struct InMemoryUserService {
-    users: HashMap<u64, UserProfile>,
-}
-
-impl InMemoryUserService {
-    pub fn new() -> Self {
-        let mut users = HashMap::new();
-        users.insert(
-            1,
-            UserProfile {
-                user_id: 1,
-                username: "nguyen_van_a".to_string(),
-                email: "a@masterclass.vn".to_string(),
-            },
-        );
-        Self { users }
-    }
-}
-
-impl UserService for InMemoryUserService {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str> {
-        self.users
-            .get(&user_id)
-            .cloned()
-            .ok_or("Không tìm thấy thông tin người dùng")
-    }
-}
-
-/// Dịch vụ Điều phối Đơn hàng phân tán kết nối với Dịch vụ Người dùng
-pub struct OrderCoordinatorService {
-    user_service: Arc<dyn UserService>,
-    circuit_breaker: Mutex<CircuitBreaker>,
-}
-
-impl OrderCoordinatorService {
-    pub fn new(user_service: Arc<dyn UserService>) -> Self {
-        Self {
-            user_service,
-            circuit_breaker: Mutex::new(CircuitBreaker::new(3, 200)), // Ngưỡng 3 lỗi, cooldown 200ms
-        }
-    }
-
-    /// Tạo đơn hàng mới với sự bảo vệ của Circuit Breaker
-    pub fn create_order(
-        &self,
-        order_id: u64,
-        user_id: u64,
-        item_name: &str,
-        price_cents: u64,
-    ) -> Result<OrderRecord, &'static str> {
-        let mut breaker = self.circuit_breaker.lock().unwrap();
-
-        // 1. Kiểm tra Circuit Breaker trước khi thực hiện cuộc gọi liên dịch vụ
-        if !breaker.allow_request() {
-            return Err("Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!");
-        }
-
-        // 2. Gọi sang dịch vụ người dùng để xác thực
-        match self.user_service.get_user(user_id) {
-            Ok(user) => {
-                breaker.record_success();
-                println!("    [OrderService] Xác thực thành công khách hàng: {}", user.username);
-                Ok(OrderRecord {
-                    order_id,
-                    user_id: user.user_id,
-                    item_name: item_name.to_string(),
-                    price_cents,
-                })
-            }
-            Err(err) => {
-                breaker.record_failure();
-                Err(err)
-            }
-        }
-    }
-}
-
+// 3. HÀM MAIN THỰC CHỨC MINH HỌA QUY TRÌNH QUẢN LÝ NGỮ CẢNH
 fn main() {
-    println!("==================================================================");
-    println!("   KIEN TRUC PHAN TAN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
-    println!("==================================================================");
+    println!("=== CHƯƠNG 40: MINH HỌA ĐỘNG CƠ QUẢN LÝ NGỮ CẢNH & PROMPT HỆ THỐNG ===");
 
-    // Khởi tạo Dịch vụ Người dùng
-    let user_service = Arc::new(InMemoryUserService::new());
+    // Giả sử chúng ta đặt ngân sách ngữ cảnh rất chặt chẽ: chỉ 300 tokens
+    let mut engine = ContextEngine::new(300);
 
-    // Khởi tạo Dịch vụ Đơn hàng liên kết
-    let order_service = OrderCoordinatorService::new(user_service);
+    // Segment 1: Ràng buộc an toàn cốt lõi (Critical)
+    engine.add_segment(ContextSegment::new(
+        "RÀNG BUỘC KỸ THUẬT BẤT BIẾN",
+        "1. Ngôn ngữ: Rust 2021 Edition.\n2. CẤM tuyệt đối dùng `unsafe`.\n3. CẤM dùng `.unwrap()`; bắt buộc xử lý lỗi bằng `Result<T, E>`.\n4. Đảm bảo an toàn quyền sở hữu (ownership) và mượn (borrow).",
+        PriorityTier::Critical,
+    ));
 
-    // 1. Thử nghiệm tạo đơn hàng hợp lệ
-    println!("\n[1] Thử nghiệm tạo đơn hàng cho khách hàng hợp lệ (ID = 1):");
-    match order_service.create_order(101, 1, "Sách Rust Masterclass Chuyên Sâu", 450000) {
-        Ok(order) => println!("    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}", order.order_id, order.item_name),
-        Err(err) => println!("    [!] Thất bại: {}", err),
-    }
+    // Segment 2: Giao ước Hợp đồng Trait (High)
+    engine.add_segment(ContextSegment::new(
+        "GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ",
+        "pub trait LogStorage {\n    fn append_log(&mut self, message: &str) -> Result<u64, String>;\n}",
+        PriorityTier::High,
+    ));
 
-    // 2. Thử nghiệm kích hoạt ngắt mạch Circuit Breaker bằng cách gọi liên tục ID không tồn tại
-    println!("\n[2] Gửi liên tiếp các yêu cầu lỗi để kích hoạt Circuit Breaker:");
-    for i in 1..=4 {
-        println!("    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...", i);
-        let result = order_service.create_order(200 + i, 999, "Vật phẩm ảo", 10000);
-        match result {
-            Ok(_) => println!("        Thành công!"),
-            Err(e) => println!("        Thất bại: {}", e),
-        }
-    }
+    // Segment 3: Ví dụ mẫu (Medium)
+    engine.add_segment(ContextSegment::new(
+        "VÍ DỤ MẪU (FEW-SHOT EXAMPLE)",
+        "// Mẫu triển khai xử lý an toàn:\nimpl LogStorage for MemoryStorage {\n    fn append_log(&mut self, msg: &str) -> Result<u64, String> {\n        self.buffer.push(msg.to_string());\n        Ok(self.buffer.len() as u64)\n    }\n}",
+        PriorityTier::Medium,
+    ));
 
-    // 3. Yêu cầu thứ 5 bị chặn đứng ngay từ vòng gửi xe bởi Circuit Breaker
-    println!("\n[3] Gửi yêu cầu tiếp theo khi ngắt mạch đang OPEN:");
-    let blocked_call = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
-    println!("    - Kết quả cuộc gọi: {:?}", blocked_call);
-    assert!(blocked_call.is_err());
-    println!("    => Circuit Breaker đã chặn đứng cuộc gọi mạng, bảo vệ hệ thống tuyệt đối!");
+    // Segment 4: Lịch sử trò chuyện rườm rà (Low - sẽ bị cắt bỏ nếu vượt budget)
+    engine.add_segment(ContextSegment::new(
+        "LỊCH SỬ CHAT CŨ KHÔNG CẦN THIẾT",
+        "Người dùng từng hỏi về thời tiết Hà Nội và cách nấu phở bò gia truyền 3 thế hệ trước khi bắt đầu lập trình...",
+        PriorityTier::Low,
+    ));
 
-    println!("\n==================================================================");
-    println!("   XÁC NHẬN: KIẾN TRÚC PHÂN TÁN AN TOÀN - CHỐNG SẬP DÂY CHUYỀN!   ");
-    println!("==================================================================");
+    // Tiến hành ghép nối Prompt
+    let (final_prompt, total_tokens) = engine.assemble_system_prompt();
+
+    println!("\n--- KẾT QUẢ PROMPT HOÀN CHỈNH ĐƯỢC CHẮT LỌC ---");
+    println!("{}", final_prompt);
+    println!("Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa", total_tokens, engine.max_token_budget);
+
+    // Kiểm tra tính đúng đắn của logic
+    assert!(total_tokens <= engine.max_token_budget);
+    assert!(final_prompt.contains("RÀNG BUỘC KỸ THUẬT BẤT BIẾN"));
+    assert!(final_prompt.contains("GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ"));
+
+    println!("\n[Kiểm chứng thành công] Prompt đã được tối ưu hóa hoàn hảo, loại bỏ 100% tạp âm ngữ cảnh!");
 }
 ```
 
 ---
 
-## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
+## Bảng tra cứu lỗi biên dịch & Cách khắc phục
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết kế kiến trúc phân tán hướng Trait trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình viên cung cấp ngữ cảnh bị thiếu sót hoặc prompt sai lệch khiến AI sinh mã lỗi:
 
-| Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
-|---|---|---|---|
-| **E0277** | `the trait 'Send' is not implemented for 'dyn UserService'` | Khi chia sẻ một đối tượng Trait qua các luồng bằng `Arc<dyn UserService>`, Trait đó bắt buộc phải có ràng buộc `Send + Sync`. | Định nghĩa Trait với ràng buộc luồng: `pub trait UserService: Send + Sync { ... }`. |
-| **E0038** | `the trait 'UserService' cannot be made into an object` | Trait chứa phương thức nhận `self` theo kiểu giá trị hoặc chứa hàm generic, vi phạm quy tắc Trait Object Safety. | Đổi tham số nhận thành tham chiếu `&self`, và không dùng generic trên các phương thức của trait. |
-| **E0599** | `no method named 'clone' found for struct 'OrderRecord'` | Bạn gọi `.clone()` trên một cấu trúc dữ liệu domain mà quên khai báo derive tự động. | Thêm macro derive: `#[derive(Clone, Debug)]` trên cấu trúc dữ liệu. |
-| **E0382** | `use of moved value: 'user_service'` | Di chuyển quyền sở hữu (ownership) của dịch vụ vào một luồng khác mà không bọc trong con trỏ thông minh (smart pointer) chia sẻ. | Sử dụng con trỏ đếm tham chiếu đa luồng: `Arc::clone(&user_service)`. |
+| Mã lỗi `rustc` | Nguyên nhân gốc rễ do sai lệch ngữ cảnh | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh Prompt & Context |
+| :--- | :--- | :--- | :--- |
+| **`E0061`** | **Mismatched number of arguments**<br>AI nhớ phiên bản hàm cũ vì trong context bạn không cung cấp chữ ký hàm hiện tại. | ```rust // compile-fail\nfn process_event(id: u64, name: &str) {}\nprocess_event(10);``` | Luôn đưa chữ ký hàm chính xác vào khối `Domain Contracts` trong System Prompt để AI đối chiếu số lượng tham số. |
+| **`E0425`** | **Cannot find value/function in this scope**<br>AI gọi một hàm tiện ích mà không biết nó nằm ở mô-đun nào vì context bị thiếu thông tin `use`. | ```rust // compile-fail\nlet data = read_file_to_string("config.json");``` | Bổ sung câu lệnh quy chuẩn vào Prompt: *"Mọi hàm bên ngoài bắt buộc phải ghi rõ đường dẫn đầy đủ hoặc khai báo `use std::...` tường minh"*. |
+| **`E0599`** | **No method named found for type**<br>AI gọi một phương thức thuộc về Trait nhưng chưa import Trait đó vào phạm vi tệp tin. | ```rust // compile-fail\nuse std::io;\nlet mut f = io::stdout();\nf.write_all(b"hello");``` | Cung cấp danh sách các Trait cốt lõi trong prompt (ví dụ: `use std::io::Write;`) và nhắc nhở AI luôn đưa Trait vào phạm vi hoạt động. |
+| **`E0382`** | **Use of moved value in loop**<br>AI chuyển quyền sở hữu (ownership) của một chuỗi String vào bên trong phân đoạn ngữ cảnh lặp lại. | ```rust // compile-fail\nlet s = String::from("context");\nfor _ in 0..2 { drop(s); }``` | Nhắc nhở AI áp dụng quy tắc mượn (borrow) tham chiếu `&str` hoặc `&ContextSegment` thay vì tiêu thụ quyền sở hữu trong các thao tác lặp. |
 
-### Ví dụ phân tích lỗi `E0038` khi thiết kế Trait Object cho Microservice:
+---
 
+## Tóm tắt chương & Bài tập rèn luyện
+
+### 4 Điểm cốt lõi cần ghi nhớ
+1. **Chất lượng đầu ra của AI tỷ lệ thuận với độ sạch của ngữ cảnh**: Đưa càng nhiều thông tin rác vào prompt thì AI càng dễ sinh ảo giác và quên lãng các quy tắc quan trọng.
+2. **Cấu trúc System Prompt 5 phần**: Định danh vai trò -> Lằn ranh đỏ (Hard Constraints) -> Hợp đồng dữ liệu (Contracts) -> Đặc tả I/O -> Ví dụ mẫu (Few-shot).
+3. **Ưu tiên phân tầng thông tin**: Luôn ưu tiên các quy tắc an toàn bộ nhớ và giao ước Trait lên hàng đầu (`Critical`); lịch sử hội thoại rườm rà phải được dọn dẹp thường xuyên (`Low`).
+4. **Tự động hóa với `.cursorrules`**: Biến các tiêu chuẩn dự án thành luật lệ bất di bất dịch được nạp tự động, giảm thiểu 80% công sức giao tiếp lặp lại.
+
+### Bài tập rèn luyện tư duy
+
+**Bài tập 1 (Phê bình và Nâng cấp Prompt)**:
+Một lập trình viên gửi câu lệnh sau cho AI:
+> *"Viết cho tôi một hàm đọc file cấu hình config.txt rồi trả về danh sách cổng mạng"*.
+
+Dựa trên 5 thành phần của System Prompt đã học, hãy viết lại câu lệnh trên thành một System Prompt kỹ thuật hoàn chỉnh:
+- Có quy định cấm dùng `unwrap()`.
+- Có quy định xử lý khi file không tồn tại.
+- Có định dạng trả về rõ ràng (`Result<Vec<u16>, std::io::Error>`).
+
+**Bài tập 2 (Tối ưu hóa Cửa sổ ngữ cảnh)**:
+Dự án của bạn có 50 tệp tin mã nguồn với tổng cộng 80,000 dòng code. Bạn đang cần AI viết thêm một phương thức mới cho `struct UserSession`.
+Hãy nêu chiến lược: Bạn sẽ chọn những tệp tin hoặc thông tin nào để đưa vào cửa sổ ngữ cảnh của AI, và bạn sẽ cố tình bỏ lại những gì để tránh gây quá tải bộ nhớ làm việc của mô hình?
+
+**Bài tập 3 (Sửa lỗi thiếu Trait Scope của AI)**:
+Đoạn mã sau do AI sinh ra bị lỗi biên dịch `E0599` vì thiếu khai báo Trait trong phạm vi:
 ```rust
-// Đoạn mã lỗi minh họa E0038: Trait không thỏa mãn Object Safety
-trait DichVuLoi {
-    // Lỗi: Hàm generic không thể tạo Trait Object động
-    fn xu_ly_generic<T>(&self, data: T); 
-}
+use std::fs::File;
 
-// fn goi_dich_vu(dv: &dyn DichVuLoi) {} // LỖI E0038!
-
-// Cách sửa chữa đúng chuẩn: Dùng kiểu cụ thể hoặc lát cắt byte
-trait DichVuDung: Send + Sync {
-    fn xu_ly_chuan(&self, data: &[u8]) -> Result<(), &'static str>;
-}
-
-fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
-    let _ = dv.xu_ly_chuan(b"data");
+fn save_data_to_file(path: &str, content: &[u8]) -> Result<(), std::io::Error> {
+    let mut file = File::create(path)?;
+    // Trình biên dịch báo lỗi: no method named `write_all` found for struct `File`
+    file.write_all(content)?;
+    Ok(())
 }
 ```
-
----
-
-## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
-
-### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Tiến trình kiến trúc tự nhiên**: Hãy bắt đầu với một Modular Monolith chặt chẽ trước khi quyết định xé nhỏ thành các Microservice phân tán.
-2. **Kinh tế học Rust trên Đám mây**: Nhờ mức tiêu thụ RAM cực thấp (~15MB), không có độ trễ GC, và thời gian khởi động tính bằng mili-giây, Rust giúp doanh nghiệp cắt giảm tới 80% hóa đơn máy chủ.
-3. **Chi phí Độ trễ mạng**: Gọi hàm nội bộ trên RAM nhanh gấp 100,000 lần gọi qua mạng. Tận dụng định dạng nhị phân tốc độ cao để giảm thiểu chi phí chuyển đổi dữ liệu.
-4. **Phòng chống sập lan truyền**: Luôn trang bị mô hình Ngắt mạch (Circuit Breaker) và Phân vùng chống tràn (Bulkhead) cho mọi điểm giao tiếp mạng, kết hợp cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo vệ toàn vẹn hệ thống.
-
-### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bổ sung cơ chế Fallback Cache)**:  
-   Mở rộng `OrderCoordinatorService`: Khi Circuit Breaker ở trạng thái `Open`, thay vì trả về lỗi ngay lập tức, hãy cho dịch vụ tra cứu thông tin khách hàng từ một bảng băm bộ đệm cục bộ (Local Cache) đã lưu từ trước.
-2. **Bài tập 2 (Hiện thực hóa Bộ giới hạn số lượng cuộc gọi đồng thời - Bulkhead)**:  
-   Viết một cấu trúc `BulkheadSemaphore` giới hạn tối đa chỉ cho phép 10 yêu cầu gọi mạng chạy đồng thời cùng lúc. Nếu có yêu cầu thứ 11 ập vào trong khi 10 yêu cầu trước chưa hoàn thành, lập tức xếp vào hàng đợi chờ hoặc từ chối để chống tràn tài nguyên máy chủ.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Khi nào không nên dùng Microservices?)**:  
-   Một công ty khởi nghiệp chỉ có 3 lập trình viên và 500 người dùng hoạt động mỗi ngày có nên chia hệ thống thành 15 microservices độc lập hay không? Rủi ro lớn nhất về mặt vận hành hạ tầng (DevOps, Giám sát hệ thống, Distributed Tracing) mà họ sẽ phải đối mặt là gì?
+Hãy giải thích vì sao lỗi xảy ra và thêm đúng dòng lệnh `use` còn thiếu để mã nguồn biên dịch thành công.
+*(Gợi ý: Phương thức `write_all` nằm trong Trait `std::io::Write`)*.

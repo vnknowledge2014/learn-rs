@@ -1,330 +1,349 @@
-# Chương 45: Động cơ bất đồng bộ Tokio Runtime, Vòng lặp sự kiện & Cơ chế Epoll (Asynchronous Tokio Runtime, Event Loops & Epoll)
+# Chương 45: Quy Trình Phát Triển Dựa Trên Đặc Tả & TDD Cùng AI (Spec-Driven Development SDD & AI-Assisted TDD)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong thập niên 2000, thế giới điện toán đối mặt với một bức tường giới hạn nổi tiếng mang tên **Bài toán C10K (C10K Problem)**: Làm thế nào một máy chủ đơn lẻ có thể duy trì và phục vụ đồng thời 10,000 kết nối mạng cùng lúc mà không bị sập nguồn vì cạn kiệt bộ nhớ? Ngày nay, với sự bùng nổ của mạng xã hội, ứng dụng chat thời gian thực và mạng phân tán, thách thức đó đã nâng lên thành **Bài toán C1000K (1 triệu kết nối đồng thời)**.
+Trong lập trình truyền thống, một trong những cạm bẫy lớn nhất khiến các dự án phần mềm thất bại là tình trạng "vừa viết vừa nghĩ" — lập trình viên mở trình soạn thảo, gõ mã ào ạt, sau đó chạy thử thấy lỗi thì chắp vá tạm bợ. Khi có thêm sự xuất hiện của trợ lý AI, cái bẫy này càng trở nên nguy hiểm gấp bội: AI có thể sinh ra 500 dòng code trong vòng 5 giây, nhưng nếu 500 dòng code đó được xây dựng trên một nền móng không có định hướng rõ ràng, bạn sẽ nhận về một mớ "hỗn độn kỹ thuật" (spaghetti code) không thể bảo trì và tiềm ẩn hàng tá lỗi bảo mật.
 
-Mô hình đa luồng truyền thống "1 luồng hệ điều hành = 1 kết nối" (One-Thread-Per-Connection) đã hoàn toàn phá sản trước bài toán này. Để giải quyết triệt để, ngành công nghiệp chuyển dịch sang mô hình **I/O Đa dồn kênh bất đồng bộ (Asynchronous Non-blocking I/O)**. Và trong vũ trụ Rust, vị vua thống trị tuyệt đối lĩnh vực này chính là **Tokio Runtime**.
+Để khắc phục triệt để vấn đề này, các kỹ sư hệ thống hàng đầu thế giới đã đúc kết nên một phương pháp luận tối ưu: **Quy trình phát triển dựa trên đặc tả (Spec-Driven Development - SDD)** kết hợp cùng **Phát triển hướng kiểm thử cùng AI (AI-Assisted Test-Driven Development - TDD)**.
 
-Trong chương này, chúng ta sẽ mở nắp ca-pô cỗ máy Tokio để khám phá:
-- Tại sao luồng hệ điều hành (OS Thread) lại tốn kém và nguyên nhân gây ra sự chậm trễ từ việc hoán đổi ngữ cảnh (Context Switching).
-- Cơ chế đa dồn kênh I/O tầng nhân hệ điều hành: `epoll` (trên Linux), `kqueue` (trên macOS), và `IOCP` (trên Windows).
-- Cốt lõi của Rust Async: Trait `Future`, Máy trạng thái hữu hạn (State Machine) được sinh tự động, `Poll::Ready` vs `Poll::Pending`, và cơ chế đánh thức `Waker`.
-- Kiến trúc điều phối cắp việc (Work-Stealing Scheduler) của Tokio: Làm thế nào hàng chục ngàn Task siêu nhẹ (Green Threads chỉ tốn vài trăm byte RAM) có thể chạy mượt mà trên một số ít nhân CPU thực tế.
-- Kỹ thuật lập trình bất đồng bộ thực chiến: Tự tay dựng một Động cơ Mini-Runtime và hiểu thấu đáo cách vận hành của vòng lặp sự kiện (Event Loop).
+Thay vì yêu cầu AI viết code ngay lập tức, bạn sẽ yêu cầu AI cùng bạn làm rõ bản đặc tả kỹ thuật (`SPEC.md`), sau đó tạo ra một bộ bài thi kiểm tra nghiêm ngặt (Unit Tests) trước khi viết dù chỉ một dòng mã thực thi. Quy trình này biến AI thành một cỗ máy giải đố cực kỳ chuẩn xác, đảm bảo mọi ngóc ngách của hệ thống đều tuân thủ các quy tắc an toàn về quyền sở hữu (ownership), mượn (borrow), và thời gian sống (lifetime).
+
+Mục tiêu học tập của chương:
+- Thấu hiểu triết lý và chu trình làm việc khép kín của **Spec-Driven Development (SDD)**.
+- Làm chủ chu trình 3 bước kinh điển của **AI-Assisted TDD**: Red (Viết test thất bại) -> Green (Viết mã tối thiểu để vượt qua) -> Refactor (Tái cấu trúc tối ưu).
+- Xây dựng tư duy phát hiện trường hợp biên (Edge Cases): Dữ liệu rỗng, độ dài bất thường, ký tự dị biệt, và lỗi logic nghiệp vụ.
+- Thiết lập bộ kiểm thử đơn vị tự động trong Rust bằng `#[cfg(test)]` và các macro kiểm tra khẳng định (`assert!`, `assert_eq!`).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu rõ sự khác biệt giữa mô hình Đồng bộ chặn (Blocking Sync) và Bất đồng bộ dựa trên sự kiện (Async Event-Driven), hãy quan sát hai quán ăn sau:
+### Thanh tra an toàn xây dựng và Chiếc xe thử nghiệm va chạm
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA: QUÁN PHỞ TRUYỀN THỐNG VS QUÁN CÀ PHÊ THẺ RUNG       │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│ [1. MÔ HÌNH ĐỒNG BỘ CHẶN (BLOCKING SYNC: 1 LUỒNG = 1 KẾT NỐI)]                   │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Khách bước vào bàn ──► 1 Bồi bàn đứng kè kè bên cạnh:                │         │
-│ │ - Khách gọi món phở gà ──► Bồi bàn đi xuống bếp.                     │         │
-│ │ - Nồi nước sôi mất 10 phút: Bồi bàn ĐỨNG BẤT ĐỘNG CHỜ ĐỢI 10 PHÚT!  │         │
-│ │ - Bồi bàn bưng bát phở ra ──► Khách ăn xong ──► Bồi bàn mới rảnh tay!│         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> 100 khách cần tới 100 bồi bàn đứng đợi đờ đẫn (Lãng phí tài nguyên khủng)!│
-│                                                                                  │
-│ [2. MÔ HÌNH BẤT ĐỒNG BỘ (ASYNC TOKIO / EPOLL: EVENT-DRIVEN VỚI THẺ RUNG)]        │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ 1. Bạn tới quầy gọi trà sữa ──► Thu ngân trao bạn một THẺ RUNG TỰ ĐỘNG│        │
-│ │    (Đây chính là tấm vé hẹn tương lai: Trait Future)!                │         │
-│ │ 2. Bạn cầm thẻ về bàn ngồi lướt điện thoại thoải mái.               │         │
-│ │ 3. Anh thu ngân LẬP TỨC phục vụ khách hàng tiếp theo (Không hề đợi)! │         │
-│ │ 4. Bếp pha xong ──► Thẻ kêu "TÍT TÍT TÍT!" (Cơ chế Waker đánh thức)  │         │
-│ │ 5. Bạn thong thả ra quầy nhận cốc trà sữa (Poll::Ready)!             │         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> CHỈ CẦN 1 ANH THU NGÂN PHỤC VỤ CẢ NGÀN KHÁCH MÀ KHÔNG AI PHẢI ĐỢI!        │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+Hãy tưởng tượng bạn chuẩn bị sản xuất hàng loạt một dòng xe hơi gia đình đời mới.
 
-### 1. Quán phở truyền thống (OS Thread Per Connection)
-- Mỗi khi có một kết nối mạng mở ra, hệ điều hành cấp phát một luồng thực thi (OS Thread) riêng biệt.
-- Mỗi luồng này ngốn sẵn từ `2MB` đến `8MB` bộ nhớ ngăn xếp (Stack). Nếu có 10,000 kết nối, riêng bộ nhớ Stack đã "ngốn" sạch `20GB` đến `80GB` RAM!
-- Tệ hơn nữa, khi một kết nối đang chờ người dùng gõ phím hay chờ dữ liệu từ đĩa cứng (thao tác I/O), luồng đó hoàn toàn bị chặn (`blocked`). CPU phải liên tục hoán đổi qua lại giữa hàng ngàn luồng (Context Switching), tiêu tốn phần lớn năng lượng chỉ để ghi chép sổ sách thay vì xử lý dữ liệu.
+#### Cách làm sai lầm (Code First - Viết mã trước):
+- Đội ngũ kỹ sư bắt tay vào lắp ráp toàn bộ khung gầm, động cơ, ghế ngồi, sơn màu thật đẹp.
+- Sau khi chiếc xe hoàn thiện và đem bán cho khách hàng, họ mới bắt đầu cầu nguyện cho chiếc xe không bị lật khi phanh gấp ở tốc độ cao.
+- Nếu xe gặp tai nạn trên đường phố, hãng xe phải thu hồi hàng triệu chiếc, tốn kém hàng tỷ đô la và đánh mất uy tín hoàn toàn.
 
-### 2. Quán cà phê phát thẻ rung tự động (Async Event Loop & Epoll)
-- **Thẻ rung tự động (Trait `Future`)**: Đại diện cho một kết quả chưa hoàn thành ở hiện tại nhưng cam kết sẽ có trong tương lai.
-- **Tiếng kêu "Tít tít!" (Cơ chế `Waker`)**: Khi dữ liệu mạng từ card mạng thực sự cập bến (gói tin đã về tới buffer), hệ điều hành (qua `epoll`) phát tín hiệu đánh thức `Waker`.
-- **Anh thu ngân siêu tốc (Tokio Event Loop / Executor)**: Chỉ cần vài nhân CPU (thường bằng số nhân phần cứng của máy), Tokio luân phiên kiểm tra và thực thi các Task sẵn sàng chạy, đạt hiệu suất phục vụ hàng triệu kết nối mà mỗi Task chỉ tiêu tốn vỏn vẹn khoảng `300 bytes` RAM!
+#### Cách làm đúng đắn trong SDD & TDD (Spec & Test First):
+1. **Bản đặc tả kỹ thuật (Specification - SDD)**:
+   - Trước khi mua một thanh thép nào, Kỹ sư trưởng ban hành tài liệu quy chuẩn: *"Xe phải có 4 cửa; phanh xe phải dừng được trong 30 mét ở vận tốc 80km/h; túi khí phải bung trong 0.03 giây khi xảy ra va chạm; tuyệt đối không rò rỉ nhiên liệu khi lật nghiêng"*.
+2. **Thiết kế bài kiểm tra trước (Red Phase)**:
+   - Kỹ sư dựng sẵn một phòng thí nghiệm va chạm với hình nhân cảm biến (Crash Test Dummies) và rào chắn thép (bộ Unit Tests).
+   - Khi chưa có chiếc xe nào được đưa vào thử, bài kiểm tra đương nhiên ghi nhận trạng thái **Đỏ (Red)** vì chưa có sản phẩm.
+3. **Chế tạo để vượt qua bài kiểm tra (Green Phase)**:
+   - Xưởng sản xuất (đóng vai trò là trợ lý AI) bắt đầu lắp ráp khung xe với mục tiêu duy nhất: Vượt qua bài kiểm tra va chạm của phòng thí nghiệm.
+   - Khi chiếc xe chạy đâm vào tường và các túi khí bung hoàn hảo, hệ thống thông báo trạng thái chuyển sang **Xanh (Green)**!
+4. **Tối ưu hóa và tinh chỉnh (Refactor Phase)**:
+   - Sau khi các tiêu chuẩn an toàn đã vượt qua, kỹ sư yêu cầu làm nhẵn bề mặt sơn, thay ghế nỉ bằng ghế da cao cấp, nhưng giữ nguyên khung gầm an toàn đã kiểm định.
+
+Trong lập trình Rust:
+- Bạn viết **Bản đặc tả (Spec)** quy định rõ các ràng buộc nghiệp vụ.
+- Bạn yêu cầu AI viết **Bộ kiểm thử (Tests)** dựa trên đặc tả đó.
+- Sau đó, bạn để AI viết **Mã thực thi (Implementation)** cho đến khi lệnh `cargo test` hiện lên toàn màu xanh lá rực rỡ!
 
 ---
 
-## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
+## Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
-### 1. Cơ chế Đa dồn kênh I/O tầng Nhân: Epoll và Kqueue
+### 1. Vòng đời của Spec-Driven Development (SDD)
+Một quy trình SDD chuẩn mực gồm 4 giai đoạn tuần tự:
 
-Thay vì chương trình phải chủ động đi hỏi từng ổ cắm mạng (Socket Polling làm nóng ran CPU):
-- **Cơ chế `epoll` (trên Linux)**: Chương trình đăng ký 100,000 socket vào một "Bảng theo dõi sự kiện" của nhân Linux qua lệnh `epoll_ctl`.
-- Sau đó, chương trình chỉ cần gọi duy nhất một lệnh `epoll_wait` và đi ngủ.
-- Khi có bất kỳ socket nào nhận được dữ liệu, card mạng gửi tín hiệu ngắt phần cứng (Hardware Interrupt), nhân Linux đánh thức chương trình dậy và trả về đúng danh sách những socket đã sẵn sàng đọc/ghi. Đây là nền tảng giúp máy chủ xử lý hàng triệu kết nối với mức tiêu thụ CPU gần như bằng không khi rảnh rỗi.
-
-### 2. Bản chất của Trait `Future` trong Rust
-
-Trong Rust, lập trình bất đồng bộ tuân theo triết lý **Kéo dữ liệu (Poll-based Model)** thay vì Đẩy dữ liệu (Push-based như JavaScript Promises):
-
-```rust
-pub trait Future {
-    type Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
-}
-
-pub enum Poll<T> {
-    Ready(T),   // Tác vụ đã hoàn thành, trả về kết quả
-    Pending,    // Dữ liệu chưa sẵn sàng, hãy chờ Waker đánh thức lại!
-}
+```
+[1. Viết SPEC.md] ──► [2. Định nghĩa Types/Traits] ──► [3. AI viết Tests (RED)] ──► [4. AI viết Logic (GREEN)]
+        ▲                                                                                   │
+        │                                                                                   ▼
+        └────────────────────────── [5. Tối ưu hóa (REFACTOR)] ◄────────────────────────────┘
 ```
 
-- **Tính lười biếng (Futures are Lazy)**: Một `Future` trong Rust sẽ **hoàn toàn không làm gì cả** cho đến khi nó được nạp vào một Executor (như Tokio) và được gọi phương thức `.poll()`.
-- **Máy trạng thái không chi phí (Zero-Cost State Machine)**:
-  - Khi một tác vụ bất đồng bộ được biên dịch, Rust biến tác vụ đó thành một `enum` máy trạng thái.
-  - Mỗi bước tạm dừng tương ứng với một trạng thái của `enum`.
-  - Không có bộ nhớ Heap nào bị cấp phát ngầm; toàn bộ kích thước của máy trạng thái được tính toán chính xác ngay khi biên dịch!
+1. **Giai đoạn 1 - Đặc tả yêu cầu (`SPEC.md`)**:
+   - Xác định mục tiêu của mô-đun.
+   - Liệt kê các quy tắc nghiệp vụ bất biến (Business Invariants).
+   - Xác định rõ danh sách các trường hợp ngoại lệ (Edge Cases): Chuỗi rỗng, số vượt giới hạn, ký tự đặc biệt, hoặc ngắt kết nối đột ngột.
+2. **Giai đoạn 2 - Mô hình hóa hệ thống kiểu (Type Modeling)**:
+   - Dùng hệ thống kiểu dữ liệu tĩnh của Rust để khóa chặt các trạng thái bất hợp pháp.
+   - Định nghĩa `struct`, `enum`, và `trait`.
+3. **Giai đoạn 3 - Tạo bài thi TDD (Red Phase)**:
+   - Yêu cầu AI: *"Dựa trên file SPEC.md và các kiểu dữ liệu trên, hãy viết một bộ kiểm thử đơn vị bao phủ toàn bộ các trường hợp thành công lẫn thất bại"*.
+   - Chạy `cargo test`: Các bài test chắc chắn sẽ báo lỗi biên dịch hoặc thất bại vì chưa viết thân hàm.
+4. **Giai đoạn 4 - Hiện thực hóa mã nguồn (Green Phase)**:
+   - Yêu cầu AI: *"Bây giờ hãy viết thân hàm thực thi tối thiểu sao cho toàn bộ bài test trên đều vượt qua (PASS)"*.
+5. **Giai đoạn 5 - Tái cấu trúc an toàn (Refactor Phase)**:
+   - Làm sạch mã nguồn: Chuyển đổi các vòng lặp thủ công thành các hàm chuyển đổi dòng chảy (iterators), loại bỏ cấp phát bộ nhớ thừa, dùng bộ nhớ đệm (buffer) để tăng tốc độ xử lý dữ liệu, và áp dụng con trỏ thông minh (smart pointer) khi cần chia sẻ quyền sở hữu dữ liệu.
 
-### 3. Kiến trúc Động cơ Điều phối Tokio (Tokio Runtime Architecture)
-
-Runtime Tokio được chia thành hai thành phần cộng sinh hoàn hảo:
-1. **Bộ phản ứng (The Reactor)**: Giao tiếp trực tiếp với hệ điều hành thông qua `mio` (`epoll`/`kqueue`), chịu trách nhiệm theo dõi các sự kiện mạng, bộ đếm thời gian (timers), và kích hoạt `Waker` khi sự kiện xảy ra.
-2. **Bộ điều hành (The Executor)**:
-   - Sử dụng thuật toán **Cắp việc (Work-Stealing Algorithm)**: Mỗi nhân CPU quản lý một hàng đợi tác vụ cục bộ (Local Run Queue).
-   - Nếu nhân số 1 xử lý hết việc trong hàng đợi của mình, nó sẽ "liếc sang" hàng đợi của nhân số 2 và cắp bớt một nửa số Task về xử lý, đảm bảo tất cả các nhân CPU luôn hoạt động với tải trọng cân bằng tuyệt đối.
-3. **Đa nhiệm cộng tác (Cooperative Multitasking)**:
-   - Mỗi Task chạy cho đến khi gặp điểm tạm dừng thì tự nguyện nhường quyền điều khiển CPU cho Task khác.
-   - Cơ chế này kết hợp cùng quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm tài nguyên luôn được giải phóng kịp thời khi task hoàn tất.
+### 2. Sức mạnh của Kiểm thử trong Rust (`#[cfg(test)]`)
+Rust tích hợp sẵn khung kiểm thử mạnh mẽ ngay trong ngôn ngữ chuẩn mà không cần cài đặt thêm bất kỳ thư viện bên thứ ba nào:
+- Thuộc tính `#[cfg(test)]` báo cho trình biên dịch chỉ biên dịch mã kiểm thử khi chạy lệnh `cargo test`, hoàn toàn không làm phình to kích thước tệp nhị phân cuối cùng khi triển khai thương mại (Zero Binary Overhead).
+- Các macro kiểm tra cơ bản:
+  - `assert!(condition)`: Kiểm tra điều kiện phải đúng (`true`).
+  - `assert_eq!(left, right)`: Kiểm tra hai giá trị bằng nhau.
+  - `assert_ne!(left, right)`: Kiểm tra hai giá trị khác nhau.
+  - `#[should_panic]`: Kiểm tra đoạn mã bắt buộc phải kích hoạt hoảng loạn (panic) khi gặp lỗi nghiêm trọng.
 
 ---
 
-## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
+## Mã nguồn minh họa thực chiến
 
-Dưới đây là mã nguồn Rust hoàn chỉnh xây dựng một **Động cơ Bất đồng bộ thu nhỏ (Educational Mini-Runtime)**: Tự tay cài đặt máy trạng thái `Future`, cơ chế trả về `Poll::Pending` / `Poll::Ready`, và bộ điều phối thực thi tuần tự các tác vụ mà không cần thư viện bên ngoài:
+Dưới đây là một mô-đun Rust hoàn chỉnh, minh họa trọn vẹn quy trình SDD & TDD: Xây dựng một **Động cơ xác thực tài khoản ngân hàng và giao dịch chuyển tiền (BankTransactionValidator)**. Toàn bộ mã nguồn có thể biên dịch và thực thi bằng `rustc --edition=2021`.
 
 ```rust
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-use std::time::{Duration, Instant};
+// ============================================================================
+// CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT & TDD CÙNG AI
+// Tác giả: Kỹ Sư Hệ Thống Rust
+// ============================================================================
 
-/// Một Future đếm ngược thời gian tùy chỉnh mô phỏng I/O bất đồng bộ
-pub struct AsyncTimerFuture {
-    target_time: Instant,
-    polled_count: usize,
+// ----------------------------------------------------------------------------
+// PHẦN 1: BẢN ĐẶC TẢ NGHIỆP VỤ & HỆ THỐNG KIỂU (SPEC & DOMAIN TYPES)
+// Ràng buộc đặc tả (SPEC):
+// 1. Số tài khoản phải có tiền tố "VN", độ dài đúng 10 ký tự, phần sau là chữ số.
+// 2. Số tiền chuyển khoản phải lớn hơn 0 và không vượt quá hạn mức 100,000,000 xu.
+// 3. Tài khoản nguồn và tài khoản đích tuyệt đối không được trùng nhau.
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    InvalidAccountLength { expected: usize, actual: usize },
+    InvalidAccountPrefix(String),
+    InvalidAccountDigits,
+    SameSourceAndDestination,
+    ZeroOrNegativeAmount,
+    AmountExceedsLimit { limit: u64, requested: u64 },
 }
 
-impl AsyncTimerFuture {
-    pub fn new(duration: Duration) -> Self {
-        Self {
-            target_time: Instant::now() + duration,
-            polled_count: 0,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferRequest {
+    pub from_account: String,
+    pub to_account: String,
+    pub amount_cents: u64,
+}
+
+pub struct BankTransactionValidator {
+    pub max_limit_cents: u64,
+}
+
+impl BankTransactionValidator {
+    pub fn new(max_limit_cents: u64) -> Self {
+        Self { max_limit_cents }
+    }
+
+    // Xác thực định dạng của một số tài khoản theo quy chuẩn
+    // Mượn (borrow) tham chiếu lát cắt chuỗi &str để tối ưu hóa hiệu năng, zero-copy
+    pub fn validate_account_format(&self, account: &str) -> Result<(), ValidationError> {
+        if account.len() != 10 {
+            return Err(ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: account.len(),
+            });
         }
-    }
-}
 
-impl Future for AsyncTimerFuture {
-    type Output = String;
-
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.polled_count += 1;
-        let now = Instant::now();
-
-        if now >= self.target_time {
-            // Tác vụ đã hoàn tất! Trả về kết quả
-            Poll::Ready(format!(
-                "Tac vu hoan thanh sau {} lan tham do (Poll)!",
-                self.polled_count
-            ))
-        } else {
-            // Dữ liệu chưa sẵn sàng: Nhường quyền điều khiển
-            Poll::Pending
+        if !account.starts_with("VN") {
+            return Err(ValidationError::InvalidAccountPrefix(account[0..2].to_string()));
         }
-    }
-}
 
-/// Mô phỏng máy trạng thái tổ hợp gồm 2 bước tuần tự (Composite State Machine)
-pub struct CompositeAsyncTask {
-    step: usize,
-    timer1: AsyncTimerFuture,
-    timer2: AsyncTimerFuture,
-}
-
-impl CompositeAsyncTask {
-    pub fn new() -> Self {
-        Self {
-            step: 0,
-            timer1: AsyncTimerFuture::new(Duration::from_millis(30)),
-            timer2: AsyncTimerFuture::new(Duration::from_millis(40)),
+        // Kiểm tra 8 ký tự phía sau phải là chữ số hợp lệ
+        if !account[2..].chars().all(|c| c.is_ascii_digit()) {
+            return Err(ValidationError::InvalidAccountDigits);
         }
+
+        Ok(())
     }
-}
 
-impl Future for CompositeAsyncTask {
-    type Output = String;
+    // Xác thực toàn bộ yêu cầu giao dịch chuyển khoản
+    pub fn validate_transfer(&self, req: &TransferRequest) -> Result<(), ValidationError> {
+        // 1. Kiểm tra tài khoản nguồn
+        self.validate_account_format(&req.from_account)?;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            match self.step {
-                0 => {
-                    // Thăm dò bước 1
-                    let timer1_pin = unsafe { Pin::new_unchecked(&mut self.timer1) };
-                    match timer1_pin.poll(cx) {
-                        Poll::Ready(msg) => {
-                            println!("    [CompositeTask] Buoc 1 xong: {}", msg);
-                            self.step = 1;
-                            // Tiếp tục vòng lặp sang bước 2
-                        }
-                        Poll::Pending => return Poll::Pending,
-                    }
-                }
-                1 => {
-                    // Thăm dò bước 2
-                    let timer2_pin = unsafe { Pin::new_unchecked(&mut self.timer2) };
-                    match timer2_pin.poll(cx) {
-                        Poll::Ready(msg) => {
-                            println!("    [CompositeTask] Buoc 2 xong: {}", msg);
-                            self.step = 2;
-                        }
-                        Poll::Pending => return Poll::Pending,
-                    }
-                }
-                2 => {
-                    return Poll::Ready("Toan bo chuoi tac vu da thanh cong 100%!".to_string());
-                }
-                _ => unreachable!(),
-            }
+        // 2. Kiểm tra tài khoản đích
+        self.validate_account_format(&req.to_account)?;
+
+        // 3. Kiểm tra trùng lặp
+        if req.from_account == req.to_account {
+            return Err(ValidationError::SameSourceAndDestination);
         }
-    }
-}
 
-/// Tạo một Waker đơn giản cho mục đích mô phỏng (No-op Dummy Waker)
-fn create_dummy_waker() -> Waker {
-    fn no_op(_: *const ()) {}
-    fn clone(p: *const ()) -> RawWaker {
-        RawWaker::new(p, &VTABLE)
-    }
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, no_op, no_op, no_op);
-    let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
-    unsafe { Waker::from_raw(raw_waker) }
-}
-
-/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất
-pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
-    let waker = create_dummy_waker();
-    let mut context = Context::from_waker(&waker);
-
-    // Ghim cố định Future vào bộ nhớ Stack (Pinning)
-    let mut pinned_future = unsafe { Pin::new_unchecked(&mut future) };
-
-    let mut poll_iterations = 0;
-    loop {
-        poll_iterations += 1;
-        match pinned_future.as_mut().poll(&mut context) {
-            Poll::Ready(result) => {
-                println!("    [MiniRuntime] Da nhan Poll::Ready o vong lap #{}", poll_iterations);
-                return result;
-            }
-            Poll::Pending => {
-                // Nhường quyền CPU mô phỏng sự kiện I/O Epoll đang diễn ra
-                std::thread::sleep(Duration::from_millis(10));
-            }
+        // 4. Kiểm tra số tiền
+        if req.amount_cents == 0 {
+            return Err(ValidationError::ZeroOrNegativeAmount);
         }
+
+        if req.amount_cents > self.max_limit_cents {
+            return Err(ValidationError::AmountExceedsLimit {
+                limit: self.max_limit_cents,
+                requested: req.amount_cents,
+            });
+        }
+
+        Ok(())
     }
 }
 
+// ----------------------------------------------------------------------------
+// PHẦN 2: BỘ KIỂM THỬ ĐƠN VỊ TDD DO AI SINH RA TỪ FILE SPEC (RED -> GREEN)
+// ----------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_account_format() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        assert!(validator.validate_account_format("VN12345678").is_ok());
+    }
+
+    #[test]
+    fn test_account_invalid_length() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        // Quá ngắn
+        let err_short = validator.validate_account_format("VN123").unwrap_err();
+        assert_eq!(err_short, ValidationError::InvalidAccountLength { expected: 10, actual: 5 });
+
+        // Quá dài
+        let err_long = validator.validate_account_format("VN12345678999").unwrap_err();
+        assert_eq!(err_long, ValidationError::InvalidAccountLength { expected: 10, actual: 13 });
+    }
+
+    #[test]
+    fn test_account_invalid_prefix() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let err = validator.validate_account_format("US12345678").unwrap_err();
+        assert_eq!(err, ValidationError::InvalidAccountPrefix("US".to_string()));
+    }
+
+    #[test]
+    fn test_account_non_digit_characters() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let err = validator.validate_account_format("VN1234ABCD").unwrap_err();
+        assert_eq!(err, ValidationError::InvalidAccountDigits);
+    }
+
+    #[test]
+    fn test_transfer_same_account_fails() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let req = TransferRequest {
+            from_account: "VN12345678".to_string(),
+            to_account: "VN12345678".to_string(),
+            amount_cents: 1_000_000,
+        };
+        assert_eq!(validator.validate_transfer(&req), Err(ValidationError::SameSourceAndDestination));
+    }
+
+    #[test]
+    fn test_transfer_amount_exceeds_limit() {
+        let validator = BankTransactionValidator::new(10_000_000);
+        let req = TransferRequest {
+            from_account: "VN12345678".to_string(),
+            to_account: "VN87654321".to_string(),
+            amount_cents: 20_000_000, // Vượt quá hạn mức 10 triệu
+        };
+        assert_eq!(
+            validator.validate_transfer(&req),
+            Err(ValidationError::AmountExceedsLimit { limit: 10_000_000, requested: 20_000_000 })
+        );
+    }
+
+    #[test]
+    fn test_transfer_success() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let req = TransferRequest {
+            from_account: "VN12345678".to_string(),
+            to_account: "VN87654321".to_string(),
+            amount_cents: 5_000_000,
+        };
+        assert!(validator.validate_transfer(&req).is_ok());
+    }
+}
+
+// ----------------------------------------------------------------------------
+// PHẦN 3: HÀM MAIN THỰC THI TRỰC TIẾP ĐỂ KIỂM CHỨNG TÍNH NĂNG
+// ----------------------------------------------------------------------------
 fn main() {
-    println!("==================================================================");
-    println!("   DONG CO BAT DONG BO TOKIO, EVENT LOOP & EPOLL MECHANICS RUST   ");
-    println!("==================================================================");
+    println!("=== CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
 
-    // 1. Thử nghiệm Custom Future đơn lẻ
-    println!("\n[1] Thuc thi Custom Future don le tren Mini-Runtime:");
-    let single_future = AsyncTimerFuture::new(Duration::from_millis(50));
-    let outcome = block_on_mini_runtime(single_future);
-    println!("    - Ket qua Future: {}", outcome);
+    // Khởi tạo bộ kiểm định giao dịch với hạn mức 50 triệu xu
+    let validator = BankTransactionValidator::new(50_000_000);
 
-    // 2. Thử nghiệm Composite State Machine
-    println!("\n[2] Thuc thi Composite State Machine gom 2 giai doan I/O:");
-    let composite_task = CompositeAsyncTask::new();
-    let final_report = block_on_mini_runtime(composite_task);
-    println!("    - Ket qua chuoi nhiem vu: {}", final_report);
-
-    // 3. Phân tích so sánh tài nguyên
-    println!("\n[3] Phan tich so sanh kien truc tai nguyen bo nho:");
-    println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
-    println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
-    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
-    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
-
-    println!("\n==================================================================");
-    println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");
-    println!("==================================================================");
-}
-```
-
----
-
-## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
-
-Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trình bất đồng bộ trong Rust:
-
-| Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
-|---|---|---|---|
-| **E0277** | `the trait 'Future' is not implemented for 'MyType'` | Truyền một kiểu dữ liệu không triển khai trait `Future` vào một hàm đòi hỏi Future. | Triển khai trait `Future` cho struct với phương thức `fn poll(...) -> Poll<Self::Output>`. |
-| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Lưu trữ một kiểu dữ liệu không an toàn cho luồng (`Rc<T>`, `RefCell<T>`) qua một điểm gọi trong một task bất đồng bộ đa luồng. | Thay thế bằng kiểu tương đương an toàn đa luồng: dùng `Arc<T>` và `tokio::sync::Mutex<T>`. |
-| **E0382** | `use of moved value: 'client'` | Biến bị di chuyển quyền sở hữu (ownership) vào một block bất đồng bộ, sau đó lại được dùng ở bên ngoài. | Nhân bản dữ liệu trước khi di chuyển: `let client_clone = client.clone();`. |
-| **E0507** | `cannot move out of a mutable pin` | Cố gắng di chuyển một trường dữ liệu ra khỏi một cấu trúc đã bị ghim (`Pin<&mut Self>`). | Sử dụng các phương thức an toàn của `Pin` hoặc truy cập qua tham chiếu mượn (borrow). |
-
-### Ví dụ phân tích lỗi `E0277` khi thiếu triển khai Trait Future:
-
-```rust
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
-struct KhongPhaiFuture;
-
-// Đoạn mã lỗi minh họa E0277:
-fn chay_thu_loi() {
-    // let k = KhongPhaiFuture;
-    // block_on_mini_runtime(k); // LỖI E0277: KhongPhaiFuture không triển khai trait Future!
-}
-
-// Cách sửa chữa đúng chuẩn: Triển khai trait Future đầy đủ
-struct LaFuture;
-
-impl std::future::Future for LaFuture {
-    type Output = i32;
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Poll::Ready(100)
+    // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công
+    let req_ok = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN33334444".to_string(),
+        amount_cents: 15_000_000,
+    };
+    match validator.validate_transfer(&req_ok) {
+        Ok(()) => println!("[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!", req_ok.from_account, req_ok.to_account),
+        Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
     }
-}
 
-fn chay_thu_dung() {
-    let f = LaFuture;
-    println!("Đã sẵn sàng triển khai Future chuẩn mực!");
+    // Kịch bản kiểm thử trực tiếp 2: Chuyển khoản trùng tài khoản
+    let req_duplicate = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN11112222".to_string(),
+        amount_cents: 500_000,
+    };
+    match validator.validate_transfer(&req_duplicate) {
+        Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
+        Err(e) => println!("[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}", e),
+    }
+
+    println!("\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!");
 }
 ```
 
 ---
 
-## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
+## Bảng tra cứu lỗi biên dịch & Cách khắc phục
 
-### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Giải pháp cho bài toán C10K/C1M**: Chuyển đổi từ mô hình luồng đồng bộ sang mô hình bất đồng bộ hướng sự kiện dựa trên `epoll`/`kqueue`.
-2. **Bản chất của Future trong Rust**: Là máy trạng thái tĩnh lười biếng (Lazy State Machine), không tốn chi phí cấp phát Heap ngầm, chỉ thực thi khi được thăm dò (`poll`).
-3. **Cơ chế Waker**: Cho phép Reactor đánh thức Executor một cách chính xác ngay khi dữ liệu sẵn sàng trên card mạng, loại bỏ hoàn toàn việc thăm dò liên tục gây lãng phí CPU.
-4. **Kiến trúc Tokio Work-Stealing**: Điều phối hàng triệu Task siêu nhẹ trên một nhóm nhỏ luồng công nhân, kết hợp cùng cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để đạt thông lượng I/O cao nhất thế giới.
+Dưới đây là các lỗi biên dịch thường phát sinh trong chu trình viết test và hoàn thiện mã cùng trợ lý AI:
 
-### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Xây dựng Bộ đếm nhịp bất đồng bộ - Async Interval)**:  
-   Tạo một cấu trúc `AsyncInterval` triển khai trait `Future`, kích hoạt sự kiện sau mỗi khoảng thời gian định kỳ (ví dụ mỗi 100ms phát ra một nhịp đếm), lặp lại đúng 5 lần rồi dừng lại.
-2. **Bài tập 2 (Bộ ghép nối hai luồng Future đồng thời - Join Two Futures)**:  
-   Viết một hàm nhận vào hai Future độc lập `fut_a` và `fut_b`. Hãy thực thi thăm dò cả hai luồng sao cho khi cả hai đều trả về `Poll::Ready` thì hàm mới trả về kết quả gộp `(OutputA, OutputB)`.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao không dùng `std::sync::Mutex` trong mã Async?)**:  
-   Tại sao các chuyên gia Tokio luôn khuyến cáo tuyệt đối không giữ khóa `std::sync::Mutex` qua các điểm gọi chờ I/O? Nếu một luồng bị dừng trong khi vẫn đang giữ khóa, hiện tượng nghẽn luồng (Thread Starvation / Deadlock) sẽ bùng phát như thế nào trong toàn bộ hệ thống?
+| Mã lỗi `rustc` | Nguyên nhân gốc rễ trong quá trình TDD | Đoạn mã vi phạm mẫu | Giải pháp sửa chữa chuẩn quy trình |
+| :--- | :--- | :--- | :--- |
+| **`E0277`** | **Trait bound `PartialEq` is not satisfied**<br>AI sử dụng `assert_eq!(a, b)` trong bài test nhưng kiểu dữ liệu tùy biến chưa được dẫn xuất trait so sánh. | ```rust // compile-fail\nstruct Point { x: i32 }\nassert_eq!(Point { x: 1 }, Point { x: 1 });``` | Bổ sung macro dẫn xuất `#[derive(Debug, PartialEq, Eq)]` phía trên định nghĩa cấu trúc dữ liệu. |
+| **`E0308`** | **Mismatched types in assertions**<br>Trong bài test, AI so sánh một giá trị kiểu `Result<(), ValidationError>` với một kiểu lỗi chưa bọc trong `Err(...)`. | ```rust // compile-fail\nlet res: Result<(), i32> = Err(404);\nassert_eq!(res, 404);``` | Sửa lại biểu thức so sánh cho khớp kiểu: `assert_eq!(res, Err(404));`. |
+| **`E0433`** | **Failed to resolve: use of undeclared module/crate**<br>AI tự tiện gọi các thư viện kiểm thử nâng cao (như `mockall` hoặc `proptest`) khi dự án chưa khai báo trong `Cargo.toml`. | ```rust // compile-fail\nuse proptest::prelude::*;``` | Yêu cầu AI chỉ sử dụng khung kiểm thử tích hợp chuẩn của Rust (`#[cfg(test)]`, `assert!`) trừ khi bạn cho phép nạp thêm dependency. |
+| **`E0603`** | **Struct/Field is private**<br>AI viết module kiểm thử tách rời nhưng các trường của struct cần kiểm tra không được gắn từ khóa `pub`. | ```rust // compile-fail\nmod inner { pub struct Item { count: u32 } }\nlet it = inner::Item { count: 5 };``` | Thêm từ khóa `pub` trước các trường hoặc cung cấp phương thức khởi tạo công khai `pub fn new(...)`. |
+
+---
+
+## Tóm tắt chương & Bài tập rèn luyện
+
+### 4 Điểm cốt lõi cần ghi nhớ
+1. **Spec-Driven Development (SDD) là kim chỉ nam**: Không bao giờ viết code khi chưa có bản đặc tả kỹ thuật mô tả rõ ràng các trường hợp biên và điều kiện bất biến.
+2. **Quy trình TDD 3 bước cùng AI**:
+   - **Red**: Yêu cầu AI sinh bài test kiểm chứng đặc tả (Test thất bại trước).
+   - **Green**: Yêu cầu AI viết logic tối thiểu để vượt qua toàn bộ bài test.
+   - **Refactor**: Yêu cầu AI dọn dẹp và tối ưu hóa mã nguồn mà không làm gãy test.
+3. **Rust biến bài test thành công cụ bảo vệ tuyệt đối**: Kết hợp giữa hệ thống kiểm tra kiểu tĩnh của trình biên dịch và bộ unit tests tự động giúp loại bỏ triệt để mọi lỗi hồi quy (Regression Bugs).
+4. **Tối ưu hóa hiệu năng bằng tham chiếu mượn (borrow)**: Luôn ưu tiên truyền tham chiếu lát cắt `&str` hoặc `&[u8]` trong các hàm kiểm định để đạt hiệu năng đỉnh cao, hạn chế việc nhân bản bộ nhớ (`.clone()`).
+
+### Bài tập rèn luyện tư duy
+
+**Bài tập 1 (Tập viết Bản đặc tả SPEC.md)**:
+Hãy viết một bản đặc tả ngắn cho tính năng: "Xác thực mật khẩu người dùng (Password Strength Validator)".
+Bản đặc tả cần nêu rõ:
+- Độ dài tối thiểu và tối đa cho phép.
+- Các loại ký tự bắt buộc phải có (chữ hoa, chữ thường, chữ số, ký tự đặc biệt).
+- Danh sách các mã lỗi tương ứng trong `enum PasswordError`.
+
+**Bài tập 2 (Thiết kế bài kiểm tra TDD trước khi viết code)**:
+Dựa trên bản đặc tả mật khẩu ở Bài tập 1, hãy viết một bộ kiểm thử đơn vị bằng Rust gồm ít nhất 4 hàm kiểm thử:
+- Mật khẩu quá ngắn.
+- Mật khẩu thiếu chữ viết hoa.
+- Mật khẩu thiếu chữ số.
+- Mật khẩu hoàn hảo hợp lệ.
+
+**Bài tập 3 (Sửa lỗi thiếu Trait so sánh của AI)**:
+Đoạn mã sau do AI tạo ra bị lỗi biên dịch `E0277` khi chạy lệnh kiểm thử:
+```rust
+struct OrderId(u64);
+
+#[test]
+fn test_order_id_equality() {
+    let id1 = OrderId(100);
+    let id2 = OrderId(100);
+    // Lỗi: binary operation `==` cannot be applied to type `OrderId`
+    assert_eq!(id1, id2);
+}
+```
+Hãy giải thích vì sao macro `assert_eq!` đòi hỏi những trait nào, và bổ sung dòng lệnh chính xác để đoạn mã trên vượt qua kỳ kiểm thử.
+*(Gợi ý: Dẫn xuất `#[derive(Debug, PartialEq)]` cho cấu trúc tuple struct `OrderId`)*.

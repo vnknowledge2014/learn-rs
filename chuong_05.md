@@ -108,24 +108,39 @@ Dưới góc nhìn phần cứng, dữ liệu của biến `loi_chao` được t
 
 ```
     BỘ NHỚ STACK (Chiếm 24 bytes)                  BỘ NHỚ HEAP (Cấp phát động)
-   ┌───────────┬─────────────┐                   ┌──────────────┬─────────────┐
-   │ Tên trường│   Giá trị   │                   │ Chỉ số byte  │ Ký tự ASCII │
-   ├───────────┼─────────────┤                   ├──────────────┼─────────────┤
-   │  con trỏ  │  0xAB12CD   │ ──Trỏ sang Heap─> │   0xAB12CD   │     'X'     │
-   │  (ptr)    │  (Địa chỉ)  │                   │   0xAB12CE   │     'i'     │
-   ├───────────┼─────────────┤                   │   0xAB12CF   │     'n'     │
-   │  độ dài   │   8 bytes   │                   │   0xAB12D0   │     ' '     │
-   │  (len)    │             │                   │   0xAB12D1   │     'c'     │
-   ├───────────┼─────────────┤                   │   0xAB12D2   │     'h'     │
-   │ sức chứa  │   8 bytes   │                   │   0xAB12D3   │     'à'     │
-   │(capacity) │             │                   │   0xAB12D4   │     'o'     │
-   └───────────┴─────────────┘                   └──────────────┴─────────────┘
+   ┌───────────┬─────────────┐                   ┌──────────────┬──────────────────┐
+   │ Tên trường│   Giá trị   │                   │ Chỉ số byte  │   Byte UTF-8     │
+   ├───────────┼─────────────┤                   ├──────────────┼──────────────────┤
+   │  con trỏ  │  0xAB12CD   │ ──Trỏ sang Heap─> │   0xAB12CD   │  'X'   (1 byte)  │
+   │  (ptr)    │  (Địa chỉ)  │                   │   0xAB12CE   │  'i'   (1 byte)  │
+   ├───────────┼─────────────┤                   │   0xAB12CF   │  'n'   (1 byte)  │
+   │  độ dài   │   9 bytes   │                   │   0xAB12D0   │  ' '   (1 byte)  │
+   │  (len)    │             │                   │   0xAB12D1   │  'c'   (1 byte)  │
+   ├───────────┼─────────────┤                   │   0xAB12D2   │  'h'   (1 byte)  │
+   │ sức chứa  │   9 bytes   │                   │   0xAB12D3   │  'à' (byte 1/2)  │
+   │(capacity) │             │                   │   0xAB12D4   │  'à' (byte 2/2)  │
+   └───────────┴─────────────┘                   │   0xAB12D5   │  'o'   (1 byte)  │
+                                                 └──────────────┴──────────────────┘
 ```
 - **Phần nằm trên Stack**: Gồm 3 con số nguyên cố định (mỗi số 8 bytes trên máy 64-bit):
   1. `ptr`: Địa chỉ dẫn tới ô nhớ trên bãi đỗ xe Heap.
   2. `len`: Số byte thực tế chuỗi đang sử dụng.
   3. `capacity`: Tổng số byte bãi đỗ xe Heap đã chuẩn bị sẵn cho chuỗi này.
 - **Phần nằm trên Heap**: Dãy byte thực tế chứa toàn bộ ký tự của dòng chữ.
+
+> **Điểm cực kỳ quan trọng cho người Việt — `len` đếm BYTE, không đếm CHỮ CÁI:**
+> Chuỗi `"Xin chào"` chỉ có **8 chữ cái**, nhưng `loi_chao.len()` trả về **9**!
+> Lý do: Rust lưu chuỗi theo chuẩn **UTF-8**. Các chữ cái ASCII (`X`, `i`, `n`, dấu cách, `c`, `h`, `o`) mỗi chữ chiếm đúng 1 byte,
+> nhưng chữ `'à'` là ký tự Unicode nên chiếm tới **2 byte**. Tổng cộng: $7 \times 1 + 1 \times 2 = 9$ byte.
+> - Muốn đếm **số byte**: dùng `chuoi.len()`.
+> - Muốn đếm **số chữ cái thật sự**: dùng `chuoi.chars().count()`.
+>
+> ```rust
+> let loi_chao = String::from("Xin chào");
+> assert_eq!(loi_chao.len(), 9);              // 9 byte trên Heap
+> assert_eq!(loi_chao.chars().count(), 8);    // 8 chữ cái
+> ```
+> Hãy khắc ghi điều này ngay từ bây giờ — nó là nguyên nhân số 1 khiến chương trình xử lý tiếng Việt bị lỗi ở các chương sau!
 
 ---
 

@@ -1,0 +1,8 @@
+# Thư mục build của Cargo
+code/target/
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Thư mục build của mdBook
+book/

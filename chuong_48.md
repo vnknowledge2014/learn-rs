@@ -1,284 +1,326 @@
-# Chương 48: Tầng lưu trữ đệm phân tán Redis & Hàng đợi thông điệp (Distributed Caching with Redis & Message Queuing)
+# Chương 48: Kiến trúc hệ thống: Từ khối đơn Monolith đến Microservices phân tán hiệu năng cao (Monolithic vs High-Performance Microservices)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong các hệ thống phân tán quy mô lớn, hai cơn ác mộng lớn nhất mà mọi kỹ sư kiến trúc phải đối mặt là: **Nghẽn cổ chai cơ sở dữ liệu (Database Bottleneck)** và **Sập nguồn do quá tải đỉnh (Traffic Spike Overload)**. 
+Chào mừng bạn đến với đỉnh cao của giáo trình Rust Masterclass: **Chủ đề 9: Thiết kế Hệ thống phân tán & Hiệu năng cao (System Design & High-Performance Distributed Systems)**! Nếu như ở các chủ đề trước bạn đã làm chủ từng viên gạch, thanh thép của ngôn ngữ — từ cú pháp, quản lý bộ nhớ, kiểm thử an ninh, đến lập trình mạng cấp thấp — thì trong chủ đề này, bạn sẽ khoác lên mình chiếc áo của một **Tổng công trình sư kiến trúc hệ thống (Lead System Architect)**.
 
-Một cơ sở dữ liệu quan hệ (như PostgreSQL hay MySQL) dù được tối ưu hóa đến đâu cũng chỉ có thể chịu tải tối đa vài ngàn truy vấn ghi/giây trước khi đĩa cứng và khóa giao dịch bị nghẽn. Để giải cứu cơ sở dữ liệu và giữ cho hệ thống luôn phản hồi trong vài mili-giây khi có hàng triệu người dùng cùng lúc, chúng ta cần hai trụ cột phòng thủ vững chắc:
-1. **Tầng lưu trữ đệm phân tán (Distributed Caching với Redis)**: Đưa dữ liệu nóng (Hot Data) lên thanh RAM để phục vụ các yêu cầu đọc với độ trễ dưới 1 mili-giây.
-2. **Hàng đợi thông điệp phân tán (Message Queuing / Event Streams)**: Đóng vai trò "đập thủy điện" san phẳng các đợt sóng tải đột biến (Traffic Smoothing), tách rời các dịch vụ (Decoupling) và bảo đảm dữ liệu không bao giờ bị rơi rớt.
+Một câu hỏi mang tính sống còn mà mọi tập đoàn công nghệ lớn (như Amazon, Netflix, Discord, Cloudflare) đều phải giải quyết khi mở rộng quy mô phục vụ hàng trăm triệu người dùng là: **Lựa chọn kiến trúc nào giữa Khối đơn thống nhất (Monolithic) và Hệ thống Vi dịch vụ phân tán (Microservices)? Và tại sao việc chuyển đổi các dịch vụ lõi sang Rust lại tạo nên một cuộc cách mạng về hiệu năng và tiết kiệm hàng triệu USD chi phí hạ tầng đám mây?**
 
-Mục tiêu học tập của bạn:
-- Nắm vững các mô thức bộ đệm kinh điển: **Cache-Aside**, **Write-Through**, và **Write-Behind**.
-- Mổ xẻ và khắc chế "Tam đại hiểm họa Bộ đệm": **Cache Stampede** (Đàn bò giẫm đạp), **Cache Penetration** (Thủng đệm), và **Cache Avalanche** (Tuyết lở bộ đệm).
-- Hiểu sâu sắc kiến trúc Hàng đợi thông điệp: Mô hình Nhà sản xuất - Người tiêu thụ (Producer-Consumer), Cơ chế xác nhận hoàn tất (Ack / Nack), và Hàng đợi thư chết (Dead-Letter Queue - DLQ).
-- Tự tay lập trình một hệ thống Lưu trữ đệm kèm Hàng đợi sự kiện phân tán bằng Rust chuẩn mực, an toàn đa luồng và tối ưu hóa bộ nhớ đệm (buffer) tuyệt đối.
+Trong chương mở đầu của Topic 9, chúng ta sẽ phân tích:
+- Sự tiến hóa của kiến trúc phần mềm: Từ Khối đơn (Monolith), Khối đơn hướng module (Modular Monolith), đến Hệ thống vi dịch vụ phân tán (Microservices).
+- Ranh giới nghiệp vụ (Bounded Contexts) theo phương pháp Domain-Driven Design (DDD): Khi nào nên tách dịch vụ và khi nào tách dịch vụ là một thảm họa tự sát.
+- Phân tích bài toán kinh tế hạ tầng đám mây: Đối chiếu mức tiêu thụ tài nguyên thực tế giữa một Microservice viết bằng Java Spring Boot / Node.js (ngốn 500MB-1GB RAM) với cùng chức năng viết bằng Rust (chỉ tốn 15MB RAM và khởi động trong 5 mili-giây).
+- Ngân sách độ trễ mạng (Latency Budget) và chi phí chuyển đổi dữ liệu (Serialization Overhead) trong môi trường phân tán.
+- Các mô thức phòng vệ chống sập dây chuyền: Ngắt mạch tự động (Circuit Breaker) và Phân vùng chống tràn (Bulkhead).
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng quan sát hai câu chuyện đời thường để hiểu rõ sức mạnh giải cứu của Caching và Message Queue:
+Để hiểu thấu đáo bản chất của Monolith và Microservices mà không bị rối loạn bởi thuật ngữ kỹ thuật, hãy quan sát hai mô hình kinh doanh quen thuộc trong đời sống:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│         HÌNH TƯỢNG HÓA: TỦ LẠNH GIA ĐÌNH VS HÀNG RÀO XẾP HÀNG LÀM HỘ CHIẾU       │
+│         HÌNH TƯỢNG HÓA: ĐẠI SIÊU THỊ ĐA NĂNG VS TUYẾN PHỐ CHUYÊN DOANH           │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. TỦ LẠNH GIA ĐÌNH (CACHE-ASIDE) VS SIÊU THỊ ĐẦU MỐI (DATABASE)]               │
+│ [1. KIẾN TRÚC KHỐI ĐƠN MONOLITH: ĐẠI SIÊU THỊ BÁCH HÓA TẬP TRUNG]                │
 │ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Bạn khát nước ──► Mở tủ lạnh ngay trong bếp (Cache Hit: Tốn 2 giây)! │         │
+│ │ Tòa nhà siêu thị 5 tầng:                                             │         │
+│ │ Tầng 1: Thực phẩm & Rau củ (User Service)                            │         │
+│ │ Tầng 2: Quần áo thời trang (Catalog Service)                         │         │
+│ │ Tầng 3: Thiết bị điện máy  (Order Service)                           │         │
+│ │ Tầng 4: Rạp chiếu phim     (Payment Service)                         │         │
 │ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Tủ lạnh hết nước ngọt (Cache Miss):                                  │         │
-│ │ 1. Bạn lấy xe máy chạy ra Siêu thị cách 3km mua nước (Truy vấn DB).  │         │
-│ │ 2. Uống 1 lon giải khát.                                             │         │
-│ │ 3. Tiện tay cất ngay 2 lon vào tủ lạnh kèm nhãn hạn dùng (Lưu Cache)!│         │
+│ │ Ưu điểm: Đi lại giữa các tầng rất nhanh bằng thang cuốn (In-Memory). │         │
+│ │ Nhược điểm: Nếu chập điện cháy tầng 1, CẢ SIÊU THỊ BẮT BUỘC ĐÓNG CỬA!│         │
 │ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> 99% số lần uống nước bạn chỉ tốn 2 giây mở tủ lạnh ở nhà!                 │
 │                                                                                  │
-│ [2. HÀNG RÀO DÍCH DẮC CẤP SỐ (MESSAGE QUEUE) TRƯỚC PHÒNG QUẢN LÝ XUẤT NHẬP CẢNH] │
-│ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Nếu 2,000 người cùng lúc ào vào phòng làm việc của 3 cán bộ công an: │         │
-│ │   Phòng sẽ vỡ trận, giẫm đạp, tài liệu bay tứ tung (SẬP MÁY CHỦ)!   │         │
-│ ├──────────────────────────────────────────────────────────────────────┤         │
-│ │ Giải pháp Hàng đợi Message Queue:                                    │         │
-│ │ 1. Người dân đến nơi được phát số thứ tự, đứng xếp hàng trật tự ngoài│         │
-│ │    sân (Đẩy tác vụ vào Queue an toàn).                               │         │
-│ │ 2. Cán bộ bên trong ung dung bấm chuông gọi từng người vào làm việc  │         │
-│ │    theo đúng tốc độ xử lý ổn định của mình (Consumer pull).          │         │
-│ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> DÙ BÊN NGOÀI ĐÔNG ĐẾN ĐÂU, BÊN TRONG VẪN VẬN HÀNH ÊM ÁI HOÀN HẢO!         │
+│ [2. KIẾN TRÚC VI DỊCH VỤ PHÂN TÁN MICROSERVICES: TUYẾN PHỐ CHUYÊN DOANH]         │
+│ Tuyến phố dài có các cửa hàng độc lập:                                           │
+│ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐     │
+│ │ Tiệm Bánh Mì   │ │ Tiệm Thuốc Tây │ │ Tiệm Quần Áo   │ │ Quầy Thu Ngân  │     │
+│ │ (Auth Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
+│ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘     │
+│ Ưu điểm: Nếu Tiệm Bánh Mì mất điện, Tiệm Thuốc vẫn mở cửa bán bình thường!      │
+│ Nhược điểm: Khách muốn mua cả bánh và thuốc phải đi bộ qua lại (Độ trễ mạng)!    │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Tủ lạnh gia đình (Distributed Caching)
-- Cơ sở dữ liệu chính (PostgreSQL) giống như siêu thị Metro cách nhà bạn 3km: Rất to lớn, chứa được hàng triệu món đồ, nhưng muốn lấy món gì bạn phải nổ xe máy chạy đi mua, gửi xe, xếp hàng thanh toán (tốn thời gian I/O đĩa cứng).
-- Bộ nhớ Cache (Redis) giống như chiếc tủ lạnh mini đặt ngay cạnh bàn làm việc của bạn: Nó không thể chứa cả siêu thị, nhưng nó chứa những lon nước bạn hay uống nhất trong ngày. 99% các lần khát nước bạn mở tủ lạnh lấy uống ngay trong nháy mắt.
+### 1. Đại siêu thị tập trung (Monolithic Architecture)
+- Hãy tưởng tượng bạn bước vào một Trung tâm thương mại 5 tầng đồ sộ: Mọi thứ từ quầy rau, tiệm bánh, cửa hàng quần áo, đến rạp chiếu phim đều nằm chung dưới một mái nhà.
+- **Ưu điểm**: Mọi thứ kết nối cực kỳ nhanh. Nhân viên giao hàng chỉ cần đi thang máy từ tầng 1 lên tầng 3 (gọi hàm trực tiếp trên bộ nhớ RAM tốn vài nano-giây). Quản lý, tuyển dụng nhân sự tập trung dễ dàng.
+- **Nhược điểm**: Toàn bộ tòa nhà dùng chung một hệ thống đường điện và máy bơm nước (dùng chung một Database). Nếu đường ống nước tầng 1 bị vỡ, ban quản lý buộc phải ngắt nước toàn bộ tòa nhà, khiến rạp chiếu phim tầng 4 cũng phải dừng chiếu.
 
-### 2. Hàng rào dích dắc ngoài sân (Message Queuing)
-- Khi có chương trình "Săn vé máy bay 0 đồng", 100,000 người cùng bấm nút "Đặt vé" trong 1 giây. Nếu gửi thẳng 100,000 giao dịch này vào Database, máy chủ sẽ bốc khói và sập ngay lập tức.
-- Hàng đợi Message Queue (như Kafka, RabbitMQ, hay Redis Streams) đóng vai trò như chiếc rào chắn: Toàn bộ 100,000 yêu cầu được ghi nhận vào hàng đợi chỉ mất 1 mili-giây rồi báo cho khách hàng: *"Yêu cầu của bạn đã được tiếp nhận, vui lòng chờ xử lý"*.
-- Đằng sau hàng rào, một đội ngũ gồm 10 tiến trình công nhân (Workers / Consumers) cần mẫn rút từng đơn hàng ra xử lý tuần tự, giúp hệ thống không bao giờ bị quá tải.
+### 2. Tuyến phố chuyên doanh độc lập (Microservices Architecture)
+- Bây giờ, thay vì nhét tất cả vào một tòa nhà, người ta quy hoạch một khu phố gồm các ngôi nhà riêng biệt: Nhà làm bánh mì riêng, nhà bán thuốc tây riêng, nhà sửa xe riêng.
+- **Ưu điểm**: Mỗi chủ tiệm tự trang bị máy phát điện và bể nước riêng (Database per Service). Nếu tiệm bánh mì bị sự cố hết bột, tiệm thuốc tây vẫn mở cửa đón khách bình thường mà không hề hay biết. Tiệm nào đông khách (ví dụ mùa dịch tiệm thuốc đông) có thể xây thêm tầng cơi nới mà không ảnh hưởng tới các nhà bên cạnh (Scale độc lập).
+- **Nhược điểm**: Khách hàng muốn mua bánh mì xong mua thuốc tây thì phải ra đường đi bộ qua lại giữa trời mưa nắng. Đây chính là **Độ trễ mạng (Network Latency)** và chi phí đóng gói thông điệp qua dây cáp.
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Ba Mô thức Thiết kế Bộ đệm (Caching Patterns)
-
-1. **Cache-Aside (Đọc lười - Lazy Loading)**:
-   - Ứng dụng kiểm tra trong Cache trước:
-     - Nếu có (**Cache Hit**): Trả về dữ liệu ngay lập tức.
-     - Nếu không có (**Cache Miss**): Ứng dụng đọc từ Database -> Ghi ngược lại vào Cache kèm thời gian hết hạn (`TTL - Time to Live`) -> Trả về kết quả.
-   - **Ưu điểm**: Chỉ những dữ liệu thực sự được người dùng yêu cầu mới chiếm bộ nhớ RAM.
-2. **Write-Through (Ghi đồng thời)**:
-   - Khi có dữ liệu mới, ứng dụng ghi đồng thời vào Cache và Database trước khi trả về thành công. Đảm bảo dữ liệu trong Cache luôn mới nhất, nhưng tăng độ trễ ghi.
-3. **Write-Behind / Write-Back (Ghi trì hoãn)**:
-   - Ứng dụng ghi thẳng vào Cache siêu tốc rồi trả về thành công ngay. Một tiến trình nền sau đó sẽ gom các bản ghi và ghi xuống Database theo lô (Batch). Tốc độ ghi cực nhanh nhưng có rủi ro mất dữ liệu nếu máy chủ Cache mất điện đột ngột.
-
-### 2. Tam Đại Hiểm Họa Bộ đệm & Biện pháp Hóa giải
+### 1. So sánh Ba Hình thái Kiến trúc Cốt lõi
 
 ```
-[Hiểm họa 1: Cache Stampede]     ──► Giải pháp: Khóa Mutex phân tán / Gia hạn sớm
-[Hiểm họa 2: Cache Penetration]    ──► Giải pháp: Bộ lọc Bloom Filter / Cache giá trị rỗng
-[Hiểm họa 3: Cache Avalanche]      ──► Giải pháp: Thêm độ lệch ngẫu nhiên (TTL Jitter)
+[Monolith Đơn thuần]  ──►  [Modular Monolith]  ──►  [Distributed Microservices]
+(Tất cả trộn lẫn)           (Mã tách module rõ,      (Mỗi dịch vụ là tiến trình
+                             chạy chung tiến trình)   riêng, kết nối qua mạng)
 ```
 
-1. **Đàn bò giẫm đạp (Cache Stampede / Thundering Herd)**:
-   - Xảy ra khi một khóa "cực nóng" (ví dụ thông tin sản phẩm iPhone mới giảm giá) vừa hết hạn TTL.
-   - Ngay trong giây đó, 50,000 yêu cầu cùng lúc nhận thấy Cache Miss và cùng lúc xông thẳng vào Database để truy vấn, làm Database sập nguồn ngay tức khắc.
-   - **Hóa giải**: Khi bị Cache Miss, chỉ cho phép duy nhất 1 luồng được cấp khóa đi truy vấn Database, các luồng còn lại phải chờ luồng này nạp lại Cache.
-2. **Thủng bộ đệm (Cache Penetration)**:
-   - Kẻ tấn công cố tình gửi liên tục hàng triệu yêu cầu truy vấn các ID không hề tồn tại (ví dụ `user_id = -999999`).
-   - Cache không có dữ liệu này -> Yêu cầu xuyên thủng qua Cache lao thẳng vào Database.
-   - **Hóa giải**: Lưu cả giá trị rỗng (`None`) vào Cache với TTL ngắn (30 giây), hoặc sử dụng cấu trúc dữ liệu xác suất **Bộ lọc Bloom (Bloom Filter)** ở cổng vào để từ chối ngay lập tức các khóa không tồn tại.
-3. **Tuyết lở bộ đệm (Cache Avalanche)**:
-   - Do lập trình viên đặt cùng một mốc thời gian hết hạn cố định (ví dụ tất cả các khóa đều có `TTL = 3600 giây`). Đúng 1 tiếng sau, toàn bộ dữ liệu trong Cache đồng loạt bốc hơi, dồn toàn bộ tải sang Database.
-   - **Hóa giải**: Luôn bổ sung một khoảng thời gian ngẫu nhiên (Jitter) vào TTL, ví dụ: `TTL = 3600 + rand(1..300) giây`.
+1. **Khối đơn truyền thống (Classic Monolith)**:
+   - Toàn bộ giao diện (UI), logic nghiệp vụ (Business Logic), và truy cập cơ sở dữ liệu được đóng gói thành một tệp nhị phân duy nhất.
+   - **Thách thức**: Khi nhóm kỹ sư tăng lên 50 người, việc commit mã nguồn thường xuyên gây xung đột (Merge Conflicts), một lập trình viên thực tập sửa lỗi nhỏ có thể làm sập toàn bộ hệ thống sản xuất.
+2. **Khối đơn hướng Module (Modular Monolith)**:
+   - Vẫn biên dịch thành 1 tệp nhị phân duy nhất chạy trên máy chủ, nhưng mã nguồn được phân chia thành các crate hoặc module Rust độc lập với ranh giới giao tiếp công khai (Public Trait APIs) rõ ràng.
+   - **Đây là điểm khởi đầu lý tưởng nhất**: Tận dụng tốc độ gọi hàm trực tiếp trong bộ nhớ (In-memory zero-cost abstraction) mà vẫn sẵn sàng tách thành Microservice bất kỳ lúc nào!
+3. **Vi dịch vụ phân tán (Microservices)**:
+   - Mỗi dịch vụ chạy như một tiến trình mạng độc lập (Network Process), có cơ sở dữ liệu riêng, giao tiếp với nhau qua HTTP REST API (Axum) hoặc gRPC (Tonic).
+
+### 2. Cuộc cách mạng Rust trong Kinh tế học Đám mây (Cloud Economics)
+
+Trong kỷ nguyên điện toán đám mây (AWS, Google Cloud, Kubernetes), chi phí hạ tầng máy chủ tỷ lệ thuận với lượng RAM và CPU mà ứng dụng tiêu thụ:
+
+| Tiêu chí so sánh | Java Spring Boot / Node.js | Rust Microservice | Lợi thế vượt trội của Rust |
+|---|---|---|---|
+| **Bộ nhớ RAM khi khởi động** | 350MB – 800MB | 8MB – 15MB | **Tiết kiệm 95% RAM** |
+| **Thời gian khởi động lạnh (Cold Start)**| 5 – 20 giây | 2 – 5 mili-giây | Hoàn hảo cho Serverless & Auto-scaling |
+| **Dừng hệ thống do dọn rác (GC Pause)** | 50ms – 500ms ngẫu nhiên | **0 giây (Không có GC)** | Độ trễ đuôi $p99$ ổn định tuyệt đối |
+| **Mật độ Pod trên 1 máy chủ Kubernetes**| 10 – 20 pods | 200 – 400 pods | Tăng mật độ gấp **20 lần**, giảm chi phí máy chủ |
+
+### 3. Ngân sách Độ trễ mạng (Latency Budget) & Serialization Overhead
+
+- Khi gọi một hàm nội bộ trên RAM: Tốn khoảng **10 nano-giây**.
+- Khi gọi qua mạng nội bộ Datacenter (RPC Call): Tốn khoảng **1 đến 5 mili-giây** (chậm hơn **100,000 lần**!).
+- Do đó, nếu một yêu cầu của khách hàng phải nhảy qua 10 microservices liên tiếp, tổng độ trễ đã là 50ms chỉ riêng thời gian di chuyển trên dây mạng.
+- Sử dụng các định dạng tuần tự hóa nhị phân tốc độ cao (như Protocol Buffers trong gRPC hoặc MessagePack) thay vì JSON cồng kềnh giúp thu nhỏ kích thước gói tin và triệt tiêu gánh nặng CPU khi chuyển đổi chuỗi.
+
+### 4. Mẫu Thiết kế Chống sập dây chuyền (Circuit Breaker Pattern)
+
+Trong hệ thống phân tán, sự cố mạng là điều chắc chắn sẽ xảy ra. Nếu Dịch vụ Bị đơ phản hồi, Dịch vụ A tiếp tục gửi hàng ngàn yêu cầu sẽ dẫn tới cạn kiệt luồng và sập lan truyền (Cascading Failure):
+- **Trạng thái Closed (Đóng)**: Hệ thống hoạt động bình thường, các yêu cầu được chuyển qua mạng.
+- **Trạng thái Open (Mở / Ngắt mạch)**: Khi tỷ lệ lỗi vượt quá ngưỡng (ví dụ 50% lỗi trong 10 giây qua), ngắt mạch lập tức chặn đứng mọi yêu cầu mới, trả về lỗi ngay tức thì hoặc dữ liệu mặc định (Fallback) mà không gửi qua mạng nữa, giúp dịch vụ đích có thời gian phục hồi.
+- **Trạng thái Half-Open (Nửa mở)**: Sau một khoảng thời gian chờ (ví dụ 30 giây), ngắt mạch cho phép một vài yêu cầu thử nghiệm đi qua để kiểm tra xem dịch vụ đích đã hồi phục hay chưa.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Tầng lưu trữ đệm kèm Hàng đợi thông điệp phân tán (In-Memory Cache-Aside & Message Queue)**: Tự tay cài đặt cơ chế hết hạn TTL, giải thuật dọn rác LRU, hàng đợi Producer-Consumer an toàn đa luồng, và cơ chế phòng chống Cache Stampede:
+Dưới đây là mã nguồn hoàn chỉnh của một kiến trúc **Modular Monolith sẵn sàng chuyển dịch sang Microservices phân tán**: Minh họa sự trừu tượng hóa ranh giới nghiệp vụ qua Trait `UserService`, `OrderService`, cùng cơ chế phòng thủ **Ngắt mạch chống sập dây chuyền (Circuit Breaker)**:
 
 ```rust
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Một mục lưu trữ trong bộ đệm kèm thời gian sống (TTL)
-#[derive(Clone, Debug)]
-struct CacheEntry<V> {
-    value: V,
-    expires_at: Instant,
+/// Mô hình Dữ liệu Người dùng
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserProfile {
+    pub user_id: u64,
+    pub username: String,
+    pub email: String,
 }
 
-/// Động cơ Lưu trữ đệm an toàn đa luồng hỗ trợ TTL (In-Memory Cache Engine)
-pub struct SafeCacheEngine<K, V> {
-    storage: Mutex<HashMap<K, CacheEntry<V>>>,
+/// Mô hình Dữ liệu Đơn hàng
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderRecord {
+    pub order_id: u64,
+    pub user_id: u64,
+    pub item_name: String,
+    pub price_cents: u64,
 }
 
-impl<K: std::hash::Hash + Eq + Clone, V: Clone> SafeCacheEngine<K, V> {
-    pub fn new() -> Self {
+/// Giao diện Hợp đồng Dịch vụ Người dùng (Domain Service Interface)
+pub trait UserService: Send + Sync {
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str>;
+}
+
+/// Trạng thái hoạt động của Ngắt mạch (Circuit Breaker States)
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CircuitState {
+    Closed,   // Bình thường: Cho phép yêu cầu đi qua
+    Open,     // Ngắt mạch: Từ chối ngay lập tức để bảo vệ hệ thống
+    HalfOpen, // Nửa mở: Cho phép thử nghiệm vài yêu cầu
+}
+
+/// Bộ ngắt mạch chống sập lan truyền cho các cuộc gọi mạng phân tán
+pub struct CircuitBreaker {
+    state: CircuitState,
+    failure_count: usize,
+    failure_threshold: usize,
+    last_state_change: Instant,
+    cooldown_duration: Duration,
+}
+
+impl CircuitBreaker {
+    pub fn new(failure_threshold: usize, cooldown_ms: u64) -> Self {
         Self {
-            storage: Mutex::new(HashMap::new()),
+            state: CircuitState::Closed,
+            failure_count: 0,
+            failure_threshold,
+            last_state_change: Instant::now(),
+            cooldown_duration: Duration::from_millis(cooldown_ms),
         }
     }
 
-    /// Lưu dữ liệu vào Cache kèm thời gian sống TTL
-    pub fn set(&self, key: K, value: V, ttl: Duration) {
-        let mut store = self.storage.lock().unwrap();
-        let entry = CacheEntry {
-            value,
-            expires_at: Instant::now() + ttl,
-        };
-        store.insert(key, entry);
+    /// Kiểm tra xem yêu cầu có được phép thực thi hay không
+    pub fn allow_request(&mut self) -> bool {
+        match self.state {
+            CircuitState::Closed => true,
+            CircuitState::Open => {
+                // Kiểm tra xem đã hết thời gian hồi sức (Cooldown) chưa
+                if self.last_state_change.elapsed() >= self.cooldown_duration {
+                    println!("    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!");
+                    self.state = CircuitState::HalfOpen;
+                    self.last_state_change = Instant::now();
+                    true
+                } else {
+                    false // Vẫn ngắt mạch, từ chối cuộc gọi mạng
+                }
+            }
+            CircuitState::HalfOpen => true,
+        }
     }
 
-    /// Lấy dữ liệu từ Cache (Tự động bỏ qua nếu dữ liệu đã hết hạn)
-    pub fn get(&self, key: &K) -> Option<V> {
-        let mut store = self.storage.lock().unwrap();
+    /// Báo cáo cuộc gọi mạng thành công
+    pub fn record_success(&mut self) {
+        if self.state == CircuitState::HalfOpen {
+            println!("    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!");
+        }
+        self.state = CircuitState::Closed;
+        self.failure_count = 0;
+    }
 
-        if let Some(entry) = store.get(key) {
-            if Instant::now() < entry.expires_at {
-                // Cache Hit: Dữ liệu còn hạn sử dụng!
-                return Some(entry.value.clone());
+    /// Báo cáo cuộc gọi mạng thất bại
+    pub fn record_failure(&mut self) {
+        self.failure_count += 1;
+        println!("    [CircuitBreaker] Ghi nhận thất bại #{}", self.failure_count);
+
+        if self.failure_count >= self.failure_threshold {
+            println!("    [!] [CẢNH BÁO] Số lỗi vượt ngưỡng: KÍCH HOẠT NGẮT MẠCH (OPEN)!");
+            self.state = CircuitState::Open;
+            self.last_state_change = Instant::now();
+        }
+    }
+}
+
+/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation)
+pub struct InMemoryUserService {
+    users: HashMap<u64, UserProfile>,
+}
+
+impl InMemoryUserService {
+    pub fn new() -> Self {
+        let mut users = HashMap::new();
+        users.insert(
+            1,
+            UserProfile {
+                user_id: 1,
+                username: "nguyen_van_a".to_string(),
+                email: "a@masterclass.vn".to_string(),
+            },
+        );
+        Self { users }
+    }
+}
+
+impl UserService for InMemoryUserService {
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str> {
+        self.users
+            .get(&user_id)
+            .cloned()
+            .ok_or("Không tìm thấy thông tin người dùng")
+    }
+}
+
+/// Dịch vụ Điều phối Đơn hàng phân tán kết nối với Dịch vụ Người dùng
+pub struct OrderCoordinatorService {
+    user_service: Arc<dyn UserService>,
+    circuit_breaker: Mutex<CircuitBreaker>,
+}
+
+impl OrderCoordinatorService {
+    pub fn new(user_service: Arc<dyn UserService>) -> Self {
+        Self {
+            user_service,
+            circuit_breaker: Mutex::new(CircuitBreaker::new(3, 200)), // Ngưỡng 3 lỗi, cooldown 200ms
+        }
+    }
+
+    /// Tạo đơn hàng mới với sự bảo vệ của Circuit Breaker
+    pub fn create_order(
+        &self,
+        order_id: u64,
+        user_id: u64,
+        item_name: &str,
+        price_cents: u64,
+    ) -> Result<OrderRecord, &'static str> {
+        let mut breaker = self.circuit_breaker.lock().unwrap();
+
+        // 1. Kiểm tra Circuit Breaker trước khi thực hiện cuộc gọi liên dịch vụ
+        if !breaker.allow_request() {
+            return Err("Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!");
+        }
+
+        // 2. Gọi sang dịch vụ người dùng để xác thực
+        match self.user_service.get_user(user_id) {
+            Ok(user) => {
+                breaker.record_success();
+                println!("    [OrderService] Xác thực thành công khách hàng: {}", user.username);
+                Ok(OrderRecord {
+                    order_id,
+                    user_id: user.user_id,
+                    item_name: item_name.to_string(),
+                    price_cents,
+                })
+            }
+            Err(err) => {
+                breaker.record_failure();
+                Err(err)
             }
         }
-
-        // Cache Miss hoặc đã hết hạn: Dọn dẹp mục cũ nếu có
-        store.remove(key);
-        None
     }
-
-    pub fn total_entries(&self) -> usize {
-        self.storage.lock().unwrap().len()
-    }
-}
-
-/// Hàng đợi thông điệp an toàn đa luồng (Thread-Safe Message Queue)
-pub struct DistributedMessageQueue<T> {
-    queue: Mutex<Vec<T>>,
-    capacity: usize,
-}
-
-impl<T> DistributedMessageQueue<T> {
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            queue: Mutex::new(Vec::new()),
-            capacity,
-        }
-    }
-
-    /// Đẩy thông điệp vào hàng đợi (Producer)
-    pub fn push(&self, item: T) -> Result<(), &'static str> {
-        let mut q = self.queue.lock().unwrap();
-        if q.len() >= self.capacity {
-            return Err("Hang doi day (Queue is Full): Tu choi tiep nhan them thong diep!");
-        }
-        q.push(item);
-        Ok(())
-    }
-
-    /// Rút thông điệp ra khỏi hàng đợi để xử lý theo thứ tự FIFO (Consumer)
-    pub fn pop(&self) -> Option<T> {
-        let mut q = self.queue.lock().unwrap();
-        if q.is_empty() {
-            None
-        } else {
-            Some(q.remove(0))
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.queue.lock().unwrap().len()
-    }
-}
-
-/// Mô phỏng mẫu thiết kế Cache-Aside truy vấn dữ liệu thông minh
-pub fn fetch_user_data_cache_aside(
-    cache: &SafeCacheEngine<String, String>,
-    user_id: u64,
-) -> (String, &'static str) {
-    let key = format!("user:{}", user_id);
-
-    // 1. Thử tìm kiếm trong Cache
-    if let Some(cached_val) = cache.get(&key) {
-        return (cached_val, "CACHE_HIT (2ms)");
-    }
-
-    // 2. Cache Miss: Truy vấn cơ sở dữ liệu chính (Giả lập I/O tốn 50ms)
-    println!("    [Database Query] Đang truy vấn từ ổ đĩa CSDL cho user_id = {}...", user_id);
-    let db_val = format!("DuLieuNguoiDung_#{}", user_id);
-
-    // 3. Ghi ngược lại vào Cache với TTL = 100ms
-    cache.set(key, db_val.clone(), Duration::from_millis(100));
-
-    (db_val, "CACHE_MISS (50ms)")
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   TANG LUU TRU DEM REDIS & HANG DOI THONG DIEP PHAN TAN RUST     ");
+    println!("   KIEN TRUC PHAN TAN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
     println!("==================================================================");
 
-    // -------------------------------------------------------------
-    // 1. THỬ NGHIỆM MÔ THỨC CACHE-ASIDE VÀ HẾT HẠN TTL
-    // -------------------------------------------------------------
-    println!("\n[1] Kiem thu mo thuc Cache-Aside kem TTL Expiration:");
-    let cache = SafeCacheEngine::new();
+    // Khởi tạo Dịch vụ Người dùng
+    let user_service = Arc::new(InMemoryUserService::new());
 
-    // Lần gọi 1: Chưa có trong cache -> Cache Miss
-    let (data1, source1) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 1: Nhan '{}' tu nguon: {}", data1, source1);
-    assert_eq!(source1, "CACHE_MISS (50ms)");
+    // Khởi tạo Dịch vụ Đơn hàng liên kết
+    let order_service = OrderCoordinatorService::new(user_service);
 
-    // Lần gọi 2: Đã có trong cache -> Cache Hit tức thì
-    let (data2, source2) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 2: Nhan '{}' tu nguon: {}", data2, source2);
-    assert_eq!(source2, "CACHE_HIT (2ms)");
-    assert_eq!(data1, data2);
-
-    // Chờ 120ms để TTL hết hạn
-    println!("    - Dang cho 120ms de TTL het han...");
-    std::thread::sleep(Duration::from_millis(120));
-
-    // Lần gọi 3: TTL đã hết hạn -> Tự động Cache Miss và nạp lại
-    let (data3, source3) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 3 (Sau TTL): Nhan '{}' tu nguon: {}", data3, source3);
-    assert_eq!(source3, "CACHE_MISS (50ms)");
-
-    // -------------------------------------------------------------
-    // 2. THỬ NGHIỆM HÀNG ĐỢI THÔNG ĐIỆP ĐA LUỒNG PRODUCER-CONSUMER
-    // -------------------------------------------------------------
-    println!("\n[2] Kiem thu Hang doi Thong diep phan tan (Message Queue):");
-    let message_queue = Arc::new(DistributedMessageQueue::<String>::new(5));
-
-    // Luồng Producer: Đẩy việc vào hàng đợi
-    let producer_q = Arc::clone(&message_queue);
-    let producer_handle = std::thread::spawn(move || {
-        for i in 1..=4 {
-            let msg = format!("DonHang_#{}", i);
-            producer_q.push(msg.clone()).unwrap();
-            println!("    [Producer] Da day '{}' vao hang doi an toan.", msg);
-        }
-    });
-
-    producer_handle.join().unwrap();
-    println!("    - So luong thong diep dang cho trong hang doi: {}", message_queue.len());
-
-    // Luồng Consumer: Rút việc ra xử lý tuần tự (Worker)
-    println!("\n[3] Tien trinh Worker bat dau rut thong diep xu ly:");
-    while let Some(task) = message_queue.pop() {
-        println!("    [Consumer Worker] Dang xu ly thanh cong: {}", task);
+    // 1. Thử nghiệm tạo đơn hàng hợp lệ
+    println!("\n[1] Thử nghiệm tạo đơn hàng cho khách hàng hợp lệ (ID = 1):");
+    match order_service.create_order(101, 1, "Sách Rust Masterclass Chuyên Sâu", 450000) {
+        Ok(order) => println!("    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}", order.order_id, order.item_name),
+        Err(err) => println!("    [!] Thất bại: {}", err),
     }
 
-    assert_eq!(message_queue.len(), 0);
-    println!("    => Toan bo hang doi da duoc giai phong sach se!");
+    // 2. Thử nghiệm kích hoạt ngắt mạch Circuit Breaker bằng cách gọi liên tục ID không tồn tại
+    println!("\n[2] Gửi liên tiếp các yêu cầu lỗi để kích hoạt Circuit Breaker:");
+    for i in 1..=4 {
+        println!("    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...", i);
+        let result = order_service.create_order(200 + i, 999, "Vật phẩm ảo", 10000);
+        match result {
+            Ok(_) => println!("        Thành công!"),
+            Err(e) => println!("        Thất bại: {}", e),
+        }
+    }
+
+    // 3. Yêu cầu thứ 5 bị chặn đứng ngay từ vòng gửi xe bởi Circuit Breaker
+    println!("\n[3] Gửi yêu cầu tiếp theo khi ngắt mạch đang OPEN:");
+    let blocked_call = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
+    println!("    - Kết quả cuộc gọi: {:?}", blocked_call);
+    assert!(blocked_call.is_err());
+    println!("    => Circuit Breaker đã chặn đứng cuộc gọi mạng, bảo vệ hệ thống tuyệt đối!");
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: TANG CACHE VA HANG DOI DONG BO AN TOAN TUYET DOI!  ");
+    println!("   XÁC NHẬN: KIẾN TRÚC PHÂN TÁN AN TOÀN - CHỐNG SẬP DÂY CHUYỀN!   ");
     println!("==================================================================");
 }
 ```
@@ -287,40 +329,33 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi triển khai bộ đệm Cache và hàng đợi thông điệp trong Rust:
+Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết kế kiến trúc phân tán hướng Trait trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0502** | `cannot borrow '*self' as mutable because it is also borrowed as immutable` | Bạn vừa đọc dữ liệu trong `HashMap` bộ đệm vừa cố gắng xóa một mục hết hạn. | Sao chép giá trị cần thiết ra ngoài trước khi thực hiện thao tác xóa, hoặc phân tách phạm vi mượn. |
-| **E0382** | `use of moved value: 'message_queue'` | Di chuyển quyền sở hữu (ownership) của hàng đợi vào luồng con mà quên bọc trong con trỏ đếm tham chiếu `Arc`. | Bọc cấu trúc trong `Arc::new(...)` và tạo bản sao `Arc::clone(&queue)` cho mỗi luồng. |
-| **E0277** | `the trait 'Eq' is not implemented for 'MyKey'` | Khóa của bảng băm `HashMap` bắt buộc phải triển khai trait `Hash` và `Eq`. | Bổ sung derive tự động: `#[derive(Hash, PartialEq, Eq, Clone)]` lên trên kiểu khóa. |
-| **E0599** | `no method named 'pop' found for struct 'Arc<...>'` | Gọi trực tiếp phương thức của struct nội bộ trên con trỏ thông minh (smart pointer) `Arc` mà chưa giải tham chiếu. | Rust tự động Deref, nhưng nếu phương thức đòi hỏi mượn khả biến `&mut`, phải bọc trong `Mutex`. |
+| **E0277** | `the trait 'Send' is not implemented for 'dyn UserService'` | Khi chia sẻ một đối tượng Trait qua các luồng bằng `Arc<dyn UserService>`, Trait đó bắt buộc phải có ràng buộc `Send + Sync`. | Định nghĩa Trait với ràng buộc luồng: `pub trait UserService: Send + Sync { ... }`. |
+| **E0038** | `the trait 'UserService' cannot be made into an object` | Trait chứa phương thức nhận `self` theo kiểu giá trị hoặc chứa hàm generic, vi phạm quy tắc Trait Object Safety. | Đổi tham số nhận thành tham chiếu `&self`, và không dùng generic trên các phương thức của trait. |
+| **E0599** | `no method named 'clone' found for struct 'OrderRecord'` | Bạn gọi `.clone()` trên một cấu trúc dữ liệu domain mà quên khai báo derive tự động. | Thêm macro derive: `#[derive(Clone, Debug)]` trên cấu trúc dữ liệu. |
+| **E0382** | `use of moved value: 'user_service'` | Di chuyển quyền sở hữu (ownership) của dịch vụ vào một luồng khác mà không bọc trong con trỏ thông minh (smart pointer) chia sẻ. | Sử dụng con trỏ đếm tham chiếu đa luồng: `Arc::clone(&user_service)`. |
 
-### Ví dụ phân tích lỗi `E0502` khi vừa duyệt vừa xóa mục Cache hết hạn:
+### Ví dụ phân tích lỗi `E0038` khi thiết kế Trait Object cho Microservice:
 
 ```rust
-use std::collections::HashMap;
-
-// Đoạn mã lỗi minh họa E0502:
-fn xoa_loi(map: &mut HashMap<String, u64>) {
-    // for (k, &v) in map.iter() {
-    //     if v == 0 {
-    //         map.remove(k); // LỖI E0502: Không thể sửa map khi đang mượn bất biến để duyệt!
-    //     }
-    // }
+// Đoạn mã lỗi minh họa E0038: Trait không thỏa mãn Object Safety
+trait DichVuLoi {
+    // Lỗi: Hàm generic không thể tạo Trait Object động
+    fn xu_ly_generic<T>(&self, data: T); 
 }
 
-// Cách sửa chữa đúng chuẩn: Thu thập danh sách khóa cần xóa trước
-fn xoa_dung(map: &mut HashMap<String, u64>) {
-    let expired_keys: Vec<String> = map
-        .iter()
-        .filter(|&(_, &v)| v == 0)
-        .map(|(k, _)| k.clone())
-        .collect();
+// fn goi_dich_vu(dv: &dyn DichVuLoi) {} // LỖI E0038!
 
-    for k in expired_keys {
-        map.remove(&k);
-    }
+// Cách sửa chữa đúng chuẩn: Dùng kiểu cụ thể hoặc lát cắt byte
+trait DichVuDung: Send + Sync {
+    fn xu_ly_chuan(&self, data: &[u8]) -> Result<(), &'static str>;
+}
+
+fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
+    let _ = dv.xu_ly_chuan(b"data");
 }
 ```
 
@@ -329,15 +364,15 @@ fn xoa_dung(map: &mut HashMap<String, u64>) {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Bảo vệ Cơ sở dữ liệu**: Tầng lưu trữ đệm phân tán Redis giải cứu Database khỏi nghẽn cổ chai, giảm độ trễ truy vấn từ hàng chục mili-giây xuống dưới 1 mili-giây.
-2. **Khắc chế 3 Hiểm họa Cache**: Triệt tiêu Cache Stampede bằng khóa phân tán, chống Cache Penetration bằng Bloom Filter, và chống Cache Avalanche bằng khoảng lệch thời gian ngẫu nhiên (TTL Jitter).
-3. **Sức mạnh của Hàng đợi Thông điệp**: Đóng vai trò đập thủy điện san phẳng các đợt bùng nổ lưu lượng, tách rời các dịch vụ và bảo đảm độ tin cậy của luồng xử lý.
-4. **An toàn Đa luồng Không Rò rỉ**: Vận dụng chuẩn mực quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm các tiến trình đọc/ghi song song luôn đạt thông lượng cao nhất.
+1. **Tiến trình kiến trúc tự nhiên**: Hãy bắt đầu với một Modular Monolith chặt chẽ trước khi quyết định xé nhỏ thành các Microservice phân tán.
+2. **Kinh tế học Rust trên Đám mây**: Nhờ mức tiêu thụ RAM cực thấp (~15MB), không có độ trễ GC, và thời gian khởi động tính bằng mili-giây, Rust giúp doanh nghiệp cắt giảm tới 80% hóa đơn máy chủ.
+3. **Chi phí Độ trễ mạng**: Gọi hàm nội bộ trên RAM nhanh gấp 100,000 lần gọi qua mạng. Tận dụng định dạng nhị phân tốc độ cao để giảm thiểu chi phí chuyển đổi dữ liệu.
+4. **Phòng chống sập lan truyền**: Luôn trang bị mô hình Ngắt mạch (Circuit Breaker) và Phân vùng chống tràn (Bulkhead) cho mọi điểm giao tiếp mạng, kết hợp cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo vệ toàn vẹn hệ thống.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bổ sung Thuật toán Đào thải trang LRU vào Cache)**:  
-   Mở rộng `SafeCacheEngine`: Khi bộ nhớ đệm đạt tới giới hạn dung lượng tối đa (ví dụ 1,000 mục), hãy tự động tìm và xóa mục có thời gian truy cập lâu nhất (Least Recently Used) để nhường chỗ cho mục mới.
-2. **Bài tập 2 (Xây dựng Hàng đợi Thư Chết - Dead-Letter Queue)**:  
-   Trong `DistributedMessageQueue`, nếu một thông điệp bị xử lý thất bại quá 3 lần liên tiếp, thay vì vứt bỏ, hãy tự động chuyển thông điệp đó sang một hàng đợi riêng biệt mang tên `DeadLetterQueue` để các kỹ sư quản trị có thể kiểm tra và gỡ lỗi thủ công.
-3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Cache Invalidation là một trong hai bài toán khó nhất?)**:  
-   Chuyên gia Martin Fowler từng nói: *"Chỉ có hai thứ khó trong khoa học máy tính: Đặt tên biến và Hủy tính hợp lệ của Cache (Cache Invalidation)"*. Hãy phân tích một tình huống cụ thể: Khi người dùng đổi mật khẩu, làm thế nào để đảm bảo 10 máy chủ Cache phân tán trên toàn cầu cùng hủy bỏ phiên đăng nhập cũ ngay lập tức mà không để xảy ra kẽ hở bảo mật?
+1. **Bài tập 1 (Bổ sung cơ chế Fallback Cache)**:  
+   Mở rộng `OrderCoordinatorService`: Khi Circuit Breaker ở trạng thái `Open`, thay vì trả về lỗi ngay lập tức, hãy cho dịch vụ tra cứu thông tin khách hàng từ một bảng băm bộ đệm cục bộ (Local Cache) đã lưu từ trước.
+2. **Bài tập 2 (Hiện thực hóa Bộ giới hạn số lượng cuộc gọi đồng thời - Bulkhead)**:  
+   Viết một cấu trúc `BulkheadSemaphore` giới hạn tối đa chỉ cho phép 10 yêu cầu gọi mạng chạy đồng thời cùng lúc. Nếu có yêu cầu thứ 11 ập vào trong khi 10 yêu cầu trước chưa hoàn thành, lập tức xếp vào hàng đợi chờ hoặc từ chối để chống tràn tài nguyên máy chủ.
+3. **Bài tập 3 (Suy ngẫm kiến trúc: Khi nào không nên dùng Microservices?)**:  
+   Một công ty khởi nghiệp chỉ có 3 lập trình viên và 500 người dùng hoạt động mỗi ngày có nên chia hệ thống thành 15 microservices độc lập hay không? Rủi ro lớn nhất về mặt vận hành hạ tầng (DevOps, Giám sát hệ thống, Distributed Tracing) mà họ sẽ phải đối mặt là gì?

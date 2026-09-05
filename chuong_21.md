@@ -1,249 +1,270 @@
-# Chương 21: Độ phức tạp tính toán & Trực quan hóa Big-O (Computational Complexity & Big-O Visualized)
+# Chương 21: Khái niệm Siêu lập trình: Khi code tự động viết code (Declarative Macros: macro_rules! & Syntax Matchers)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn bước vào **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust (Data Structures & Algorithms - DSA)**! Ở các chủ đề trước, bạn đã làm chủ cú pháp ngôn ngữ, cơ chế an toàn bộ nhớ độc nhất vô nhị của Rust với quyền sở hữu (ownership), vay mượn (borrow), thời gian sống (lifetime), cũng như sức mạnh của lập trình hàm và siêu lập trình (macro). 
+Chào mừng bạn bước vào **Chủ đề 4: Siêu lập trình (Meta Programming)** — cảnh giới đỉnh cao của nghệ thuật lập trình trong Rust! Cho đến lúc này, bạn đã quen thuộc với việc viết mã nguồn để ra lệnh cho máy tính xử lý các con số, chuỗi ký tự, cấu trúc dữ liệu và các giao ước trait. Tất cả những thao tác đó đều xoay quanh việc: **Code xử lý Dữ liệu (Code processes Data)**.
 
-Tuy nhiên, viết được một đoạn mã chạy đúng mới chỉ là bước khởi đầu. Trong thực tế phát triển phần mềm hệ thống, câu hỏi sống còn đặt ra là: **"Đoạn mã của bạn sẽ chạy nhanh hay chậm khi lượng dữ liệu phình to gấp 10 lần, 1.000 lần, hay 1.000.000 lần?"** Một thuật toán chạy mượt mà trên máy tính cá nhân với 10 dòng dữ liệu mẫu có thể khiến toàn bộ máy chủ sập nguồn hoặc bị treo đơ vĩnh viễn khi ứng dụng đón nhận 1 triệu người dùng thực tế.
+Tuy nhiên, có bao giờ bạn tự hỏi:
+- *Làm sao macro `println!("Xin chào {}", ten)` có thể nhận số lượng tham số tùy ý (1 tham số, 3 tham số hay 10 tham số đều được), trong khi hàm thông thường `fn` trong Rust luôn bắt buộc số lượng tham số cố định?*
+- *Làm sao macro `vec![1, 2, 3]` có thể tự động tạo ra một `Vec` đã được nạp sẵn các giá trị ban đầu chỉ bằng một dòng lệnh ngắn ngủi?*
+- *Liệu chúng ta có thể viết ra những đoạn mã có khả năng... **tự động viết ra mã nguồn khác** để giải phóng lập trình viên khỏi hàng trăm dòng code lặp đi lặp lại nhàm chán (boilerplate code)?*
 
-Để đo lường, so sánh và dự đoán hiệu năng của các giải thuật mà không cần phải chạy thử trên từng cỗ máy cụ thể, các nhà khoa học máy tính sử dụng một công cụ tư duy trực quan mang tên: **Ký hiệu Big-O (Big-O Notation)**. 
+Câu trả lời nằm ở **Siêu lập trình (Metaprogramming)** và vũ khí cốt lõi đầu tiên của nó: **Macro khai báo (`macro_rules!`)**. Trong Rust, macro không phải là công cụ tìm-và-thay-thế chuỗi thô sơ như tiền xử lý `#define` của C/C++ (vốn rất dễ gây lỗi tràn số và xung đột tên biến). Macro trong Rust là một phần chính thức của trình biên dịch `rustc`, hoạt động trực tiếp trên các thẻ bài cú pháp (syntax tokens) và cây cú pháp trừu tượng (AST), đảm bảo an toàn tuyệt đối về mặt kiểu dữ liệu và bộ nhớ.
 
 Mục tiêu học tập của chương này:
-- Nắm vững bản chất của **Độ phức tạp tính toán (Computational Complexity)** bao gồm **Độ phức tạp thời gian (Time Complexity)** và **Độ phức tạp không gian (Space Complexity)** mà không cần bất kỳ công thức toán giải tích hay vi phân nào.
-- Hiểu rõ ký hiệu Big-O như một thước đo "độ tốn công" khi quy mô công việc $N$ bùng nổ.
-- Nhận diện trực quan các cấp bậc Big-O phổ biến: $O(1)$, $O(\log N)$, $O(N)$, $O(N \log N)$, $O(N^2)$, và $O(2^N)$.
-- Biết cách sử dụng `std::time::Instant` trong Rust để thực nghiệm đo đạc thời gian thực thi của mã nguồn.
-- Rèn luyện phản xạ phát hiện các "nút thắt cổ chai" (bottlenecks) làm tiêu hao bộ nhớ đệm (buffer) và chu kỳ vi xử lý CPU.
+- Hiểu rõ bản chất **Siêu lập trình (Metaprogramming)**: Viết mã nguồn để sinh ra mã nguồn tại thời điểm biên dịch (Compile-time).
+- Phân biệt sự khác nhau cốt lõi giữa **Hàm (`fn`)** thực thi lúc chạy (Runtime) và **Macro (`!`)** mở rộng lúc biên dịch (Compile-time).
+- Nhận biết hai phân loại Macro lớn trong Rust: **Macro khai báo (`macro_rules!`)** và **Macro thủ tục (Procedural Macros)**.
+- Làm chủ cú pháp định nghĩa `macro_rules!` và các **Bộ khớp cú pháp (Syntax Matchers / Designators)**: `$expr`, `$ident`, `$ty`, `$stmt`, `$path`, `$block`, `$literal`.
+- Sử dụng các macro tích hợp sẵn hỗ trợ gỡ lỗi: `stringify!`, `file!`, `line!`.
+- Biết cách dùng công cụ `cargo expand` để soi tận mắt đoạn mã máy tính thực sự nhìn thấy sau khi macro bung ra.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy quên đi các định nghĩa toán học khô khan. Để thấu hiểu Big-O, chúng ta hãy bước vào một căn bếp quen thuộc và so sánh: **Nấu bữa tối cho 1 người ăn vs Chuẩn bị đại tiệc cưới cho 500 thực khách**.
+Hãy cùng giải mã khái niệm Siêu lập trình qua hai hình ảnh vô cùng sinh động trong đời thực:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                   HÌNH TƯỢNG HÓA CÁC CẤP ĐỘ PHỨC TẠP BIG-O                      │
-├─────────────┬───────────────────────────────────────┬────────────────────────────┤
-│   KÝ HIỆU   │    HÌNH ẢNH ẨN DỤ TRONG ĐỜI SỐNG      │   KHI N TĂNG TỪ 10 LÊN 1000│
-├─────────────┼───────────────────────────────────────┼────────────────────────────┤
-│   O(1)      │ Bật công tắc đèn / Rót 1 ly nước lọc  │ Vẫn mất 1 giây duy nhất    │
-│   O(log N)  │ Chặt đôi danh bạ tìm tên A-Z          │ Từ 3 lần lật lên 10 lần lật│
-│   O(N)      │ Rửa từng chiếc bát đĩa sau bữa tiệc   │ Từ 10 phút lên 16 tiếng!   │
-│   O(N log N)│ Chia bát đĩa theo bàn rồi rửa theo ca │ Từ 30 giây lên 10 giây x 10│
-│   O(N^2)    │ Mọi khách mời lần lượt bắt tay nhau   │ Từ 100 cái lên 1.000.000!  │
-└─────────────┴───────────────────────────────────────┴────────────────────────────┘
+│              HÌNH TƯỢNG ĐỜI SỐNG: NGƯỜI THỢ THỦ CÔNG VS MÁY IN KHUÔN ĐÚC         │
+├────────────────────────────────────────┬─────────────────────────────────────────┤
+│        HÀM THÔNG THƯỜNG (FN)           │          MACRO TRONG RUST (!)           │
+│     "Người thợ làm bánh thủ công"      │      "Chiếc máy dập khuôn tự động"      │
+│                                        │                                         │
+│ - Ngồi trực tiếp tại quầy lúc nửa đêm  │ - Trước khi mở cửa tiệm (Compile-time): │
+│ - Khi có khách gọi món (Runtime):      │   Chiếc máy dập tự động dập sẵn 1.000   │
+│   Mới bắt đầu đập trứng, nhào bột,     │   vỏ bánh hoàn hảo y như đúc!           │
+│   nướng bánh thủ công từng chiếc một.  │ - Khi khách đến mua lúc nửa đêm:        │
+│ - Tốn công sức và thời gian lúc chạy!  │   Chỉ việc lấy trao tay ngay lập tức!   │
+│                                        │ - Tốc độ ánh sáng, không trễ 1 giây nào!│
+└────────────────────────────────────────┴─────────────────────────────────────────┘
 ```
 
-### 1. Cấp độ $O(1)$ — Thời gian hằng số (Làm ngay tức khắc)
-Hãy tưởng tượng bạn bước vào phòng bếp và **bật công tắc đèn**, hoặc **rót một ly nước lọc** cho vị khách đầu tiên.
-- Bữa tiệc có 1 khách: Bạn bấm công tắc mất 1 giây.
-- Bữa tiệc có 500 khách: Bạn vẫn chỉ cần bấm công tắc đèn đó đúng 1 giây.
-- Dù số lượng khách $N$ có tăng lên hàng triệu người, việc bật đèn không tốn thêm bất kỳ một tích tắc nào. Trong lập trình, đây là thao tác $O(1)$ — tốc độ lý tưởng nhất của mọi thuật toán.
+### 1. Thợ làm bánh thủ công vs Máy dập khuôn công nghiệp
+- **Hàm thông thường (`fn`)**: Giống như người thợ làm bánh thủ công ngồi trực trong tiệm bánh:
+  - Khi chương trình đang chạy trên máy chủ (`Runtime`), có yêu cầu gửi tới, CPU mới bắt đầu nhảy vào hàm, thực hiện tuần tự từng phép tính, tiêu tốn xung nhịp CPU và chiếm dụng ngăn xếp bộ nhớ (Stack).
+- **Macro (`macro_rules!`)**: Giống như chiếc máy dập khuôn cơ khí được lập trình sẵn trước giờ mở cửa:
+  - Tại thời điểm biên dịch (`Compile-time`), chiếc máy dập đọc bản vẽ thiết kế của bạn và **dập sẵn toàn bộ mã nguồn cần thiết ra văn bản**.
+  - Khi chương trình thực sự chạy, toàn bộ mã đó đã được biên dịch thành mã máy tối ưu hóa cao nhất. Không có chi phí gọi hàm, không có độ trễ lúc chạy!
 
-### 2. Cấp độ $O(N)$ — Thời gian tuyến tính (Lần lượt từng việc)
-Bữa tiệc kết thúc, đến công đoạn **rửa bát đĩa**:
-- Nếu tiệc có $N = 10$ người: Bạn phải rửa 10 chiếc bát, tốn khoảng 5 phút.
-- Nếu tiệc có $N = 500$ người: Bạn phải rửa 500 chiếc bát, tốn khoảng 250 phút (hơn 4 tiếng đồng hồ!).
-- Số lượng công việc tăng tỷ lệ thuận trực tiếp với số lượng khách $N$. Nếu số bát tăng gấp 10 lần, thời gian rửa tăng đúng 10 lần. Đây chính là $O(N)$ — tương đương với một vòng lặp duyệt qua từng phần tử của danh sách.
-
-### 3. Cấp độ $O(\log N)$ — Chặt đôi chia để trị (Siêu tốc độ)
-Hãy tưởng tượng bạn cầm trên tay cuốn **danh bạ điện thoại dày 1.000 trang** đã được sắp xếp theo thứ tự bảng chữ cái từ A đến Z, và cần tìm tên "Nguyễn Văn An":
-- Bạn mở ngay chính giữa cuốn sách (trang 500). Bạn thấy chữ cái "L". Vì "N" đứng sau "L", bạn lập tức loại bỏ được 500 trang đầu tiên!
-- Bạn tiếp tục mở đôi 500 trang còn lại (trang 750). Cứ mỗi lần lật sách, bạn **chia đôi phạm vi tìm kiếm** làm hai nửa.
-- Với 1.000 trang, bạn chỉ cần tối đa khoảng 10 lần lật sách là tìm thấy người cần tìm! Kể cả danh bạ dày 1.000.000 trang, bạn cũng chỉ tốn đúng 20 lần lật sách. Đó chính là sức mạnh kỳ diệu của $O(\log N)$.
-
-### 4. Cấp độ $O(N^2)$ — Bùng nổ thảm họa (Vòng lặp lồng nhau)
-Trong đám cưới, người dẫn chương trình yêu cầu: **"Tất cả các vị khách có mặt trong hội trường phải lần lượt đến từng chiếc bàn để bắt tay và chào hỏi từng vị khách khác!"**
-- Nếu hội trường chỉ có $N = 5$ người bạn thân: Tổng số lượt bắt tay là $5 \times 4 / 2 = 10$ cái bắt tay, diễn ra vui vẻ trong 1 phút.
-- Nhưng nếu hội trường có $N = 500$ khách: Mỗi người phải đi bắt tay 499 người còn lại! Tổng số cái bắt tay là xấp xỉ $\frac{500 \times 500}{2} = 125.000$ cái bắt tay! Toàn bộ buổi tiệc sẽ biến thành một mớ hỗn loạn kiệt sức, không ai kịp ăn uống gì. Trong mã nguồn, việc lồng hai vòng lặp `for` lặp lại trên cùng một tập dữ liệu sẽ biến hệ thống của bạn thành thảm họa $O(N^2)$.
+### 2. Trò chơi Điền từ vào chỗ trống (Mad Libs)
+Hãy nhớ lại trò chơi điền từ vào chỗ trống thời thơ ấu:
+- Bạn có một câu chuyện mẫu: *"Hôm nay, bạn `[TÊN]` đã đi đến `[ĐỊA_DANH]` để mua `[SỐ_LƯỢNG]` quả `[TRÁI_CÂY]`."*
+- Các ô vuông `[TÊN]`, `[ĐỊA_DANH]`, `[SỐ_LƯỢNG]` chính là các **Bộ khớp cú pháp (Matchers)** trong Macro của Rust!
+- Khi bạn điền từ vào:
+  - Điền: An, Chợ Bến Thành, 5, Xoài.
+  - Macro lập tức ráp nối thành một câu hoàn chỉnh: *"Hôm nay, bạn An đã đi đến Chợ Bến Thành để mua 5 quả Xoài."*
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Bản chất phần cứng: Vì sao CPU quan tâm đến Big-O?
+### 1. Vòng đời Biên dịch: Macro diễn ra ở đâu trong `rustc`?
 
-Bộ vi xử lý trung tâm CPU của máy tính hiện đại hoạt động theo các chu kỳ xung nhịp (clock cycles). Một vi xử lý tốc độ 3.0 GHz có thể thực hiện khoảng 3 tỷ chu kỳ mỗi giây. 
-
-Tuy nhiên, tài nguyên phần cứng không phải là vô tận:
-1. **Truy xuất bộ nhớ (Memory Access Latency)**: CPU truy xuất thanh ghi (registers) tốn dưới 1 nanosecond, nhưng truy xuất thanh RAM chính tốn tới 50-100 nanoseconds (chậm hơn hàng trăm lần).
-2. **Bộ nhớ đệm (buffer) Cache L1/L2/L3**: Khi dữ liệu nằm gọn trong cache CPU, thuật toán chạy cực nhanh. Nhưng khi thuật toán bắt CPU nhảy cóc lung tung qua hàng triệu ô nhớ rải rác trên RAM, hiện tượng trượt cache (Cache Miss) xảy ra liên tục, kéo tụt hiệu năng xuống đáy vực.
-
-Ký hiệu Big-O không đo lường bằng giây hay mili-giây tuyệt đối (vì mỗi cỗ máy tính có phần cứng mạnh yếu khác nhau), mà đo lường **xu hướng tăng trưởng số lượng chỉ thị lệnh của CPU** khi kích thước đầu vào $N$ tiến tới vô cực:
+Để hiểu tại sao Macro lại có sức mạnh phi thường, hãy nhìn vào quy trình làm việc của trình biên dịch `rustc`:
 
 ```
-Số phép tính
- ▲
- │                                                 O(N^2) [Thảm họa]
- │                                          . '
- │                                      . '
- │                                   . '
- │                                . '       O(N log N) [Chấp nhận được]
- │                             . '     . - '
- │                         . '   . - '      O(N) [Tuyến tính]
- │                     . ' . - '
- │                 . - '                O(log N) [Rất tốt]
- │            . - '             . - - - - - - - -
- │     . - - '      . - - - - -
- │────────────────────────────────────────── O(1) [Lý tưởng tuyệt đối]
- └────────────────────────────────────────────────────────► Quy mô dữ liệu (N)
+Mã nguồn thô (.rs)
+      │
+      ▼
+[1. Bộ phân tích từ vựng (Lexer)] ──► Biến văn bản thành dòng Thẻ bài (TokenStream)
+      │
+      ▼
+[2. Bộ phân tích cú pháp (Parser)] ──► Dựng Cây cú pháp trừu tượng (AST)
+      │
+      ▼
+[3. Mở rộng Macro (Macro Expansion)] ◄─── MACRO HOẠT ĐỘNG TẠI ĐÂY!
+      │                                   (Bung code mới ngay trên AST,
+      │                                    trước khi kiểm tra kiểu)
+      ▼
+      │
+      ▼
+[4. Kiểm tra kiểu & Vay mượn (Type & Borrow Checker)] ──► Kiểm tra quyền sở hữu (ownership)
+      │
+      ▼
+[5. Trình sinh mã LLVM] ──► Tệp thực thi nhị phân (.exe / ELF)
 ```
 
-### 2. So sánh cụ thể số bước thực thi giữa các cấp Big-O
+Vì Macro được mở rộng ở **Giai đoạn 3** — sau khi mã nguồn đã được dựng thành cây cú pháp, nhưng **trước** khi trình biên dịch kiểm tra kiểu dữ liệu và quyền sở hữu:
+1. Macro có thể sinh ra các định nghĩa hàm mới, struct mới, hoặc cài đặt trait mới mà các dòng mã phía sau có thể sử dụng bình thường.
+2. Macro không bị ràng buộc bởi kiểu dữ liệu tại thời điểm viết, cho phép bạn truyền vào tên biến, tên kiểu, hoặc cả một khối lệnh.
+3. Toàn bộ mã do macro sinh ra vẫn phải bước qua bước kiểm tra nghiêm ngặt của Bộ kiểm tra mượn (Borrow Checker) ở Giai đoạn 4, đảm bảo an toàn tuyệt đối, không thể gây lỗi tràn bộ nhớ đệm (buffer) hay rò rỉ ô nhớ!
 
-Bảng dưới đây minh họa số phép toán mà CPU cần thực hiện khi quy mô dữ liệu $N$ tăng dần:
+### 2. Cấu trúc Cú pháp của `macro_rules!`
 
-| Ký hiệu Big-O | $N = 10$ | $N = 100$ | $N = 1.000$ | $N = 1.000.000$ (1 triệu) | Đánh giá trực quan |
-|---|---|---|---|---|---|
-| **$O(1)$** | 1 | 1 | 1 | 1 | Tức thì, tối ưu nhất |
-| **$O(\log N)$** | ~3 | ~7 | ~10 | ~20 | Siêu tốc (chia để trị) |
-| **$O(N)$** | 10 | 100 | 1.000 | 1.000.000 | Tốt, chấp nhận được |
-| **$O(N \log N)$** | ~33 | ~664 | ~9.965 | ~20.000.000 | Chuẩn mực của sắp xếp |
-| **$O(N^2)$** | 100 | 10.000 | 1.000.000 | 1.000.000.000.000 ($10^{12}$) | Nguy hiểm, đơ máy |
-| **$O(2^N)$** | 1.024 | $1.26 \times 10^{30}$ | Vô tận | Không thể tính toán | Bùng nổ hàm mũ |
+Một macro khai báo được định nghĩa bằng cú pháp so khớp khuôn mẫu (Pattern Matching) tương tự như lệnh `match`:
 
-> **Quy tắc bỏ qua hằng số**: Trong Big-O, chúng ta chỉ quan tâm đến tốc độ tăng trưởng bậc cao nhất. Ví dụ thuật toán tốn $2N + 100$ bước tính vẫn được quy về $O(N)$, và thuật toán tốn $0.5N^2 + 3N$ bước tính sẽ được quy về $O(N^2)$. Khi $N$ lên tới 1 tỷ, con số cộng thêm 100 hay nhân 2 trở nên hoàn toàn không đáng kể so với sức ảnh hưởng của $N^2$.
+```rust
+macro_rules! ten_macro {
+    // Nhánh 1: So khớp với khuôn mẫu A
+    ( khuôn_mau_A ) => {
+        // Đoạn mã sinh ra tương ứng
+    };
+    // Nhánh 2: So khớp với khuôn mẫu B
+    ( khuôn_mau_B ) => {
+        // Đoạn mã sinh ra tương ứng
+    };
+}
+```
 
-### 3. Độ phức tạp không gian (Space Complexity)
+### 3. Bảng tra cứu các Bộ khớp cú pháp (Syntax Designators)
 
-Bên cạnh thời gian chạy, thuật toán còn tiêu tốn bộ nhớ RAM để lưu trữ biến số, cấu trúc dữ liệu phụ trợ hoặc các khung ngăn xếp gọi hàm (call stack frames):
-- **$O(1)$ Space**: Thuật toán chỉ sử dụng một vài biến đơn lẻ cố định (`let mut tong = 0;`), không xin thêm bất kỳ ô nhớ nào dù $N$ có lớn bao nhiêu.
-- **$O(N)$ Space**: Thuật toán tạo ra một mảng phụ sao chép toàn bộ $N$ phần tử, hoặc đệ quy sâu $N$ tầng khiến ngăn xếp Stack phình to theo tỷ lệ thuận.
+Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Designator)**:
+
+| Bộ chỉ định | Tên tiếng Anh | Ý nghĩa trong cú pháp Rust | Ví dụ thực tế |
+|---|---|---|---|
+| **`$e:expr`** | Expression | Bất kỳ biểu thức nào sinh ra giá trị | `1 + 2`, `x * 5`, `String::new()` |
+| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `so_luong`, `NguoiDung`, `tinh_tong` |
+| **`$t:ty`** | Type | Một kiểu dữ liệu hợp lệ trong Rust | `i32`, `String`, `Vec<u8>`, `&str` |
+| **`$s:stmt`** | Statement | Một câu lệnh (thường kết thúc bằng dấu `;`) | `let x = 10;`, `dem += 1;` |
+| **`$p:path`** | Path | Đường dẫn định danh mô-đun hoặc kiểu dữ liệu | `std::collections::HashMap`, `crate::api` |
+| **`$b:block`** | Block | Một khối mã được bao bọc bởi cặp ngoặc `{}` | `{ let a = 1; a + 2 }` |
+| **`$lit:literal`** | Literal | Một hằng số nguyên bản | `42`, `"Xin chào"`, `true`, `'🦀'` |
+| **`$tt:tt`** | Token Tree | Một thẻ bài đơn lẻ hoặc một nhóm ngoặc `()` `[]` `{}` | Bất kỳ ký tự cú pháp hợp lệ nào |
+
+### 4. Công cụ Ma thuật: `stringify!` và `cargo expand`
+
+- **`stringify!($e)`**: Chuyển đổi trực tiếp đoạn mã nguồn thành một chuỗi ký tự `&str` ngay lúc biên dịch mà không cần tính toán giá trị của nó.
+  - Ví dụ: `stringify!(1 + 1)` sẽ sinh ra chuỗi `"1 + 1"`, chứ không phải `"2"`!
+- **`cargo expand`**: Công cụ dòng lệnh cài đặt qua `cargo install cargo-expand`. Nó cho phép bạn in toàn bộ mã nguồn của dự án ra màn hình sau khi tất cả các macro đã được bung ra hoàn toàn. Đây là chiếc "kính lúp soi macro" không thể thiếu của mọi lập trình viên Rust chuyên nghiệp.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh, độc lập và có thể chạy ngay bằng `cargo run` hoặc `rustc`. Chương trình minh họa và đo đạc thời gian thực tế giữa ba cấp độ giải thuật cốt lõi: $O(1)$ truy cập chỉ số, $O(N)$ tìm kiếm tuần tự (Linear Search), và $O(\log N)$ tìm kiếm nhị phân (Binary Search), kèm theo phân tích độ phức tạp không gian $O(1)$ vs $O(N)$:
+Chương trình hoàn chỉnh dưới đây xây dựng một **Bộ công cụ Siêu lập trình Tiện ích (Metaprogramming Utility Toolkit)** gồm 3 macro thực chiến:
+1. `tao_ban_do!`: Macro tạo nhanh `HashMap` theo phong cách từ điển JSON trực quan.
+2. `kiem_toan_bien!`: Macro soi sáng thông tin nội bộ của biến (tên biến, giá trị, tệp tin, dòng mã).
+3. `do_luong_thoi_gian!`: Macro bọc một khối lệnh bất kỳ để đo thời gian thực thi của nó.
 
 ```rust
+// Tệp: src/main.rs
+// Chương trình thực chiến làm chủ macro_rules! và Bộ khớp cú pháp trong Rust
+
+use std::collections::HashMap;
 use std::time::Instant;
 
-/// Minh họa giải thuật O(1) - Truy cập phần tử qua chỉ số mảng
-/// Bất kể danh sách có 10 phần tử hay 10 triệu phần tử,
-/// CPU chỉ cần 1 phép tính cộng địa chỉ bộ nhớ là lấy được giá trị ngay!
-pub fn truy_cap_chi_so_o1(danh_sach: &[i32], chi_so: usize) -> Option<i32> {
-    // Thao tác kiểm tra biên giới và đọc ô nhớ diễn ra trong thời gian hằng số O(1)
-    danh_sach.get(chi_so).copied()
-}
+// ============================================================================
+// 1. MACRO TẠO NHANH HASHMAP VỚI CÚ PHÁP TỪ ĐIỂN: tao_ban_do!
+// ============================================================================
 
-/// Minh họa giải thuật O(N) - Tìm kiếm tuyến tính (Linear Search)
-/// Trong trường hợp xấu nhất (Worst-case), phần tử cần tìm nằm ở cuối danh sách
-/// hoặc không tồn tại, hàm bắt buộc phải duyệt qua toàn bộ N phần tử.
-pub fn tim_kiem_tuyen_tinh_on(danh_sach: &[i32], muc_tieu: i32) -> Option<usize> {
-    for (vi_tri, &gia_tri) in danh_sach.iter().enumerate() {
-        if gia_tri == muc_tieu {
-            return Some(vi_tri); // Tìm thấy tại vị trí vi_tri
+/// Macro nhận vào các cặp $khoa => $gia_tri cách nhau bởi dấu phẩy
+/// Hỗ trợ dấu phẩy tùy chọn ở cuối cùng $(,)?
+macro_rules! tao_ban_do {
+    // Nhánh xử lý: $( $khoa:expr => $gia_tri:expr ),*
+    ( $( $khoa:expr => $gia_tri:expr ),* $(,)? ) => {
+        {
+            let mut ban_do = HashMap::new();
+            $(
+                ban_do.insert($khoa, $gia_tri);
+            )*
+            ban_do
         }
-    }
-    None // Không tìm thấy sau khi duyệt hết N phần tử
+    };
 }
 
-/// Minh họa giải thuật O(log N) - Tìm kiếm nhị phân (Binary Search)
-/// Điều kiện tiên quyết: Mảng đầu vào PHẢI được sắp xếp tăng dần từ trước.
-/// Tại mỗi bước, ta so sánh mục tiêu với phần tử ở giữa và loại bỏ 50% phạm vi tìm kiếm.
-pub fn tim_kiem_nhi_phan_ologn(danh_sach: &[i32], muc_tieu: i32) -> Option<usize> {
-    if danh_sach.is_empty() {
-        return None;
-    }
+// ============================================================================
+// 2. MACRO SOI SÁNG VÀ KIỂM TOÁN BIẾN: kiem_toan_bien!
+// ============================================================================
 
-    let mut trai: usize = 0;
-    let mut phai: usize = danh_sach.len() - 1;
+/// Macro sử dụng $i:ident và $e:expr kết hợp với stringify!, file!, line!
+/// Giúp lập trình viên gỡ lỗi với thông tin vị trí mã nguồn cực kỳ chi tiết
+macro_rules! kiem_toan_bien {
+    ( $ten_bien:ident ) => {
+        println!(
+            "[KIỂM TOÁN] Biến `{}` = {:?} (Tại tệp: {}, Dòng: {})",
+            stringify!($ten_bien),
+            $ten_bien,
+            file!(),
+            line!()
+        );
+    };
+    ( $nhan_dan:expr, $bieu_thuc:expr ) => {
+        println!(
+            "[KIỂM TOÁN: {}] Biểu thức `{}` có giá trị = {:?} (Dòng: {})",
+            $nhan_dan,
+            stringify!($bieu_thuc),
+            $bieu_thuc,
+            line!()
+        );
+    };
+}
 
-    while trai <= phai {
-        // Tính vị trí ở giữa an toàn để tránh nguy cơ tràn số (integer overflow)
-        let giua = trai + (phai - trai) / 2;
-        let gia_tri_giua = danh_sach[giua];
+// ============================================================================
+// 3. MACRO ĐO THỜI GIAN KHỐI LỆNH: do_luong_thoi_gian!
+// ============================================================================
 
-        if gia_tri_giua == muc_tieu {
-            return Some(giua);
-        } else if gia_tri_giua < muc_tieu {
-            // Mục tiêu nằm ở nửa bên phải, dời biên trái lên
-            trai = giua + 1;
-        } else {
-            // Mục tiêu nằm ở nửa bên trái, dời biên phải xuống
-            if giua == 0 {
-                break; // Ngăn chặn tràn số usize khi trừ về dưới 0
-            }
-            phai = giua - 1;
+/// Macro nhận một nhãn mô tả $ten:expr và một khối mã $khoi:block
+/// Trả về trực tiếp kết quả của khối mã đó!
+macro_rules! do_luong_thoi_gian {
+    ( $ten:expr, $khoi:block ) => {
+        {
+            println!(">>> [BẮT ĐẦU ĐO] {}", $ten);
+            let bat_dau = Instant::now();
+            let ket_qua = $khoi; // Thực thi khối lệnh
+            let thoi_gian = bat_dau.elapsed();
+            println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $ten, thoi_gian);
+            ket_qua // Trả kết quả của khối lệnh về phía người gọi
         }
-    }
-
-    None
+    };
 }
 
-/// Minh họa độ phức tạp không gian O(1) vs O(N)
-/// Hàm 1: Tính tổng tích lũy tại chỗ - Tiêu tốn O(1) bộ nhớ phụ
-pub fn tinh_tong_tai_cho_o1_space(danh_sach: &[i32]) -> i64 {
-    let mut tong: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
-    for &so in danh_sach {
-        tong += so as i64;
-    }
-    tong
-}
-
-/// Hàm 2: Tạo mảng nhân đôi - Tiêu tốn O(N) bộ nhớ phụ trên Heap
-pub fn tao_mang_nhan_doi_on_space(danh_sach: &[i32]) -> Vec<i32> {
-    let mut ket_qua = Vec::with_capacity(danh_sach.len());
-    for &so in danh_sach {
-        ket_qua.push(so * 2);
-    }
-    ket_qua
-}
+// ============================================================================
+// CHƯƠNG TRÌNH THỰC THI CHÍNH
+// ============================================================================
 
 fn main() {
     println!("============================================================");
-    println!("   THỰC NGHIỆM ĐO ĐẠC ĐỘ PHỨC TẠP TÍNH TOÁN VỚI BIG-O       ");
+    println!("     BỘ CÔNG CỤ SIÊU LẬP TRÌNH: DECLARATIVE MACRO RULES     ");
     println!("============================================================");
 
-    // Chuẩn bị tập dữ liệu lớn gồm 1.000.000 (1 triệu) số nguyên đã sắp xếp
-    let quy_mo: usize = 1_000_000;
-    println!("Khởi tạo danh sách gồm {} phần tử...", quy_mo);
-    let danh_sach: Vec<i32> = (0..quy_mo as i32).collect();
+    // ------------------------------------------------------------------------
+    // TÌNH HUỐNG 1: Sử dụng macro tao_ban_do! tạo cấu hình hệ thống
+    // ------------------------------------------------------------------------
+    println!("\n1. Khởi tạo Bản đồ thông số máy chủ bằng cú pháp trực quan:");
+    let thong_so_may_chu = tao_ban_do! {
+        "cong_mang" => "8080",
+        "dia_chi_ip" => "192.168.1.100",
+        "moi_truong" => "SanXuat",
+        "trang_thai" => "KichHoat", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
+    };
 
-    let muc_tieu: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
-
-    // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
-    let bat_dau_o1 = Instant::now();
-    let ket_qua_o1 = truy_cap_chi_so_o1(&danh_sach, quy_mo - 1);
-    let thoi_gian_o1 = bat_dau_o1.elapsed();
-    println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
-    println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_o1);
-
-    // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
-    let bat_dau_on = Instant::now();
-    let ket_qua_on = tim_kiem_tuyen_tinh_on(&danh_sach, muc_tieu);
-    let thoi_gian_on = bat_dau_on.elapsed();
-    println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_on);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_on);
-
-    // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
-    let bat_dau_ologn = Instant::now();
-    let ket_qua_ologn = tim_kiem_nhi_phan_ologn(&danh_sach, muc_tieu);
-    let thoi_gian_ologn = bat_dau_ologn.elapsed();
-    println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_ologn);
-
-    // Xác nhận tính nhất quán của kết quả
-    assert_eq!(ket_qua_on, Some(quy_mo - 1));
-    assert_eq!(ket_qua_ologn, Some(quy_mo - 1));
-
-    // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
-    if thoi_gian_ologn.as_nanos() > 0 {
-        let ti_le = thoi_gian_on.as_nanos() as f64 / thoi_gian_ologn.as_nanos() as f64;
-        println!("\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
+    for (khoa, gia_tri) in &thong_so_may_chu {
+        println!("  - Tham số `{}`: {}", khoa, gia_tri);
     }
 
-    // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian
-    let tong_o1 = tinh_tong_tai_cho_o1_space(&danh_sach[0..100]);
-    let mang_on = tao_mang_nhan_doi_on_space(&danh_sach[0..100]);
-    println!("\n[4] Không gian bộ nhớ:");
-    println!("    - Tổng O(1) Space: {}", tong_o1);
-    println!("    - Kích thước mảng phụ O(N) Space: {} phần tử", mang_on.len());
+    // ------------------------------------------------------------------------
+    // TÌNH HUỐNG 2: Sử dụng macro kiem_toan_bien! để soi dữ liệu
+    // ------------------------------------------------------------------------
+    println!("\n2. Soi sáng biến số và biểu thức bằng siêu lập trình:");
+    let diem_trung_binh = 8.75;
+    let danh_sach_lop = vec!["An", "Bình", "Cường"];
+
+    // Gỡ lỗi biến đơn lẻ qua $ident
+    kiem_toan_bien!(diem_trung_binh);
+    kiem_toan_bien!(danh_sach_lop);
+
+    // Gỡ lỗi biểu thức phức tạp qua $expr
+    kiem_toan_bien!("Tính toán điểm cộng", diem_trung_binh + 1.25);
+
+    // ------------------------------------------------------------------------
+    // TÌNH HUỐNG 3: Đo lường khối lệnh tính toán qua do_luong_thoi_gian!
+    // ------------------------------------------------------------------------
+    println!("\n3. Đo lường hiệu năng của một khối thuật toán:");
+    
+    let tong_tich_luy = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
+        let mut tong: u64 = 0;
+        for i in 1..=1_000_000 {
+            tong += i;
+        }
+        tong // Giá trị trả về từ khối block
+    });
+
+    println!("-> Kết quả tính được từ khối mã: {}", tong_tich_luy);
+
+    println!("\n============================================================");
+    println!("     XÁC THỰC CÁC MACRO KHAI BÁO HOÀN THÀNH AN TOÀN TUYỆT ĐỐI");
     println!("============================================================");
 }
 ```
@@ -252,38 +273,36 @@ fn main() {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Khi lập trình các thuật toán tìm kiếm và đo đạc độ phức tạp tính toán trong Rust, người học thường đối mặt với các lỗi biên dịch điển hình liên quan đến việc mượn (borrow) và di chuyển quyền sở hữu (ownership):
+Khi bắt đầu viết macro với `macro_rules!`, bạn sẽ gặp những lỗi biên dịch rất đặc thù của bộ phân tích cú pháp:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0382** | `use of moved value: '...'` | Bạn truyền một `Vec` lớn vào hàm giải thuật bằng giá trị (by value) thay vì mượn tham chiếu `&[T]`. Quyền sở hữu đã bị chuyển đi, khiến biến gốc không dùng lại được. | Đổi chữ ký hàm nhận lát cắt tham chiếu `&[T]` thay vì sở hữu `Vec<T>`. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`trai`, `phai`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut trai = 0;`. |
-| **E0308** | `mismatched types: expected 'usize', found 'i32'` | Chỉ số mảng trong Rust luôn mang kiểu số nguyên không dấu `usize`. Việc dùng kiểu `i32` làm chỉ số truy cập sẽ bị trình biên dịch từ chối ngay lập tức. | Chuyển đổi kiểu tường minh bằng từ khóa `as usize` hoặc khai báo biến chỉ số ngay từ đầu là `usize`. |
-| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến `&danh_sach` để lặp, vừa gọi phương thức làm biến đổi danh sách (như `.push()`) trong cùng một phạm vi. | Tách rời thao tác đọc và thao tác ghi thành hai bước độc lập để tôn trọng quy tắc mượn của Rust. |
+| **E0423** | `expected value, found macro '...'` | Bạn gọi một macro nhưng quên viết dấu chấm than `!` ở phía sau tên macro (ví dụ viết `println("...")` thay vì `println!("...")`). | Thêm dấu chấm than `!` ngay sau tên macro: `ten_macro!(...)`. |
+| **Lỗi cú pháp** | `no rules expected the token '...'` | Tham số bạn truyền vào khi gọi macro không khớp với bất kỳ nhánh so khớp nào đã được định nghĩa trong `macro_rules!`. | Kiểm tra lại khuôn mẫu ở vế trái: dấu ngăn cách (dấu phẩy, dấu mũi tên `=>`), kiểu dữ liệu của matcher, hoặc bổ sung thêm nhánh so khớp mới. |
+| **Lỗi cú pháp** | `$e:expr is followed by '...', which is not allowed for expr fragments` | Quy tắc an toàn cú pháp của Rust: Sau một biểu thức `$e:expr`, bạn chỉ được phép đặt các ký tự phân cách an toàn như `,`, `;`, hoặc `=>`. Bạn không thể đặt ngay một định danh khác liền kề vì trình biên dịch sẽ bị nhập nhằng cú pháp. | Đặt dấu phẩy `,` hoặc dấu chấm phẩy `;` ngăn cách giữa các matcher. |
+| **E0425** | `cannot find value '...' in this scope` | Mã bên trong thân macro tham chiếu đến một biến hoặc hàm mà ở phạm vi người gọi macro không tồn tại. | Đảm bảo các biến cần thiết được truyền trực tiếp vào macro qua tham số, hoặc sử dụng đường dẫn đầy đủ dạng `std::...` hoặc `$crate::...`. |
 
-### Ví dụ phân tích lỗi `E0382` và cách khắc phục:
+### Phân tích lỗi thực tế "No rules expected the token":
 
 ```rust
-// Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu vector vào hàm đo thời gian
-fn dem_phan_tu_loi(ds: Vec<i32>) -> usize {
-    ds.len() // Hàm đoạt lấy quyền sở hữu và giải phóng bộ nhớ khi kết thúc
+// Định nghĩa macro chỉ nhận 1 biểu thức:
+macro_rules! in_gap_doi {
+    ( $x:expr ) => {
+        println!("{}", $x * 2);
+    };
 }
 
-fn thu_nghiem_loi() {
-    let du_lieu = vec![1, 2, 3, 4, 5];
-    // let n = dem_phan_tu_loi(du_lieu); 
-    // println!("Dữ liệu có: {}", du_lieu.len()); // LỖI E0382: du_lieu đã bị di chuyển!
+fn thu_nghiem_loi_macro() {
+    in_gap_doi!(10); // Hợp lệ!
+
+    // LỖI: no rules expected the token `,`
+    // in_gap_doi!(10, 20); // Sai vì macro không có nhánh nhận 2 tham số!
 }
 
-// Cách sửa chữa đúng chuẩn: Mượn lát cắt (Slice) tham chiếu &[i32]
-fn dem_phan_tu_chuan(ds: &[i32]) -> usize {
-    ds.len() // Chỉ mượn tham chiếu, không đoạt quyền sở hữu
-}
-
-fn thu_nghiem_dung() {
-    let du_lieu = vec![1, 2, 3, 4, 5];
-    let n = dem_phan_tu_chuan(&du_lieu);
-    println!("Dữ liệu mượn hợp lệ, vẫn còn sử dụng được: độ dài = {}", n);
+// Cách sửa chữa: Bổ sung nhánh nhận 2 tham số hoặc dùng cú pháp lặp $(,)*
+macro_rules! in_gap_doi_sua {
+    ( $x:expr ) => { println!("{}", $x * 2); };
+    ( $x:expr, $y:expr ) => { println!("{} và {}", $x * 2, $y * 2); };
 }
 ```
 
@@ -292,31 +311,17 @@ fn thu_nghiem_dung() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Big-O đo xu hướng tăng trưởng**: Không đo số giây cụ thể, Big-O phản ánh tốc độ phình to của khối lượng công việc khi kích thước dữ liệu $N$ tăng lên vô tận.
-2. **Thứ bậc hiệu năng**: $O(1) < O(\log N) < O(N) < O(N \log N) < O(N^2) < O(2^N)$. Luôn tìm cách đưa giải thuật về $O(1)$ hoặc $O(\log N)$ nếu có thể.
-3. **Độ phức tạp thời gian vs Không gian**: Nhanh hơn thường đòi hỏi tốn RAM hơn (đánh đổi Time-Space Trade-off). Một thuật toán tốt phải cân đối hài hòa cả hai yếu tố.
-4. **Tham chiếu lát cắt trong Rust**: Truyền dữ liệu vào các hàm thuật toán dưới dạng lát cắt mượn `&[T]` để đạt hiệu năng $O(1)$ về chi phí truyền tham số và bảo toàn quyền sở hữu (ownership).
+1. **Bản chất Siêu lập trình**: Code sinh ra code tại thời điểm biên dịch (Compile-time), không gây ra bất kỳ chi phí trễ nào lúc chạy (Zero Runtime Overhead).
+2. **Sức mạnh vượt trội so với Hàm**: Macro chấp nhận số lượng tham số linh hoạt, có thể nhận cả định danh và kiểu dữ liệu, cho phép sáng tạo cú pháp mới (DSL).
+3. **Bộ khớp cú pháp (Matchers)**: Sử dụng các designator chuẩn xác (`$expr`, `$ident`, `$ty`, `$block`) để định hình khung mẫu tiếp nhận mã nguồn.
+4. **Vũ khí gỡ lỗi**: Khai thác sức mạnh của `stringify!`, `file!`, `line!`, và công cụ `cargo expand` để thấu suốt bản chất mã nguồn sau khi được bung ra.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Nhận diện Big-O đời sống)**:  
-   Trong các hoạt động sau đây, hoạt động nào có độ phức tạp $O(1)$, $O(N)$, và $O(N^2)$?
-   - a) Tìm chìa khóa mở cửa nhà trong chùm chìa khóa có $N$ chiếc chìa không đánh dấu.
-   - b) Tra cứu số phòng của một vị khách khi khách đưa thẻ căn cước có ghi rõ số phòng trên mặt thẻ.
-   - c) So sánh từng bức ảnh trong bộ sưu tập $N$ bức ảnh với tất cả các bức ảnh còn lại để tìm ảnh trùng lặp.
-2. **Bài tập 2 (Phát hiện nút thắt cổ chai)**:  
-   Đoạn mã sau đây có độ phức tạp thời gian là bao nhiêu? Làm thế nào để cải tiến nó?
-   ```rust
-   // Đoạn mã kiểm tra xem mảng có chứa hai số trùng nhau hay không
-   fn co_phan_tu_trung(ds: &[i32]) -> bool {
-       for i in 0..ds.len() {
-           for j in (i + 1)..ds.len() {
-               if ds[i] == ds[j] {
-                   return true;
-               }
-           }
-       }
-       false
-   }
-   ```
-3. **Bài tập 3 (Thực hành đo đạc)**:  
-   Hãy viết một chương trình Rust sử dụng `std::time::Instant` để so sánh thời gian cộng dồn 1 triệu số nguyên từ 1 đến 1.000.000 bằng vòng lặp `for` (mất $O(N)$ bước) so với việc áp dụng công thức tính nhanh của nhà toán học Gauss: $S = \frac{N(N + 1)}{2}$ (chỉ mất $O(1)$ phép tính). Quan sát và in ra sự chênh lệch thời gian giữa hai phương pháp.
+1. **Bài tập 1 (Macro Hoán đổi Biến)**:  
+   Hãy viết một macro mang tên `hoan_doi!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
+
+2. **Bài tập 2 (Macro So sánh Giá trị Lớn nhất)**:  
+   Viết một macro `tim_max!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.
+
+3. **Bài tập 3 (Tư duy thiết kế Macro vs Hàm)**:  
+   Khi nào bạn nên viết một hàm bình thường `fn`, và khi nào bạn thực sự bắt buộc phải dùng `macro_rules!`? Hãy liệt kê 3 trường hợp mà hàm thông thường hoàn toàn bất lực không thể giải quyết được.

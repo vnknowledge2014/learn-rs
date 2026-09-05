@@ -1,463 +1,343 @@
-# Chương 32: Dự án lớn: Xây dựng động cơ lưu trữ Mini-Bitcask Key-Value bền vững (Capstone Project: Building a Persistent Mini-Bitcask Key-Value Engine)
+# Chương 32: Kiến trúc trang Slotted-Page & Quản lý bộ nhớ đệm Buffer Pool (Slotted-Page Architecture & Buffer Pool Management)
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chúc mừng bạn đã tiến tới chặng đường cuối cùng của **Chủ đề 6: Kiến trúc & Thiết kế Cơ sở Dữ liệu**! Trong suốt 11 chương vừa qua của hai chủ đề DSA và Database Internals, bạn đã trang bị cho mình một kho tàng kiến thức đồ sộ: Từ độ phức tạp Big-O, mảng liền kề, danh sách liên kết, cây nhị phân, bảng băm, đến thao tác nhị phân trên đĩa cứng, kiến trúc Slotted-Page, bộ đệm Buffer Pool, cây B+ Tree, nhật ký WAL, LSM-Tree và giao dịch MVCC.
+Trong chương trước, chúng ta đã hiểu nguyên lý lưu trữ đĩa cứng và kỹ thuật đóng gói nhị phân. Tuy nhiên, nếu mỗi lần thêm một bản ghi mới cơ sở dữ liệu lại thực hiện một thao tác ghi đĩa riêng lẻ, hệ thống sẽ sụp đổ hiệu năng vì nghẽn cổ chai I/O. Hơn nữa, trong thực tế, các bản ghi luôn có kích thước thay đổi (biến thiên): Người có tên 5 ký tự, người có tên 50 ký tự; khi một người dùng xóa tài khoản, khoảng trống ô nhớ bỏ lại sẽ bị phân mảnh nếu không có cách tổ chức khoa học.
 
-Giờ là lúc chúng ta ghép nối tất cả những mảnh ghép rời rạc đó thành một cỗ máy hoàn chỉnh mang tính sản xuất: **Tự tay xây dựng một Động cơ Cơ sở Dữ liệu Khóa-Giá trị Bền vững (Persistent Key-Value Store) mang tên Mini-Bitcask từ con số không!**
+Mọi hệ quản trị cơ sở dữ liệu hàng đầu thế giới (như PostgreSQL, MySQL InnoDB, SQLite) giải quyết bài toán này thông qua hai trụ cột kiến trúc cốt lõi:
+1. **Kiến trúc trang phân khe (Slotted-Page Architecture)**: Phân chia tệp dữ liệu trên đĩa thành các khối có kích thước cố định chuẩn mực là **4KB (4096 bytes)**, cho phép chứa các bản ghi có độ dài co giãn linh hoạt mà không sợ phân mảnh ô nhớ.
+2. **Bộ quản lý bộ nhớ đệm (Buffer Pool Manager)**: Một vùng đệm RAM trung gian giữ các trang dữ liệu nóng (hot pages) để người dùng đọc/ghi tức thì, kết hợp thuật toán **LRU (Least Recently Used)** để tự động trục xuất (evict) các trang cũ về đĩa cứng khi bộ nhớ đệm (buffer) bị đầy.
 
-Mô hình **Bitcask** là kiến trúc động cơ lưu trữ lừng danh được sáng chế bởi hãng Basho Technologies (được sử dụng làm trái tim cho cơ sở dữ liệu phân tán quy mô lớn Riak). Bitcask sở hữu một triết lý thiết kế thanh lịch đến kinh ngạc:
-- **Tốc độ ghi siêu khủng**: Toàn bộ thao tác ghi chỉ là nối đuôi tuần tự vào cuối tệp tin trên đĩa cứng (Append-only Log).
-- **Tốc độ đọc tức thì**: Tra cứu vị trí trên RAM thông qua Bảng băm mục lục (**KeyDir**) chỉ mất $O(1)$, sau đó nhảy thẳng tới đúng tọa độ byte trên đĩa để đọc giá trị chỉ với **duy nhất 1 lần đọc đĩa (Single Disk Seek)**!
-
-Mục tiêu học tập của chương dự án lớn này:
-- Nắm vững kiến trúc lai (Hybrid Architecture) kết hợp giữa Bảng băm trên RAM (`KeyDir`) và Tệp dữ liệu ghi nối đuôi trên Đĩa cứng (Append-only Data File).
-- Tự tay lập trình đầy đủ các thao tác cơ bản: `set(key, value)`, `get(key)`, và `delete(key)` với định dạng đóng gói nhị phân tùy chỉnh.
-- Hiện thực hóa cơ chế **Khởi động và Phục hồi sau sự cố (Crash Recovery & Startup Index Rebuild)**: Tự động quét lại tệp dữ liệu để dựng lại chỉ mục RAM khi máy chủ khởi động lại.
-- Xây dựng tiến trình **Nén gộp và Dọn dẹp dữ liệu (Compaction & Merge)** giúp loại bỏ các bản ghi cũ bị ghi đè hoặc bị xóa, thu nhỏ dung lượng tệp đĩa tối đa.
-- Rèn luyện kỹ năng viết mã nguồn Rust hướng module chuyên nghiệp, xử lý lỗi an toàn với `Result<T, io::Error>`, và kiểm thử tự động (Integration Testing).
+Mục tiêu học tập của chương này:
+- Nắm vững cấu tạo vật lý của một **Trang dữ liệu cố định 4KB (Fixed 4KB Page)** và lý do kích thước 4KB tương thích hoàn hảo với phần cứng SSD và hệ điều hành.
+- Thấu hiểu cơ chế "hai đầu tiến vào giữa" của kiến trúc **Slotted-Page**: Thư mục khe (Slot Directory) tiến từ trên xuống, dữ liệu bản ghi ghi từ dưới đáy lên.
+- Định vị bản ghi toàn cục trong cơ sở dữ liệu thông qua bộ đôi định danh **Tuple ID / RID `(page_id, slot_id)`**.
+- Xây dựng mô hình **Buffer Pool** với cơ chế quản lý khung trang (Frames), cờ bẩn (Dirty Flag), và số đếm giữ trang (Pin Count).
+- Cài đặt thuật toán loại trừ trang **LRU Page Eviction Policy** an toàn 100% bằng Rust.
 
 ---
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng quan sát cách người chủ tiệm tạp hóa quản lý sổ sách nợ nần để hiểu thấu kiến trúc Bitcask:
+Hãy quan sát hai hình ảnh đời sống trực quan dưới đây để hiểu thấu kiến trúc Slotted-Page và Buffer Pool:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│              HÌNH TƯỢNG HÓA KIẾN TRÚC ĐỘNG CƠ LƯU TRỮ BITCASK                    │
+│                   HÌNH TƯỢNG HÓA SLOTTED-PAGE VÀ BUFFER POOL                     │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│ [1. TRÊN RAM: BẢNG MỤC LỤC DÁN NGOÀI BÌA SỔ (KEYDIR INDEX)]                      │
-│ ┌──────────────────────┬────────────────────────┬──────────────────────┐         │
-│ │ Tên khách hàng (Key) │ Tọa độ trang (Offset)  │ Độ dài chữ (ValSize) │         │
-│ ├──────────────────────┼────────────────────────┼──────────────────────┤         │
-│ │ "Bác Ba"             │ Byte #450              │ 12 bytes             │         │
-│ │ "Chị Năm"            │ Byte #780              │ 15 bytes             │         │
-│ │ "Chú Bảy"            │ Byte #920              │ 10 bytes             │         │
-│ └──────────────────────┴────────────────────────┴──────────────────────┘         │
-│            │                                                                     │
-│            │ Tra cứu trên bìa sổ mất 1 tích tắc O(1)!                            │
-│            ▼                                                                     │
-│ [2. DƯỚI ĐĨA CỨNG: CUỐN SỔ CÁI GHI NỐI ĐUÔI (APPEND-ONLY DATA FILE)]             │
+│ [1. KIẾN TRÚC SLOTTED-PAGE: TRANG SỔ TAY 4KB GHI TỪ HAI ĐẦU]                     │
 │ ┌──────────────────────────────────────────────────────────────────────┐         │
-│ │ Byte 0: [Khởi tạo sổ ngày 01/01]                                     │         │
-│ │ Byte 200: Giao dịch cũ: "Bác Ba nợ 20k" (Bị ghi đè)                  │         │
-│ │ Byte 450: Giao dịch mới: "Bác Ba nợ 50k" ◄── Nhảy thẳng tới đọc 1 lần│         │
-│ │ Byte 780: Giao dịch: "Chị Năm nợ 100k"                               │         │
-│ │ Byte 920: Giao dịch: "Chú Bảy nợ 30k"                                │         │
-│ │ Byte 1100: [Ghi tiếp vào đuôi sổ...] ◄── Ghi mới không cần sửa trang cũ│        │
-│ └──────────────────────────────────────────────────────────────────────┘         │
+│ │ Header: [Mã trang: #1] [Số khe: 3] [Con trỏ đáy tự do: 3950]         │ 0 bytes │
+│ ├──────────────────────────────────────────────────────────────────────┤         │
+│ │ Khe 0 (Slot 0): Tọa độ = 4050, Dài = 46 bytes                        │         │
+│ │ Khe 1 (Slot 1): Tọa độ = 4000, Dài = 50 bytes    ▼ Tiến dần xuống    │         │
+│ │ Khe 2 (Slot 2): Tọa độ = 3950, Dài = 50 bytes                        │         │
+│ ├ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -┤         │
+│ │                                                                      │         │
+│ │                 VÙNG NHỚ TRỐNG TỰ DO Ở GIỮA (FREE SPACE)             │         │
+│ │                                                                      │         │
+│ ├ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -┤         │
+│ │ Bản ghi 2: [ID: 103, Tên: "Lê Văn C"] (Dài 50B)  ▲ Tiến ngược lên   │ 3950 B  │
+│ │ Bản ghi 1: [ID: 102, Tên: "Trần Thị B"] (Dài 50B)                    │ 4000 B  │
+│ │ Bản ghi 0: [ID: 101, Tên: "Nguyễn Văn A"] (Dài 46B)                  │ 4050 B  │
+│ └──────────────────────────────────────────────────────────────────────┘ 4096 B  │
+│                                                                                  │
+│ [2. BUFFER POOL: BÀN HỌC THƯ VIỆN CÓ ĐÚNG 3 CHỖ ĐỂ SÁCH]                         │
+│                                                                                  │
+│ Thư viện có 10.000 cuốn sách (Ổ đĩa đĩa cứng SSD)                                 │
+│ Mặt bàn bạn chỉ để được tối đa 3 cuốn sách (Buffer Pool RAM)                     │
+│                                                                                  │
+│ Muốn đọc cuốn thứ 4?                                                             │
+│ -> Tìm cuốn sách mà bạn LÂU NHẤT KHÔNG ĐỌC (LRU)                                 │
+│ -> Cất cuốn sách đó về giá sách (Evict) để nhường chỗ trống trên bàn!           │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Cuốn sổ cái ghi nợ kèm Bảng mục lục dán ngoài bìa
-- **Dưới đĩa cứng (Cuốn sổ cái)**:
-  - Mọi giao dịch phát sinh trong ngày đều được ghi nối tiếp vào các dòng trống tiếp theo ở cuối cuốn sổ (thao tác `append`).
-  - Bạn không bao giờ lấy tẩy xóa dòng cũ (vì việc tẩy xóa làm bẩn giấy và mất thời gian). Nếu Bác Ba nợ thêm tiền hoặc trả bớt nợ, bạn chỉ việc ghi một dòng mới toanh ở cuối sổ: *"Hôm nay Bác Ba nợ 50k"*.
-- **Trên RAM (Bảng mục lục dán ngoài bìa sổ - KeyDir)**:
-  - Để không phải lật từng trang sổ tìm tên Bác Ba, bạn dán một tờ giấy nhớ ở ngoài bìa cuốn sổ.
-  - Trên tờ giấy nhớ ghi rõ: `"Bác Ba -> Xem trang 45 dòng 3 (Byte #450), đọc đúng 12 chữ"`.
-  - Mỗi khi ghi một dòng mới vào cuối sổ, bạn chỉ cần lấy bút gạch số trang cũ trên tờ giấy nhớ và ghi đè số trang mới vào.
-- **Tốc độ đọc**: Khi khách hỏi nợ, bạn liếc tờ giấy nhớ ngoài bìa (RAM tốn $O(1)$), biết ngay trang 45, bạn lật phắt một cái đến đúng trang 45 đọc to số nợ (**đúng 1 lần lật sổ - 1 Disk Seek**).
-- **Tốc độ ghi**: Viết tiếp vào cuối sổ trong 1 giây mà không làm phiền bất kỳ trang sổ nào trước đó.
+### 1. Trang sổ tay Slotted-Page ghi từ hai đầu
+- Hãy tưởng tượng một trang giấy học sinh:
+  - Ở **dòng trên cùng**, bạn ghi "Bảng mục lục": Dòng 1 nằm ở đâu, dài bao nhiêu chữ; Dòng 2 nằm ở đâu, dài bao nhiêu chữ. Mỗi khi có bài viết mới, bạn ghi thêm một dòng vào mục lục này, tiến dần từ trên xuống.
+  - Nhưng nội dung các bài viết (ngắn dài tùy ý) thì bạn lại bắt đầu chép từ **dòng cuối cùng của trang giấy chép ngược dần lên trên**.
+  - Khi mục lục ở trên đầu và bài viết ở dưới đáy chạm nhau, trang giấy đó chính thức hết chỗ (Full Page).
+- **Lợi ích vĩ đại**: Nếu bài viết ở Khe 1 bị xóa, ta chỉ cần đánh dấu khe đó là rỗng trong bảng mục lục ở trên đầu. Tọa độ của các khe khác không bị ảnh hưởng, và người ngoài muốn tìm bài viết chỉ cần nhìn vào số khe mà không cần biết bài viết nằm ở tọa độ byte cụ thể nào!
 
-### 2. Dọn dẹp sổ nợ (Compaction & Merge)
-- Sau 6 tháng, cuốn sổ cái dày cộm lên hàng ngàn trang, trong đó chứa rất nhiều dòng nợ cũ đã lỗi thời của Bác Ba và Chị Năm.
-- Cuối năm, bác chủ tiệm mua một cuốn sổ mới tinh, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ tinh tươm!
+### 2. Buffer Pool và Bàn học thư viện (LRU Eviction)
+- Thư viện có hàng vạn cuốn sách nằm trên các giá sách khổng lồ dưới tầng hầm (Ổ đĩa).
+- Bàn học của bạn chỉ có diện tích đủ để mở **3 cuốn sách** cùng lúc (Buffer Pool trên RAM).
+- Khi bạn cần nghiên cứu cuốn sách thứ 4:
+  - Bạn không thể nhét thêm vào bàn vì sẽ làm đổ đồ.
+  - Bạn quan sát xem trong 3 cuốn đang để trên bàn, cuốn nào đã để yên lâu nhất mà bạn không lật trang (Thuật toán **LRU - Least Recently Used**).
+  - Bạn đem cuốn sách đó cất trở lại vào giá sách thư viện (trục xuất - **evict**). Nếu cuốn sách đó bạn có ghi chú thêm vào các trang sách (trang bẩn - **dirty page**), bạn phải chép lại cẩn thận xuống đĩa rồi mới cất đi!
 
 ---
 
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu (In-Depth Technical Mechanics)
 
-### 1. Định dạng bản ghi nhị phân trên Đĩa cứng (On-Disk Record Format)
+### 1. Tại sao kích thước trang cố định luôn là 4KB?
 
-Mỗi bản ghi được lưu xuống tệp dữ liệu tuân theo cấu trúc nhị phân chuẩn hóa sau:
+Hầu hết các hệ quản trị cơ sở dữ liệu và hệ điều hành đều chuẩn hóa kích thước trang là **4096 bytes (4KB)**:
+1. **Kiến trúc phần cứng SSD/HDD**: Các khối khu vực (sectors) vật lý của đĩa hiện đại (Advanced Format) có kích thước 4096 bytes.
+2. **Bộ nhớ ảo (Virtual Memory)**: Đơn vị quản lý bộ nhớ của nhân hệ điều hành Linux/macOS/Windows cũng là các trang 4KB.
+3. Khi kích thước trang của cơ sở dữ liệu khớp hoàn hảo với 4KB của hệ điều hành và phần cứng, một thao tác đọc/ghi trang sẽ diễn ra trong **1 lệnh I/O duy nhất**, triệt tiêu hiện tượng đọc ghi phân mảnh lãng phí.
 
-```
-┌───────────────┬────────────────┬────────────────┬────────────────┬──────────────┬────────────────┐
-│ Dấu mốc (8B)  │ Cờ xóa (1B)    │ Dài Khóa (4B)  │ Dài Giá trị(4B)│ Khóa (Key)   │ Giá trị (Val)  │
-│ timestamp u64 │ is_deleted u8  │ key_len u32    │ val_len u32    │ [u8; key_len]│ [u8; val_len]  │
-└───────────────┴────────────────┴────────────────┴────────────────┴──────────────┴────────────────┘
-```
-- **`timestamp` (8 bytes)**: Dấu mốc thời gian Unix Epoch (nanoseconds) ghi nhận thời điểm bản ghi được tạo ra.
-- **`is_deleted` (1 byte)**: Cờ đánh dấu bản ghi đã bị xóa (Tombstone). Giá trị `0` là hợp lệ, `1` là đã bị xóa.
-- **`key_len` (4 bytes)** và **`val_len` (4 bytes)**: Kích thước của khóa và giá trị theo định dạng Little-Endian.
-- **Tổng kích thước Header cố định**: $8 + 1 + 4 + 4 = 17 \text{ bytes}$.
+### 2. Bóc tách giải phẫu một trang Slotted-Page
 
-### 2. Cấu trúc Chỉ mục bộ nhớ trong (`KeyDir`)
+Trong một mảng byte `[u8; 4096]`:
+- **Phần đầu trang (Page Header - 8 bytes)**:
+  - `page_id (u32)`: Số thứ tự trang trong tệp cơ sở dữ liệu.
+  - `slot_count (u16)`: Số lượng khe bản ghi hiện đang có.
+  - `free_space_pointer (u16)`: Tọa độ byte đáy trống kế tiếp (ban đầu là 4096).
+- **Thư mục khe (Slot Directory - Mỗi khe chiếm 4 bytes)**:
+  - `offset (u16)`: Tọa độ byte bắt đầu của bản ghi.
+  - `length (u16)`: Độ dài của bản ghi.
+- **Định danh bản ghi toàn cục (Tuple ID / RID)**:
+  - Một bản ghi trong cơ sở dữ liệu được định danh duy nhất bởi cặp số: `RID = (page_id, slot_id)`.
+  - Dù bản ghi có bị dịch chuyển vị trí bên trong trang (chẳng hạn khi dọn rác dồn ô nhớ), giá trị `RID` của nó đối với các bảng chỉ mục bên ngoài vẫn hoàn toàn không thay đổi!
 
-Trên thanh RAM, `KeyDir` là một bảng băm ánh xạ từ Khóa sang cấu trúc chỉ dẫn vị trí ô nhớ:
-```rust
-pub struct KeyDirEntry {
-    pub file_offset: u64,    // Tọa độ byte bắt đầu của phần thân giá trị
-    pub value_size: usize,   // Độ dài byte của giá trị để đọc đúng số lượng
-    pub timestamp: u64,      // Dấu mốc thời gian của bản ghi
-}
-```
-Khi người dùng gọi `get("user:101")`:
-1. Tra cứu `"user:101"` trong `HashMap` trên RAM -> Nhận về `KeyDirEntry { file_offset: 1024, value_size: 40 }`.
-2. Gọi lệnh `file.seek(SeekFrom::Start(1024))` để nhảy đầu đọc đĩa tới byte thứ 1024.
-3. Gọi lệnh `file.read_exact(&mut buffer)` đọc đúng 40 bytes dữ liệu.
-4. Trả về kết quả tức thì. Toàn bộ thao tác chỉ tiêu tốn đúng **1 lần I/O đĩa**!
+### 3. Cấu trúc và Vòng đời của Buffer Pool
 
-### 3. Quy trình Nén gộp và Hợp nhất (Compaction & Merge)
-
-Khi số lượng thao tác cập nhật và xóa tăng cao, tệp dữ liệu sẽ bị phình to bởi các bản ghi "rác" (bản ghi cũ đã bị ghi đè hoặc bị đánh dấu cờ xóa `is_deleted = 1`).
-
-Thuật toán Compaction diễn ra tuần tự như sau:
-1. Tạo một tệp dữ liệu mới tạm thời: `data.db.compact`.
-2. Duyệt qua từng cặp `(key, entry)` hiện có trong bảng mục lục `KeyDir` trên RAM (đây là những bản ghi mới nhất và còn hiệu lực sống).
-3. Đọc dữ liệu từ tệp cũ tại `entry.file_offset` và ghi nối tiếp sang tệp mới `data.db.compact`.
-4. Cập nhật lại `file_offset` trong `KeyDir` trỏ sang tọa độ mới trong tệp nén.
-5. Đóng tệp, thực hiện hoán đổi nguyên tử (Atomic Rename): Đổi tên `data.db.compact` đè lên tệp `data.db` ban đầu. Dung lượng đĩa được giải phóng hoàn toàn!
+Buffer Pool là một hệ thống đệm tinh vi gồm:
+1. **Bảng khung trang (Frame Table)**: Mảng các ô nhớ kích thước 4KB trên RAM (`Page Frames`).
+2. **Bảng tra cứu trang (Page Table)**: Bảng băm ánh xạ từ `page_id` trên đĩa sang số thứ tự khung trang `frame_id` trên RAM.
+3. **Cờ bẩn (Dirty Flag)**: Một bit đánh dấu trang đã bị sửa đổi dữ liệu hay chưa. Nếu cờ bẩn bật (`is_dirty == true`), khi trục xuất trang về đĩa cứng, hệ thống bắt buộc phải ghi nội dung đệm xuống đĩa. Nếu chưa bị sửa (`is_dirty == false`), chỉ cần hủy bỏ khỏi RAM mà không tốn lệnh ghi đĩa nào.
+4. **Hàng đợi LRU (LRU List)**: Quản lý thứ tự thời gian sử dụng của các trang. Mỗi lần một trang được đọc hoặc ghi, nó được chuyển xuống cuối danh sách (vừa sử dụng gần nhất). Trang ở đầu danh sách là trang "nguội" nhất, sẽ là nạn nhân đầu tiên bị trục xuất khi bộ nhớ đầy.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn hoàn chỉnh của động cơ lưu trữ **Mini-Bitcask Engine** được viết bằng Safe Rust 100%, hỗ trợ đầy đủ các tính năng: Ghi nối đuôi nhị phân, tra cứu RAM 1 lần đọc đĩa, xóa mềm Tombstone, phục hồi tự động khi mở tệp, và nén gộp dọn rác Compaction:
+Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cài đặt cả hai cấu trúc:
+1. Cấu trúc `SlottedPage` chuẩn 4096 bytes với khả năng thêm bản ghi, đọc bản ghi qua `slot_id`.
+2. Hệ thống `BufferPool` hoàn chỉnh với dung lượng giới hạn, bảng băm tra cứu, cờ bẩn `is_dirty`, và cơ chế trục xuất trang theo thuật toán `LRU`:
 
 ```rust
 use std::convert::TryInto;
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Cấu trúc mục lục chỉ dẫn vị trí bản ghi nằm trên RAM
-#[derive(Debug, Clone, PartialEq)]
-pub struct KeyDirEntry {
-    pub file_offset: u64,  // Tọa độ byte bắt đầu của phần Giá trị (Value) trên đĩa
-    pub value_size: usize, // Độ dài byte của Giá trị
-    pub timestamp: u64,    // Thời điểm ghi nhận
+/// Kích thước trang chuẩn của cơ sở dữ liệu (4KB)
+pub const PAGE_SIZE: usize = 4096;
+
+/// Cấu trúc khe lưu trữ trong thư mục Slotted-Page (4 bytes)
+#[derive(Debug, Clone, Copy)]
+pub struct KheBanGhi {
+    pub offset: u16,
+    pub length: u16,
 }
 
-/// Động cơ lưu trữ Mini-Bitcask Engine
-pub struct MiniBitcask {
-    file: File,
-    keydir: HashMap<String, KeyDirEntry>,
-    file_path: String,
-    current_offset: u64,
+/// Cấu trúc Trang dữ liệu phân khe chuẩn 4KB (Slotted-Page)
+pub struct SlottedPage {
+    pub page_id: u32,
+    pub du_lieu: [u8; PAGE_SIZE],
 }
 
-impl MiniBitcask {
-    /// Mở hoặc tạo mới cơ sở dữ liệu Bitcask tại đường dẫn chỉ định
-    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let path_str = path.as_ref().to_str().unwrap().to_string();
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)?;
-
-        let file_len = file.seek(SeekFrom::End(0))?;
-        let mut bitcask = Self {
-            file,
-            keydir: HashMap::new(),
-            file_path: path_str,
-            current_offset: file_len,
+impl SlottedPage {
+    /// Khởi tạo một trang mới tinh kích thước 4096 bytes
+    pub fn new(page_id: u32) -> Self {
+        let mut trang = Self {
+            page_id,
+            du_lieu: [0u8; PAGE_SIZE],
         };
-
-        // Khôi phục lại toàn bộ chỉ mục KeyDir trên RAM từ tệp đĩa
-        bitcask.rebuild_keydir()?;
-        Ok(bitcask)
+        // Ghi Header ban đầu:
+        // Byte 0..4: page_id
+        trang.du_lieu[0..4].copy_from_slice(&page_id.to_le_bytes());
+        // Byte 4..6: slot_count = 0
+        trang.du_lieu[4..6].copy_from_slice(&0u16.to_le_bytes());
+        // Byte 6..8: free_space_pointer = 4096 (đáy trang)
+        trang.du_lieu[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
+        trang
     }
 
-    /// Quét tuần tự toàn bộ tệp từ byte 0 để dựng lại chỉ mục RAM (Startup Recovery)
-    fn rebuild_keydir(&mut self) -> io::Result<()> {
-        let file_len = self.file.seek(SeekFrom::End(0))?;
-        if file_len == 0 {
-            return Ok(());
+    pub fn lay_so_khe(&self) -> u16 {
+        u16::from_le_bytes(self.du_lieu[4..6].try_into().unwrap())
+    }
+
+    fn gan_so_khe(&mut self, count: u16) {
+        self.du_lieu[4..6].copy_from_slice(&count.to_le_bytes());
+    }
+
+    pub fn lay_con_tro_day(&self) -> u16 {
+        u16::from_le_bytes(self.du_lieu[6..8].try_into().unwrap())
+    }
+
+    fn gan_con_tro_day(&mut self, ptr: u16) {
+        self.du_lieu[6..8].copy_from_slice(&ptr.to_le_bytes());
+    }
+
+    /// Thêm một bản ghi nhị phân vào trang - Trả về slot_id (chỉ số khe)
+    pub fn them_ban_ghi(&mut self, bytes_ban_ghi: &[u8]) -> Option<u16> {
+        let so_khe_hien_tai = self.lay_so_khe();
+        let con_tro_day = self.lay_con_tro_day();
+        let do_dai_ghi = bytes_ban_ghi.len() as u16;
+
+        // Tính toán vị trí tiêu tốn của Slot Directory ở trên đầu trang:
+        // Header: 8 bytes. Mỗi khe: 4 bytes.
+        let vi_tri_khe_moi = 8 + (so_khe_hien_tai as usize * 4);
+        let dung_luong_con_lai = con_tro_day as usize - (vi_tri_khe_moi + 4);
+
+        // Kiểm tra xem trang còn đủ chỗ cho cả Slot mới lẫn thân dữ liệu không
+        if do_dai_ghi as usize > dung_luong_con_lai {
+            return None; // Trang đã đầy (Page Full)!
         }
 
-        self.file.seek(SeekFrom::Start(0))?;
-        let mut con_tro: u64 = 0;
+        // 1. Tính tọa độ đáy mới và ghi dữ liệu từ đáy trang ngược lên
+        let offset_day_moi = con_tro_day - do_dai_ghi;
+        let bat_dau = offset_day_moi as usize;
+        let ket_thuc = con_tro_day as usize;
+        self.du_lieu[bat_dau..ket_thuc].copy_from_slice(bytes_ban_ghi);
 
-        // Header: [Timestamp: 8B] [is_deleted: 1B] [k_len: 4B] [v_len: 4B] = 17 bytes
-        while con_tro < file_len {
-            let mut header = [0u8; 17];
-            if let Err(e) = self.file.read_exact(&mut header) {
-                if e.kind() == io::ErrorKind::UnexpectedEof {
-                    break; // Hết tệp
-                }
-                return Err(e);
-            }
+        // 2. Ghi thông tin Khe vào Slot Directory ở đầu trang
+        self.du_lieu[vi_tri_khe_moi..vi_tri_khe_moi + 2].copy_from_slice(&offset_day_moi.to_le_bytes());
+        self.du_lieu[vi_tri_khe_moi + 2..vi_tri_khe_moi + 4].copy_from_slice(&do_dai_ghi.to_le_bytes());
 
-            let timestamp = u64::from_le_bytes(header[0..8].try_into().unwrap());
-            let is_deleted = header[8];
-            let k_len = u32::from_le_bytes(header[9..13].try_into().unwrap()) as usize;
-            let v_len = u32::from_le_bytes(header[13..17].try_into().unwrap()) as usize;
+        // 3. Cập nhật Header
+        self.gan_so_khe(so_khe_hien_tai + 1);
+        self.gan_con_tro_day(offset_day_moi);
 
-            // Đọc khóa (Key)
-            let mut k_buf = vec![0u8; k_len];
-            self.file.read_exact(&mut k_buf)?;
-            let key = String::from_utf8_lossy(&k_buf).to_string();
+        Some(so_khe_hien_tai)
+    }
 
-            // Tọa độ bắt đầu của phần Value trên đĩa
-            let value_offset = con_tro + 17 + k_len as u64;
-
-            // Nhảy cóc qua phần Value để đến bản ghi tiếp theo
-            self.file.seek(SeekFrom::Current(v_len as i64))?;
-            con_tro = value_offset + v_len as u64;
-
-            // Cập nhật KeyDir trên RAM
-            if is_deleted == 1 {
-                self.keydir.remove(&key);
-            } else {
-                self.keydir.insert(
-                    key,
-                    KeyDirEntry {
-                        file_offset: value_offset,
-                        value_size: v_len,
-                        timestamp,
-                    },
-                );
-            }
+    /// Đọc bản ghi qua slot_id - O(1)
+    pub fn doc_ban_ghi(&self, slot_id: u16) -> Option<&[u8]> {
+        let so_khe = self.lay_so_khe();
+        if slot_id >= so_khe {
+            return None;
         }
 
-        self.current_offset = file_len;
-        println!("    [REBUILD]: Đã phục hồi thành công {} khóa hợp lệ vào RAM!", self.keydir.len());
-        Ok(())
-    }
+        let vi_tri_khe = 8 + (slot_id as usize * 4);
+        let offset = u16::from_le_bytes(self.du_lieu[vi_tri_khe..vi_tri_khe + 2].try_into().unwrap()) as usize;
+        let length = u16::from_le_bytes(self.du_lieu[vi_tri_khe + 2..vi_tri_khe + 4].try_into().unwrap()) as usize;
 
-    /// THAO TÁC GHI (Set): Ghi nối đuôi vào tệp và cập nhật RAM
-    pub fn set(&mut self, key: &str, value: &str) -> io::Result<()> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64;
-
-        let k_bytes = key.as_bytes();
-        let v_bytes = value.as_bytes();
-        let k_len = k_bytes.len() as u32;
-        let v_len = v_bytes.len() as u32;
-
-        // Đóng gói bản ghi nhị phân
-        let mut buffer = Vec::with_capacity(17 + k_bytes.len() + v_bytes.len());
-        buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
-        buffer.push(0);                               // is_deleted = 0 (1B)
-        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
-        buffer.extend_from_slice(&v_len.to_le_bytes());// Val length (4B)
-        buffer.extend_from_slice(k_bytes);            // Key
-        buffer.extend_from_slice(v_bytes);            // Value
-
-        // 1. Nhảy đến cuối tệp để ghi nối đuôi (Append-only)
-        self.file.seek(SeekFrom::End(0))?;
-        let record_offset = self.current_offset;
-        self.file.write_all(&buffer)?;
-        self.file.flush()?;
-
-        let value_offset = record_offset + 17 + k_bytes.len() as u64;
-        self.current_offset += buffer.len() as u64;
-
-        // 2. Cập nhật mục lục KeyDir trên RAM
-        self.keydir.insert(
-            key.to_string(),
-            KeyDirEntry {
-                file_offset: value_offset,
-                value_size: v_bytes.len(),
-                timestamp: now,
-            },
-        );
-
-        Ok(())
-    }
-
-    /// THAO TÁC ĐỌC (Get): Tra cứu RAM và nhảy đúng 1 lần đọc đĩa
-    pub fn get(&mut self, key: &str) -> io::Result<Option<String>> {
-        if let Some(entry) = self.keydir.get(key).cloned() {
-            // Nhảy thẳng tới tọa độ byte của Value trên đĩa
-            self.file.seek(SeekFrom::Start(entry.file_offset))?;
-            let mut v_buf = vec![0u8; entry.value_size];
-            self.file.read_exact(&mut v_buf)?;
-            let val_str = String::from_utf8(v_buf).map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, e.to_string())
-            })?;
-            Ok(Some(val_str))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// THAO TÁC XÓA (Delete): Ghi bản ghi Tombstone xuống tệp và xóa khỏi RAM
-    pub fn delete(&mut self, key: &str) -> io::Result<bool> {
-        if !self.keydir.contains_key(key) {
-            return Ok(false);
-        }
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64;
-
-        let k_bytes = key.as_bytes();
-        let k_len = k_bytes.len() as u32;
-
-        let mut buffer = Vec::with_capacity(17 + k_bytes.len());
-        buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
-        buffer.push(1);                               // is_deleted = 1 (Tombstone!)
-        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
-        buffer.extend_from_slice(&0u32.to_le_bytes()); // Val length = 0 (4B)
-        buffer.extend_from_slice(k_bytes);
-
-        self.file.seek(SeekFrom::End(0))?;
-        self.file.write_all(&buffer)?;
-        self.file.flush()?;
-
-        self.current_offset += buffer.len() as u64;
-        self.keydir.remove(key);
-
-        Ok(true)
-    }
-
-    /// TIẾN TRÌNH NÉN GỘP VÀ DỌN RÁC (Compaction & Merge)
-    pub fn compact(&mut self) -> io::Result<()> {
-        let compact_path = format!("{}.compact", self.file_path);
-        {
-            let mut new_file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&compact_path)?;
-
-            let mut new_keydir = HashMap::new();
-            let mut new_offset: u64 = 0;
-
-            // Đọc các bản ghi còn hiệu lực từ tệp cũ và ghi sang tệp mới
-            for (key, entry) in &self.keydir {
-                self.file.seek(SeekFrom::Start(entry.file_offset))?;
-                let mut v_buf = vec![0u8; entry.value_size];
-                self.file.read_exact(&mut v_buf)?;
-
-                let k_bytes = key.as_bytes();
-                let k_len = k_bytes.len() as u32;
-                let v_len = v_buf.len() as u32;
-
-                let mut buffer = Vec::with_capacity(17 + k_bytes.len() + v_buf.len());
-                buffer.extend_from_slice(&entry.timestamp.to_le_bytes());
-                buffer.push(0); // Không bị xóa
-                buffer.extend_from_slice(&k_len.to_le_bytes());
-                buffer.extend_from_slice(&v_len.to_le_bytes());
-                buffer.extend_from_slice(k_bytes);
-                buffer.extend_from_slice(&v_buf);
-
-                new_file.write_all(&buffer)?;
-                let new_val_offset = new_offset + 17 + k_bytes.len() as u64;
-                new_offset += buffer.len() as u64;
-
-                new_keydir.insert(
-                    key.clone(),
-                    KeyDirEntry {
-                        file_offset: new_val_offset,
-                        value_size: v_buf.len(),
-                        timestamp: entry.timestamp,
-                    },
-                );
-            }
-            new_file.flush()?;
-        }
-
-        // Hoán đổi tệp nén mới đè lên tệp cũ
-        std::fs::rename(&compact_path, &self.file_path)?;
-
-        // Mở lại tệp dữ liệu đã nén
-        self.file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&self.file_path)?;
-        let new_len = self.file.seek(SeekFrom::End(0))?;
-        self.current_offset = new_len;
-
-        // Dựng lại chỉ mục từ tệp mới
-        self.keydir.clear();
-        self.rebuild_keydir()?;
-        Ok(())
-    }
-
-    pub fn total_keys(&self) -> usize {
-        self.keydir.len()
-    }
-
-    pub fn file_size(&self) -> u64 {
-        self.current_offset
+        Some(&self.du_lieu[offset..offset + length])
     }
 }
 
-fn main() -> io::Result<()> {
-    println!("============================================================");
-    println!("  DỰ ÁN LỚN: ĐỘNG CƠ LƯU TRỮ PERSISTENT MINI-BITCASK TRONG RUST");
-    println!("============================================================");
+/// Khung trang quản lý bên trong Buffer Pool
+pub struct Frame {
+    pub trang: SlottedPage,
+    pub is_dirty: bool,
+}
 
-    let db_path = "mini_bitcask_test.db";
-    let _ = std::fs::remove_file(db_path);
+/// Hệ thống quản lý bộ nhớ đệm Buffer Pool với thuật toán LRU Eviction
+pub struct BufferPool {
+    suc_chua: usize,
+    frames: HashMap<u32, Frame>,
+    lru_danh_sach: Vec<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
+}
 
-    // GIAI ĐOẠN 1: Khởi tạo cơ sở dữ liệu và thực hiện ghi chép
-    println!("[1] Mở MiniBitcask và thêm các cặp khóa - giá trị:");
-    {
-        let mut db = MiniBitcask::open(db_path)?;
-
-        db.set("user:101", "Alice - Ha Noi")?;
-        db.set("user:102", "Bob - Da Nang")?;
-        db.set("user:103", "Charlie - TP Ho Chi Minh")?;
-
-        // Ghi đè cập nhật giá trị (tạo ra dữ liệu cũ trên đĩa)
-        db.set("user:101", "Alice Nguyen - Ha Noi (Updated)")?;
-
-        // Xóa một khóa (tạo Tombstone trên đĩa)
-        db.delete("user:102")?;
-
-        println!("    - Kích thước tệp đĩa hiện tại: {} bytes", db.file_size());
-        println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
-
-        // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
-        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
-        assert_eq!(db.get("user:102")?, None);
-        assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
-        println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
-    } // db đóng tệp an toàn tại đây
-
-    // GIAI ĐOẠN 2: Kiểm thử tính năng phục hồi sau sự cố (Crash Recovery)
-    println!("\n[2] Kiểm tra phục hồi dữ liệu khi khởi động lại ứng dụng:");
-    {
-        let mut db_recovered = MiniBitcask::open(db_path)?;
-        println!("    - Đã mở lại tệp '{}'", db_path);
-        println!("    - Kiểm tra dữ liệu sau phục hồi:");
-        println!("      + 'user:101' = {:?}", db_recovered.get("user:101")?);
-        println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
-        println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
-
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
-        assert_eq!(db_recovered.get("user:102")?, None);
-        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
-        assert_eq!(db_recovered.total_keys(), 2);
-        println!("    => Khôi phục chỉ mục KeyDir trên RAM từ đĩa thành công 100%!");
-
-        // GIAI ĐOẠN 3: Kiểm thử tiến trình nén gộp dọn rác (Compaction & Merge)
-        println!("\n[3] Thực thi tiến trình nén gộp dọn rác Compaction:");
-        let dung_luong_truoc = db_recovered.file_size();
-        db_recovered.compact()?;
-        let dung_luong_sau = db_recovered.file_size();
-
-        println!("    - Dung lượng tệp TRƯỚC nén gộp: {} bytes", dung_luong_truoc);
-        println!("    - Dung lượng tệp SAU nén gộp   : {} bytes", dung_luong_sau);
-        assert!(dung_luong_sau < dung_luong_truoc);
-
-        // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
-        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
-        println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
+impl BufferPool {
+    pub fn new(suc_chua: usize) -> Self {
+        Self {
+            suc_chua,
+            frames: HashMap::new(),
+            lru_danh_sach: Vec::new(),
+        }
     }
 
-    // Dọn dẹp tệp thử nghiệm
-    let _ = std::fs::remove_file(db_path);
+    /// Cập nhật trang vừa được truy cập xuống cuối danh sách LRU
+    fn cap_nhat_lru(&mut self, page_id: u32) {
+        self.lru_danh_sach.retain(|&id| id != page_id);
+        self.lru_danh_sach.push(page_id);
+    }
+
+    /// Lấy trang từ bộ nhớ đệm (nếu có)
+    pub fn get_page(&mut self, page_id: u32) -> Option<&SlottedPage> {
+        if self.frames.contains_key(&page_id) {
+            self.cap_nhat_lru(page_id);
+            return self.frames.get(&page_id).map(|f| &f.trang);
+        }
+        None
+    }
+
+    /// Đưa trang vào Buffer Pool - Nếu đầy, tự động trục xuất (evict) trang cũ nhất
+    pub fn put_page(&mut self, trang: SlottedPage, is_dirty: bool) {
+        let id = trang.page_id;
+
+        // Nếu trang chưa có trong buffer và buffer đã đầy sức chứa
+        if !self.frames.contains_key(&id) && self.frames.len() >= self.suc_chua {
+            // Trục xuất trang ở đầu danh sách LRU (nguội nhất)
+            let evict_id = self.lru_danh_sach.remove(0);
+            if let Some(khung_cu) = self.frames.remove(&evict_id) {
+                if khung_cu.is_dirty {
+                    println!("    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...", evict_id);
+                } else {
+                    println!("    [EVICT]: Trang #{} sạch (chưa sửa) -> Hủy khỏi RAM tức thì mà không cần ghi đĩa.", evict_id);
+                }
+            }
+        }
+
+        self.frames.insert(id, Frame { trang, is_dirty });
+        self.cap_nhat_lru(id);
+    }
+
+    pub fn so_trang_hien_co(&self) -> usize {
+        self.frames.len()
+    }
+}
+
+fn main() {
+    println!("============================================================");
+    println!("  KIẾN TRÚC SLOTTED-PAGE 4KB & QUẢN LÝ BỘ NHỚ ĐỆM BUFFER POOL");
+    println!("============================================================");
+
+    // 1. Khảo sát cấu trúc trang SlottedPage kích thước 4KB
+    println!("[1] Thao tác trên Trang phân khe Slotted-Page (4096 bytes):");
+    let mut trang_1 = SlottedPage::new(1);
+    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", trang_1.du_lieu.len());
+    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", trang_1.lay_con_tro_day());
+
+    // Nạp các bản ghi có kích thước chuỗi thay đổi
+    let ban_ghi_a = b"NguoiDung: Nguyen Van An - Ha Noi";
+    let ban_ghi_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
+    let ban_ghi_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
+
+    let slot_a = trang_1.them_ban_ghi(ban_ghi_a).expect("Lỗi chèn khe A");
+    let slot_b = trang_1.them_ban_ghi(ban_ghi_b).expect("Lỗi chèn khe B");
+    let slot_c = trang_1.them_ban_ghi(ban_ghi_c).expect("Lỗi chèn khe C");
+
+    println!("    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_a);
+    println!("    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_b);
+    println!("    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_c);
+    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", trang_1.lay_so_khe(), trang_1.lay_con_tro_day());
+
+    // Đọc lại nội dung qua Slot ID
+    let doc_b = trang_1.doc_ban_ghi(slot_b).unwrap();
+    println!("    - Đọc nội dung qua Slot ID {}: '{}'", slot_b, String::from_utf8_lossy(doc_b));
+    assert_eq!(doc_b, ban_ghi_b);
+
+    // 2. Khảo sát hệ thống Buffer Pool và thuật toán trục xuất LRU Eviction
+    println!("\n[2] Vận hành Buffer Pool với sức chứa tối đa 2 trang:");
+    let mut buffer_pool = BufferPool::new(2);
+
+    // Đưa Trang 1 và Trang 2 vào Buffer Pool
+    println!("    - Nạp Trang #1 (đã sửa đổi -> dirty=true) vào Buffer Pool");
+    buffer_pool.put_page(trang_1, true);
+
+    let trang_2 = SlottedPage::new(2);
+    println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
+    buffer_pool.put_page(trang_2, false);
+
+    println!("    - Số trang hiện có trong Buffer: {}", buffer_pool.so_trang_hien_co());
+    assert_eq!(buffer_pool.so_trang_hien_co(), 2);
+
+    // Người dùng truy cập lại Trang 1 -> Trang 1 trở thành trang dùng gần nhất
+    println!("\n    - Người dùng đọc Trang #1 -> Cập nhật thứ tự ưu tiên LRU cho Trang #1!");
+    assert!(buffer_pool.get_page(1).is_some());
+
+    // Giờ đây, Trang #2 là trang "nguội nhất" (lâu nhất không dùng).
+    // Khi nạp thêm Trang #3 vào, Buffer Pool sẽ kích hoạt trục xuất (evict) Trang #2!
+    println!("\n    - Nạp Trang #3 mới tinh vào (Vượt quá sức chứa 2 trang):");
+    let trang_3 = SlottedPage::new(3);
+    buffer_pool.put_page(trang_3, false);
+
+    // Kiểm tra: Trang 2 đã bị loại bỏ, Trang 1 và Trang 3 vẫn nằm trong Buffer Pool
+    assert!(buffer_pool.get_page(2).is_none());
+    assert!(buffer_pool.get_page(1).is_some());
+    assert!(buffer_pool.get_page(3).is_some());
+    println!("    => Thuật toán LRU Eviction vận hành chuẩn xác 100%!");
 
     println!("============================================================");
-    println!("     CHÚC MỪNG BẠN ĐÃ HOÀN THÀNH XUẤT SẮC DỰ ÁN LỚN 6!     ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 28               ");
     println!("============================================================");
-    Ok(())
 }
 ```
 
@@ -465,40 +345,31 @@ fn main() -> io::Result<()> {
 
 ## Bảng tra cứu lỗi biên dịch & Cách khắc phục (Compiler Error Guide)
 
-Dưới đây là các lỗi biên dịch thường gặp nhất khi hiện thực hóa động cơ Bitcask trong Rust:
+Dưới đây là các lỗi biên dịch điển hình khi thiết kế Slotted-Page và hệ thống Buffer Pool trong Rust:
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0502** | `cannot borrow '*self' as mutable because it is also borrowed as immutable` | Bạn gọi `self.keydir.get(key)` trả về tham chiếu mượn, sau đó gọi tiếp `self.file.seek(...)` làm mượn khả biến toàn bộ struct `self`. | Sử dụng `.cloned()` để sao chép cấu trúc nhẹ `KeyDirEntry` ra biến độc lập trên Stack trước khi thao tác với tệp tin. |
-| **E0599** | `no method named 'seek' found for struct 'File'` | Bạn sử dụng phương thức `.seek()` để nhảy tọa độ byte trên đĩa nhưng quên đưa trait `Seek` vào phạm vi hoạt động. | Thêm dòng khai báo: `use std::io::Seek;` ở đầu tệp mã nguồn. |
-| **E0382** | `use of moved value: 'compact_path'` | Bạn truyền `compact_path` vào hàm `rename()` khiến chuỗi bị di chuyển, sau đó lại dùng lại nó ở dòng lệnh kế tiếp. | Truyền mượn tham chiếu `&compact_path` vào hàm `std::fs::rename`. |
-| **E0061** | `this function takes 1 argument but 0 arguments were supplied` | Gọi hàm `UNIX_EPOCH` hoặc `SystemTime::now()` sai cú pháp. | Dùng chuẩn: `SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()`. |
+| **E0382** | `use of moved value: 'trang'` | Bạn truyền `trang` vào hàm `put_page()` khiến quyền sở hữu (ownership) bị chuyển giao, sau đó lại dùng lại biến `trang` ở dòng dưới. | Gọi hàm đọc thông qua Buffer Pool `buffer_pool.get_page(id)` thay vì sử dụng trực tiếp biến cũ đã bị di chuyển. |
+| **E0502** | `cannot borrow 'buffer_pool' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến một trang `let p = pool.get_page(1);`, vừa gọi hàm làm thay đổi bộ nhớ đệm `pool.put_page(...)` trong cùng phạm vi. | Giới hạn phạm vi mượn đọc hoặc sao chép dữ liệu cần thiết ra trước khi thực hiện thêm trang mới. |
+| **E0277** | `the trait bound '[u8; 4096]: Default' is not satisfied` | Trong các phiên bản Rust rất cũ, mảng kích thước lớn hơn 32 không tự động derive một số trait. Trong Rust hiện đại (const generics), `[0u8; PAGE_SIZE]` hoàn toàn hợp lệ. | Khởi tạo mảng tường minh: `[0u8; PAGE_SIZE]`. |
+| **E0308** | `mismatched types: expected 'u16', found 'usize'` | Các chỉ số trong Header của Slotted-Page dùng `u16` để tiết kiệm byte đĩa, trong khi độ dài của mảng trên RAM là `usize`. | Thực hiện ép kiểu tường minh an toàn: `len as u16` sau khi kiểm tra không vượt quá 4096 bytes. |
 
-### Ví dụ phân tích lỗi `E0502` khi vừa tra cứu KeyDir vừa đọc File:
+### Ví dụ phân tích lỗi `E0382` khi quản lý quyền sở hữu trang:
 
 ```rust
-use std::fs::File;
-use std::collections::HashMap;
-
-struct DemoStore {
-    file: File,
-    index: HashMap<String, u64>,
+// Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu trang vào Buffer Pool
+fn thu_nghiem_loi_trang(mut pool: BufferPool, trang: SlottedPage) {
+    // pool.put_page(trang, false); // Quyền sở hữu trang bị chuyển vào HashMap!
+    // println!("Mã trang: {}", trang.page_id); // LỖI E0382: trang đã bị moved!
 }
 
-// Đoạn mã lỗi minh họa E0502: Mượn lồng nhau gây xung đột
-impl DemoStore {
-    fn doc_loi(&mut self, key: &str) {
-        // let offset = self.index.get(key); // Mượn bất biến self.index
-        // self.file.set_len(100).unwrap();  // LỖI E0502: Mượn khả biến self.file!
-        // println!("Offset: {:?}", offset);
-    }
-
-    // Cách sửa chữa đúng chuẩn: Sao chép (copy) giá trị số nguyên ra trước
-    fn doc_dung(&mut self, key: &str) {
-        let offset = self.index.get(key).copied(); // offset là biến độc lập trên Stack
-        if let Some(pos) = offset {
-            println!("Đã lấy được tọa độ an toàn: {}", pos);
-        }
+// Cách sửa chữa đúng chuẩn: Lấy mã ID ra trước hoặc truy cập qua Pool
+fn thu_nghiem_dung_trang(mut pool: BufferPool, trang: SlottedPage) {
+    let id = trang.page_id;
+    pool.put_page(trang, false);
+    println!("Mã trang vừa nạp: {}", id);
+    if let Some(p) = pool.get_page(id) {
+        println!("Đọc lại trang từ bộ nhớ đệm thành công: #{}", p.page_id);
     }
 }
 ```
@@ -508,15 +379,15 @@ impl DemoStore {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp tinh hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
-2. **Đúng 1 lần đọc đĩa (Single Disk Seek)**: Nhờ biết chính xác tọa độ byte (`offset`) và độ dài (`value_size`) từ RAM, thao tác đọc dữ liệu bỏ qua mọi tầng trung gian, nhảy thẳng tới vị trí đĩa cần đọc.
-3. **Cơ chế Tombstone**: Thay vì tìm xóa tại chỗ trên đĩa (gây phân mảnh và chậm chạp), Bitcask ghi một bản ghi đánh dấu xóa (Tombstone) vào cuối tệp và xóa khỏi RAM.
-4. **Nén gộp Compaction**: Tiến trình dọn dẹp định kỳ đọc lại các khóa còn sống và ghi sang tệp mới, giữ cho cơ sở dữ liệu luôn nhỏ gọn và loại bỏ hoàn toàn các phiên bản dữ liệu cũ.
+1. **Trang chuẩn 4KB**: Là viên gạch nền tảng của mọi hệ thống cơ sở dữ liệu, đồng bộ hoàn hảo với khối khu vực ổ đĩa SSD và trang bộ nhớ ảo của hệ điều hành.
+2. **Kiến trúc Slotted-Page**: Thư mục khe (Slot Directory) tiến từ đầu trang xuống, dữ liệu tiến từ đáy trang lên. Giải quyết triệt để vấn đề bản ghi có độ dài biến thiên mà không gây phân mảnh ô nhớ.
+3. **Định danh Tuple ID `(page_id, slot_id)`**: Cho phép các bảng chỉ mục trỏ chính xác tới bản ghi mà không phụ thuộc vào vị trí byte vật lý bên trong trang.
+4. **Buffer Pool và LRU**: Giữ các trang nóng trên RAM để tăng tốc x1000 lần; tự động chọn trang nguội nhất để trục xuất (evict) về đĩa cứng khi bộ nhớ đệm (buffer) đầy.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập 1 (Bổ sung mã kiểm tra toàn vẹn CRC32)**:  
-   Mở rộng phần Header của bản ghi trong `MiniBitcask` thêm 4 bytes chứa mã kiểm tra toàn vẹn CRC32 (`crc32fast::Hasher` hoặc tự cài đặt thuật toán kiểm tra tổng kiểm tra checksum đơn giản). Khi đọc lại tệp trong hàm `rebuild_keydir`, tính toán lại mã CRC32 của bản ghi, nếu không khớp thì dừng lại và bỏ qua bản ghi bị lỗi.
-2. **Bài tập 2 (Tạo tệp Hint File tối ưu hóa)**:  
-   Sau khi tiến trình `compact()` hoàn tất, hãy cho ghi thêm một tệp gợi ý `data.db.hint` chỉ chứa các cặp `(key, KeyDirEntry)`. Khi hệ thống khởi động lại, thay vì phải quét toàn bộ tệp dữ liệu lớn, hệ thống chỉ cần đọc tệp Hint File nhỏ bé để khôi phục RAM trong vài mili-giây.
-3. **Bài tập 3 (Giới hạn của Bitcask)**:  
-   Điểm yếu lớn nhất của mô hình Bitcask là gì? Nếu cơ sở dữ liệu có 1 tỷ khóa khác nhau thì thanh RAM có thể chứa nổi `KeyDir` không? Trong trường hợp đó, người ta sẽ chuyển sang sử dụng mô hình nào (B+ Tree hay LSM-Tree)?
+1. **Bài tập 1 (Tính toán dung lượng Slotted-Page)**:  
+   Giả sử mỗi bản ghi có kích thước trung bình là 100 bytes. Hãy tính xem một trang Slotted-Page 4096 bytes (với Header 8 bytes và mỗi khe Slot chiếm 4 bytes) có thể chứa tối đa bao nhiêu bản ghi?
+2. **Bài tập 2 (Xóa bản ghi trong Slotted-Page)**:  
+   Hãy viết thêm phương thức `fn xoa_ban_ghi(&mut self, slot_id: u16) -> bool` cho `SlottedPage`. Để xóa bản ghi, ta chỉ cần gán độ dài khe `length = 0` trong Slot Directory (đánh dấu Tombstone) mà không cần phải dời dữ liệu bên dưới đáy.
+3. **Bài tập 3 (Cơ chế Pin Count)**:  
+   Tại sao trong các hệ quản trị cơ sở dữ liệu thực tế, Buffer Pool phải có thêm trường `pin_count: usize` (số luồng đang đọc trang)? Nếu một trang có `pin_count > 0` thì thuật toán LRU có được phép trục xuất (evict) trang đó không? Vì sao?
