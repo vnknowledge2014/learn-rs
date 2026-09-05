@@ -1,0 +1,6 @@
+interface:
+  display_name: "Learn Rs"
+  short_description: "Repo-specific patterns and workflows for learn-rs"
+  default_prompt: "Use the learn-rs repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
