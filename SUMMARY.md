@@ -2,7 +2,15 @@
 
 Chào mừng bạn đến với **Mục lục toàn diện** của bộ giáo trình *Rust Masterclass: Lập Trình Hệ Thống Toàn Diện Cho Người Mới Bắt Đầu*.
 
-Giáo trình được thiết kế đặc biệt dành cho người học chưa từng có nền tảng toán học chuyên sâu hay kinh nghiệm lập trình từ trước. Toàn bộ **54 chương** được chia thành 9 chủ đề lớn, xây dựng lộ trình sư phạm vững chắc từ phần cứng máy tính căn bản, cú pháp ngôn ngữ, lập trình hàm, cấu trúc dữ liệu, kiến trúc cơ sở dữ liệu, an toàn thông tin, lập trình hiện đại cùng AI (Vibe Coding), cho tới thiết kế hệ thống phân tán triệu kết nối.
+Giáo trình được thiết kế đặc biệt dành cho người học chưa từng có nền tảng toán học chuyên sâu hay kinh nghiệm lập trình từ trước. Toàn bộ **84 chương** được chia thành **25 chủ đề** lớn, xây dựng lộ trình sư phạm vững chắc từ phần cứng máy tính căn bản, cú pháp ngôn ngữ, lập trình hàm, cấu trúc dữ liệu, kiến trúc cơ sở dữ liệu, an toàn thông tin, lập trình cùng AI, hệ thống phân tán, cho tới bốn chặng chuyên sâu cuối: blockchain từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng (FPGA/CPU/GPU) và tài chính định lượng.
+
+Lộ trình chia làm **ba chặng**:
+
+| Chặng | Chương | Mục tiêu |
+|---|---|---|
+| **Nền tảng** | 01–30 | Từ bit và byte tới sở hữu, lập trình hàm, macro, cấu trúc dữ liệu — đủ để viết Rust thành thạo |
+| **Hệ thống** | 31–69 | Cơ sở dữ liệu, bảo mật, phân tán, web, nhúng, hệ điều hành, game — đủ để dựng sản phẩm thật |
+| **Chuyên sâu** | 70–84 | Blockchain, HFT, FPGA/CPU/GPU, định lượng — bốn lĩnh vực Rust có lợi thế không thể thay thế |
 
 > **Mã nguồn chạy được**: toàn bộ chương trình minh họa nằm trong thư mục [`code/`](./code/), tổ chức thành một Cargo workspace. Chạy `cargo run -p ch14` để xem chương 14 hoạt động, hay `cargo test --workspace` để kiểm chứng mọi bài kiểm thử trong sách.
 > **Thuật ngữ**: xem bảng đối chiếu Việt–Anh tại [`THUAT_NGU.md`](./THUAT_NGU.md).
@@ -182,6 +190,41 @@ Vòng lặp game bước cố định, hai bộ tích phân Euler, phát hiện 
 ## Chủ đề 21: Hệ thống giao dịch thuật toán (Algorithmic Trading Systems) — Chương 69
 Bài tổng hợp cuối khóa: sổ lệnh ưu tiên giá–thời gian, động cơ khớp lệnh, cổng rủi ro bằng typestate, vị thế như một vị nhóm, và bộ kiểm định chiến lược không nhìn trộm tương lai.
 - [Chương 69: Hệ thống giao dịch thuật toán — Sổ Lệnh, Khớp Lệnh & Kiểm Định Chiến Lược (Algorithmic Trading Systems)](chuong_69.md)
+
+---
+
+## Chủ đề 22: Blockchain & Web3 với Rust (Blockchain from Scratch) — Chương 70 đến 73
+Dựng blockchain từ số không rồi mới dùng công cụ có sẵn: tự cài SHA-256 đối chiếu vector FIPS, cây Merkle có bằng chứng gộp, UTXO và bằng chứng công việc; mạng ngang hàng Kademlia, gossip và ngưỡng Byzantine đúng công thức; hợp đồng thông minh CosmWasm và Solana; và toàn bộ lớp mã hoá Ethereum — Keccak-256 kiểm chứng bằng chữ ký hàm ERC-20 công khai, ABI, RLP, EIP-1559.
+- [Chương 70: Blockchain từ đầu — SHA-256, Cây Merkle, UTXO & Bằng chứng công việc (Building a Blockchain from Scratch)](chuong_70.md)
+- [Chương 71: Mạng ngang hàng — Kademlia, Gossip & Đồng thuận Byzantine (P2P Networking)](chuong_71.md)
+- [Chương 72: Hợp đồng thông minh với Rust — CosmWasm & Solana (Smart Contracts in Rust)](chuong_72.md)
+- [Chương 73: Ethereum với Rust — Keccak-256, ABI, RLP & Alloy (Ethereum Tooling in Rust)](chuong_73.md)
+
+---
+
+## Chủ đề 23: Hệ sinh thái giao dịch tần suất cao (HFT Ecosystem) — Chương 74 đến 78
+Năm chương dựng một hệ sinh thái HFT hoàn chỉnh, ở mức tương đương những gì Jane Street làm bằng OCaml: đo độ trễ theo phân vị và vòng Disruptor không cấp phát; giao thức nhị phân, phát hiện khe và sổ lệnh L2/L3; môi trường phục dựng phiên giao dịch thật qua ghi–phát lại có đồng hồ ảo và mô hình độ trễ; cổng rủi ro trước lệnh cùng định cỡ vị thế; và cuối cùng là thị trường blockchain với AMM, MEV và chênh lệch CEX–DEX.
+- [Chương 74: Nền tảng HFT — Đo độ trễ, Vòng Disruptor & Bố cục bộ nhớ (HFT Foundations)](chuong_74.md)
+- [Chương 75: Dữ liệu thị trường — Giao thức nhị phân, Phát hiện khe & Sổ lệnh (Market Data Pipeline)](chuong_75.md)
+- [Chương 76: Phục dựng phiên giao dịch — Ghi phiên, Đồng hồ ảo & Phát lại (Session Capture & Replay)](chuong_76.md)
+- [Chương 77: Chiến lược & Quản trị rủi ro — Cổng rủi ro, Tín hiệu & Định cỡ vị thế (Strategy & Risk Management)](chuong_77.md)
+- [Chương 78: Thị trường blockchain — AMM, MEV & Chênh lệch giá CEX–DEX (Blockchain Market Microstructure)](chuong_78.md)
+
+---
+
+## Chủ đề 24: Hiệu năng cấp phần cứng (Hardware-Level Performance) — Chương 79 đến 81
+Ba chương về nơi phần mềm chạm trần vật lý. Tư duy FPGA cho giao dịch — tương ứng Rust của Hardcaml, tức là RHDL — nơi `if` trở thành bộ chọn và thời gian là hằng số tuyệt đối. Rồi hiệu năng CPU sâu theo tinh thần leetcpu.com: cache, dự đoán rẽ nhánh, ILP, SIMD. Và mô hình lập trình GPU theo tinh thần leetgpu.com: SIMT, phân kỳ warp, gộp truy cập, xung đột ngân hàng.
+- [Chương 79: Tăng tốc phần cứng — Tư duy FPGA cho giao dịch (Hardcaml / RHDL)](chuong_79.md)
+- [Chương 80: Hiệu năng CPU sâu — Cache, Dự đoán rẽ nhánh, ILP & SIMD (LeetCPU)](chuong_80.md)
+- [Chương 81: Mô hình lập trình GPU — SIMT, Gộp truy cập & Bờ ngân hàng (LeetGPU)](chuong_81.md)
+
+---
+
+## Chủ đề 25: Tài chính định lượng bằng Rust (Quantitative Finance — OpenAlgo) — Chương 82 đến 84
+Toàn bộ phần lập trình được của giáo trình OpenAlgo, cài lại từ đầu bằng Rust không thư viện ngoài: phân tích kỹ thuật với bất biến chống nhìn trộm tương lai được kiểm thử; định giá quyền chọn Black-Scholes, Greeks và biến động ngụ ý kèm giới hạn số học của nó; và chênh lệch thống kê với đồng liên kết, bộ lọc Kalman, kiểm định tiến và bằng chứng thực nghiệm về quá khớp.
+- [Chương 82: Phân tích kỹ thuật bằng Rust — Nến, Chỉ báo & Bẫy nhìn trộm tương lai (Technical Analysis)](chuong_82.md)
+- [Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (Options & Greeks)](chuong_83.md)
+- [Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (Quant & Statistical Arbitrage)](chuong_84.md)
 
 ---
 

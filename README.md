@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**69 chương · 21 chủ đề · toàn bộ mã nguồn chạy được và có kiểm thử.**
+**84 chương · 25 chủ đề · 86 crate · toàn bộ mã nguồn chạy được và có kiểm thử.**
 
 ---
 
@@ -14,6 +14,7 @@ Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình 
 - **Người "sợ toán":** Không có công thức đại số hay hình học nào bắt buộc. Mọi khái niệm — kể cả Big-O hay Vị nhóm — đều được giải thích bằng tư duy logic và ví dụ đời thực trước, ký hiệu toán học chỉ đến sau.
 - **Lập trình viên muốn học Rust:** Nếu bạn đã biết code nhưng thấy Rust khó hiểu (đặc biệt là Borrow Checker), những "ví dụ không dùng toán" ở đây sẽ giúp bạn giác ngộ.
 - **Kỹ sư muốn đi xuống tầng thấp hoặc ra ngoài web:** Chủ đề 18–21 đưa bạn tới hệ điều hành, giao thức mạng, vi điều khiển `no_std`, thiết kế mạch số, game engine và hệ thống giao dịch — những nơi Rust có lợi thế thật sự chứ không chỉ là lựa chọn thời thượng.
+- **Người muốn đi thật sâu vào một lĩnh vực:** Chủ đề 22–25 (Chương 70–84) là bốn chặng chuyên sâu độc lập — blockchain dựng từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng FPGA/CPU/GPU, và tài chính định lượng. Mỗi chặng đọc được riêng sau khi đã xong Chương 01–30.
 - **Người đã biết Rust muốn học lập trình hàm nghiêm túc:** Chủ đề 3 (Chương 13–20) đi trọn con đường từ hàm thuần túy tới Monad và mô hình hóa nghiệp vụ bằng kiểu — đầy đủ luật, đầy đủ kiểm thử.
 
 ---
@@ -38,9 +39,17 @@ Không muốn cài gì cả? Mọi đoạn mã đều copy-paste chạy được
 
 ---
 
-## 📚 Lộ Trình Học Tập (21 Chủ Đề — 69 Chương)
+## 📚 Lộ Trình Học Tập (25 Chủ Đề — 84 Chương)
 
-Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Tóm tắt từng chủ đề:
+Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Lộ trình chia làm ba chặng:
+
+| Chặng | Chủ đề | Chương | Bạn có được gì |
+|---|---|---|---|
+| **I. Nền tảng** | 1–5 | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
+| **II. Hệ thống** | 6–21 | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
+| **III. Chuyên sâu** | 22–25 | 70–84 | Bốn lĩnh vực Rust có lợi thế không thể thay thế |
+
+Tóm tắt từng chủ đề:
 
 | # | Chủ đề | Chương | Nội dung cốt lõi |
 |---|---|---|---|
@@ -65,10 +74,14 @@ Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Tóm tắt t�
 | 19 | **Nhúng & Phần Cứng Số** | 66–67 | `no_std`, MMIO, typestate cho GPIO, số Q16.16; cổng logic, flip-flop, đường ống, đường tới hạn |
 | 20 | **Lập Trình Game** | 68 | Vòng lặp bước cố định, Euler nửa ẩn, va chạm AABB, băm không gian, kiến trúc ECS |
 | 21 | **Giao Dịch Thuật Toán** | 69 | Sổ lệnh ưu tiên giá–thời gian, động cơ khớp lệnh, cổng rủi ro typestate, bộ kiểm định chiến lược |
+| 22 | **Blockchain & Web3** | 70–73 | SHA-256 tự cài đối chiếu FIPS, cây Merkle, UTXO, PoW; Kademlia, gossip, quorum Byzantine đúng công thức; CosmWasm & Solana; Keccak-256 kiểm bằng selector ERC-20, ABI, RLP, EIP-1559 |
+| 23 | **Hệ Sinh Thái HFT** | 74–78 | Phân vị độ trễ, vòng Disruptor, giao thức nhị phân & phát hiện khe, sổ lệnh L2/L3, phục dựng phiên bằng đồng hồ ảo, cổng rủi ro trước lệnh, AMM/MEV/chênh lệch CEX–DEX |
+| 24 | **Hiệu Năng Phần Cứng** | 79–81 | Tư duy FPGA cho giao dịch (RHDL/Hardcaml); cache, dự đoán rẽ nhánh, ILP, SIMD (LeetCPU); SIMT, gộp truy cập, xung đột ngân hàng (LeetGPU) |
+| 25 | **Tài Chính Định Lượng** | 82–84 | Chỉ báo có bất biến chống nhìn trộm tương lai; Black-Scholes, Greeks, biến động ngụ ý; đồng liên kết, Kalman, VaR/ES, kiểm định tiến (OpenAlgo) |
 
 **Phụ lục tra cứu:**
 - **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
-- **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: ~320 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
+- **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: gần 470 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
 
 ---
 
@@ -87,12 +100,14 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 
 ## 🛠 Mã Nguồn Chạy Được
 
-Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 71 crate:
+Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 86 crate:
 
 ```bash
 cd code
 cargo run  -p ch18              # Chương 18: kiểm chứng luật nửa nhóm/vị nhóm
 cargo run  -p ch16_mo_rong      # Bộ công cụ Iterator đầy đủ
+cargo run  -p ch70              # Chương 70: SHA-256 tự cài + cây Merkle + PoW
+cargo run  -p ch76              # Chương 76: phát lại phiên giao dịch bằng đồng hồ ảo
 cargo test -p ch19              # Chạy riêng bài kiểm thử của Chương 19
 cargo test --workspace          # Chạy TẤT CẢ
 ```
@@ -103,7 +118,7 @@ Các chương về lập trình hàm đi kèm bộ kiểm thử biến **luật 
 
 ## 📖 Đọc Dưới Dạng Sách Điện Tử (tùy chọn)
 
-Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 69 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
+Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 84 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
 
 ```bash
 cargo install mdbook
@@ -142,7 +157,12 @@ Sau khi hoàn thành giáo trình này, đây là những nguồn tiếng Anh đ
 - **fp-core.rs** — <https://github.com/JasonShin/fp-core.rs> — thư viện FP trong Rust, minh họa cách mô phỏng HKT
 - **The Embedded Rust Book** — <https://github.com/rust-embedded/book> — nền tảng cho Chương 66
 - **30 Days of Rust** — <https://github.com/Hunterdii/30-Days-Of-Rust> — bài tập ngắn ôn lại toàn bộ nền tảng
-- **rhdl** (kế thừa `rust-hdl`) — thiết kế phần cứng số bằng Rust; nền cho Chương 67
+- **rhdl** (kế thừa `rust-hdl`) — thiết kế phần cứng số bằng Rust; nền cho Chương 67 và 79
 - **Bevy** — <https://bevyengine.org/> — game engine ECS, tiếp nối Chương 68
+- **alloy-rs** — <https://github.com/alloy-rs> — bộ công cụ Ethereum bằng Rust; tiếp nối Chương 73
+- **rust-libp2p** — <https://github.com/libp2p/rust-libp2p> — ngăn xếp mạng ngang hàng sản xuất; tiếp nối Chương 71
+- **CosmWasm Book** — <https://book.cosmwasm.com/> và **Anchor** — <https://www.anchor-lang.com/> — tiếp nối Chương 72
+- **LeetGPU challenges** — <https://github.com/AlphaGPU/leetgpu-challenges> — 99 bài tập GPU; tiếp nối Chương 81
+- **OpenAlgo Learn** — <https://www.openalgo.in/learn> — giáo trình gốc của Chương 82–84
 
 Chúc bạn có một hành trình học Rust đầy thú vị và không còn "sợ" lập trình nữa! 🦀🚀

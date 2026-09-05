@@ -1,6 +1,6 @@
 # Bảng Thuật Ngữ Việt – Anh (Vietnamese–English Glossary)
 
-Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 54 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
+Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 84 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
 **Quy ước dùng trong sách**: lần đầu một thuật ngữ xuất hiện, chúng tôi luôn viết dạng *tiếng Việt (tiếng Anh)*, ví dụ: "quyền sở hữu (ownership)". Những lần sau chỉ dùng bản tiếng Việt.
 
@@ -386,6 +386,204 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Sụt giảm tối đa | Maximum drawdown | Quan trọng hơn lợi nhuận: quyết định bạn có trụ nổi không |
 | Khớp quá mức | Overfitting | Tối ưu vào nhiễu của một bộ dữ liệu cụ thể |
 | Nguồn sự kiện | Event sourcing | Nhật ký là chân lý; trạng thái chỉ là kết quả phát lại |
+
+---
+
+## 14. Blockchain & Mạng ngang hàng (Chương 70–73)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Hàm băm mật mã | Cryptographic hash function | SHA-256, Keccak-256 |
+| Đệm (thông điệp) | Padding | Quy tắc FIPS 180-4 |
+| Cây Merkle | Merkle tree | |
+| Gốc Merkle | Merkle root | Nằm trong phần đầu khối |
+| Bằng chứng gộp | Inclusion proof / Merkle proof | Chỉ cần log₂(n) giá trị băm |
+| Đầu ra chưa tiêu | UTXO — Unspent Transaction Output | Mô hình của Bitcoin |
+| Bằng chứng công việc | Proof of Work | |
+| Độ khó | Difficulty | Số bit 0 dẫn đầu |
+| Số dùng một lần | Nonce | |
+| Tái tổ chức chuỗi | Chain reorganization / reorg | Chọn theo **tổng công việc**, không theo chiều dài |
+| Tiêu hai lần | Double spend | |
+| Ví nhẹ | Light client / SPV wallet | Chỉ tải phần đầu khối |
+| Khoảng cách XOR | XOR metric | Nền của Kademlia |
+| Thùng k | k-bucket | Ưu tiên giữ nút cũ |
+| Lan truyền tin đồn | Gossip protocol | |
+| Hệ số phát tán | Fanout | Đánh đổi độ trễ ↔ băng thông |
+| Chống entropy | Anti-entropy | Bảo đảm hội tụ chắc chắn |
+| Lỗi Byzantine | Byzantine fault | Nút nói dối, không chỉ nút chết |
+| Ngưỡng quorum | Quorum threshold | Đúng: `⌊(n+f)/2⌋+1`, **không** phải `2f+1` |
+| Tính an toàn / tính sống | Safety / Liveness | Hai điều kiện phải kiểm cùng lúc |
+| Nói đôi mặt | Equivocation | Bằng chứng tự chứng minh, nền của phạt cắt cọc |
+| Phạt cắt cọc | Slashing | |
+| Hợp đồng thông minh | Smart contract | |
+| Địa chỉ suy ra từ chương trình | PDA — Program Derived Address | Nằm **ngoài** đường cong ed25519 |
+| Bump chuẩn | Canonical bump | Luôn dùng bump lớn nhất hợp lệ |
+| Nhầm lẫn kiểu tài khoản | Account type confusion | Chữa bằng byte định danh |
+| Định danh | Discriminator | Anchor thêm 8 byte |
+| Kiểm tra – tác động – tương tác | Checks-Effects-Interactions | Mẫu chống tái nhập |
+| Tái nhập | Reentrancy | |
+| Mã hoá ABI | ABI encoding | Mọi thứ là từ 32 byte |
+| Chữ ký hàm | Function selector | 4 byte đầu của `keccak(chữ_ký)` |
+| Tiền tố độ dài đệ quy | RLP — Recursive Length Prefix | Đòi mã hoá tối giản |
+| Phí cơ sở | Base fee | Bị **đốt**, không về tay người xác thực |
+| Tiền bo | Priority fee / tip | |
+| Hàng đợi giao dịch | Mempool | |
+| Địa chỉ có mã kiểm | Checksummed address | EIP-55 |
+
+---
+
+## 15. Giao dịch tần suất cao (Chương 74–78)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Giao dịch tần suất cao | HFT — High-Frequency Trading | |
+| Độ trễ dây tới lệnh | Tick-to-trade latency | Thước đo trung tâm |
+| Phân vị | Percentile | p50, p99, p99.9 — **không** dùng trung bình |
+| Độ trễ đuôi | Tail latency | Thứ thực sự giết chiến lược |
+| Biểu đồ phân vị | Latency histogram | Kiểu HDR, thùng logarit |
+| Chia sẻ giả | False sharing | Chậm 5–10× mà không tranh chấp logic |
+| Dòng cache | Cache line | 64 byte |
+| Đệm theo dòng cache | Cache-line padding | |
+| Vòng Disruptor | Disruptor ring buffer | SPSC, không khoá, không cấp phát |
+| Bể đối tượng | Object pool | Cấp phát trước, tái dùng |
+| Đường nóng | Hot path | Nơi cấm mọi cấp phát |
+| Mảng cấu trúc / Cấu trúc mảng | AoS / SoA | GPU ưa SoA, CPU tuỳ cách truy cập |
+| Ngân sách độ trễ | Latency budget | Chỉ ra nên tối ưu ở đâu |
+| Giao thức nhị phân | Binary protocol | ITCH, trường độ dài cố định |
+| Thứ tự byte mạng | Network byte order | Big-endian |
+| Phát hiện khe | Gap detection | Yêu cầu phát lại **đúng một lần** |
+| Đang chờ khôi phục | Pending recovery | Trạng thái chống bão yêu cầu |
+| Sổ lệnh | Order book | |
+| Mức L2 / L3 | Level 2 / Level 3 | L3 cho biết vị trí xếp hàng |
+| Vị trí xếp hàng | Queue position | Quyết định lãi lỗ nhà tạo lập |
+| Ưu tiên giá–thời gian | Price-time priority | |
+| Chọn lọc bất lợi | Adverse selection | Được khớp đúng lúc không nên khớp |
+| Ghi phiên & phát lại | Capture & replay | |
+| Đồng hồ ảo | Virtual clock | Nguồn thời gian **duy nhất** |
+| Đẩy tốc độ phát | Replay speed scaling | ×1, ×1000, vô hạn |
+| Mô hình độ trễ | Latency model | Có cả jitter, không chỉ hằng số |
+| Nhìn trộm tương lai | Look-ahead bias | Bỏ qua độ trễ là dạng tinh vi nhất |
+| Tính tất định | Determinism | `BTreeMap`, không `HashMap` |
+| Tác động thị trường | Market impact | Quy luật căn bậc hai |
+| Cổng rủi ro trước lệnh | Pre-trade risk gate | Không được có đường vòng |
+| Công tắc ngắt | Kill switch | |
+| Giá vốn trung bình | Average cost basis | Phải xử lý riêng ca đảo chiều |
+| Mất cân bằng sổ lệnh | Order book imbalance | |
+| Vi giá | Micro-price | Trọng số **ngược** với khối lượng |
+| Công thức Kelly | Kelly criterion | Thực tế dùng ¼–½ Kelly |
+| Sụt giảm tối đa | Maximum drawdown | Quan trọng hơn lợi nhuận |
+| Tỉ số Sharpe | Sharpe ratio | Phạt cả biến động tăng |
+| Nhà tạo lập thị trường | Market maker | |
+| Tạo lập tự động | AMM — Automated Market Maker | `x·y = k` |
+| Trượt giá | Slippage | |
+| Tổn thất tạm thời | Impermanent loss | `2√r/(1+r) − 1` |
+| Giá trị moi được tối đa | MEV — Maximal Extractable Value | |
+| Kẹp lệnh | Sandwich attack | Chống bằng số nhận tối thiểu chặt |
+| Số nhận tối thiểu | Minimum amount out | Phòng vệ **duy nhất** có hiệu lực |
+| Đấu giá theo lô | Batch auction | CoW Swap — mọi lệnh cùng giá |
+| Trùng hợp mong muốn | Coincidence of wants | Khớp trực tiếp, không qua bể |
+| Tìm kiếm tam phân | Ternary search | Cho hàm lợi nhuận lõm |
+
+---
+
+## 16. Hiệu năng cấp phần cứng (Chương 79–81)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Mảng cổng lập trình được | FPGA | |
+| Bảng tra cứu | LUT — Look-Up Table | LUT-6 = 64 bit SRAM |
+| Bộ nhớ lật | Flip-flop | Một bit trạng thái |
+| Bộ chọn | Multiplexer | `if` trên FPGA trở thành cái này |
+| Logic tổ hợp | Combinational logic | Không có trạng thái |
+| Độ sâu tổ hợp | Combinational depth | Quyết định tần số tối đa |
+| Đường tới hạn | Critical path | |
+| Cây rút gọn | Reduction tree | Độ sâu `log₂(n)` |
+| Đường ống | Pipeline | Đánh đổi độ trễ ↔ thông lượng |
+| Thời gian hằng số | Constant-time | Không dự đoán sai, không xả ống |
+| Tổng hợp | Synthesis | Mất hàng giờ — đừng đặt logic hay sửa lên FPGA |
+| Phân cấp bộ nhớ | Memory hierarchy | L1 ~4, RAM ~300 chu kỳ |
+| Trượt cache | Cache miss | |
+| Tính cục bộ | Locality | Không gian và thời gian |
+| Cache tập hợp liên kết | Set-associative cache | Nguồn của **trượt do xung đột** |
+| Trượt do xung đột | Conflict miss | Chữa bằng đệm một phần tử |
+| Chia khối | Blocking / Tiling | Cùng phép tính, ít trượt hơn một bậc |
+| Dự đoán rẽ nhánh | Branch prediction | 2-bit bão hoà |
+| Dự đoán sai | Branch misprediction | ~15 chu kỳ |
+| Mã không rẽ nhánh | Branchless code | Thắng với dữ liệu ngẫu nhiên |
+| Song song mức lệnh | ILP — Instruction-Level Parallelism | |
+| Chuỗi phụ thuộc | Dependency chain | Kẻ thù của ILP |
+| Nhiều biến tích luỹ | Multiple accumulators | Phá chuỗi phụ thuộc |
+| Bộ nạp trước | Prefetcher | Có thể làm hỏng phép đo |
+| Một lệnh nhiều dữ liệu | SIMD | AVX2 = 4×f64 |
+| Phần dư | Remainder / tail | Lỗi phổ biến nhất khi viết SIMD tay |
+| Một lệnh nhiều luồng | SIMT | Mô hình của GPU |
+| Bó luồng | Warp | 32 luồng, chạy đồng bộ tuyệt đối |
+| Phân kỳ bó luồng | Warp divergence | Chi phí = số nhánh khác nhau |
+| Gộp truy cập | Memory coalescing | Yếu tố hiệu năng số một |
+| Giao dịch bộ nhớ | Memory transaction | 128 byte |
+| Ngân hàng bộ nhớ | Memory bank | 32 ngân hàng ở bộ nhớ chia sẻ |
+| Xung đột ngân hàng | Bank conflict | Chữa bằng mẹo đệm `+1` |
+| Bộ nhớ chia sẻ | Shared memory | |
+| Rào chắn đồng bộ | Synchronization barrier | `__syncthreads()` |
+| Trao đổi trong bó | Warp shuffle | Không cần rào chắn |
+| Rút gọn song song | Parallel reduction | Cây, không phải vòng lặp |
+| Cường độ số học | Arithmetic intensity | Phép tính trên mỗi byte đọc |
+| Mức chiếm dụng | Occupancy | Cao không phải lúc nào cũng tốt |
+| Bị chặn bởi bộ nhớ / sức tính | Memory-bound / Compute-bound | Mục tiêu của chia lát là chuyển từ trái sang phải |
+
+---
+
+## 17. Tài chính định lượng (Chương 82–84)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Nến | Candlestick | Mở, cao, thấp, đóng |
+| Thân nến / bóng nến | Body / Wick (shadow) | |
+| Trung bình trượt giản đơn | SMA — Simple Moving Average | Trọng số phẳng |
+| Trung bình trượt luỹ thừa | EMA — Exponential Moving Average | Cách khởi tạo **đổi kết quả** |
+| Chỉ số sức mạnh tương đối | RSI | "Quá mua" ≠ "nên bán" |
+| Phân kỳ hội tụ trung bình trượt | MACD | EMA của EMA — độ trễ cộng dồn |
+| Dải Bollinger | Bollinger Bands | Giả định phân phối chuẩn mà lợi suất thì không |
+| Khoảng thật | True Range | Ba vế vì có khoảng nhảy giá |
+| Khoảng thật trung bình | ATR — Average True Range | Tốt nhất để định cỡ dừng lỗ |
+| Khoảng nhảy giá | Gap | |
+| Giá bình quân theo khối lượng | VWAP | Chuẩn đánh giá thực thi |
+| Phân kỳ | Divergence | Xác nhận muộn `nhin_lai` phiên |
+| Đuôi béo | Fat tail | Cực đoan xảy ra thường hơn mô hình |
+| Quyền chọn mua / bán | Call / Put option | |
+| Giá thực hiện | Strike price | |
+| Trong tiền / ngoài tiền | In-the-money / Out-of-the-money | |
+| Giá trị nội tại | Intrinsic value | Quyền bán châu Âu **có thể** rẻ hơn |
+| Giá trị thời gian | Time value | Giảm theo `√T` |
+| Giá trị thực thi sớm | Early exercise premium | Chênh lệch Mỹ − châu Âu |
+| Cân bằng quyền mua–bán | Put-call parity | Chênh lệch giá, **không** phải mô hình |
+| Phân phối chuẩn tích luỹ | Cumulative normal distribution | Xấp xỉ Abramowitz–Stegun |
+| Độ nhạy | Greeks | Delta, Gamma, Vega, Theta, Rho |
+| Biến động ngụ ý | Implied volatility | Đảo ngược công thức bằng chia đôi |
+| Nụ cười / nghiêng biến động | Volatility smile / skew | Cách thị trường sửa mô hình |
+| Cố định gamma | Gamma pinning | |
+| Trung tính delta | Delta-neutral | Phòng vệ lại tốn phí |
+| Cây nhị thức | Binomial tree | Định giá được quyền chọn Mỹ |
+| Hồi quy tuyến tính | Linear regression | |
+| Tương quan | Correlation | **Không đủ** cho giao dịch cặp |
+| Đồng liên kết | Cointegration | Điều kiện đúng — chênh lệch kéo về |
+| Tính dừng | Stationarity | |
+| Kéo về trung bình | Mean reversion | |
+| Nửa chu kỳ | Half-life | `ln(2)/|λ|` — vốn bị kẹt bao lâu |
+| Tỉ lệ phòng vệ | Hedge ratio | |
+| Điểm z | Z-score | Ngưỡng vào/ra lệnh |
+| Bộ lọc Kalman | Kalman filter | Tỉ lệ phòng vệ thích ứng có nguyên tắc |
+| Nhiễu quá trình / nhiễu đo | Process noise / Measurement noise | Tỉ lệ `Q/R` quyết định tốc độ thích ứng |
+| Giá trị chịu rủi ro | VaR — Value at Risk | Vi phạm tính dưới cộng tính |
+| Thiếu hụt kỳ vọng | Expected Shortfall / CVaR | Thước đo nhất quán — Basel III dùng |
+| Thước đo rủi ro nhất quán | Coherent risk measure | |
+| Quá khớp | Overfitting | Là toán học, không phải xui xẻo |
+| Kiểm định tiến | Walk-forward validation | Phòng vệ mạnh nhất |
+| Ngoài mẫu | Out-of-sample | |
+| Danh mục hiệu quả | Efficient frontier | Nổi tiếng bất ổn |
+| Co ma trận hiệp phương sai | Covariance shrinkage | Ledoit–Wolf |
+| Ngang bằng rủi ro | Risk parity | Cân bằng theo rủi ro, không theo vốn |
+| Đóng góp rủi ro | Risk contribution | |
 
 ---
 
