@@ -14,7 +14,7 @@ Lộ trình chia làm **ba chặng**:
 
 > **Mã nguồn chạy được**: toàn bộ chương trình minh họa nằm trong thư mục [`code/`](./code/), tổ chức thành một Cargo workspace. Chạy `cargo run -p ch14` để xem chương 14 hoạt động, hay `cargo test --workspace` để kiểm chứng mọi bài kiểm thử trong sách.
 > **Thuật ngữ**: xem bảng đối chiếu Việt–Anh tại [`THUAT_NGU.md`](./THUAT_NGU.md).
-> **Nên đọc theo thứ tự nào?** [`LO_TRINH.md`](./LO_TRINH.md) có đồ thị phụ thuộc, bốn nhánh học theo mục tiêu, và bản đồ phủ đầy đủ các nguồn tham khảo.
+> **Nên đọc theo thứ tự nào?** [`ROADMAP.md`](./ROADMAP.md) có đồ thị phụ thuộc, bốn nhánh học theo mục tiêu, và bản đồ phủ đầy đủ các nguồn tham khảo.
 
 
 ---
@@ -233,7 +233,7 @@ Toàn bộ phần lập trình được của giáo trình OpenAlgo, cài lại 
 ## Phụ lục
 
 Tài liệu tra cứu, đọc sau khi đã hoàn thành các chủ đề tương ứng.
-- [Lộ trình học tập: đồ thị phụ thuộc, bốn nhánh, bản đồ phủ nguồn tham khảo](LO_TRINH.md) — đọc TRƯỚC khi bắt đầu
+- [Lộ trình học tập: đồ thị phụ thuộc, bốn nhánh, bản đồ phủ nguồn tham khảo](ROADMAP.md) — đọc TRƯỚC khi bắt đầu
 - [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md) — đọc sau Chương 18–20
 - [Bảng thuật ngữ Việt–Anh](THUAT_NGU.md) — tra cứu bất cứ lúc nào
 
