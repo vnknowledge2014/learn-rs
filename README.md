@@ -95,7 +95,7 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 3. **Khái niệm & Cơ chế kỹ thuật chuyên sâu** — chuyện gì thực sự xảy ra dưới nắp ca-pô.
 4. **Mã nguồn minh họa thực chiến** — một chương trình hoàn chỉnh, chạy được, có trong thư mục [`code/`](./code/).
 5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa. *(Chương 56–63 hiện chưa có mục này.)*
-6. **Tóm tắt & Bài tập rèn luyện** — 35 chương có **Gợi ý** và **Lời giải** ẩn trong thẻ gập (bấm để mở); các chương còn lại hiện chỉ có đề bài.
+6. **Tóm tắt & Bài tập rèn luyện** — **mọi chương có bài tập đều kèm Gợi ý và Lời giải** ẩn trong thẻ gập (bấm để mở). Toàn bộ lời giải dạng mã đều biên dịch sạch và khớp API của crate tương ứng.
 
 ---
 
