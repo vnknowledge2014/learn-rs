@@ -297,20 +297,20 @@ pub fn emit_normal(data: &[f64], threshold: f64) -> Vec<usize> {
 // ============================================================================
 
 /// Inner join: chỉ giữ hàng có khóa khớp ở CẢ HAI bảng.
-pub fn inner_join(left: &Bang, must: &Bang, key: &str) -> Bang {
+pub fn inner_join(left: &Bang, right: &Bang, key: &str) -> Bang {
     let ct = left.chi_so_cot(key).expect("khóa không có ở bảng trái");
-    let cp = must.chi_so_cot(key).expect("khóa không có ở bảng phải");
+    let cp = right.chi_so_cot(key).expect("khóa không có ở bảng phải");
 
     // Chỉ mục bảng phải theo khóa (băm) -> tra cứu O(1)
     let mut only_level: HashMap<String, Vec<usize>> = HashMap::new();
-    for h in 0..must.num_queue() {
-        let k = format!("{:?}", must.cot[cp][h]);
+    for h in 0..right.num_queue() {
+        let k = format!("{:?}", right.cot[cp][h]);
         only_level.entry(k).or_default().push(h);
     }
 
     // Cột kết quả: cột trái + cột phải (bỏ cột khóa trùng ở bảng phải)
     let mut name: Vec<String> = left.ten_cot.clone();
-    for (i, t) in must.ten_cot.iter().enumerate() {
+    for (i, t) in right.ten_cot.iter().enumerate() {
         if i != cp { name.push(format!("{}_phai", t)); }
     }
     let mut kq = Bang::new(name.iter().map(|s| s.as_str()).collect());
@@ -321,8 +321,8 @@ pub fn inner_join(left: &Bang, must: &Bang, key: &str) -> Bang {
             for &hp in hang_phai {
                 let mut queue: Vec<Value> =
                     (0..left.ten_cot.len()).map(|i| left.cot[i][h].clone()).collect();
-                for i in 0..must.ten_cot.len() {
-                    if i != cp { queue.push(must.cot[i][hp].clone()); }
+                for i in 0..right.ten_cot.len() {
+                    if i != cp { queue.push(right.cot[i][hp].clone()); }
                 }
                 kq.add_queue(queue);
             }

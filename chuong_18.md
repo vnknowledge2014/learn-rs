@@ -485,9 +485,9 @@ where
         let b = tao(sinh.num_cont());
         let c = tao(sinh.num_cont());
         let left = a.clone().compose(b.clone()).compose(c.clone());
-        let must = a.clone().compose(b.clone().compose(c.clone()));
-        if left != must {
-            println!("  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}", name, left, must);
+        let right = a.clone().compose(b.clone().compose(c.clone()));
+        if left != right {
+            println!("  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}", name, left, right);
             return false;
         }
     }
@@ -720,8 +720,8 @@ mod tests {
 
         let mot_luot = coalesce_all_all(data.clone());
         for diem_cat in [0usize, 1, 37, 50, 99, 100] {
-            let (left, must) = data.split_at(diem_cat);
-            let compose = coalesce_all_all(left.to_vec()).compose(coalesce_all_all(must.to_vec()));
+            let (left, right) = data.split_at(diem_cat);
+            let compose = coalesce_all_all(left.to_vec()).compose(coalesce_all_all(right.to_vec()));
             assert_eq!(mot_luot, compose, "Sai khi cắt tại vị trí {}", diem_cat);
         }
     }

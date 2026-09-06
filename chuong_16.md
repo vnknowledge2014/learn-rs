@@ -329,8 +329,8 @@ assert_eq!(so.iter().fold(0, |a, b| a + b), so.iter().rfold(0, |a, b| a + b)); /
 
 // NỐI CHUỖI: kết hợp nhưng KHÔNG deliver hoán -> hai chiều cho kết quả KHÁC NHAU
 let left: String = so.iter().fold(String::new(), |a, b| a + &b.to_string());   // "1032"
-let must: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
-assert_ne!(left, must);
+let right: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
+assert_ne!(left, right);
 ```
 
 Hãy phân biệt cho thật rõ hai tính chất, vì chúng trả lời hai câu hỏi khác nhau:
@@ -829,10 +829,10 @@ mod tests {
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
         // Nối chuỗi KHÔNG deliver hoán -> duyệt hai chiều cho kết quả khác nhau
         let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
-        let must: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
+        let right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
         assert_eq!(left, "1032");
-        assert_eq!(must, "2310");
-        assert_ne!(left, must);
+        assert_eq!(right, "2310");
+        assert_ne!(left, right);
     }
 
     #[test]

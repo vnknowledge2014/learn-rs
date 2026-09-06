@@ -30,11 +30,11 @@ pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
     }
 
     let mut left: usize = 0;
-    let mut must: usize = list.len() - 1;
+    let mut right: usize = list.len() - 1;
 
-    while left <= must {
+    while left <= right {
         // Tính vị trí ở giữa an toàn để tránh nguy cơ tràn số (integer overflow)
-        let mid = left + (must - left) / 2;
+        let mid = left + (right - left) / 2;
         let value_mid = list[mid];
 
         if value_mid == level_spend {
@@ -47,7 +47,7 @@ pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
             if mid == 0 {
                 break; // Ngăn chặn tràn số usize khi trừ về dưới 0
             }
-            must = mid - 1;
+            right = mid - 1;
         }
     }
 

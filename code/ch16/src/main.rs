@@ -374,10 +374,10 @@ mod tests {
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
         // Nối chuỗi KHÔNG giao hoán -> duyệt hai chiều cho kết quả khác nhau
         let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
-        let must: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
+        let right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
         assert_eq!(left, "1032");
-        assert_eq!(must, "2310");
-        assert_ne!(left, must);
+        assert_eq!(right, "2310");
+        assert_ne!(left, right);
     }
 
     #[test]

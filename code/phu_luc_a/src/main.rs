@@ -513,9 +513,9 @@ mod luat {
         for x in [-5i64, 0, 7, 100] {
             let left = Ham::new(|a: i64| a + 1).compose_with(Ham::new(|a: i64| a * 2))
                           .compose_with(Ham::new(|a: i64| a - 3));
-            let must = Ham::new(|a: i64| a + 1)
+            let right = Ham::new(|a: i64| a + 1)
                           .compose_with(Ham::new(|a: i64| a * 2).compose_with(Ham::new(|a: i64| a - 3)));
-            assert_eq!(left.run(x), must.run(x));
+            assert_eq!(left.run(x), right.run(x));
         }
     }
 

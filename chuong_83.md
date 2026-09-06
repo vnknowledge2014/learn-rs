@@ -556,10 +556,10 @@ fn main() {
 
     println!("\n3. NGANG GIÁ MUA-BÁN — bất biến kiểm chứng được");
     let left = c - p;
-    let must = t.spot - t.discounted_strike();
+    let right = t.spot - t.discounted_strike();
     println!("   C − P       = {:.10}", left);
-    println!("   S − K·e^-rT = {:.10}", must);
-    println!("   Sai lệch    = {:.2e}", (left - must).abs());
+    println!("   S − K·e^-rT = {:.10}", right);
+    println!("   Sai lệch    = {:.2e}", (left - right).abs());
     println!("   → Nếu hệ thức này lệch trên thị trường thật thì có cơ hội arbitrage");
     println!("     KHÔNG RỦI RO. Vì thế nó gần như không bao giờ lệch.");
 
