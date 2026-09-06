@@ -152,7 +152,7 @@ fn main() {
     println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
     println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
     println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
-    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
+    println!("    ==> Cho phep 1 may owner duy tri hang trieu ket noi ma khong bao gio het RAM!");
 
     println!("\n==================================================================");
     println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");

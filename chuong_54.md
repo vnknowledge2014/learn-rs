@@ -407,7 +407,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may chu toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
@@ -455,22 +455,22 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi hiện th�
 
 ```rust
 #[derive(Debug, Clone)]
-struct DonHang {
+struct DonQueue {
     id: u64,
 }
 
-fn ghi_nhat_ky(dh: DonHang) {
+fn ghi_nhat_ky(dh: DonQueue) {
     println!("Ghi nhật ký: {:?}", dh);
 }
 
 // Đoạn mã lỗi minh họa E0382:
-fn xu_ly_loi(dh: DonHang) {
+fn xu_ly_loi(dh: DonQueue) {
     // ghi_nhat_ky(dh); // Di chuyển quyền sở hữu dh
     // println!("Đơn hàng đã xử lý: {:?}", dh); // LỖI E0382: dh đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Truyền tham chiếu mượn hoặc clone
-fn xu_ly_dung(dh: DonHang) {
+fn xu_ly_dung(dh: DonQueue) {
     ghi_nhat_ky(dh.clone()); // Tạo bản sao độc lập
     println!("Đơn hàng an toàn: {:?}", dh); // dh ban đầu vẫn còn nguyên vẹn!
 }

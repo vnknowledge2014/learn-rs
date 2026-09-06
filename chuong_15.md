@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong Chương 13, chúng ta đã tiếp cận tư duy đường ống (pipeline) của lập trình hàm (functional programming) và thấy được sự thanh thoát khi loại bỏ các biến tạm thay đổi liên tục. Bạn đã thấy những biểu thức ngắn gọn như `|hang| tinh_thanh_tien(hang)` xuất hiện bên trong các phương thức `.map()` hay `.filter()`. Đó chính là **Hàm ẩn danh (Closures)** — một trong những vũ khí lợi hại bậc nhất của Rust.
+Trong Chương 13, chúng ta đã tiếp cận tư duy đường ống (pipeline) của lập trình hàm (functional programming) và thấy được sự thanh thoát khi loại bỏ các biến tạm thay đổi liên tục. Bạn đã thấy những biểu thức ngắn gọn như `|hang| to_money(hang)` xuất hiện bên trong các phương thức `.map()` hay `.filter()`. Đó chính là **Hàm ẩn danh (Closures)** — một trong những vũ khí lợi hại bậc nhất của Rust.
 
 Trong các ngôn ngữ có bộ gom rác (Garbage Collector) như JavaScript hay Python, bạn có thể tạo một hàm ẩn danh ở bất kỳ đâu và thoải mái dùng chung biến số mà không cần bận tâm biến đó được lưu trữ ở đâu trên thanh RAM hay sống được bao lâu. Nhưng trong Rust, với các nguyên tắc sắt đá về quyền sở hữu (ownership), vay mượn (borrow), và thời gian sống (lifetime), một câu hỏi hóc búa được đặt ra:
 - *Khi một hàm ẩn danh sử dụng các biến ở môi trường xung quanh, nó đang mượn đọc, mượn sửa, hay đoạt đứt quyền sở hữu của biến đó?*
@@ -11,7 +11,7 @@ Trong các ngôn ngữ có bộ gom rác (Garbage Collector) như JavaScript hay
 Rust giải quyết bài toán này một cách tuyệt mỹ thông qua bộ ba Trait bắt giữ môi trường: **`Fn`**, **`FnMut`**, và **`FnOnce`**. Đây là chìa khóa then chốt giúp bạn viết mã nguồn linh hoạt nhưng vẫn an toàn tuyệt đối ở tốc độ phần cứng cao nhất.
 
 Mục tiêu học tập của chương này:
-- Nắm vững cú pháp khai báo **Closure (`|tham_so| { than_ham }`)** và khả năng tự động suy luận kiểu dữ liệu của `rustc`.
+- Nắm vững cú pháp khai báo **Closure (`|param| { than_ham }`)** và khả năng tự động suy luận kiểu dữ liệu của `rustc`.
 - Thấu hiểu cơ chế **Đóng gói môi trường (Environment Capturing)**: Bản chất Closure trong Rust là một struct vô danh tự động sinh ra trên bộ nhớ ngăn xếp (stack) hoặc vùng nhớ tự do (heap).
 - Phân biệt rạch ròi 3 cấp độ bắt giữ môi trường:
   - **`Fn`**: Bắt giữ bằng tham chiếu đọc bất biến (`&T`).
@@ -84,20 +84,20 @@ Khi bạn viết một closure bắt giữ các biến xung quanh, trình biên 
 Rust **không hề dùng con trỏ hàm chậm chạp hay bộ nhớ động dư thừa**. Thay vào đó, `rustc` tự động tạo ra một `struct` ẩn giấu với tên gọi nội bộ duy nhất (ví dụ: `Closure$1234`), trong đó các trường (fields) chính là các biến được bắt giữ:
 
 ```rust
-let ten = String::from("Rust");
-let in_ten = || println!("{}", ten);
+let name = String::from("Rust");
+let in_ten = || println!("{}", name);
 ```
 
 Bên dưới tầng mã máy, Rust chuyển đoạn mã trên thành cấu trúc tương đương:
 ```rust
 // [Mã do rustc tự sinh ngầm bên dưới]
 struct KhungMoiTruong<'a> {
-    ten: &'a String, // Trường dữ liệu mượn đọc
+    name: &'a String, // Trường dữ liệu mượn đọc
 }
 
 impl<'a> Fn<()> for KhungMoiTruong<'a> {
     extern "rust-call" fn call(&self, _args: ()) {
-        println!("{}", *self.ten);
+        println!("{}", *self.name);
     }
 }
 ```
@@ -174,7 +174,7 @@ Chương trình hoàn chỉnh dưới đây xây dựng một **Hệ thống Qu�
 
 /// Hàm 1: Nhận closure thực hiện giao ước Fn (Chỉ đọc môi trường)
 /// Có thể gọi closure này nhiều lần liên tiếp một cách an toàn tuyệt đối
-pub fn thuc_thi_doc<F>(ten_tac_vu: &str, hanh_dong: F)
+pub fn exec_read<F>(ten_tac_vu: &str, hanh_dong: F)
 where
     F: Fn(),
 {
@@ -186,20 +186,20 @@ where
 
 /// Hàm 2: Nhận closure thực hiện giao ước FnMut (Sửa đổi môi trường)
 /// Bắt buộc tham số hanh_dong phải mang từ khóa mut vì trạng thái nội bộ thay đổi
-pub fn thuc_thi_sua_doi<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
+pub fn exec_swap<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
 where
     F: FnMut(usize),
 {
     println!("\n--- BẮT ĐẦU TÁC VỤ SỬA ĐỔI TRẠNG THÁI: [{}] ---", ten_tac_vu);
-    for buoc in 1..=so_vong_lap {
-        hanh_dong(buoc); // Gọi nhiều lần, mỗi lần biến nội bộ bên ngoài sẽ biến đổi
+    for step in 1..=so_vong_lap {
+        hanh_dong(step); // Gọi nhiều lần, mỗi lần biến nội bộ bên ngoài sẽ biến đổi
     }
     println!("--- HOÀN THÀNH TÁC VỤ SỬA ĐỔI TRẠNG THÁI ---");
 }
 
 /// Hàm 3: Nhận closure thực hiện giao ước FnOnce (Tiêu thụ tài nguyên)
 /// Closure này tự hủy ngay sau khi được gọi vì quyền sở hữu đã bị đoạt lấy
-pub fn thuc_thi_tieu_thu<F>(ten_tac_vu: &str, hanh_dong: F)
+pub fn exec_consume<F>(ten_tac_vu: &str, hanh_dong: F)
 where
     F: FnOnce() -> String,
 {
@@ -224,63 +224,63 @@ fn main() {
     // ------------------------------------------------------------------------
     let thong_tin_he_thong = String::from("Máy chủ Cổng thanh toán (Gateway-01)");
     
-    // Closure in_thong_tin chỉ mượn đọc thong_tin_he_thong
-    let in_thong_tin = || {
+    // Closure print_info chỉ mượn đọc thong_tin_he_thong
+    let print_info = || {
         println!("[GIÁM SÁT] Trạng thái hiện tại của: {}", thong_tin_he_thong);
     };
 
-    // Truyền closure vào hàm thuc_thi_doc (chứng minh gọi được nhiều lần)
-    thuc_thi_doc("Kiểm tra sức khỏe định kỳ", in_thong_tin);
+    // Truyền closure vào hàm exec_read (chứng minh gọi được nhiều lần)
+    exec_read("Kiểm tra sức khỏe định kỳ", print_info);
     // Biến thong_tin_he_thong vẫn hoàn toàn nguyên vẹn ở phạm vi ngoài:
     println!("Biến gốc bên ngoài vẫn truy cập bình thường: {}", thong_tin_he_thong);
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Giao ước FnMut - Bắt giữ tham chiếu sửa đổi (&mut T)
     // ------------------------------------------------------------------------
-    let mut tong_luong_truy_cap: usize = 0;
+    let mut total_amount_access_cap: usize = 0;
     let mut nhat_ky_hoat_dong: Vec<String> = Vec::new();
 
-    // Closure tang_truy_cap mượn sửa đổi biến tong_luong_truy_cap và nhat_ky_hoat_dong
+    // Closure tang_truy_cap mượn sửa đổi biến total_amount_access_cap và nhat_ky_hoat_dong
     let ghi_nhan_luot_xem = |lan_lap: usize| {
-        tong_luong_truy_cap += 10;
+        total_amount_access_cap += 10;
         nhat_ky_hoat_dong.push(format!("Đợt ghi nhận #{}: +10 yêu cầu", lan_lap));
-        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", tong_luong_truy_cap);
+        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", total_amount_access_cap);
     };
 
     // Thực thi 3 vòng lặp tích lũy
-    thuc_thi_sua_doi("Bộ đếm lưu lượng mạng", ghi_nhan_luot_xem, 3);
+    exec_swap("Bộ đếm lưu lượng mạng", ghi_nhan_luot_xem, 3);
     println!("Kết quả sau khi kết thúc FnMut:");
-    println!("- Tổng lưu lượng cuối cùng: {}", tong_luong_truy_cap);
+    println!("- Tổng lưu lượng cuối cùng: {}", total_amount_access_cap);
     println!("- Chi tiết nhật ký: {:?}", nhat_ky_hoat_dong);
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 3: Giao ước FnOnce - Đoạt quyền sở hữu (Move)
     // ------------------------------------------------------------------------
     // Giả lập một khóa bảo mật phiên đăng nhập chỉ dùng một lần (One-Time Token)
-    let khoa_bao_mat = String::from("SEC-TOKEN-XYZ-9999-SECRET");
+    let secret_token = String::from("SEC-TOKEN-XYZ-9999-SECRET");
 
-    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của khoa_bao_mat
+    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của secret_token
     let huy_phien_lam_viec = move || {
-        // Biến khoa_bao_mat bị di chuyển vào đây và tiêu thụ
-        let thong_bao = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", khoa_bao_mat);
-        thong_bao // Trả về chuỗi thông báo, khoa_bao_mat bị Drop tại đây
+        // Biến secret_token bị di chuyển vào đây và tiêu thụ
+        let thong_report = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", secret_token);
+        thong_report // Trả về chuỗi thông báo, secret_token bị Drop tại đây
     };
 
-    thuc_thi_tieu_thu("Tiêu hủy phiên bảo mật", huy_phien_lam_viec);
-    // println!("{}", khoa_bao_mat); // LỖI: value borrowed here after move!
+    exec_consume("Tiêu hủy phiên bảo mật", huy_phien_lam_viec);
+    // println!("{}", secret_token); // LỖI: value borrowed here after move!
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 4: Lưu trữ danh sách Closure trong Vector với Box<dyn Fn()>
     // ------------------------------------------------------------------------
     println!("\n--- QUẢN LÝ DANH SÁCH BỘ ĐIỀU HƯỚNG VỚI BOX<DYN FN()> ---");
-    let mut danh_sach_su_kien: Vec<Box<dyn Fn()>> = Vec::new();
+    let mut list_event: Vec<Box<dyn Fn()>> = Vec::new();
 
-    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện A: Khởi động quạt làm mát")));
-    danh_sach_su_kien.push(Box::new(|| println!("Sự kiện B: Đèn LED chuyển màu xanh")));
+    list_event.push(Box::new(|| println!("Sự kiện A: Khởi động quạt làm mát")));
+    list_event.push(Box::new(|| println!("Sự kiện B: Đèn LED chuyển màu xanh")));
 
-    for (stt, su_kien) in danh_sach_su_kien.iter().enumerate() {
+    for (stt, event) in list_event.iter().enumerate() {
         print!("Kích hoạt sự kiện #{}: ", stt + 1);
-        su_kien(); // Gọi từng closure qua con trỏ Trait Object
+        event(); // Gọi từng closure qua con trỏ Trait Object
     }
 
     println!("\n============================================================");
@@ -312,10 +312,10 @@ fn goi_hai_lan<F: Fn()>(f: F) {
 }
 
 fn thu_nghiem_loi() {
-    let mut dem = 0;
+    let mut count = 0;
     // Closure này sửa biến dem nên nó là FnMut, không thỏa mãn Fn
     let closure_loi = || { 
-        dem += 1; 
+        count += 1; 
     };
     // goi_hai_lan(closure_loi); // LỖI E0525: closure chỉ cài đặt FnMut, không phải Fn!
 }
@@ -342,20 +342,20 @@ fn goi_hai_lan_sua<F: FnMut()>(mut f: F) {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Phán đoán loại Trait)**:  
-   Xem xét đoạn mã sau và phán đoán xem closure `xu_ly` sẽ tự động thực hiện các Trait nào (`Fn`, `FnMut`, hay `FnOnce`):
+   Xem xét đoạn mã sau và phán đoán xem closure `handle` sẽ tự động thực hiện các Trait nào (`Fn`, `FnMut`, hay `FnOnce`):
    ```rust
-   let danh_sach = vec![1, 2, 3];
-   let xu_ly = || {
-       println!("Độ dài danh sách: {}", danh_sach.len());
+   let list = vec![1, 2, 3];
+   let handle = || {
+       println!("Độ dài danh sách: {}", list.len());
    };
    ```
-   Hãy viết mã nguồn kiểm chứng bằng cách truyền `xu_ly` vào hàm đòi hỏi `Fn`.
+   Hãy viết mã nguồn kiểm chứng bằng cách truyền `handle` vào hàm đòi hỏi `Fn`.
 
 2. **Bài tập 2 (Thiết kế Bộ lọc Tùy biến với Fn)**:  
-   Viết một hàm `loc_du_lieu<F>(danh_sach: &[i32], dieu_kien: F) -> Vec<i32>` trong đó `dieu_kien` là một closure có chữ ký `Fn(&i32) -> bool`. Dùng hàm này để lọc ra các số chẵn lớn hơn 10 từ một mảng số nguyên bất kỳ.
+   Viết một hàm `loc_du_lieu<F>(list: &[i32], dieu_kien: F) -> Vec<i32>` trong đó `dieu_kien` là một closure có chữ ký `Fn(&i32) -> bool`. Dùng hàm này để lọc ra các số chẵn lớn hơn 10 từ một mảng số nguyên bất kỳ.
 
 3. **Bài tập 3 (Sử dụng FnMut làm Bộ tích lũy)**:  
-   Viết một closure `tich_luy` sử dụng tính chất `FnMut` để cộng dồn điểm số của học sinh qua từng môn học. Mỗi lần gọi `tich_luy(diem)`, điểm số mới được cộng thêm và in ra màn hình điểm trung bình tạm thời sau mỗi môn thi.
+   Viết một closure `accumulate` sử dụng tính chất `FnMut` để cộng dồn điểm số của học sinh qua từng môn học. Mỗi lần gọi `accumulate(diem)`, điểm số mới được cộng thêm và in ra màn hình điểm trung bình tạm thời sau mỗi môn thi.
 
 ---
 
@@ -364,13 +364,13 @@ fn goi_hai_lan_sua<F: FnMut()>(mut f: F) {
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Hãy hỏi: closure này **làm gì** với `danh_sach`? Nó gọi `.len()` — chỉ đọc. Không sửa, không tiêu thụ. Vậy chế độ bắt giữ "nhẹ nhàng nhất" mà Rust chọn là gì?
+Hãy hỏi: closure này **làm gì** với `list`? Nó gọi `.len()` — chỉ đọc. Không sửa, không tiêu thụ. Vậy chế độ bắt giữ "nhẹ nhàng nhất" mà Rust chọn là gì?
 </details>
 
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
-Closure `xu_ly` chỉ **mượn đọc** `danh_sach` (`&Vec<i32>`), nên nó cài đặt **cả ba** trait: `Fn`, `FnMut` và `FnOnce`. Nhớ phân cấp ở mục 3: `Fn` là hẹp nhất và tự động thỏa mãn hai trait còn lại.
+Closure `handle` chỉ **mượn đọc** `list` (`&Vec<i32>`), nên nó cài đặt **cả ba** trait: `Fn`, `FnMut` và `FnOnce`. Nhớ phân cấp ở mục 3: `Fn` là hẹp nhất và tự động thỏa mãn hai trait còn lại.
 
 ```rust
 fn goi_ba_lan<F: Fn()>(f: F) {
@@ -380,17 +380,17 @@ fn goi_ba_lan<F: Fn()>(f: F) {
 }
 
 fn main() {
-    let danh_sach = vec![1, 2, 3];
-    let xu_ly = || println!("Độ dài danh sách: {}", danh_sach.len());
+    let list = vec![1, 2, 3];
+    let handle = || println!("Độ dài danh sách: {}", list.len());
 
-    goi_ba_lan(xu_ly);
+    goi_ba_lan(handle);
 
-    // danh_sach VẪN dùng được vì closure chỉ mượn đọc, không đoạt quyền sở hữu:
-    println!("Danh sách gốc vẫn nguyên vẹn: {:?}", danh_sach);
+    // list VẪN dùng được vì closure chỉ mượn đọc, không đoạt quyền sở hữu:
+    println!("Danh sách gốc vẫn nguyên vẹn: {:?}", list);
 }
 ```
 
-Thử nghiệm đáng làm: thêm `danh_sach.push(4);` vào thân closure. Nó lập tức bị hạ cấp xuống `FnMut` và `goi_ba_lan` sẽ từ chối biên dịch với lỗi **E0525**.
+Thử nghiệm đáng làm: thêm `list.push(4);` vào thân closure. Nó lập tức bị hạ cấp xuống `FnMut` và `goi_ba_lan` sẽ từ chối biên dịch với lỗi **E0525**.
 </details>
 
 <details>
@@ -403,11 +403,11 @@ Ràng buộc `F: Fn(&i32) -> bool` khớp chính xác với thứ mà `.filter()
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-pub fn loc_du_lieu<F>(danh_sach: &[i32], dieu_kien: F) -> Vec<i32>
+pub fn loc_du_lieu<F>(list: &[i32], dieu_kien: F) -> Vec<i32>
 where
     F: Fn(&i32) -> bool,
 {
-    danh_sach.iter().filter(|x| dieu_kien(x)).copied().collect()
+    list.iter().filter(|x| dieu_kien(x)).copied().collect()
 }
 
 fn main() {
@@ -438,28 +438,28 @@ fn main() {
     let mut so_mon: u32 = 0;
 
     // Closure này SỬA hai biến ngoài -> nó là FnMut -> biến chứa nó phải `mut`.
-    let mut tich_luy = |diem: f64| {
+    let mut accumulate = |diem: f64| {
         tong += diem;
         so_mon += 1;
-        let trung_binh = tong / so_mon as f64;
+        let mean = tong / so_mon as f64;
         println!("  Môn thứ {}: {:.1} điểm | Trung bình tạm thời: {:.2}",
-                 so_mon, diem, trung_binh);
-        trung_binh
+                 so_mon, diem, mean);
+        mean
     };
 
     println!("Bảng điểm học kỳ:");
-    tich_luy(8.0);
-    tich_luy(6.5);
-    tich_luy(9.0);
-    let cuoi_cung = tich_luy(7.5);
+    accumulate(8.0);
+    accumulate(6.5);
+    accumulate(9.0);
+    let cuoi_cung = accumulate(7.5);
 
     // Closure phải kết thúc vòng đời (ra khỏi phạm vi mượn) thì mới đọc lại được biến gốc.
-    drop(tich_luy);
+    drop(accumulate);
     println!("Điểm trung bình cuối: {:.2} trên {} môn", cuoi_cung, so_mon);
 }
 ```
 
 Hai điểm dễ sai:
-- Quên `let mut tich_luy` → lỗi **E0596** (`cannot borrow as mutable`).
-- Cố đọc `tong` khi closure vẫn còn sống → lỗi **E0502**, vì closure đang giữ quyền mượn sửa. Gọi `drop(tich_luy)` (hoặc đặt closure trong một khối `{ }`) để trả quyền mượn lại.
+- Quên `let mut accumulate` → lỗi **E0596** (`cannot borrow as mutable`).
+- Cố đọc `tong` khi closure vẫn còn sống → lỗi **E0502**, vì closure đang giữ quyền mượn sửa. Gọi `drop(accumulate)` (hoặc đặt closure trong một khối `{ }`) để trả quyền mượn lại.
 </details>

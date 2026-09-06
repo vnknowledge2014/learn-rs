@@ -110,12 +110,12 @@ macro_rules! ten_macro {
 
 ### 3. Bảng tra cứu các Bộ khớp cú pháp (Syntax Designators)
 
-Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Designator)**:
+Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Syntax designator)**:
 
 | Bộ chỉ định | Tên tiếng Anh | Ý nghĩa trong cú pháp Rust | Ví dụ thực tế |
 |---|---|---|---|
 | **`$e:expr`** | Expression | Bất kỳ biểu thức nào sinh ra giá trị | `1 + 2`, `x * 5`, `String::new()` |
-| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `so_luong`, `NguoiDung`, `tinh_tong` |
+| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `quantity`, `User`, `tinh_tong` |
 | **`$t:ty`** | Type | Một kiểu dữ liệu hợp lệ trong Rust | `i32`, `String`, `Vec<u8>`, `&str` |
 | **`$s:stmt`** | Statement | Một câu lệnh (thường kết thúc bằng dấu `;`) | `let x = 10;`, `dem += 1;` |
 | **`$p:path`** | Path | Đường dẫn định danh mô-đun hoặc kiểu dữ liệu | `std::collections::HashMap`, `crate::api` |
@@ -149,15 +149,15 @@ use std::time::Instant;
 // 1. MACRO TẠO NHANH HASHMAP VỚI CÚ PHÁP TỪ ĐIỂN: tao_ban_do!
 // ============================================================================
 
-/// Macro nhận vào các cặp $khoa => $gia_tri cách nhau bởi dấu phẩy
+/// Macro nhận vào các cặp $khoa => $value cách nhau bởi dấu phẩy
 /// Hỗ trợ dấu phẩy tùy chọn ở cuối cùng $(,)?
 macro_rules! tao_ban_do {
-    // Nhánh xử lý: $( $khoa:expr => $gia_tri:expr ),*
-    ( $( $khoa:expr => $gia_tri:expr ),* $(,)? ) => {
+    // Nhánh xử lý: $( $khoa:expr => $value:expr ),*
+    ( $( $key:expr => $value:expr ),* $(,)? ) => {
         {
             let mut ban_do = HashMap::new();
             $(
-                ban_do.insert($khoa, $gia_tri);
+                ban_do.insert($key, $value);
             )*
             ban_do
         }
@@ -198,13 +198,13 @@ macro_rules! kiem_toan_bien {
 /// Macro nhận một nhãn mô tả $ten:expr và một khối mã $khoi:block
 /// Trả về trực tiếp kết quả của khối mã đó!
 macro_rules! do_luong_thoi_gian {
-    ( $ten:expr, $khoi:block ) => {
+    ( $name:expr, $khoi:block ) => {
         {
-            println!(">>> [BẮT ĐẦU ĐO] {}", $ten);
-            let bat_dau = Instant::now();
+            println!(">>> [BẮT ĐẦU ĐO] {}", $name);
+            let start = Instant::now();
             let ket_qua = $khoi; // Thực thi khối lệnh
-            let thoi_gian = bat_dau.elapsed();
-            println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $ten, thoi_gian);
+            let time_time = start.elapsed();
+            println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $name, time_time);
             ket_qua // Trả kết quả của khối lệnh về phía người gọi
         }
     };
@@ -223,37 +223,37 @@ fn main() {
     // TÌNH HUỐNG 1: Sử dụng macro tao_ban_do! tạo cấu hình hệ thống
     // ------------------------------------------------------------------------
     println!("\n1. Khởi tạo Bản đồ thông số máy chủ bằng cú pháp trực quan:");
-    let thong_so_may_chu = tao_ban_do! {
+    let thong_num_server = tao_ban_do! {
         "cong_mang" => "8080",
         "dia_chi_ip" => "192.168.1.100",
         "moi_truong" => "SanXuat",
         "trang_thai" => "KichHoat", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
     };
 
-    for (khoa, gia_tri) in &thong_so_may_chu {
-        println!("  - Tham số `{}`: {}", khoa, gia_tri);
+    for (key, value) in &thong_num_server {
+        println!("  - Tham số `{}`: {}", key, value);
     }
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Sử dụng macro kiem_toan_bien! để soi dữ liệu
     // ------------------------------------------------------------------------
     println!("\n2. Soi sáng biến số và biểu thức bằng siêu lập trình:");
-    let diem_trung_binh = 8.75;
+    let point_mean = 8.75;
     let danh_sach_lop = vec!["An", "Bình", "Cường"];
 
     // Gỡ lỗi biến đơn lẻ qua $ident
-    kiem_toan_bien!(diem_trung_binh);
+    kiem_toan_bien!(point_mean);
     kiem_toan_bien!(danh_sach_lop);
 
     // Gỡ lỗi biểu thức phức tạp qua $expr
-    kiem_toan_bien!("Tính toán điểm cộng", diem_trung_binh + 1.25);
+    kiem_toan_bien!("Tính toán điểm cộng", point_mean + 1.25);
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 3: Đo lường khối lệnh tính toán qua do_luong_thoi_gian!
     // ------------------------------------------------------------------------
     println!("\n3. Đo lường hiệu năng của một khối thuật toán:");
     
-    let tong_tich_luy = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
+    let total_accumulated = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
         let mut tong: u64 = 0;
         for i in 1..=1_000_000 {
             tong += i;
@@ -261,7 +261,7 @@ fn main() {
         tong // Giá trị trả về từ khối block
     });
 
-    println!("-> Kết quả tính được từ khối mã: {}", tong_tich_luy);
+    println!("-> Kết quả tính được từ khối mã: {}", total_accumulated);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MACRO KHAI BÁO HOÀN THÀNH AN TOÀN TUYỆT ĐỐI");
@@ -318,7 +318,7 @@ macro_rules! in_gap_doi_sua {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Macro Hoán đổi Biến)**:  
-   Hãy viết một macro mang tên `hoan_doi!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
+   Hãy viết một macro mang tên `swap!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
 
 2. **Bài tập 2 (Macro So sánh Giá trị Lớn nhất)**:  
    Viết một macro `tim_max!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.

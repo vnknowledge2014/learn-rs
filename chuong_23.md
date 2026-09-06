@@ -33,7 +33,7 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
 │   lên kính hiển vi điện tử             │ - Cây bút lông ma thuật tự động lướt    │
 │ - Phóng đại nhìn rõ từng tế bào:       │   trên trang giấy trắng                 │
 │   + Đây là tên người bệnh: `User`      │ - Viết ra hàng trăm dòng điều lệ mới:   │
-│   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl MoTaChiTiet for User { ... }`   │
+│   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl DetailedDescription for User { ... }`   │
 │   + Đây là tế bào 2: `name` kiểu `str` │ - Chuẩn xác từng dấu chấm, dấu phẩy!    │
 │ -> Bóc tách cấu trúc vi mô tường minh! │ -> Sinh mã thần tốc không tốn công sức! │
 └────────────────────────────────────────┴─────────────────────────────────────────┘
@@ -51,7 +51,7 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
 ### 2. Cây bút lông ma thuật (Thư viện `quote` - Code Generation)
 - Sau khi bác sĩ đã ghi nhận các nhánh cây từ kính hiển vi:
   - Thay vì phải tự tay ghép từng chuỗi ký tự rời rạc rất dễ thiếu dấu ngoặc, bạn cầm cây bút lông ma thuật **`quote`**.
-  - Bạn viết một đoạn mã mẫu: *"Với mỗi cành cây `#ten_truong`, hãy in ra dòng chữ: Trường `#ten_truong` có giá trị là `{}`"*.
+  - Bạn viết một đoạn mã mẫu: *"Với mỗi cành cây `#field_name`, hãy in ra dòng chữ: Trường `#field_name` có giá trị là `{}`"*.
   - Cây bút lông ma thuật `quote!` sẽ tự động mở rộng mẫu thiết kế đó, nhân bản nó cho toàn bộ các trường dữ liệu, và dập thành một văn bản mã Rust chuẩn mực để nạp ngược lại vào bộ não của trình biên dịch!
 
 ---
@@ -87,7 +87,7 @@ Khi người dùng đánh dấu `#[derive(MoTa)]` lên một struct:
 ```rust
 #[derive(MoTa)]
 struct SinhVien {
-    ho_ten: String,
+    full_name: String,
     diem: f64,
 }
 ```
@@ -112,7 +112,7 @@ Từ trường `data: syn::Data`, bạn có thể bóc tách tiếp:
 Thư viện `quote` cung cấp macro `quote!` cho phép bạn viết mã Rust như bình thường, nhưng có thể chèn các biến AST vào thông qua ký tự `#`:
 
 - **`#ident`**: Chèn một định danh đơn lẻ (ví dụ tên struct).
-- **`#( #danh_sach ),*`**: Cơ chế lặp của `quote!`. Tự động lặp qua một danh sách và ngăn cách các phần tử bởi dấu phẩy!
+- **`#( #list ),*`**: Cơ chế lặp của `quote!`. Tự động lặp qua một danh sách và ngăn cách các phần tử bởi dấu phẩy!
 
 ```rust
 let ten_struct = &ast.ident;
@@ -156,23 +156,23 @@ Dưới đây là thiết kế hoàn chỉnh gồm hai phần:
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TruongDuLieuAST {
-    pub ten_truong: &'static str,
-    pub kieu_du_lieu: &'static str,
+pub struct AstDataField {
+    pub field_name: &'static str,
+    pub kind_data: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructAST {
     pub ten_struct: &'static str,
-    pub danh_sach_truong: Vec<TruongDuLieuAST>,
+    pub field_list: Vec<AstDataField>,
 }
 
 impl StructAST {
     /// Hàm mô phỏng công việc của syn: Duyệt cây AST và trích xuất danh sách tên trường
-    pub fn lay_danh_sach_ten(&self) -> Vec<&'static str> {
-        self.danh_sach_truong
+    pub fn get_list_name(&self) -> Vec<&'static str> {
+        self.field_list
             .iter()
-            .map(|f| f.ten_truong)
+            .map(|f| f.field_name)
             .collect()
     }
 }
@@ -182,31 +182,31 @@ impl StructAST {
 // ============================================================================
 
 /// Trait giao ước mà Macro thủ tục sẽ tự động triển khai
-pub trait MoTaChiTiet {
+pub trait DetailedDescription {
     fn in_thong_tin_chi_tiet(&self);
-    fn dem_so_luong_truong() -> usize;
+    fn field_count() -> usize;
 }
 
 // Giả sử lập trình viên viết Struct này:
-pub struct ThietBiMang {
-    pub dia_chi_ip: String,
-    pub cong_dich_vu: u16,
+pub struct NetworkDevice {
+    pub ip_address: String,
+    pub service_port: u16,
     pub dang_hoat_dong: bool,
 }
 
 // Đây là đoạn mã mà proc-macro (syn + quote) sẽ TỰ ĐỘNG SINH RA
 // thay vì bắt lập trình viên phải tự tay gõ từng dòng:
-impl MoTaChiTiet for ThietBiMang {
+impl DetailedDescription for NetworkDevice {
     fn in_thong_tin_chi_tiet(&self) {
         println!("------------------------------------------------------------");
         println!("THÔNG TIN THỰC THỂ: [ThietBiMang]");
-        println!("  - Trường `dia_chi_ip`      : {}", self.dia_chi_ip);
-        println!("  - Trường `cong_dich_vu`    : {}", self.cong_dich_vu);
+        println!("  - Trường `dia_chi_ip`      : {}", self.ip_address);
+        println!("  - Trường `cong_dich_vu`    : {}", self.service_port);
         println!("  - Trường `dang_hoat_dong`  : {}", self.dang_hoat_dong);
         println!("------------------------------------------------------------");
     }
 
-    fn dem_so_luong_truong() -> usize {
+    fn field_count() -> usize {
         3 // Sinh tự động từ fields.len() của syn!
     }
 }
@@ -222,7 +222,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
-#[proc_macro_derive(MoTaChiTiet)]
+#[proc_macro_derive(DetailedDescription)]
 pub fn mo_ta_chi_tiet_derive(input: TokenStream) -> TokenStream {
     // 1. Phân tích TokenStream thành Cây cú pháp AST bằng syn
     let ast = parse_macro_input!(input as DeriveInput);
@@ -243,11 +243,11 @@ pub fn mo_ta_chi_tiet_derive(input: TokenStream) -> TokenStream {
 
     // 3. Trích xuất tên các trường
     let ten_truongs = fields.iter().map(|f| &f.ident);
-    let so_luong = fields.len();
+    let quantity = fields.len();
 
     // 4. Dùng quote! để sinh mã Rust mới
     let ma_sinh = quote! {
-        impl MoTaChiTiet for #ten_struct {
+        impl DetailedDescription for #ten_struct {
             fn in_thong_tin_chi_tiet(&self) {
                 println!("THÔNG TIN THỰC THỂ: [{}]", stringify!(#ten_struct));
                 #(
@@ -255,8 +255,8 @@ pub fn mo_ta_chi_tiet_derive(input: TokenStream) -> TokenStream {
                 )*
             }
 
-            fn dem_so_luong_truong() -> usize {
-                #so_luong
+            fn field_count() -> usize {
+                #quantity
             }
         }
     };
@@ -276,30 +276,30 @@ fn main() {
     println!("============================================================");
 
     // 1. Mô phỏng quá trình kính hiển vi `syn` phân tích AST của struct
-    let mo_hinh_ast = StructAST {
+    let ast_model = StructAST {
         ten_struct: "ThietBiMang",
-        danh_sach_truong: vec![
-            TruongDuLieuAST { ten_truong: "dia_chi_ip", kieu_du_lieu: "String" },
-            TruongDuLieuAST { ten_truong: "cong_dich_vu", kieu_du_lieu: "u16" },
-            TruongDuLieuAST { ten_truong: "dang_hoat_dong", kieu_du_lieu: "bool" },
+        field_list: vec![
+            AstDataField { field_name: "dia_chi_ip", kind_data: "String" },
+            AstDataField { field_name: "cong_dich_vu", kind_data: "u16" },
+            AstDataField { field_name: "dang_hoat_dong", kind_data: "bool" },
         ],
     };
 
     println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
-    println!("- Tên cấu trúc được phát hiện: {}", mo_hinh_ast.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", mo_hinh_ast.lay_danh_sach_ten());
+    println!("- Tên cấu trúc được phát hiện: {}", ast_model.ten_struct);
+    println!("- Danh sách các cành trường dữ liệu: {:?}", ast_model.get_list_name());
 
     // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
     println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
-    let router = ThietBiMang {
-        dia_chi_ip: String::from("192.168.1.1"),
-        cong_dich_vu: 443,
+    let router = NetworkDevice {
+        ip_address: String::from("192.168.1.1"),
+        service_port: 443,
         dang_hoat_dong: true,
     };
 
     // Gọi phương thức được sinh tự động bởi Proc Macro
     router.in_thong_tin_chi_tiet();
-    println!("Tổng số lượng trường của thực thể: {}", ThietBiMang::dem_so_luong_truong());
+    println!("Tổng số lượng trường của thực thể: {}", NetworkDevice::field_count());
 
     println!("\n============================================================");
     println!("   XÁC MINH KIẾN TRÚC PROCEDURAL MACROS HOÀN TOÀN THÀNH CÔNG");
@@ -350,9 +350,9 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
 1. **Bài tập 1 (Bóc tách AST bằng tư duy)**:  
    Cho một struct sau:
    ```rust
-   struct TaiKhoan {
-       pub ten: String,
-       so_du: f64,
+   struct Account {
+       pub name: String,
+       balance: f64,
    }
    ```
    Dựa trên các cấu trúc của `syn` (`DeriveInput`, `DataStruct`, `FieldsNamed`), hãy vẽ sơ đồ hình cây biểu diễn các nút cha - con của struct này trong bộ nhớ của trình phân tích AST.

@@ -82,7 +82,7 @@ Tóm tắt từng chủ đề:
 **Phụ lục tra cứu:**
 - **[Lộ trình học tập](./ROADMAP.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
 - **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
-- **[Bảng thuật ngữ Việt–Anh](./THUAT_NGU.md)**: gần 490 thuật ngữ, chốt cách dịch nhất quán toàn giáo trình.
+- **[Bảng thuật ngữ Việt–Anh](./GLOSSARY.md)**: 497 thuật ngữ chốt cách dịch nhất quán toàn giáo trình, cộng 1112 cặp đối chiếu định danh cũ ↔ mới cho ai đã đọc bản trước.
 
 ---
 
@@ -96,6 +96,30 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 4. **Mã nguồn minh họa thực chiến** — một chương trình hoàn chỉnh, chạy được, có trong thư mục [`code/`](./code/).
 5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa.
 6. **Tóm tắt & Bài tập rèn luyện** — kèm **Gợi ý** và **Lời giải** ẩn trong thẻ gập (bấm để mở).
+
+---
+
+## 🔤 Quy Ước Ngôn Ngữ Trong Mã Nguồn
+
+**Định danh bằng tiếng Anh, giảng nghĩa bằng comment tiếng Việt.**
+
+```rust
+/// Cổng rủi ro trước lệnh — chặn lệnh xấu **trước khi** nó rời khỏi máy.
+/// Không có đường vòng: mọi lệnh đều phải qua đây.
+pub struct RiskGate {
+    /// Hạn mức vị thế ròng, tính CẢ lệnh đang treo và đang bay.
+    pub max_position: Quantity,
+    /// Công tắc ngắt khẩn cấp. Vẫn cho lệnh HUỶ đi qua — chặn cả
+    /// đường rút chân là cái bẫy, không phải biện pháp an toàn.
+    pub kill_switch_on: bool,
+}
+```
+
+Lý do: bạn học Rust để đọc được mã nguồn thật, mà mọi crate ngoài đời đều đặt tên bằng tiếng Anh. Một cái tên như `SoLenh` chỉ tồn tại trong sách này; `OrderBook` thì bạn sẽ gặp lại ở khắp nơi. Comment tiếng Việt còn giảng được **nhiều hơn** tên biến tiếng Việt từng làm được — nó nói được cả *vì sao*, không chỉ *là gì*.
+
+Toàn bộ văn xuôi, tiêu đề, sơ đồ và bảng biểu vẫn bằng tiếng Việt.
+
+**Thuật ngữ kỹ thuật theo ba tầng**: (1) dịch kèm tiếng Anh ở lần đầu mỗi chương — *quyền sở hữu (ownership)*; (2) giữ nguyên tiếng Anh khi dịch ra sẽ xa lạ hơn — `trait`, `closure`, `borrow checker`; (3) thuật ngữ hiếm thì tra ở bảng. Quy ước đầy đủ và lý do nằm ở đầu **[GLOSSARY.md](./GLOSSARY.md)**. Bảng đối chiếu tên cũ ↔ tên mới: mục 19 của **[GLOSSARY.md](./GLOSSARY.md)**.
 
 ---
 
@@ -135,7 +159,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 2. **Đừng nhảy cóc**, đặc biệt là 12 chương đầu. Rust có triết lý quản lý bộ nhớ rất độc đáo (Ownership); bỏ qua nền tảng sẽ khiến bạn khổ sở về sau.
 3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án.
 4. **Gõ lại mã, đừng chỉ đọc.** Cách nhanh nhất để hiểu Borrow Checker là để nó từ chối bạn vài chục lần.
-5. **Gặp thuật ngữ lạ?** Tra ngay ở **[THUAT_NGU.md](./THUAT_NGU.md)** — bảng đối chiếu Việt–Anh cho toàn bộ giáo trình.
+5. **Gặp thuật ngữ lạ?** Tra ngay ở **[GLOSSARY.md](./GLOSSARY.md)** — bảng đối chiếu Việt–Anh cho toàn bộ giáo trình.
 
 ---
 

@@ -110,12 +110,12 @@ Cụm từ *Kiểu dữ liệu đại số* nghe rất kêu, nhưng ý nghĩa c�
 
 ```rust
 // ❌ Kiểu TÍCH: có 2 tổ hợp VÔ NGHĨA
-struct DonHang { da_thanh_toan: bool, ma_giao_dich: Option<String> }
+struct DonQueue { is_paid: bool, id_trade: Option<String> }
 //   (true, None)      -> đã trả tiền mà không có mã giao dịch?!
 //   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
 
 // ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
-enum TrangThaiThanhToan { ChuaTra, DaTra { ma_giao_dich: String } }
+enum TrangThaiThanhToan { ChuaTra, DaTra { id_trade: String } }
 ```
 
 Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** để loại bỏ cả một lớp lỗi khỏi chương trình.
@@ -144,7 +144,7 @@ let la_cuoi_tuan = match "Thứ 7" {
 };
 
 // 3) ĐIỀU KIỆN BẢO VỆ (match guard) — thêm `if` vào nhánh
-let mo_ta = match so {
+let description = match so {
     Some(n) if n % 2 == 0 => "số chẵn",
     Some(n) if n > 5      => "số lẻ lớn",
     Some(_)               => "số lẻ nhỏ",
@@ -152,7 +152,7 @@ let mo_ta = match so {
 };
 
 // 4) RÀNG BUỘC `@` — vừa kiểm tra vừa GIỮ LẠI giá trị
-let thong_bao = match so {
+let thong_report = match so {
     Some(n @ 1..=9) => format!("Chữ số đơn: {}", n),  // n vẫn dùng được!
     Some(n)         => format!("Số lớn: {}", n),
     None            => "Rỗng".to_string(),
@@ -162,15 +162,15 @@ let thong_bao = match so {
 let tom_tat = match &mang[..] {
     []              => "rỗng".to_string(),
     [x]             => format!("một phần tử: {}", x),
-    [dau, .., cuoi] => format!("từ {} đến {}", dau, cuoi),
+    [first, .., last] => format!("từ {} đến {}", first, last),
 };
 
 // 6) `matches!` — kiểm tra nhanh, trả về bool
 let co_gia_tri = matches!(so, Some(_));
 
 // 7) `let ... else` — bóc tách hoặc THOÁT SỚM, giữ mã phẳng phiu
-fn xu_ly(dau_vao: Option<i32>) -> i32 {
-    let Some(n) = dau_vao else {
+fn handle(input: Option<i32>) -> i32 {
+    let Some(n) = input else {
         return 0;   // bắt buộc phải thoát khỏi phạm vi
     };
     n * 2           // từ đây trở đi, n dùng như biến bình thường
@@ -216,16 +216,16 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử l
 
 // 1. Enum biểu diễn các trạng thái đa dạng của một đơn hàng trực tuyến
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
-enum TrangThaiDonHang {
+enum StateDonQueue {
     ChoThanhToan,
-    DangDongGoi { kho_xuat_hang: String },
+    DangDongGoi { store_export_queue: String },
     DangVanChuyen { ma_van_don: String, ten_tai_xe: String },
-    GiaoThanhCong { nguoi_nhan: String, thoi_gian_nhan: String },
+    GiaoThanhCong { recipient: String, time_time_recv: String },
     DaHuy(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
 }
 
 // 2. Hàm chia kẹo an toàn: Trả về Option<u32> để ngăn chặn lỗi chia cho 0
-fn chia_keo_an_toan(so_keo: u32, so_tre_em: u32) -> Option<u32> {
+fn safe_divide(so_keo: u32, so_tre_em: u32) -> Option<u32> {
     if so_tre_em == 0 {
         // Không thể chia cho 0 em bé: Trả về None báo hiệu không có kết quả
         None
@@ -236,27 +236,27 @@ fn chia_keo_an_toan(so_keo: u32, so_tre_em: u32) -> Option<u32> {
 }
 
 // 3. Hàm xử lý trạng thái đơn hàng bằng cấu trúc so khớp mẫu 'match' toàn diện
-fn cap_nhat_tien_trinh(don_hang: &TrangThaiDonHang) {
+fn update_process(don_hang: &StateDonQueue) {
     println!("------------------------------------------------------------");
     match don_hang {
-        TrangThaiDonHang::ChoThanhToan => {
+        StateDonQueue::ChoThanhToan => {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
-        TrangThaiDonHang::DangDongGoi { kho_xuat_hang } => {
-            println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", kho_xuat_hang);
+        StateDonQueue::DangDongGoi { store_export_queue } => {
+            println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", store_export_queue);
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh DangVanChuyen
-        TrangThaiDonHang::DangVanChuyen { ma_van_don, ten_tai_xe } => {
+        StateDonQueue::DangVanChuyen { ma_van_don, ten_tai_xe } => {
             println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
             println!("  + Mã vận đơn : {}", ma_van_don);
             println!("  + Shipper    : {}", ten_tai_xe);
         }
-        TrangThaiDonHang::GiaoThanhCong { nguoi_nhan, thoi_gian_nhan } => {
+        StateDonQueue::GiaoThanhCong { recipient, time_time_recv } => {
             println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
-            println!("  + Người ký nhận: {}", nguoi_nhan);
-            println!("  + Thời điểm    : {}", thoi_gian_nhan);
+            println!("  + Người ký nhận: {}", recipient);
+            println!("  + Thời điểm    : {}", time_time_recv);
         }
-        TrangThaiDonHang::DaHuy(ly_do) => {
+        StateDonQueue::DaHuy(ly_do) => {
             println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", ly_do);
         }
     }
@@ -268,48 +268,48 @@ fn main() {
     println!("============================================================");
 
     // --- PHẦN 1: SO KHỚP MẪU VỚI ENUM CHỨA DỮ LIỆU ---
-    let don_cho = TrangThaiDonHang::ChoThanhToan;
-    let don_dong_goi = TrangThaiDonHang::DangDongGoi {
-        kho_xuat_hang: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
+    let don_cho = StateDonQueue::ChoThanhToan;
+    let don_dong_goi = StateDonQueue::DangDongGoi {
+        store_export_queue: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
     };
-    let don_van_chuyen = TrangThaiDonHang::DangVanChuyen {
+    let don_van_transfer = StateDonQueue::DangVanChuyen {
         ma_van_don: String::from("SPX-987654321"),
         ten_tai_xe: String::from("Bác Ba Giao Hàng"),
     };
-    let don_giao_thanh_cong = TrangThaiDonHang::GiaoThanhCong {
-        nguoi_nhan: String::from("Trần Thị Bình"),
-        thoi_gian_nhan: String::from("14:30 ngày 05/09/2026"),
+    let order_delivered = StateDonQueue::GiaoThanhCong {
+        recipient: String::from("Trần Thị Bình"),
+        time_time_recv: String::from("14:30 ngày 05/09/2026"),
     };
-    let don_huy = TrangThaiDonHang::DaHuy(String::from("Khách hàng đổi ý muốn chọn màu khác"));
+    let don_cancel = StateDonQueue::DaHuy(String::from("Khách hàng đổi ý muốn chọn màu khác"));
 
-    cap_nhat_tien_trinh(&don_cho);
-    cap_nhat_tien_trinh(&don_dong_goi);
-    cap_nhat_tien_trinh(&don_van_chuyen);
-    cap_nhat_tien_trinh(&don_giao_thanh_cong);
-    cap_nhat_tien_trinh(&don_huy);
+    update_process(&don_cho);
+    update_process(&don_dong_goi);
+    update_process(&don_van_transfer);
+    update_process(&order_delivered);
+    update_process(&don_cancel);
 
     // --- PHẦN 2: LÀM VIỆC VỚI OPTION<T> VÀ TRIỆT TIÊU NULL ---
     println!("\n=== KIỂM THỬ TÍNH TOÁN AN TOÀN VỚI OPTION ===");
-    let ket_qua_hop_le = chia_keo_an_toan(20, 4);
-    let ket_qua_loi = chia_keo_an_toan(20, 0);
+    let result_hop_le = safe_divide(20, 4);
+    let result_error = safe_divide(20, 0);
 
     // Dùng match để mở hộp quà Option
-    match ket_qua_hop_le {
+    match result_hop_le {
         Some(keo) => println!("- Chia 20 kẹo cho 4 bé: Mỗi bé được {} cái kẹo.", keo),
         None => println!("- Lỗi: Số trẻ em không thể bằng 0!"),
     }
 
-    match ket_qua_loi {
+    match result_error {
         Some(keo) => println!("- Mỗi bé được: {} cái kẹo.", keo),
         None => println!("- [Được bảo vệ an toàn] Không thể chia cho 0 bé! Hệ thống không bị sập!"),
     }
 
     // --- PHẦN 3: MATCH GUARDS (ĐIỀU KIỆN BẢO VỆ PHỤ) VÀ KHOẢNG GIÁ TRỊ ---
     println!("\n=== PHÂN LOẠI TUỔI KHÁCH HÀNG VỚI MATCH GUARDS ===");
-    let tuoi = 17;
+    let age = 17;
     let co_the_can_cuoc = true;
 
-    match tuoi {
+    match age {
         0..=12 => println!("Khách hàng thuộc lứa tuổi Thiếu nhi"),
         13..=17 if co_the_can_cuoc => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
         13..=17 => println!("Lứa tuổi vị thành niên (chưa làm thẻ CCCD)"),
@@ -319,11 +319,11 @@ fn main() {
 
     // --- PHẦN 4: CÚ PHÁP RÚT GỌN 'if let' ---
     println!("\n=== DÙNG 'if let' KHI CHỈ QUAN TÂM 1 TRƯỜNG HỢP ===");
-    let tin_nhan_gui_den: Option<&str> = Some("Xin chào, bạn có nhà không?");
+    let info_recv_send_to: Option<&str> = Some("Xin chào, bạn có nhà không?");
 
     // Thay vì viết match dài dòng với cả nhánh None, ta chỉ bắt nhánh Some:
-    if let Some(noi_dung) = tin_nhan_gui_den {
-        println!("Tin nhắn mới nhận được: '{}'", noi_dung);
+    if let Some(content) = info_recv_send_to {
+        println!("Tin nhắn mới nhận được: '{}'", content);
     }
 }
 ```
@@ -338,7 +338,7 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
 |---|---|---|---|
 | **E0004** | `non-exhaustive patterns: 'None' not covered` | Bạn dùng `match` trên một biến `Option` hoặc `Enum` nhưng quên không viết nhánh xử lý cho một số trường hợp. | Bổ sung thêm các nhánh còn thiếu vào khối `match`, hoặc thêm nhánh đại diện `_ => ...` để bắt toàn bộ các trường hợp còn lại. |
 | **E0308** | `mismatched types: expected integer, found 'Option<{integer}>'` | Bạn cố tình lấy một biến `Option<i32>` ra cộng trừ nhân chia trực tiếp với một số nguyên mà quên mở nắp hộp. | Dùng `match`, `if let`, hoặc phương thức `.unwrap_or(0)` để lấy giá trị số nguyên thực sự bên trong hộp ra trước khi tính toán. |
-| **E0425** | `cannot find value 'ChoThanhToan' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `TrangThaiDonHang::ChoThanhToan`. |
+| **E0425** | `cannot find value 'ChoThanhToan' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `StateDonQueue::ChoThanhToan`. |
 | **E0005** | `refutable pattern in local binding` | Bạn dùng `let Some(x) = bien_option;` để gán biến. Rust từ chối vì nếu `bien_option` là `None` thì lệnh gán sẽ thất bại. | Chuyển sang sử dụng cú pháp `if let Some(x) = ...` hoặc `let Some(x) = ... else { return; };`. |
 
 ---

@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chúc mừng bạn đã tiến bước đến chương đỉnh cao của Chủ đề 4: Siêu lập trình (Meta Programming)! Ở Chương 23, bạn đã làm quen với các khái niệm nền tảng của Macro thủ tục: Cây cú pháp trừu tượng (AST), kính hiển vi bóc tách `syn`, và cây bút ma thuật sinh mã `quote`.
+Chúc mừng bạn đã tiến bước đến chương đỉnh cao của Chủ đề 4: Siêu lập trình (Meta Programming)! Ở Chương 23, bạn đã làm quen với các khái niệm nền tảng của Macro thủ tục: Cây cú pháp trừu tượng (Abstract Syntax Tree — AST), kính hiển vi bóc tách `syn`, và cây bút ma thuật sinh mã `quote`.
 
 Trong thế giới Rust thực chiến, Macro thủ tục không chỉ gói gọn trong một hình thức duy nhất mà được chia thành **Ba nhánh sức mạnh tối thượng (The Trinity of Procedural Macros)**:
 1. **Custom Derive Macro (`#[derive(TenTrait)]`)**: Tự động sinh mã triển khai một Trait cho struct hoặc enum mà không làm biến đổi mã gốc.
@@ -76,8 +76,8 @@ Hãy cùng hình dung ba loại Macro thủ tục qua ba hình ảnh quen thuộ
 Khi viết một Derive macro, bạn thường muốn cho phép người dùng tùy biến hành vi của từng trường dữ liệu:
 ```rust
 #[derive(XuatDuLieu)]
-struct NguoiDung {
-    pub ho_ten: String,
+struct User {
+    pub full_name: String,
     #[bo_qua] // Thuộc tính bổ trợ: không in trường mật khẩu này!
     pub mat_khau: String,
 }
@@ -94,8 +94,8 @@ pub fn xuat_du_lieu_derive(input: TokenStream) -> TokenStream {
 ### 3. Giải phẫu Attribute-like Macro: Cơ chế "Đóng gói bọc ngoài" (Decorator)
 
 Attribute macro nhận vào hai dòng thẻ bài:
-1. `attr`: Phần tham số nằm bên trong ngoặc vuông của thuộc tính (ví dụ: `#[kiem_tra(quyen = "admin")]` thì `attr` chứa `quyen = "admin"`).
-2. `item`: Toàn bộ đoạn mã của đối tượng bên dưới thuộc tính (ví dụ toàn bộ phần thân của hàm `fn xu_ly() { ... }`).
+1. `attr`: Phần tham số nằm bên trong ngoặc vuông của thuộc tính (ví dụ: `#[check(quyen = "admin")]` thì `attr` chứa `quyen = "admin"`).
+2. `item`: Toàn bộ đoạn mã của đối tượng bên dưới thuộc tính (ví dụ toàn bộ phần thân của hàm `fn handle() { ... }`).
 
 ```rust
 #[proc_macro_attribute]
@@ -103,10 +103,10 @@ pub fn ghi_nhat_ky(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ham_goc = parse_macro_input!(item as ItemFn);
     let ten_ham = &ham_goc.sig.ident;
     let than_ham = &ham_goc.block;
-    let chu_ky = &ham_goc.sig;
+    let period = &ham_goc.sig;
 
     let ma_moi = quote! {
-        #chu_ky {
+        #period {
             println!(">>> [NHẬT KÝ] Bắt đầu gọi hàm: {}", stringify!(#ten_ham));
             let ket_qua = (|| #than_ham )();
             println!(">>> [NHẬT KÝ] Kết thúc gọi hàm: {}", stringify!(#ten_ham));
@@ -135,7 +135,7 @@ pub fn kiem_tra_derive(input: TokenStream) -> TokenStream {
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
 Dưới đây là một chương trình hoàn chỉnh, minh họa mô hình hoạt động và kết quả của cả ba loại Macro thủ tục trong một ứng dụng thực tế: **Hệ thống Quản lý Tài khoản & Kiểm toán Bảo mật**:
-1. **Mô hình Custom Derive**: Tự động triển khai Trait `KiemToanBaoMat` có kiểm tra thuộc tính bổ trợ ẩn danh.
+1. **Mô hình Custom Derive**: Tự động triển khai Trait `AuditLostReport` có kiểm tra thuộc tính bổ trợ ẩn danh.
 2. **Mô hình Attribute Macro**: Bọc hàm thực thi để tự động đo đạc hiệu năng và kiểm soát quyền truy cập.
 3. **Mô hình Function-like Macro**: Phân tích cú pháp chuỗi cấu hình DSL dạng thẻ bài.
 
@@ -149,30 +149,30 @@ use std::collections::HashMap;
 // 1. GIAO ƯỚC VÀ CÁC THỰC THỂ ĐƯỢC TỰ ĐỘNG SINH MÃ BỞI DERIVE MACRO
 // ============================================================================
 
-/// Trait mà Derive Macro #[derive(KiemToanBaoMat)] sẽ tự động sinh mã
-pub trait KiemToanBaoMat {
-    fn xuat_thong_tin_an_toan(&self) -> Vec<(&'static str, String)>;
-    fn ma_phan_loai() -> &'static str;
+/// Trait mà Derive Macro #[derive(AuditLostReport)] sẽ tự động sinh mã
+pub trait AuditLostReport {
+    fn export_thong_info_safe(&self) -> Vec<(&'static str, String)>;
+    fn id_part_kind() -> &'static str;
 }
 
-pub struct TaiKhoanNganHang {
-    pub so_tai_khoan: String,
-    pub chu_tai_khoan: String,
+pub struct AccountBank {
+    pub num_account: String,
+    pub account_owner: String,
     pub ma_pin_bi_mat: String, // Trường nhạy cảm: không được xuất ra nhật ký!
 }
 
-// Đoạn mã mà Custom Derive Macro tự động sinh ra cho TaiKhoanNganHang:
-impl KiemToanBaoMat for TaiKhoanNganHang {
-    fn xuat_thong_tin_an_toan(&self) -> Vec<(&'static str, String)> {
+// Đoạn mã mà Custom Derive Macro tự động sinh ra cho AccountBank:
+impl AuditLostReport for AccountBank {
+    fn export_thong_info_safe(&self) -> Vec<(&'static str, String)> {
         // Macro thông minh tự động lọc bỏ trường nhạy cảm có gắn nhãn helper attribute
         vec![
-            ("so_tai_khoan", self.so_tai_khoan.clone()),
-            ("chu_tai_khoan", self.chu_tai_khoan.clone()),
+            ("so_tai_khoan", self.num_account.clone()),
+            ("chu_tai_khoan", self.account_owner.clone()),
             ("ma_pin_bi_mat", String::from("***ĐÃ_ẨN_BẢO_MẬT***")),
         ]
     }
 
-    fn ma_phan_loai() -> &'static str {
+    fn id_part_kind() -> &'static str {
         "TAI_KHOAN_NGAN_HANG_V1"
     }
 }
@@ -182,25 +182,25 @@ impl KiemToanBaoMat for TaiKhoanNganHang {
 // ============================================================================
 
 /// Hàm mô phỏng mã sau khi được Attribute Macro bọc lớp vỏ bảo vệ
-pub fn chuyen_khoan_an_toan(
-    nguoi_gui: &str,
-    nguoi_nhan: &str,
+pub fn safe_transfer(
+    sender: &str,
+    recipient: &str,
     so_tien: f64,
-    vai_tro_nguoi_thuc_hien: &str,
+    executor_role: &str,
 ) -> Result<String, &'static str> {
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO ĐẦU HÀM]:
-    println!("[BẢO VỆ ATTRIBUTE] Đang xác thực quyền hạn của vai trò: '{}'", vai_tro_nguoi_thuc_hien);
-    if vai_tro_nguoi_thuc_hien != "QuanTriVien" && vai_tro_nguoi_thuc_hien != "ChuTaiKhoan" {
+    println!("[BẢO VỆ ATTRIBUTE] Đang xác thực quyền hạn của vai trò: '{}'", executor_role);
+    if executor_role != "QuanTriVien" && executor_role != "ChuTaiKhoan" {
         return Err("Từ chối truy cập: Bạn không có quyền thực hiện giao dịch này!");
     }
 
     // [THÂN HÀM NGUYÊN BẢN CỦA LẬP TRÌNH VIÊN]:
-    println!("  -> Đang thực hiện chuyển {:.2} đồng từ {} sang {}", so_tien, nguoi_gui, nguoi_nhan);
-    let ma_giao_dich = "GD-99882233";
+    println!("  -> Đang thực hiện chuyển {:.2} đồng từ {} sang {}", so_tien, sender, recipient);
+    let id_trade = "GD-99882233";
 
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO CUỐI HÀM]:
-    println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", ma_giao_dich);
-    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", ma_giao_dich))
+    println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", id_trade);
+    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", id_trade))
 }
 
 // ============================================================================
@@ -209,11 +209,11 @@ pub fn chuyen_khoan_an_toan(
 
 /// Macro dạng hàm phân tích chuỗi cấu hình dạng "KEY=VALUE;KEY=VALUE" lúc biên dịch
 macro_rules! phan_tich_cau_hinh {
-    ( $( $khoa:ident = $gia_tri:expr );* $(;)? ) => {
+    ( $( $key:ident = $value:expr );* $(;)? ) => {
         {
             let mut ban_do = HashMap::new();
             $(
-                ban_do.insert(stringify!($khoa), $gia_tri);
+                ban_do.insert(stringify!($key), $value);
             )*
             ban_do
         }
@@ -233,16 +233,16 @@ fn main() {
     // 1. Kiểm chứng Custom Derive Macro với Helper Attribute
     // ------------------------------------------------------------------------
     println!("\n1. Ứng dụng Custom Derive Macro [KiemToanBaoMat]:");
-    let tai_khoan = TaiKhoanNganHang {
-        so_tai_khoan: String::from("1900-8888-9999"),
-        chu_tai_khoan: String::from("Nguyễn Văn An"),
+    let account = AccountBank {
+        num_account: String::from("1900-8888-9999"),
+        account_owner: String::from("Nguyễn Văn An"),
         ma_pin_bi_mat: String::from("SecretPin1234"),
     };
 
-    println!("Mã phân loại thực thể: {}", TaiKhoanNganHang::ma_phan_loai());
+    println!("Mã phân loại thực thể: {}", AccountBank::id_part_kind());
     println!("Danh sách trường được xuất ra an toàn:");
-    for (ten_truong, gia_tri) in tai_khoan.xuat_thong_tin_an_toan() {
-        println!("  - {}: {}", ten_truong, gia_tri);
+    for (field_name, value) in account.export_thong_info_safe() {
+        println!("  - {}: {}", field_name, value);
     }
 
     // ------------------------------------------------------------------------
@@ -251,19 +251,19 @@ fn main() {
     println!("\n2. Ứng dụng Attribute Macro kiểm soát quyền truy cập:");
     
     // Thử nghiệm gọi với quyền hợp lệ
-    let ket_qua_hop_le = chuyen_khoan_an_toan(
+    let result_hop_le = safe_transfer(
         "NguyenVanA", 
         "TranThiB", 
         5000.0, 
         "ChuTaiKhoan"
     );
-    match ket_qua_hop_le {
+    match result_hop_le {
         Ok(msg) => println!("  [OK] {}", msg),
         Err(e) => println!("  [LỖI] {}", e),
     }
 
     // Thử nghiệm gọi với quyền trái phép (Bị chặn ngay ở cổng)
-    let ket_qua_vi_pham = chuyen_khoan_an_toan(
+    let ket_qua_vi_pham = safe_transfer(
         "NguyenVanA", 
         "KeXau", 
         999999.0, 
@@ -313,18 +313,18 @@ Dưới đây là các lỗi thường gặp nhất khi triển khai và sử d�
 // Đoạn mã lỗi minh họa (trong Crate thư viện proc-macro):
 // Khai báo thiếu attributes(bo_qua):
 // #[proc_macro_derive(InThongTin)] 
-// pub fn in_thong_tin(input: TokenStream) -> TokenStream { ... }
+// pub fn print_info(input: TokenStream) -> TokenStream { ... }
 
 // Khi người dùng áp dụng:
 // #[derive(InThongTin)]
-// struct NguoiDung {
+// struct User {
 //     #[bo_qua] // LỖI: cannot find attribute `bo_qua` in this scope!
 //     mat_khau: String,
 // }
 
 // Cách khắc phục chuẩn xác:
 // #[proc_macro_derive(InThongTin, attributes(bo_qua))]
-// pub fn in_thong_tin(input: TokenStream) -> TokenStream { ... }
+// pub fn print_info(input: TokenStream) -> TokenStream { ... }
 ```
 
 ---
@@ -348,7 +348,7 @@ Dưới đây là các lỗi thường gặp nhất khi triển khai và sử d�
    - Viết một tiện ích `tao_danh_sach!(1, 2, 3)` nhận số lượng tham số tùy ý.
 
 2. **Bài tập 2 (Thiết kế Helper Attribute)**:  
-   Nếu bạn viết một Derive Macro mang tên `#[derive(XacThuc)]`, bạn sẽ thiết kế những thuộc tính phụ (Helper Attributes) nào trên các trường dữ liệu (ví dụ: kiểm tra độ dài chuỗi, kiểm tra số dương...)? Hãy mô tả cú pháp bạn mong muốn người dùng sử dụng.
+   Nếu bạn viết một Derive Macro mang tên `#[derive(Auth)]`, bạn sẽ thiết kế những thuộc tính phụ (Helper Attributes) nào trên các trường dữ liệu (ví dụ: kiểm tra độ dài chuỗi, kiểm tra số dương...)? Hãy mô tả cú pháp bạn mong muốn người dùng sử dụng.
 
 3. **Bài tập 3 (Tổng kết Tư duy Siêu lập trình)**:  
    Siêu lập trình là một công cụ cực kỳ mạnh mẽ, nhưng tại sao các chuyên gia Rust luôn khuyên: *"Nếu bài toán có thể giải quyết được bằng Hàm (fn) hoặc Kiểu tổng quát (Generics), đừng bao giờ vội vàng viết Macro"*? Hãy nêu 3 nhược điểm lớn của việc lạm dụng macro trong dự án.

@@ -137,22 +137,22 @@ fn main() {
     //                    [Gốc: Khóa rẽ = 50]
     //                   /                   \
     //   [Lá 1: (10, "A"), (30, "B")]     [Lá 2: (50, "C"), (70, "D"), (90, "E")]
-    let mut la_trai = BPlusNode::new_leaf();
-    la_trai.insert_non_full_leaf(10, "Alice (Hà Nội)");
-    la_trai.insert_non_full_leaf(30, "Bình (Đà Nẵng)");
+    let mut is_left = BPlusNode::new_leaf();
+    is_left.insert_non_full_leaf(10, "Alice (Hà Nội)");
+    is_left.insert_non_full_leaf(30, "Bình (Đà Nẵng)");
 
-    let mut la_phai = BPlusNode::new_leaf();
-    la_phai.insert_non_full_leaf(50, "Cường (TP.HCM)");
-    la_phai.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
-    la_phai.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
+    let mut is_must = BPlusNode::new_leaf();
+    is_must.insert_non_full_leaf(50, "Cường (TP.HCM)");
+    is_must.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
+    is_must.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
 
-    let nut_goc = BPlusNode::Internal {
+    let root_node = BPlusNode::Internal {
         keys: vec![50],
-        children: vec![Box::new(la_trai), Box::new(la_phai)],
+        children: vec![Box::new(is_left), Box::new(is_must)],
     };
 
     let b_tree = BPlusTree {
-        root: Box::new(nut_goc),
+        root: Box::new(root_node),
         total_records: 5,
     };
 
@@ -171,16 +171,16 @@ fn main() {
 
     println!("\n[2] Kiểm tra tính năng quét dải dữ liệu (Range Scan):");
     println!("    - Tìm kiếm các bản ghi có khóa từ 25 đến 75:");
-    let danh_sach_dai = b_tree.get_range(25, 75);
-    for (k, v) in &danh_sach_dai {
+    let list_long = b_tree.get_range(25, 75);
+    for (k, v) in &list_long {
         println!("      -> Khóa {}: {}", k, v);
     }
 
     // Kết quả kỳ vọng: Khóa 30, 50, 70
-    assert_eq!(danh_sach_dai.len(), 3);
-    assert_eq!(danh_sach_dai[0].0, 30);
-    assert_eq!(danh_sach_dai[1].0, 50);
-    assert_eq!(danh_sach_dai[2].0, 70);
+    assert_eq!(list_long.len(), 3);
+    assert_eq!(list_long[0].0, 30);
+    assert_eq!(list_long[1].0, 50);
+    assert_eq!(list_long[2].0, 70);
     println!("    => Quét dải dữ liệu hoàn tất thành công vượt trội!");
 
     println!("============================================================");

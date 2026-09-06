@@ -76,7 +76,7 @@ Trong chương này, chúng ta sẽ chinh phục:
            /        \
           /__________\
 Tính Sẵn sàng       Tính Chịu Phân Rã
-(Availability)      (Partition Tolerance)
+(Partition Tolerance)
 ```
 
 - **Tính Nhất quán (Consistency - C)**: Mọi thao tác đọc đều nhận được dữ liệu của lần ghi mới nhất hoặc trả về lỗi. Tuyệt đối không bao giờ trả về dữ liệu cũ đã lỗi thời.
@@ -102,7 +102,7 @@ Client ──► [LEADER (Node 1)] ──(AppendEntries)──► [FOLLOWER (Nod
                  ▼
         [LEADER COMMIT!] ──► Cập nhật State Machine ──► Trả kết quả về Client
 ```
-1. Client gửi lệnh: `set("tai_khoan", "1000k")` tới Leader.
+1. Client gửi lệnh: `set("account", "1000k")` tới Leader.
 2. Leader ghi lệnh vào cuối cuốn Sổ nhật ký (Log) của mình ở trạng thái Chưa cam kết (Uncommitted).
 3. Leader gửi bản sao lệnh đó tới tất cả các Follower thông qua RPC `AppendEntries`.
 4. Khi đa số các Follower (Quorum) đã ghi nhận bản ghi vào đĩa của họ và phản hồi thành công, Leader chính thức **Cam kết bản ghi (Commit)** và nạp vào máy trạng thái (State Machine).

@@ -32,17 +32,17 @@ fn main() {
              kich_thuoc_char, kich_thuoc_char * 8);
 
     // 5. Khám phá kiểu logic Đúng/Sai (bool)
-    let kich_thuoc_bool = std::mem::size_of::<bool>();
+    let bool_size = std::mem::size_of::<bool>();
     println!("- Kiểu bool (true/false) chiếm           : {} byte (dù chỉ cần 1 bit)", 
-             kich_thuoc_bool);
+             bool_size);
 
     println!("------------------------------------------------------------");
 
     // 6. Minh họa trực tiếp cách máy tính nhìn một con số dưới dạng công tắc bật/tắt (nhị phân)
-    let con_so_yeu_thich: u8 = 42;
-    println!("Con số quen thuộc trong đời thực: {}", con_so_yeu_thich);
+    let favorite_number: u8 = 42;
+    println!("Con số quen thuộc trong đời thực: {}", favorite_number);
     // Cú pháp {:08b} yêu cầu Rust in số này dưới dạng nhị phân 8 bit (0 và 1)
-    println!("Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}", con_so_yeu_thich);
+    println!("Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}", favorite_number);
 
     let linh_vat: char = '🦀'; // Cua Ferris - Linh vật chính thức của cộng đồng Rust
     println!("Linh vật đáng yêu của Rust: {}", linh_vat);

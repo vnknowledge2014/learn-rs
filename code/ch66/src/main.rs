@@ -3,7 +3,7 @@
 //! cho ngoại vi, typestate cho chân GPIO, số dấu phẩy tĩnh, và bộ đệm vòng không cấp phát.
 //!
 //! Ghi chú: tệp này chạy trên máy tính để bàn để KIỂM THỬ ĐƯỢC. Trên vi điều khiển
-//! thật, bạn thêm `#![no_std]` + `#![no_main]` và thay `ThanhGhiGia` bằng địa chỉ thật.
+//! thật, bạn thêm `#![no_std]` + `#![no_main]` và thay `IntoRecordPrice` bằng địa chỉ thật.
 
 use core::marker::PhantomData;
 use std::cell::Cell;
@@ -16,33 +16,33 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Trên vi điều khiển, ghi vào địa chỉ 0x4002_0014 sẽ BẬT một chân đèn.
 /// Không có `volatile`, trình tối ưu hóa có quyền xóa lệnh ghi đó — vì theo
 /// nó, ghi vào bộ nhớ rồi không đọc lại là việc vô nghĩa.
-pub struct ThanhGhiGia {
-    o_nho: Cell<u32>,
-    pub so_lan_ghi: Cell<u32>,
+pub struct IntoRecordPrice {
+    small_cell: Cell<u32>,
+    pub count_record: Cell<u32>,
     pub so_lan_doc: Cell<u32>,
 }
 
-impl ThanhGhiGia {
-    pub fn moi(gia_tri: u32) -> Self {
-        ThanhGhiGia { o_nho: Cell::new(gia_tri), so_lan_ghi: Cell::new(0), so_lan_doc: Cell::new(0) }
+impl IntoRecordPrice {
+    pub fn new(value: u32) -> Self {
+        IntoRecordPrice { small_cell: Cell::new(value), count_record: Cell::new(0), so_lan_doc: Cell::new(0) }
     }
     /// Tương ứng `core::ptr::write_volatile` — MỖI lệnh ghi đều phải xảy ra thật.
-    pub fn ghi(&self, v: u32) { self.o_nho.set(v); self.so_lan_ghi.set(self.so_lan_ghi.get() + 1); }
+    pub fn record(&self, v: u32) { self.small_cell.set(v); self.count_record.set(self.count_record.get() + 1); }
     /// Tương ứng `core::ptr::read_volatile` — không được lưu vào thanh ghi CPU dùng lại.
-    pub fn doc(&self) -> u32 { self.so_lan_doc.set(self.so_lan_doc.get() + 1); self.o_nho.get() }
+    pub fn doc(&self) -> u32 { self.so_lan_doc.set(self.so_lan_doc.get() + 1); self.small_cell.get() }
 
     /// Đọc-Sửa-Ghi: mẫu thao tác bit chuẩn của lập trình nhúng.
-    pub fn dat_bit(&self, bit: u8) { self.ghi(self.doc() | (1 << bit)); }
-    pub fn xoa_bit(&self, bit: u8) { self.ghi(self.doc() & !(1 << bit)); }
-    pub fn dao_bit(&self, bit: u8) { self.ghi(self.doc() ^ (1 << bit)); }
-    pub fn thu_bit(&self, bit: u8) -> bool { self.doc() & (1 << bit) != 0 }
+    pub fn set_bit(&self, bit: u8) { self.record(self.doc() | (1 << bit)); }
+    pub fn clear_bit(&self, bit: u8) { self.record(self.doc() & !(1 << bit)); }
+    pub fn dao_bit(&self, bit: u8) { self.record(self.doc() ^ (1 << bit)); }
+    pub fn test_bit(&self, bit: u8) -> bool { self.doc() & (1 << bit) != 0 }
 
     /// Ghi một trường nhiều bit mà KHÔNG đụng các bit khác.
-    pub fn ghi_truong(&self, lech: u8, rong: u8, gia_tri: u32) {
+    pub fn record_field(&self, lech: u8, rong: u8, value: u32) {
         let mat_na = ((1u32 << rong) - 1) << lech;
-        self.ghi((self.doc() & !mat_na) | ((gia_tri << lech) & mat_na));
+        self.record((self.doc() & !mat_na) | ((value << lech) & mat_na));
     }
-    pub fn doc_truong(&self, lech: u8, rong: u8) -> u32 {
+    pub fn read_field(&self, lech: u8, rong: u8) -> u32 {
         (self.doc() >> lech) & ((1u32 << rong) - 1)
     }
 }
@@ -53,50 +53,50 @@ impl ThanhGhiGia {
 // Đây là Chương 20 (Typestate) áp dụng vào phần cứng: trạng thái của chân
 // nằm trong KIỂU, nên trình biên dịch chặn "đọc từ chân đang ở chế độ ra".
 
-pub struct ChuaCauHinh;
-pub struct DauVao;
-pub struct DauRa;
-pub struct TuongTu;   // analog — cho ADC
+pub struct Unconfigured;
+pub struct Input;
+pub struct Output;
+pub struct Wall;   // analog — cho ADC
 
-pub struct Chan<CheDo> {
-    so_hieu: u8,
+pub struct Block<CheDo> {
+    serial: u8,
     _che_do: PhantomData<CheDo>,
 }
 
-impl Chan<ChuaCauHinh> {
+impl Block<Unconfigured> {
     /// `unsafe` vì tạo hai `Chan` cùng số hiệu sẽ phá vỡ độc quyền phần cứng.
     /// Trong thực tế bạn chỉ gọi nó qua Singleton ở mục 3.
-    pub unsafe fn moi(so_hieu: u8) -> Self { Chan { so_hieu, _che_do: PhantomData } }
+    pub unsafe fn new(serial: u8) -> Self { Block { serial, _che_do: PhantomData } }
 }
 
-impl<CheDo> Chan<CheDo> {
-    pub fn so_hieu(&self) -> u8 { self.so_hieu }
+impl<CheDo> Block<CheDo> {
+    pub fn serial(&self) -> u8 { self.serial }
     /// Chuyển chế độ TIÊU THỤ chân cũ (`self`) và trả về chân kiểu mới.
     /// Nhờ vậy không tồn tại đồng thời hai cách nhìn về cùng một chân.
-    pub fn thanh_dau_ra(self, tg: &ThanhGhiGia) -> Chan<DauRa> {
-        tg.ghi_truong(self.so_hieu * 2, 2, 0b01); // MODER = 01 (output)
-        Chan { so_hieu: self.so_hieu, _che_do: PhantomData }
+    pub fn into_output(self, tg: &IntoRecordPrice) -> Block<Output> {
+        tg.record_field(self.serial * 2, 2, 0b01); // MODER = 01 (output)
+        Block { serial: self.serial, _che_do: PhantomData }
     }
-    pub fn thanh_dau_vao(self, tg: &ThanhGhiGia) -> Chan<DauVao> {
-        tg.ghi_truong(self.so_hieu * 2, 2, 0b00); // MODER = 00 (input)
-        Chan { so_hieu: self.so_hieu, _che_do: PhantomData }
+    pub fn into_input(self, tg: &IntoRecordPrice) -> Block<Input> {
+        tg.record_field(self.serial * 2, 2, 0b00); // MODER = 00 (input)
+        Block { serial: self.serial, _che_do: PhantomData }
     }
-    pub fn thanh_tuong_tu(self, tg: &ThanhGhiGia) -> Chan<TuongTu> {
-        tg.ghi_truong(self.so_hieu * 2, 2, 0b11); // MODER = 11 (analog)
-        Chan { so_hieu: self.so_hieu, _che_do: PhantomData }
+    pub fn into_wall(self, tg: &IntoRecordPrice) -> Block<Wall> {
+        tg.record_field(self.serial * 2, 2, 0b11); // MODER = 11 (analog)
+        Block { serial: self.serial, _che_do: PhantomData }
     }
 }
 
 // CHỈ chân đầu ra mới có `bat`/`tat` — gọi trên chân đầu vào là lỗi biên dịch.
-impl Chan<DauRa> {
-    pub fn bat(&mut self, du_lieu: &ThanhGhiGia) { du_lieu.dat_bit(self.so_hieu); }
-    pub fn tat(&mut self, du_lieu: &ThanhGhiGia) { du_lieu.xoa_bit(self.so_hieu); }
-    pub fn dao(&mut self, du_lieu: &ThanhGhiGia) { du_lieu.dao_bit(self.so_hieu); }
+impl Block<Output> {
+    pub fn bat(&mut self, data: &IntoRecordPrice) { data.set_bit(self.serial); }
+    pub fn tat(&mut self, data: &IntoRecordPrice) { data.clear_bit(self.serial); }
+    pub fn dao(&mut self, data: &IntoRecordPrice) { data.dao_bit(self.serial); }
 }
 
 // CHỈ chân đầu vào mới có `doc`.
-impl Chan<DauVao> {
-    pub fn doc(&self, du_lieu: &ThanhGhiGia) -> bool { du_lieu.thu_bit(self.so_hieu) }
+impl Block<Input> {
+    pub fn doc(&self, data: &IntoRecordPrice) -> bool { data.test_bit(self.serial) }
 }
 
 // ============================================================================
@@ -104,9 +104,9 @@ impl Chan<DauVao> {
 // ============================================================================
 
 /// Gói TẤT CẢ ngoại vi của con chip. Ai cầm được nó là chủ duy nhất của phần cứng.
-pub struct BoNgoaiVi {
-    pub cong_a: Chan<ChuaCauHinh>,
-    pub cong_b: Chan<ChuaCauHinh>,
+pub struct UnitOutPos {
+    pub gate_a: Block<Unconfigured>,
+    pub gate_b: Block<Unconfigured>,
 }
 
 /// Cờ nguyên tử thay cho `static mut`: an toàn cả khi có ngắt xen giữa.
@@ -115,18 +115,18 @@ pub struct BoNgoaiVi {
 /// có thể khiến ngoại vi bị giao HAI lần.
 static DA_LAY: AtomicBool = AtomicBool::new(false);
 
-impl BoNgoaiVi {
+impl UnitOutPos {
     /// Trả `Some` đúng MỘT lần trong suốt vòng đời chương trình.
     /// Lần thứ hai trả `None` — không thể có hai chủ sở hữu cùng điều khiển chip.
-    pub fn lay() -> Option<BoNgoaiVi> {
+    pub fn lay() -> Option<UnitOutPos> {
         if DA_LAY.swap(true, Ordering::SeqCst) {
             return None; // đã có người lấy trước
         }
         // An toàn: cờ trên bảo đảm đoạn này chạy đúng một lần.
-        Some(unsafe { BoNgoaiVi { cong_a: Chan::moi(5), cong_b: Chan::moi(13) } })
+        Some(unsafe { UnitOutPos { gate_a: Block::new(5), gate_b: Block::new(13) } })
     }
     #[doc(hidden)]
-    pub fn dat_lai_cho_kiem_thu() { DA_LAY.store(false, Ordering::SeqCst); }
+    pub fn reset_for_test() { DA_LAY.store(false, Ordering::SeqCst); }
 }
 
 // ============================================================================
@@ -142,10 +142,10 @@ impl Q16 {
     pub const MOT: Q16 = Q16(1 << 16);
     pub fn tu_nguyen(n: i16) -> Q16 { Q16((n as i32) << 16) }
     /// Chỉ dùng khi biên dịch trên máy có dấu phẩy động (lúc thiết kế hằng số).
-    pub fn tu_thuc(x: f64) -> Q16 { Q16((x * 65536.0).round() as i32) }
-    pub fn thanh_thuc(self) -> f64 { self.0 as f64 / 65536.0 }
-    pub fn cong(self, k: Q16) -> Q16 { Q16(self.0.wrapping_add(k.0)) }
-    pub fn tru(self, k: Q16) -> Q16 { Q16(self.0.wrapping_sub(k.0)) }
+    pub fn from_real(x: f64) -> Q16 { Q16((x * 65536.0).round() as i32) }
+    pub fn into_real(self) -> f64 { self.0 as f64 / 65536.0 }
+    pub fn gate(self, k: Q16) -> Q16 { Q16(self.0.wrapping_add(k.0)) }
+    pub fn subtract(self, k: Q16) -> Q16 { Q16(self.0.wrapping_sub(k.0)) }
     /// Nhân phải qua i64 rồi dịch phải 16 — nếu không sẽ tràn ngay.
     pub fn nhan(self, k: Q16) -> Q16 { Q16(((self.0 as i64 * k.0 as i64) >> 16) as i32) }
     pub fn chia(self, k: Q16) -> Q16 { Q16((((self.0 as i64) << 16) / k.0 as i64) as i32) }
@@ -154,8 +154,8 @@ impl Q16 {
 /// Chuyển giá trị ADC 12-bit (0..4095) sang nhiệt độ °C, toàn số nguyên.
 /// Cảm biến giả định: 0 → -40 °C, 4095 → 125 °C (tuyến tính).
 pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
-    let ti_le = Q16::tu_thuc(165.0 / 4095.0);
-    Q16::tu_nguyen(adc as i16).nhan(ti_le).tru(Q16::tu_nguyen(40))
+    let ti_le = Q16::from_real(165.0 / 4095.0);
+    Q16::tu_nguyen(adc as i16).nhan(ti_le).subtract(Q16::tu_nguyen(40))
 }
 
 // ============================================================================
@@ -165,40 +165,42 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 /// Không `Vec`, không `Box`, không heap. Bộ nhớ nằm gọn trong struct,
 /// kích thước biết trước lúc biên dịch. Đây là kiểu dữ liệu chủ lực của
 /// ngắt UART: ISR đẩy byte vào, vòng lặp chính lấy ra.
-pub struct DemVong<const N: usize> {
+pub struct CountRound<const N: usize> {
     o: [u8; N],
-    dau: usize,
-    duoi: usize,
-    so_luong: usize,
+    /// Vị trí ĐỌC kế tiếp.
+    head: usize,
+    /// Vị trí GHI kế tiếp.
+    tail: usize,
+    quantity: usize,
 }
 
-impl<const N: usize> DemVong<N> {
-    pub const fn moi() -> Self { DemVong { o: [0; N], dau: 0, duoi: 0, so_luong: 0 } }
-    pub fn suc_chua(&self) -> usize { N }
-    pub fn so_luong(&self) -> usize { self.so_luong }
-    pub fn rong(&self) -> bool { self.so_luong == 0 }
-    pub fn day(&self) -> bool { self.so_luong == N }
+impl<const N: usize> CountRound<N> {
+    pub const fn new() -> Self { CountRound { o: [0; N], head: 0, tail: 0, quantity: 0 } }
+    pub fn capacity(&self) -> usize { N }
+    pub fn quantity(&self) -> usize { self.quantity }
+    pub fn rong(&self) -> bool { self.quantity == 0 }
+    pub fn day(&self) -> bool { self.quantity == N }
 
     /// Trả `Err` thay vì cấp phát thêm — hệ nhúng KHÔNG được phép "cứ lớn dần".
-    pub fn day_vao(&mut self, b: u8) -> Result<(), u8> {
+    pub fn push(&mut self, b: u8) -> Result<(), u8> {
         if self.day() { return Err(b); }
-        self.o[self.duoi] = b;
-        self.duoi = (self.duoi + 1) % N;
-        self.so_luong += 1;
+        self.o[self.tail] = b;
+        self.tail = (self.tail + 1) % N;
+        self.quantity += 1;
         Ok(())
     }
-    pub fn lay_ra(&mut self) -> Option<u8> {
+    pub fn take(&mut self) -> Option<u8> {
         if self.rong() { return None; }
-        let b = self.o[self.dau];
-        self.dau = (self.dau + 1) % N;
-        self.so_luong -= 1;
+        let b = self.o[self.head];
+        self.head = (self.head + 1) % N;
+        self.quantity -= 1;
         Some(b)
     }
     /// Ghi đè phần tử cũ nhất khi đầy — dùng cho nhật ký sự cố (black box).
-    pub fn day_ghi_de(&mut self, b: u8) -> Option<u8> {
-        let bi_mat = if self.day() { self.lay_ra() } else { None };
-        let _ = self.day_vao(b);
-        bi_mat
+    pub fn overwrite_buffer(&mut self, b: u8) -> Option<u8> {
+        let is_mat = if self.day() { self.take() } else { None };
+        let _ = self.push(b);
+        is_mat
     }
 }
 
@@ -211,28 +213,28 @@ impl<const N: usize> DemVong<N> {
 /// `NGUONG` mẫu GIỐNG NHAU liên tiếp.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChongRung {
-    on_dinh: bool,
-    dem: u8,
-    nguong: u8,
+    is_stable: bool,
+    count: u8,
+    threshold: u8,
 }
 
 impl ChongRung {
-    pub fn moi(nguong: u8) -> Self { ChongRung { on_dinh: false, dem: 0, nguong } }
+    pub fn new(threshold: u8) -> Self { ChongRung { is_stable: false, count: 0, threshold } }
     /// Trả `Some(trạng thái mới)` chỉ tại đúng khoảnh khắc chuyển.
-    pub fn cap_nhat(&mut self, mau_tho: bool) -> Option<bool> {
-        if mau_tho == self.on_dinh {
-            self.dem = 0;
+    pub fn update(&mut self, mau_tho: bool) -> Option<bool> {
+        if mau_tho == self.is_stable {
+            self.count = 0;
             return None;
         }
-        self.dem += 1;
-        if self.dem >= self.nguong {
-            self.on_dinh = mau_tho;
-            self.dem = 0;
-            return Some(self.on_dinh);
+        self.count += 1;
+        if self.count >= self.threshold {
+            self.is_stable = mau_tho;
+            self.count = 0;
+            return Some(self.is_stable);
         }
         None
     }
-    pub fn trang_thai(&self) -> bool { self.on_dinh }
+    pub fn state(&self) -> bool { self.is_stable }
 }
 
 fn main() {
@@ -241,45 +243,45 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. THANH GHI ÁNH XẠ BỘ NHỚ");
-    let moder = ThanhGhiGia::moi(0);
-    let odr = ThanhGhiGia::moi(0);
-    moder.ghi_truong(10, 2, 0b01);
+    let moder = IntoRecordPrice::new(0);
+    let odr = IntoRecordPrice::new(0);
+    moder.record_field(10, 2, 0b01);
     println!("   MODER sau khi đặt chân 5 thành output: 0b{:032b}", moder.doc());
-    println!("   Số lệnh ghi thực sự chạm phần cứng   : {}", moder.so_lan_ghi.get());
+    println!("   Số lệnh ghi thực sự chạm phần cứng   : {}", moder.count_record.get());
 
     println!("\n2. TYPESTATE GPIO — sai kiểu là không biên dịch được");
-    let bo = BoNgoaiVi::lay().expect("lần đầu phải lấy được");
-    println!("   BoNgoaiVi::lay() lần hai → {:?}", BoNgoaiVi::lay().is_none());
-    let mut den = bo.cong_a.thanh_dau_ra(&moder);
-    let nut = bo.cong_b.thanh_dau_vao(&moder);
+    let bo = UnitOutPos::lay().expect("lần đầu phải lấy được");
+    println!("   BoNgoaiVi::lay() lần hai → {:?}", UnitOutPos::lay().is_none());
+    let mut den = bo.gate_a.into_output(&moder);
+    let nut = bo.gate_b.into_input(&moder);
     den.bat(&odr);
-    println!("   Bật đèn chân {} → ODR = 0b{:016b}", den.so_hieu(), odr.doc());
-    println!("   Đọc nút chân {}  → {}", nut.so_hieu(), nut.doc(&odr));
+    println!("   Bật đèn chân {} → ODR = 0b{:016b}", den.serial(), odr.doc());
+    println!("   Đọc nút chân {}  → {}", nut.serial(), nut.doc(&odr));
     println!("   ❌ nut.bat(&odr)   → E0599: không có phương thức `bat` cho Chan<DauVao>");
 
     println!("\n3. SỐ DẤU PHẨY TĨNH Q16.16 (không cần FPU)");
     for adc in [0u16, 1024, 2048, 4095] {
         let t = adc_sang_nhiet_do(adc);
-        println!("   ADC {:>4} → {:>8.3} °C (bên trong chỉ là i32 = {})", adc, t.thanh_thuc(), t.0);
+        println!("   ADC {:>4} → {:>8.3} °C (bên trong chỉ là i32 = {})", adc, t.into_real(), t.0);
     }
-    let a = Q16::tu_thuc(3.5);
-    let b = Q16::tu_thuc(2.0);
-    println!("   3.5 × 2.0 = {} · 3.5 ÷ 2.0 = {}", a.nhan(b).thanh_thuc(), a.chia(b).thanh_thuc());
+    let a = Q16::from_real(3.5);
+    let b = Q16::from_real(2.0);
+    println!("   3.5 × 2.0 = {} · 3.5 ÷ 2.0 = {}", a.nhan(b).into_real(), a.chia(b).into_real());
 
     println!("\n4. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT (4 byte)");
-    let mut dem: DemVong<4> = DemVong::moi();
-    for b in b"RUST" { dem.day_vao(*b).unwrap(); }
-    println!("   Đầy: {} | đẩy thêm 'X' → {:?}", dem.day(), dem.day_vao(b'X').unwrap_err() as char);
-    println!("   Ghi đè 'X' → mất byte {:?}", dem.day_ghi_de(b'X').map(|b| b as char));
-    let con: Vec<char> = std::iter::from_fn(|| dem.lay_ra()).map(|b| b as char).collect();
+    let mut count: CountRound<4> = CountRound::new();
+    for b in b"RUST" { count.push(*b).unwrap(); }
+    println!("   Đầy: {} | đẩy thêm 'X' → {:?}", count.day(), count.push(b'X').unwrap_err() as char);
+    println!("   Ghi đè 'X' → mất byte {:?}", count.overwrite_buffer(b'X').map(|b| b as char));
+    let con: Vec<char> = std::iter::from_fn(|| count.take()).map(|b| b as char).collect();
     println!("   Nội dung còn lại: {:?}", con);
 
     println!("\n5. CHỐNG RUNG PHÍM (ngưỡng 3 mẫu)");
-    let mut cr = ChongRung::moi(3);
+    let mut cr = ChongRung::new(3);
     let mau = [false, true, false, true, true, true, true, false, true, false, false, false];
     let mut ket_qua = Vec::new();
     for (i, &m) in mau.iter().enumerate() {
-        if let Some(moi) = cr.cap_nhat(m) { ket_qua.push((i, moi)); }
+        if let Some(new) = cr.update(m) { ket_qua.push((i, new)); }
     }
     println!("   12 mẫu nhiễu → chỉ {} sự kiện thật: {:?}", ket_qua.len(), ket_qua);
 
@@ -289,58 +291,58 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     // ---------- MMIO ----------
     #[test]
-    fn thao_tac_bit_khong_dung_bit_khac() {
-        let tg = ThanhGhiGia::moi(0b1010_0000);
-        tg.dat_bit(0);
+    fn bit_ops_leave_other_bits_alone() {
+        let tg = IntoRecordPrice::new(0b1010_0000);
+        tg.set_bit(0);
         assert_eq!(tg.doc(), 0b1010_0001, "đặt bit 0 phải giữ nguyên bit 5 và 7");
-        tg.xoa_bit(7);
+        tg.clear_bit(7);
         assert_eq!(tg.doc(), 0b0010_0001);
         tg.dao_bit(5);
         assert_eq!(tg.doc(), 0b0000_0001);
     }
 
     #[test]
-    fn ghi_truong_chi_dung_dung_so_bit() {
-        let tg = ThanhGhiGia::moi(0xFFFF_FFFF);
-        tg.ghi_truong(4, 3, 0b010); // đặt 3 bit tại vị trí 4
-        assert_eq!(tg.doc_truong(4, 3), 0b010);
+    fn field_write_uses_exactly_its_width() {
+        let tg = IntoRecordPrice::new(0xFFFF_FFFF);
+        tg.record_field(4, 3, 0b010); // đặt 3 bit tại vị trí 4
+        assert_eq!(tg.read_field(4, 3), 0b010);
         assert_eq!(tg.doc(), 0xFFFF_FFAF, "mọi bit ngoài trường phải nguyên vẹn");
     }
 
     #[test]
-    fn gia_tri_tran_bi_cat_theo_do_rong_truong() {
-        let tg = ThanhGhiGia::moi(0);
-        tg.ghi_truong(0, 2, 0b1111); // chỉ 2 bit chứa được
+    fn values_are_truncated_to_the_field_width() {
+        let tg = IntoRecordPrice::new(0);
+        tg.record_field(0, 2, 0b1111); // chỉ 2 bit chứa được
         assert_eq!(tg.doc(), 0b11, "phần thừa bị mặt nạ chặn, không tràn sang bit 2");
     }
 
     #[test]
-    fn doc_sua_ghi_ton_dung_mot_lenh_ghi() {
-        let tg = ThanhGhiGia::moi(0);
-        tg.dat_bit(3);
-        assert_eq!(tg.so_lan_ghi.get(), 1);
+    fn read_modify_write_issues_one_store() {
+        let tg = IntoRecordPrice::new(0);
+        tg.set_bit(3);
+        assert_eq!(tg.count_record.get(), 1);
         assert_eq!(tg.so_lan_doc.get(), 1);
     }
 
     // ---------- Typestate GPIO ----------
     #[test]
-    fn chuyen_che_do_ghi_dung_ma_moder() {
-        let moder = ThanhGhiGia::moi(0);
-        let c = unsafe { Chan::moi(5) };
-        let _ra = c.thanh_dau_ra(&moder);
-        assert_eq!(moder.doc_truong(10, 2), 0b01, "chân 5 → bit 10-11 = 01 (output)");
+    fn mode_switch_writes_correct_moder_bits() {
+        let moder = IntoRecordPrice::new(0);
+        let c = unsafe { Block::new(5) };
+        let _ra = c.into_output(&moder);
+        assert_eq!(moder.read_field(10, 2), 0b01, "chân 5 → bit 10-11 = 01 (output)");
     }
 
     #[test]
-    fn dau_ra_bat_tat_dung_chan() {
-        let moder = ThanhGhiGia::moi(0);
-        let odr = ThanhGhiGia::moi(0);
-        let mut c = unsafe { Chan::moi(3) }.thanh_dau_ra(&moder);
+    fn output_toggles_the_right_pin() {
+        let moder = IntoRecordPrice::new(0);
+        let odr = IntoRecordPrice::new(0);
+        let mut c = unsafe { Block::new(3) }.into_output(&moder);
         c.bat(&odr);
         assert_eq!(odr.doc(), 0b1000);
         c.dao(&odr);
@@ -348,133 +350,133 @@ mod kiem_thu {
     }
 
     #[test]
-    fn vong_doi_chan_di_qua_nhieu_che_do() {
-        let moder = ThanhGhiGia::moi(0);
-        let c = unsafe { Chan::moi(2) };
-        let ra = c.thanh_dau_ra(&moder);
-        let vao = ra.thanh_dau_vao(&moder);      // tiêu thụ chân đầu ra
-        let tt = vao.thanh_tuong_tu(&moder);      // rồi thành analog
-        assert_eq!(tt.so_hieu(), 2, "số hiệu chân theo suốt mọi lần đổi kiểu");
-        assert_eq!(moder.doc_truong(4, 2), 0b11);
+    fn pin_lifecycle_moves_through_modes() {
+        let moder = IntoRecordPrice::new(0);
+        let c = unsafe { Block::new(2) };
+        let ra = c.into_output(&moder);
+        let input_pin = ra.into_input(&moder);      // tiêu thụ chân đầu ra
+        let tt = input_pin.into_wall(&moder);      // rồi thành analog
+        assert_eq!(tt.serial(), 2, "số hiệu chân theo suốt mọi lần đổi kiểu");
+        assert_eq!(moder.read_field(4, 2), 0b11);
     }
 
     #[test]
-    fn singleton_chi_giao_ngoai_vi_dung_mot_lan() {
-        BoNgoaiVi::dat_lai_cho_kiem_thu();
-        assert!(BoNgoaiVi::lay().is_some(), "lần đầu phải thành công");
-        assert!(BoNgoaiVi::lay().is_none(), "lần hai phải bị từ chối");
-        assert!(BoNgoaiVi::lay().is_none());
-        BoNgoaiVi::dat_lai_cho_kiem_thu();
+    fn singleton_hands_out_peripheral_once() {
+        UnitOutPos::reset_for_test();
+        assert!(UnitOutPos::lay().is_some(), "lần đầu phải thành công");
+        assert!(UnitOutPos::lay().is_none(), "lần hai phải bị từ chối");
+        assert!(UnitOutPos::lay().is_none());
+        UnitOutPos::reset_for_test();
     }
 
     // ---------- Q16.16 ----------
     #[test]
-    fn q16_cong_tru_chinh_xac_tuyet_doi() {
+    fn q16_add_sub_is_exact() {
         let a = Q16::tu_nguyen(7);
         let b = Q16::tu_nguyen(3);
-        assert_eq!(a.cong(b), Q16::tu_nguyen(10));
-        assert_eq!(a.tru(b), Q16::tu_nguyen(4));
+        assert_eq!(a.gate(b), Q16::tu_nguyen(10));
+        assert_eq!(a.subtract(b), Q16::tu_nguyen(4));
     }
 
     #[test]
-    fn q16_nhan_chia_sai_so_duoi_mot_phan_65536() {
-        let a = Q16::tu_thuc(3.5);
-        let b = Q16::tu_thuc(2.25);
-        assert!((a.nhan(b).thanh_thuc() - 7.875).abs() < 1.0 / 65536.0);
-        assert!((a.chia(b).thanh_thuc() - 3.5 / 2.25).abs() < 1.0 / 65536.0);
+    fn q16_mul_div_error_below_one_lsb() {
+        let a = Q16::from_real(3.5);
+        let b = Q16::from_real(2.25);
+        assert!((a.nhan(b).into_real() - 7.875).abs() < 1.0 / 65536.0);
+        assert!((a.chia(b).into_real() - 3.5 / 2.25).abs() < 1.0 / 65536.0);
     }
 
     #[test]
-    fn q16_nhan_voi_mot_la_phep_dong_nhat() {
+    fn q16_multiply_by_one_is_identity() {
         for x in [0.0, 1.5, -3.25, 100.125] {
-            let q = Q16::tu_thuc(x);
+            let q = Q16::from_real(x);
             assert_eq!(q.nhan(Q16::MOT), q, "nhân với 1 phải trả lại chính nó");
         }
     }
 
     #[test]
-    fn adc_sang_nhiet_do_dung_hai_dau_thang_do() {
-        assert!((adc_sang_nhiet_do(0).thanh_thuc() - (-40.0)).abs() < 0.01);
-        assert!((adc_sang_nhiet_do(4095).thanh_thuc() - 125.0).abs() < 0.05);
+    fn adc_to_temp_is_exact_at_both_ends() {
+        assert!((adc_sang_nhiet_do(0).into_real() - (-40.0)).abs() < 0.01);
+        assert!((adc_sang_nhiet_do(4095).into_real() - 125.0).abs() < 0.05);
         // và đơn điệu tăng
-        let mut truoc = adc_sang_nhiet_do(0);
+        let mut prev = adc_sang_nhiet_do(0);
         for adc in (100..4096).step_by(100) {
             let nay = adc_sang_nhiet_do(adc as u16);
-            assert!(nay > truoc, "nhiệt độ phải tăng đơn điệu theo ADC");
-            truoc = nay;
+            assert!(nay > prev, "nhiệt độ phải tăng đơn điệu theo ADC");
+            prev = nay;
         }
     }
 
     // ---------- Bộ đệm vòng ----------
     #[test]
-    fn dem_vong_vao_truoc_ra_truoc() {
-        let mut d: DemVong<4> = DemVong::moi();
-        for b in [1u8, 2, 3] { d.day_vao(b).unwrap(); }
-        assert_eq!(d.lay_ra(), Some(1));
-        assert_eq!(d.lay_ra(), Some(2));
-        assert_eq!(d.so_luong(), 1);
+    fn ring_buffer_is_fifo() {
+        let mut d: CountRound<4> = CountRound::new();
+        for b in [1u8, 2, 3] { d.push(b).unwrap(); }
+        assert_eq!(d.take(), Some(1));
+        assert_eq!(d.take(), Some(2));
+        assert_eq!(d.quantity(), 1);
     }
 
     #[test]
-    fn dem_vong_bao_loi_thay_vi_cap_phat_them() {
-        let mut d: DemVong<2> = DemVong::moi();
-        d.day_vao(1).unwrap();
-        d.day_vao(2).unwrap();
-        assert_eq!(d.day_vao(3), Err(3), "đầy thì TRẢ LẠI byte, không được lớn thêm");
-        assert_eq!(d.suc_chua(), 2, "sức chứa cố định lúc biên dịch");
+    fn ring_buffer_errors_instead_of_allocating() {
+        let mut d: CountRound<2> = CountRound::new();
+        d.push(1).unwrap();
+        d.push(2).unwrap();
+        assert_eq!(d.push(3), Err(3), "đầy thì TRẢ LẠI byte, không được lớn thêm");
+        assert_eq!(d.capacity(), 2, "sức chứa cố định lúc biên dịch");
     }
 
     #[test]
-    fn dem_vong_quay_vong_dung_sau_nhieu_luot() {
-        let mut d: DemVong<3> = DemVong::moi();
+    fn ring_buffer_wraps_correctly() {
+        let mut d: CountRound<3> = CountRound::new();
         for i in 0..30u8 {
-            d.day_vao(i).unwrap();
-            assert_eq!(d.lay_ra(), Some(i), "chỉ số phải quay vòng đúng qua biên mảng");
+            d.push(i).unwrap();
+            assert_eq!(d.take(), Some(i), "chỉ số phải quay vòng đúng qua biên mảng");
         }
         assert!(d.rong());
     }
 
     #[test]
-    fn dem_vong_ghi_de_bo_phan_tu_cu_nhat() {
-        let mut d: DemVong<3> = DemVong::moi();
-        for b in [1u8, 2, 3] { d.day_vao(b).unwrap(); }
-        assert_eq!(d.day_ghi_de(4), Some(1), "phần tử CŨ NHẤT bị hy sinh");
-        let con: Vec<u8> = std::iter::from_fn(|| d.lay_ra()).collect();
+    fn overwrite_mode_drops_oldest() {
+        let mut d: CountRound<3> = CountRound::new();
+        for b in [1u8, 2, 3] { d.push(b).unwrap(); }
+        assert_eq!(d.overwrite_buffer(4), Some(1), "phần tử CŨ NHẤT bị hy sinh");
+        let con: Vec<u8> = std::iter::from_fn(|| d.take()).collect();
         assert_eq!(con, vec![2, 3, 4]);
     }
 
     #[test]
-    fn dem_vong_rong_tra_none() {
-        let mut d: DemVong<4> = DemVong::moi();
-        assert_eq!(d.lay_ra(), None);
+    fn empty_ring_returns_none() {
+        let mut d: CountRound<4> = CountRound::new();
+        assert_eq!(d.take(), None);
         assert!(d.rong() && !d.day());
     }
 
     // ---------- Chống rung ----------
     #[test]
-    fn chong_rung_bo_qua_nhieu_ngan() {
-        let mut c = ChongRung::moi(3);
+    fn debounce_ignores_short_noise() {
+        let mut c = ChongRung::new(3);
         // nhiễu: bật-tắt liên tục, không mẫu nào đủ 3 lần liên tiếp
         for m in [true, false, true, false, true, false] {
-            assert_eq!(c.cap_nhat(m), None, "nhiễu không được sinh sự kiện");
+            assert_eq!(c.update(m), None, "nhiễu không được sinh sự kiện");
         }
-        assert!(!c.trang_thai());
+        assert!(!c.state());
     }
 
     #[test]
-    fn chong_rung_chap_nhan_tin_hieu_on_dinh() {
-        let mut c = ChongRung::moi(3);
-        assert_eq!(c.cap_nhat(true), None);
-        assert_eq!(c.cap_nhat(true), None);
-        assert_eq!(c.cap_nhat(true), Some(true), "đủ 3 mẫu → chuyển trạng thái");
-        assert_eq!(c.cap_nhat(true), None, "giữ nguyên thì không phát lại sự kiện");
+    fn debounce_accepts_stable_signal() {
+        let mut c = ChongRung::new(3);
+        assert_eq!(c.update(true), None);
+        assert_eq!(c.update(true), None);
+        assert_eq!(c.update(true), Some(true), "đủ 3 mẫu → chuyển trạng thái");
+        assert_eq!(c.update(true), None, "giữ nguyên thì không phát lại sự kiện");
     }
 
     #[test]
-    fn chong_rung_phat_dung_mot_su_kien_cho_mot_cu_bam() {
-        let mut c = ChongRung::moi(2);
+    fn debounce_emits_one_event_per_press() {
+        let mut c = ChongRung::new(2);
         let mau = [false, true, false, true, true, true, true, true];
-        let so_su_kien = mau.iter().filter(|&&m| c.cap_nhat(m).is_some()).count();
-        assert_eq!(so_su_kien, 1, "một cú bấm nảy = đúng một sự kiện");
+        let event_count = mau.iter().filter(|&&m| c.update(m).is_some()).count();
+        assert_eq!(event_count, 1, "một cú bấm nảy = đúng một sự kiện");
     }
 }

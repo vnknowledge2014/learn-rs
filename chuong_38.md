@@ -7,7 +7,7 @@ Trong lịch sử hơn 50 năm của ngành khoa học máy tính, có một s�
 Những lỗi này không bắt nguồn từ thuật toán nghiệp vụ sai hay thiếu sót tính năng, mà phát sinh từ sự lỏng lẻo trong việc quản lý bộ đệm và con trỏ của các ngôn ngữ lập trình truyền thống như C và C++. Trong chương này, chúng ta sẽ mổ xẻ "Tam đại hiểm họa" kinh điển nhất trong thế giới nhị phân:
 1. **Tràn bộ đệm (Buffer Overflow)**: Kẻ tấn công ghi đè dữ liệu vượt ngoài biên vùng nhớ được cấp phát để cướp quyền điều khiển thanh ghi con trỏ lệnh `RIP`.
 2. **Sử dụng vùng nhớ sau giải phóng (Use-After-Free - UAF)**: Đọc hoặc ghi vào ô nhớ trên Heap sau khi đã bị thu hồi, dẫn tới nguy cơ thực thi mã từ xa (RCE).
-3. **Lỗ hổng chuỗi định dạng (Format String)**: Lợi dụng hàm in ấn dữ liệu thiếu kiểm tra kiểu để đọc trộm hoặc ghi đè tùy ý lên ngăn xếp.
+3. **Lỗ hổng chuỗi định dạng (Format string vulnerability)**: Lợi dụng hàm in ấn dữ liệu thiếu kiểm tra kiểu để đọc trộm hoặc ghi đè tùy ý lên ngăn xếp.
 
 Mục tiêu học tập của bạn:
 - Nắm vững cơ chế giải phẫu của từng loại lỗ hổng ở cấp độ thanh ghi và ô nhớ mà không cần tính toán số học phức tạp.
@@ -258,19 +258,19 @@ Dưới đây là các lỗi biên dịch điển hình mà bạn sẽ gặp khi
 ```rust
 // Đoạn mã lỗi minh họa E0382:
 fn vi_du_ngan_chan_uaf() {
-    let du_lieu = Box::new(String::from("BiMatDoanhNghiep"));
+    let data = Box::new(String::from("BiMatDoanhNghiep"));
     
     // Ham drop() giai phong vung nho tren Heap
-    std::mem::drop(du_lieu); 
+    std::mem::drop(data); 
 
     // LỖI E0382: Trình biên dịch Rust NGĂN CHẶN bạn đọc ô nhớ đã bị giải phóng!
-    // println!("Dữ liệu sau khi drop: {}", du_lieu);
+    // println!("Dữ liệu sau khi drop: {}", data);
 }
 
 // Cách viết an toàn: Không truy cập biến sau khi đã từ bỏ quyền sở hữu
 fn vi_du_an_toan() {
-    let du_lieu = Box::new(String::from("BiMatDoanhNghiep"));
-    println!("Dữ liệu an toàn: {}", du_lieu);
+    let data = Box::new(String::from("BiMatDoanhNghiep"));
+    println!("Dữ liệu an toàn: {}", data);
     // Vùng nhớ sẽ tự động được dọn dẹp sạch sẽ khi hết phạm vi hàm
 }
 ```

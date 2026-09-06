@@ -44,7 +44,7 @@ Ba bất biến bắt buộc, mỗi bất biến một bài kiểm thử:
 │  ① ĐOÁN CHIỀU TỪ GIÁ                                                        │
 │     Khớp thụ động về, ta không biết nó là mua hay bán → đoán từ giá.        │
 │     Đoán sai → vị thế chạy NGƯỢC → mọi hạn mức rủi ro thành vô nghĩa.       │
-│     Chữa: KhopLenh MANG THEO chiều. Đừng bao giờ suy ra cái mình biết sẵn.  │
+│     Chữa: Fill MANG THEO chiều. Đừng bao giờ suy ra cái mình biết sẵn.  │
 │                                                                              │
 │  ② KHỚP TRÀN QUA NHIỀU MỨC GIÁ                                              │
 │     Lệnh thị trường 10 đơn vị cắt qua mức 100 → ta gọi hàm khớp toàn sổ     │
@@ -89,12 +89,12 @@ Ba bất biến bắt buộc, mỗi bất biến một bài kiểm thử:
 
 ### 1. Đồng hồ ảo phải là nguồn thời gian duy nhất
 
-Toàn bộ hệ thống đọc thời gian từ `DongHoAo`. Không thành phần nào gọi `Instant::now()`. Đó không phải quy ước lịch sự — nó là điều kiện để hai tính chất cùng tồn tại:
+Toàn bộ hệ thống đọc thời gian từ `VirtualClock`. Không thành phần nào gọi `Instant::now()`. Đó không phải quy ước lịch sự — nó là điều kiện để hai tính chất cùng tồn tại:
 
 - **Đẩy tốc độ không đổi kết quả.** Phát lại ở ×1, ×1000 hay vô hạn đều cho cùng dòng lệnh, vì thời gian **ảo** không đổi, chỉ thời gian **tường** bị nén. Chương này kiểm thử đúng điều đó.
 - **Tất định.** Một lời gọi đồng hồ thật lạc lõng là đủ khiến hai lần chạy khác nhau, và khi đó bạn không thể gỡ lỗi bất kỳ sự cố sản xuất nào.
 
-`DongHoAo::tien_toi` **từ chối** lùi thời gian thay vì im lặng sắp xếp lại. Dữ liệu xếp sai thứ tự là lỗi thu thập; giấu nó đi thì bộ phát lại sẽ nói dối một cách thuyết phục.
+`VirtualClock::advance` **từ chối** lùi thời gian thay vì im lặng sắp xếp lại. Dữ liệu xếp sai thứ tự là lỗi thu thập; giấu nó đi thì bộ phát lại sẽ nói dối một cách thuyết phục.
 
 ### 2. Cổng rủi ro phải đặt chỗ, không chỉ kiểm tra
 
@@ -108,7 +108,7 @@ Cách chữa là tách phơi nhiễm thành ba tầng và cộng đủ cả ba:
 phơi_nhiễm = vị_thế_đã_khớp  +  lệnh_ĐANG_TREO  +  lệnh_ĐANG_BAY
 ```
 
-và **đặt chỗ ngay khi cho qua**, trước khi xét ý định tiếp theo. Trong chương này đó là hai biến `bay_mua`/`bay_ban`, tăng lúc phát và chuyển sang `treo_*` lúc giao.
+và **đặt chỗ ngay khi cho qua**, trước khi xét ý định tiếp theo. Trong chương này đó là hai biến `in_flight_bid`/`in_flight_ask`, tăng lúc phát và chuyển sang `treo_*` lúc giao.
 
 Sau khi sửa, vị thế cuối phiên dừng **đúng** ở hạn mức 500 thay vì vọt lên 514 — con số dừng đúng ở biên là dấu hiệu cổng đang thực sự ràng buộc, không phải đang may mắn.
 
@@ -196,28 +196,28 @@ use std::collections::{BTreeMap, VecDeque};
 // 1. KIỂU NỀN
 // ============================================================================
 
-pub type Gia = i64; // tick: 1 tick = 0,01 đơn vị tiền
-pub type SoLuong = i64;
-pub type MaLenh = u64;
-pub type Nano = u64;
+pub type Price = i64; // tick: 1 tick = 0,01 đơn vị tiền
+pub type Quantity = i64;
+pub type OrderId = u64;
+pub type Nanos = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Chieu {
-    Mua,
-    Ban,
+pub enum Side {
+    Buy,
+    Sell,
 }
 
-impl Chieu {
-    pub fn dau(self) -> i64 {
+impl Side {
+    pub fn first(self) -> i64 {
         match self {
-            Chieu::Mua => 1,
-            Chieu::Ban => -1,
+            Side::Buy => 1,
+            Side::Sell => -1,
         }
     }
-    pub fn nguoc(self) -> Chieu {
+    pub fn inverse(self) -> Side {
         match self {
-            Chieu::Mua => Chieu::Ban,
-            Chieu::Ban => Chieu::Mua,
+            Side::Buy => Side::Sell,
+            Side::Sell => Side::Buy,
         }
     }
 }
@@ -225,11 +225,11 @@ impl Chieu {
 /// Định danh nơi giao dịch. Hệ sinh thái này chạy đồng thời hai loại sàn —
 /// đó chính là "hai hướng" mà một hệ HFT hiện đại phải phủ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum San {
+pub enum Venue {
     /// Sàn truyền thống: sổ lệnh giới hạn, ưu tiên giá–thời gian.
-    TruyenThong,
+    Lit,
     /// Sàn chuỗi khối: bể thanh khoản tự động, giá theo công thức.
-    ChuoiKhoi,
+    Chain,
 }
 
 // ============================================================================
@@ -239,23 +239,23 @@ pub enum San {
 /// Mọi thành phần đọc thời gian **từ đây**, không bao giờ từ `Instant::now()`.
 /// Một lời gọi đồng hồ thật lạc lõng là đủ phá cả tính tất định lẫn tính nhân quả.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DongHoAo {
-    hien_tai: Nano,
+pub struct VirtualClock {
+    current: Nanos,
 }
 
-impl DongHoAo {
-    pub fn moi(bat_dau: Nano) -> Self {
-        DongHoAo { hien_tai: bat_dau }
+impl VirtualClock {
+    pub fn new(start: Nanos) -> Self {
+        VirtualClock { current: start }
     }
-    pub fn bay_gio(&self) -> Nano {
-        self.hien_tai
+    pub fn now(&self) -> Nanos {
+        self.current
     }
     /// Thời gian chỉ TIẾN. Lùi lại là dấu hiệu dữ liệu phiên bị xếp sai thứ tự.
-    pub fn tien_toi(&mut self, t: Nano) -> bool {
-        if t < self.hien_tai {
+    pub fn advance(&mut self, t: Nanos) -> bool {
+        if t < self.current {
             return false;
         }
-        self.hien_tai = t;
+        self.current = t;
         true
     }
 }
@@ -263,18 +263,18 @@ impl DongHoAo {
 /// Hệ số nén thời gian tường. Không ảnh hưởng tới thời gian ẢO, nên kết quả
 /// chiến lược **không đổi** dù chạy ở tốc độ nào — miễn là không ai đọc đồng hồ thật.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TocDoPhat {
-    ThoiGianThuc,
-    Nhanh(u32),
-    VoHan,
+pub enum ReplaySpeed {
+    RealTime,
+    Fast(u32),
+    Unbounded,
 }
 
-impl TocDoPhat {
-    pub fn cho_bao_lau(&self, khoang_ao_ns: Nano) -> Nano {
+impl ReplaySpeed {
+    pub fn wall_delay(&self, khoang_ao_ns: Nanos) -> Nanos {
         match self {
-            TocDoPhat::ThoiGianThuc => khoang_ao_ns,
-            TocDoPhat::Nhanh(n) => khoang_ao_ns / (*n).max(1) as u64,
-            TocDoPhat::VoHan => 0,
+            ReplaySpeed::RealTime => khoang_ao_ns,
+            ReplaySpeed::Fast(n) => khoang_ao_ns / (*n).max(1) as u64,
+            ReplaySpeed::Unbounded => 0,
         }
     }
 }
@@ -285,35 +285,35 @@ impl TocDoPhat {
 
 /// Ba khoảng trễ có thật, tách riêng vì chúng tối ưu được độc lập.
 #[derive(Debug, Clone, Copy)]
-pub struct MoHinhDoTre {
+pub struct LatencyModel {
     /// Sàn phát ─► ta nhận.
-    pub du_lieu_vao_ns: Nano,
+    pub inbound_ns: Nanos,
     /// Ta gửi ─► sàn nhận.
-    pub lenh_ra_ns: Nano,
+    pub outbound_ns: Nanos,
     /// Biên độ dao động; độ trễ thật có đuôi dài, không phải hằng số.
-    pub dao_dong_ns: Nano,
+    pub jitter_ns: Nanos,
 }
 
-impl MoHinhDoTre {
-    pub fn dien_hinh() -> Self {
-        MoHinhDoTre { du_lieu_vao_ns: 10_000, lenh_ra_ns: 50_000, dao_dong_ns: 5_000 }
+impl LatencyModel {
+    pub fn typical() -> Self {
+        LatencyModel { inbound_ns: 10_000, outbound_ns: 50_000, jitter_ns: 5_000 }
     }
-    pub fn khong_tre() -> Self {
-        MoHinhDoTre { du_lieu_vao_ns: 0, lenh_ra_ns: 0, dao_dong_ns: 0 }
+    pub fn none() -> Self {
+        LatencyModel { inbound_ns: 0, outbound_ns: 0, jitter_ns: 0 }
     }
 
     /// Dao động TẤT ĐỊNH theo hạt giống — cần nhiễu thật, nhưng phải tái lập được.
-    pub fn tre_lenh(&self, hat: u64) -> Nano {
-        if self.dao_dong_ns == 0 {
-            return self.lenh_ra_ns;
+    pub fn order_latency(&self, hat: u64) -> Nanos {
+        if self.jitter_ns == 0 {
+            return self.outbound_ns;
         }
-        self.lenh_ra_ns + bam_trong_khoang(hat, self.dao_dong_ns)
+        self.outbound_ns + hash_in_range(hat, self.jitter_ns)
     }
 }
 
 /// splitmix64 — trộn đều thật sự. Phép chia dư đơn thuần làm giá trị co cụm
 /// và khiến mọi phép đo dựa trên phân phối trở nên vô nghĩa.
-pub fn bam64(mut x: u64) -> u64 {
+pub fn hash64(mut x: u64) -> u64 {
     x = x.wrapping_add(0x9E3779B97F4A7C15);
     let mut z = x;
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
@@ -321,8 +321,8 @@ pub fn bam64(mut x: u64) -> u64 {
     z ^ (z >> 31)
 }
 
-pub fn bam_trong_khoang(hat: u64, tran: u64) -> u64 {
-    if tran == 0 { 0 } else { bam64(hat) % tran }
+pub fn hash_in_range(hat: u64, tran: u64) -> u64 {
+    if tran == 0 { 0 } else { hash64(hat) % tran }
 }
 
 // ============================================================================
@@ -330,60 +330,60 @@ pub fn bam_trong_khoang(hat: u64, tran: u64) -> u64 {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LoaiSuKien {
+pub enum EventKind {
     /// Sàn truyền thống: một lệnh giới hạn mới vào sổ.
-    ThemLenh { ma: MaLenh, chieu: Chieu, gia: Gia, khoi_luong: SoLuong },
+    AddOrder { ma: OrderId, side: Side, price: Price, quantity: Quantity },
     /// Sàn truyền thống: huỷ một lệnh đang treo.
-    HuyLenh { ma: MaLenh },
+    CancelOrder { ma: OrderId },
     /// Sàn truyền thống: một giao dịch đã khớp (thông tin, không đổi sổ).
-    DaKhop { gia: Gia, khoi_luong: SoLuong },
+    Traded { price: Price, quantity: Quantity },
     /// Sàn chuỗi khối: ai đó hoán đổi trên bể, làm dự trữ đổi → giá đổi.
-    HoanDoiTrenBe { vao_x: bool, khoi_luong: u128 },
+    PoolSwap { x_in: bool, quantity: u128 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SuKienPhien {
-    pub thoi_diem: Nano,
-    pub san: San,
-    pub loai: LoaiSuKien,
+pub struct SessionEvent {
+    pub timestamp: Nanos,
+    pub san: Venue,
+    pub kind: EventKind,
 }
 
-/// Phiên đã ghi. Bất biến sống còn: `thoi_diem` không giảm.
+/// Phiên đã ghi. Bất biến sống còn: `timestamp` không giảm.
 #[derive(Debug, Clone, Default)]
-pub struct PhienDaGhi {
-    pub cac_su_kien: Vec<SuKienPhien>,
+pub struct RecordedSession {
+    pub all_event: Vec<SessionEvent>,
 }
 
-impl PhienDaGhi {
-    pub fn moi() -> Self {
-        PhienDaGhi::default()
+impl RecordedSession {
+    pub fn new() -> Self {
+        RecordedSession::default()
     }
 
     /// Từ chối sự kiện lùi thời gian thay vì im lặng sắp xếp lại — dữ liệu
     /// xếp sai thứ tự là lỗi thu thập, và giấu nó đi thì phát lại sẽ nói dối.
-    pub fn ghi(&mut self, sk: SuKienPhien) -> bool {
-        if let Some(cuoi) = self.cac_su_kien.last() {
-            if sk.thoi_diem < cuoi.thoi_diem {
+    pub fn record(&mut self, sk: SessionEvent) -> bool {
+        if let Some(last) = self.all_event.last() {
+            if sk.timestamp < last.timestamp {
                 return false;
             }
         }
-        self.cac_su_kien.push(sk);
+        self.all_event.push(sk);
         true
     }
 
-    pub fn so_su_kien(&self) -> usize {
-        self.cac_su_kien.len()
+    pub fn event_count(&self) -> usize {
+        self.all_event.len()
     }
 
-    pub fn khoang_thoi_gian_ns(&self) -> Nano {
-        match (self.cac_su_kien.first(), self.cac_su_kien.last()) {
-            (Some(a), Some(b)) => b.thoi_diem - a.thoi_diem,
+    pub fn span_ns(&self) -> Nanos {
+        match (self.all_event.first(), self.all_event.last()) {
+            (Some(a), Some(b)) => b.timestamp - a.timestamp,
             _ => 0,
         }
     }
 
-    pub fn dung_thu_tu(&self) -> bool {
-        self.cac_su_kien.windows(2).all(|w| w[0].thoi_diem <= w[1].thoi_diem)
+    pub fn is_ordered(&self) -> bool {
+        self.all_event.windows(2).all(|w| w[0].timestamp <= w[1].timestamp)
     }
 }
 
@@ -392,108 +392,108 @@ impl PhienDaGhi {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MucGia {
-    pub gia: Gia,
-    pub khoi_luong: SoLuong,
+pub struct PriceLevel {
+    pub price: Price,
+    pub quantity: Quantity,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SanTruyenThong {
+pub struct LitVenue {
     /// `BTreeMap` chứ không `HashMap`: thứ tự duyệt phải tất định, nếu không
     /// phát lại sẽ không tái lập được và mọi phép gỡ lỗi đều vô nghĩa.
-    mua: BTreeMap<Gia, SoLuong>,
-    ban: BTreeMap<Gia, SoLuong>,
+    buy: BTreeMap<Price, Quantity>,
+    ban: BTreeMap<Price, Quantity>,
     /// Lệnh của THỊ TRƯỜNG (không phải của ta) để xử lý huỷ và khớp.
-    lenh_thi_truong: BTreeMap<MaLenh, (Chieu, Gia, SoLuong)>,
+    market_orders: BTreeMap<OrderId, (Side, Price, Quantity)>,
     /// Hàng đợi FIFO tại mỗi (chiều, giá) — nền của ưu tiên thời gian.
-    hang_thi_truong: BTreeMap<(Chieu, Gia), VecDeque<MaLenh>>,
+    market_queues: BTreeMap<(Side, Price), VecDeque<OrderId>>,
     /// Lệnh của TA đang treo trên sàn.
-    lenh_cua_ta: BTreeMap<MaLenh, LenhCuaTa>,
+    our_orders: BTreeMap<OrderId, OurOrder>,
     /// Khớp thụ động chờ bộ điều phối lấy ra.
-    khop_thu_dong_cho: Vec<KhopLenh>,
+    pending_passive_fills: Vec<Fill>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LenhCuaTa {
-    pub ma: MaLenh,
-    pub chieu: Chieu,
-    pub gia: Gia,
-    pub con_lai: SoLuong,
-    pub thoi_diem_vao: Nano,
+pub struct OurOrder {
+    pub ma: OrderId,
+    pub side: Side,
+    pub price: Price,
+    pub remaining: Quantity,
+    pub entered_at: Nanos,
     /// Khối lượng đứng trước tại thời điểm vào — nền của ước lượng khớp.
-    pub khoi_luong_truoc: SoLuong,
+    pub prev_quantity: Quantity,
 }
 
-impl SanTruyenThong {
-    pub fn moi() -> Self {
-        SanTruyenThong::default()
+impl LitVenue {
+    pub fn new() -> Self {
+        LitVenue::default()
     }
 
-    pub fn gia_mua_tot_nhat(&self) -> Option<MucGia> {
-        self.mua.iter().next_back().map(|(&g, &k)| MucGia { gia: g, khoi_luong: k })
+    pub fn best_bid(&self) -> Option<PriceLevel> {
+        self.buy.iter().next_back().map(|(&g, &k)| PriceLevel { price: g, quantity: k })
     }
-    pub fn gia_ban_tot_nhat(&self) -> Option<MucGia> {
-        self.ban.iter().next().map(|(&g, &k)| MucGia { gia: g, khoi_luong: k })
+    pub fn best_ask(&self) -> Option<PriceLevel> {
+        self.ban.iter().next().map(|(&g, &k)| PriceLevel { price: g, quantity: k })
     }
 
-    pub fn gia_giua(&self) -> Option<f64> {
-        match (self.gia_mua_tot_nhat(), self.gia_ban_tot_nhat()) {
-            (Some(m), Some(b)) => Some((m.gia + b.gia) as f64 / 2.0),
+    pub fn mid(&self) -> Option<f64> {
+        match (self.best_bid(), self.best_ask()) {
+            (Some(m), Some(b)) => Some((m.price + b.price) as f64 / 2.0),
             _ => None,
         }
     }
 
     /// Vi giá: trọng số NGƯỢC với khối lượng. Bên đông người kéo giá công bằng
     /// về phía bên mỏng, vì áp lực bên đó chưa được thoả mãn.
-    pub fn vi_gia(&self) -> Option<f64> {
-        let (m, b) = (self.gia_mua_tot_nhat()?, self.gia_ban_tot_nhat()?);
-        let tong = (m.khoi_luong + b.khoi_luong) as f64;
+    pub fn micro_price(&self) -> Option<f64> {
+        let (m, b) = (self.best_bid()?, self.best_ask()?);
+        let tong = (m.quantity + b.quantity) as f64;
         if tong <= 0.0 {
             return None;
         }
-        Some((m.gia as f64 * b.khoi_luong as f64 + b.gia as f64 * m.khoi_luong as f64) / tong)
+        Some((m.price as f64 * b.quantity as f64 + b.price as f64 * m.quantity as f64) / tong)
     }
 
-    pub fn mat_can_bang(&self) -> Option<f64> {
-        let (m, b) = (self.gia_mua_tot_nhat()?, self.gia_ban_tot_nhat()?);
-        let tong = (m.khoi_luong + b.khoi_luong) as f64;
+    pub fn imbalance(&self) -> Option<f64> {
+        let (m, b) = (self.best_bid()?, self.best_ask()?);
+        let tong = (m.quantity + b.quantity) as f64;
         if tong <= 0.0 {
             return None;
         }
-        Some((m.khoi_luong - b.khoi_luong) as f64 / tong)
+        Some((m.quantity - b.quantity) as f64 / tong)
     }
 
-    pub fn chenh_lech(&self) -> Option<Gia> {
-        Some(self.gia_ban_tot_nhat()?.gia - self.gia_mua_tot_nhat()?.gia)
+    pub fn spread(&self) -> Option<Price> {
+        Some(self.best_ask()?.price - self.best_bid()?.price)
     }
 
     /// Tổng khối lượng còn treo cả hai bên — thước đo độ "phình" của sổ.
-    pub fn tong_khoi_luong(&self) -> SoLuong {
-        self.mua.values().sum::<SoLuong>() + self.ban.values().sum::<SoLuong>()
+    pub fn total_qty(&self) -> Quantity {
+        self.buy.values().sum::<Quantity>() + self.ban.values().sum::<Quantity>()
     }
 
-    pub fn bi_cheo(&self) -> bool {
-        match (self.gia_mua_tot_nhat(), self.gia_ban_tot_nhat()) {
-            (Some(m), Some(b)) => m.gia >= b.gia,
+    pub fn is_crossed(&self) -> bool {
+        match (self.best_bid(), self.best_ask()) {
+            (Some(m), Some(b)) => m.price >= b.price,
             _ => false,
         }
     }
 
-    fn ben(&mut self, c: Chieu) -> &mut BTreeMap<Gia, SoLuong> {
+    fn ben(&mut self, c: Side) -> &mut BTreeMap<Price, Quantity> {
         match c {
-            Chieu::Mua => &mut self.mua,
-            Chieu::Ban => &mut self.ban,
+            Side::Buy => &mut self.buy,
+            Side::Sell => &mut self.ban,
         }
     }
 
-    fn them(&mut self, c: Chieu, g: Gia, k: SoLuong) {
+    fn them(&mut self, c: Side, g: Price, k: Quantity) {
         if k <= 0 {
             return;
         }
         *self.ben(c).entry(g).or_insert(0) += k;
     }
 
-    fn bot(&mut self, c: Chieu, g: Gia, k: SoLuong) {
+    fn bot(&mut self, c: Side, g: Price, k: Quantity) {
         let ben = self.ben(c);
         if let Some(v) = ben.get_mut(&g) {
             *v -= k;
@@ -504,31 +504,31 @@ impl SanTruyenThong {
     }
 
     /// Khối lượng đứng trước một mức giá ở cùng chiều — vị trí xếp hàng.
-    pub fn khoi_luong_tai(&self, c: Chieu, g: Gia) -> SoLuong {
+    pub fn qty_at(&self, c: Side, g: Price) -> Quantity {
         match c {
-            Chieu::Mua => self.mua.get(&g).copied().unwrap_or(0),
-            Chieu::Ban => self.ban.get(&g).copied().unwrap_or(0),
+            Side::Buy => self.buy.get(&g).copied().unwrap_or(0),
+            Side::Sell => self.ban.get(&g).copied().unwrap_or(0),
         }
     }
 
     /// Tiêu thụ `can` đơn vị của lệnh THỊ TRƯỜNG tại (chiều, giá), theo FIFO.
     /// Trả về số thực sự tiêu được.
-    fn tieu_thu_thi_truong(&mut self, c: Chieu, g: Gia, mut can: SoLuong) -> SoLuong {
+    fn consume_market(&mut self, c: Side, g: Price, mut can: Quantity) -> Quantity {
         let mut da = 0;
         let mut het = Vec::new();
-        if let Some(q) = self.hang_thi_truong.get(&(c, g)) {
+        if let Some(q) = self.market_queues.get(&(c, g)) {
             for &m in q.iter() {
                 if can <= 0 {
                     break;
                 }
-                let con = match self.lenh_thi_truong.get(&m) {
+                let con = match self.market_orders.get(&m) {
                     Some(&(_, _, k)) => k,
                     None => continue,
                 };
                 let lay = can.min(con);
                 can -= lay;
                 da += lay;
-                if let Some(v) = self.lenh_thi_truong.get_mut(&m) {
+                if let Some(v) = self.market_orders.get_mut(&m) {
                     v.2 -= lay;
                     if v.2 <= 0 {
                         het.push(m);
@@ -537,12 +537,12 @@ impl SanTruyenThong {
             }
         }
         for m in &het {
-            self.lenh_thi_truong.remove(m);
+            self.market_orders.remove(m);
         }
-        if let Some(q) = self.hang_thi_truong.get_mut(&(c, g)) {
+        if let Some(q) = self.market_queues.get_mut(&(c, g)) {
             q.retain(|m| !het.contains(m));
             if q.is_empty() {
-                self.hang_thi_truong.remove(&(c, g));
+                self.market_queues.remove(&(c, g));
             }
         }
         self.bot(c, g, da);
@@ -555,48 +555,48 @@ impl SanTruyenThong {
     /// Lệnh mới cắt qua bên kia được KHỚP, không được chất lên sổ: một sàn thật
     /// không bao giờ để sổ chéo, và mô hình bỏ qua điều này sẽ cho chiến lược
     /// nhìn thấy những mức giá không tồn tại.
-    pub fn ap_dung(&mut self, sk: &LoaiSuKien) {
+    pub fn apply(&mut self, sk: &EventKind) {
         match sk {
-            LoaiSuKien::ThemLenh { ma, chieu, gia, khoi_luong } => {
-                let mut con = *khoi_luong;
+            EventKind::AddOrder { ma, side, price, quantity } => {
+                let mut con = *quantity;
 
                 // Giai đoạn 1: khớp phần cắt qua với bên đối ứng.
                 loop {
                     if con <= 0 {
                         break;
                     }
-                    let doi = match chieu {
-                        Chieu::Mua => self.ban.iter().next().map(|(&g, &k)| (g, k)),
-                        Chieu::Ban => self.mua.iter().next_back().map(|(&g, &k)| (g, k)),
+                    let swap = match side {
+                        Side::Buy => self.ban.iter().next().map(|(&g, &k)| (g, k)),
+                        Side::Sell => self.buy.iter().next_back().map(|(&g, &k)| (g, k)),
                     };
-                    let (g, k) = match doi {
+                    let (g, k) = match swap {
                         Some(x) => x,
                         None => break,
                     };
-                    let cat = match chieu {
-                        Chieu::Mua => *gia >= g,
-                        Chieu::Ban => *gia <= g,
+                    let cat = match side {
+                        Side::Buy => *price >= g,
+                        Side::Sell => *price <= g,
                     };
                     if !cat {
                         break;
                     }
                     // Lệnh của TA ở mức này cũng được khớp — đúng ưu tiên giá.
-                    let cua_ta: Vec<MaLenh> = self
-                        .lenh_cua_ta
+                    let ours: Vec<OrderId> = self
+                        .our_orders
                         .values()
-                        .filter(|l| l.chieu == chieu.nguoc() && l.gia == g)
+                        .filter(|l| l.side == side.inverse() && l.price == g)
                         .map(|l| l.ma)
                         .collect();
-                    let tt = self.tieu_thu_thi_truong(chieu.nguoc(), g, con);
+                    let tt = self.consume_market(side.inverse(), g, con);
                     con -= tt;
-                    if tt == 0 && !cua_ta.is_empty() {
+                    if tt == 0 && !ours.is_empty() {
                         // Chỉ còn lệnh của ta ở mức này. Khớp ĐÚNG mức đó và
                         // ĐÚNG khối lượng còn lại — gọi hàm khớp toàn sổ ở đây
                         // sẽ ăn cả lệnh của ta ở những mức giá khác, và vị thế
                         // sẽ vọt qua hạn mức mà cổng rủi ro không hề biết.
-                        let khop = self.khop_cua_ta_tai_muc(chieu.nguoc(), g, con);
-                        let da: SoLuong = khop.iter().map(|x| x.khoi_luong).sum();
-                        self.khop_thu_dong_cho.extend(khop);
+                        let fill = self.fill_ours_at_level(side.inverse(), g, con);
+                        let da: Quantity = fill.iter().map(|x| x.quantity).sum();
+                        self.pending_passive_fills.extend(fill);
                         con -= da;
                         if da == 0 {
                             break;
@@ -609,193 +609,193 @@ impl SanTruyenThong {
 
                 // Giai đoạn 2: phần còn lại nằm chờ trên sổ.
                 if con > 0 {
-                    self.them(*chieu, *gia, con);
-                    self.lenh_thi_truong.insert(*ma, (*chieu, *gia, con));
-                    self.hang_thi_truong.entry((*chieu, *gia)).or_default().push_back(*ma);
+                    self.them(*side, *price, con);
+                    self.market_orders.insert(*ma, (*side, *price, con));
+                    self.market_queues.entry((*side, *price)).or_default().push_back(*ma);
                 }
             }
-            LoaiSuKien::HuyLenh { ma } => {
-                if let Some((c, g, k)) = self.lenh_thi_truong.remove(ma) {
+            EventKind::CancelOrder { ma } => {
+                if let Some((c, g, k)) = self.market_orders.remove(ma) {
                     self.bot(c, g, k);
-                    if let Some(q) = self.hang_thi_truong.get_mut(&(c, g)) {
+                    if let Some(q) = self.market_queues.get_mut(&(c, g)) {
                         q.retain(|x| x != ma);
                         if q.is_empty() {
-                            self.hang_thi_truong.remove(&(c, g));
+                            self.market_queues.remove(&(c, g));
                         }
                     }
                 }
             }
-            LoaiSuKien::DaKhop { .. } => {}
-            LoaiSuKien::HoanDoiTrenBe { .. } => {}
+            EventKind::Traded { .. } => {}
+            EventKind::PoolSwap { .. } => {}
         }
     }
 
     /// Khớp lệnh của ta tại ĐÚNG một mức giá, không vượt quá `tran` đơn vị.
     /// Ưu tiên thời gian trong nội bộ mức.
-    fn khop_cua_ta_tai_muc(&mut self, chieu: Chieu, gia: Gia, tran: SoLuong) -> Vec<KhopLenh> {
+    fn fill_ours_at_level(&mut self, side: Side, price: Price, tran: Quantity) -> Vec<Fill> {
         let mut ra = Vec::new();
         let mut con = tran;
-        let mut ung_vien: Vec<LenhCuaTa> = self
-            .lenh_cua_ta
+        let mut candidates: Vec<OurOrder> = self
+            .our_orders
             .values()
             .copied()
-            .filter(|l| l.chieu == chieu && l.gia == gia)
+            .filter(|l| l.side == side && l.price == price)
             .collect();
-        ung_vien.sort_by_key(|l| (l.thoi_diem_vao, l.ma));
+        candidates.sort_by_key(|l| (l.entered_at, l.ma));
 
-        let mut xong = Vec::new();
-        for l in ung_vien {
+        let mut done = Vec::new();
+        for l in candidates {
             if con <= 0 {
                 break;
             }
-            let lay = con.min(l.con_lai);
-            if let Some(m) = self.lenh_cua_ta.get_mut(&l.ma) {
-                m.con_lai -= lay;
-                if m.con_lai <= 0 {
-                    xong.push(l.ma);
+            let lay = con.min(l.remaining);
+            if let Some(m) = self.our_orders.get_mut(&l.ma) {
+                m.remaining -= lay;
+                if m.remaining <= 0 {
+                    done.push(l.ma);
                 }
             }
-            self.bot(chieu, gia, lay);
-            ra.push(KhopLenh { ma: l.ma, chieu, gia, khoi_luong: lay, chu_dong: false });
+            self.bot(side, price, lay);
+            ra.push(Fill { ma: l.ma, side, price, quantity: lay, aggressive: false });
             con -= lay;
         }
-        for m in xong {
-            self.lenh_cua_ta.remove(&m);
+        for m in done {
+            self.our_orders.remove(&m);
         }
         ra
     }
 
     /// Lệnh treo của ta cũ hơn `tuoi_ns` — nhà tạo lập thật làm mới báo giá
     /// liên tục, và báo giá cũ là rủi ro chứ không phải cơ hội.
-    pub fn lenh_cua_ta_cu_hon(&self, bay_gio: Nano, tuoi_ns: Nano) -> Vec<MaLenh> {
-        self.lenh_cua_ta
+    pub fn our_orders_older_than(&self, now: Nanos, tuoi_ns: Nanos) -> Vec<OrderId> {
+        self.our_orders
             .values()
-            .filter(|l| bay_gio.saturating_sub(l.thoi_diem_vao) > tuoi_ns)
+            .filter(|l| now.saturating_sub(l.entered_at) > tuoi_ns)
             .map(|l| l.ma)
             .collect()
     }
 
     /// Khớp thụ động phát sinh khi lệnh thị trường cắt qua lệnh treo của ta.
     /// Bộ điều phối lấy ra và ghi nhận vào vị thế.
-    pub fn lay_khop_thu_dong(&mut self) -> Vec<KhopLenh> {
-        std::mem::take(&mut self.khop_thu_dong_cho)
+    pub fn take_passive_fills(&mut self) -> Vec<Fill> {
+        std::mem::take(&mut self.pending_passive_fills)
     }
 
     /// Đặt lệnh của ta. Nếu giá cắt qua bên kia thì khớp NGAY (lệnh chủ động).
     /// Ngược lại nó nằm chờ, và ta ghi lại khối lượng đứng trước.
-    pub fn dat_lenh_cua_ta(&mut self, l: LenhCuaTa) -> Vec<KhopLenh> {
-        let mut khop = Vec::new();
-        let mut con = l.con_lai;
+    pub fn place_our_order(&mut self, l: OurOrder) -> Vec<Fill> {
+        let mut fill = Vec::new();
+        let mut con = l.remaining;
 
         // Lệnh chủ động: ăn qua các mức đối ứng theo thứ tự giá tốt nhất trước.
         loop {
             if con <= 0 {
                 break;
             }
-            let doi_ung = match l.chieu {
-                Chieu::Mua => self.ban.iter().next().map(|(&g, &k)| (g, k)),
-                Chieu::Ban => self.mua.iter().next_back().map(|(&g, &k)| (g, k)),
+            let swap_resp = match l.side {
+                Side::Buy => self.ban.iter().next().map(|(&g, &k)| (g, k)),
+                Side::Sell => self.buy.iter().next_back().map(|(&g, &k)| (g, k)),
             };
-            let (g, k) = match doi_ung {
+            let (g, k) = match swap_resp {
                 Some(x) => x,
                 None => break,
             };
-            let cat_qua = match l.chieu {
-                Chieu::Mua => l.gia >= g,
-                Chieu::Ban => l.gia <= g,
+            let cat_qua = match l.side {
+                Side::Buy => l.price >= g,
+                Side::Sell => l.price <= g,
             };
             if !cat_qua {
                 break;
             }
             let lay = con.min(k);
-            self.bot(l.chieu.nguoc(), g, lay);
-            khop.push(KhopLenh { ma: l.ma, chieu: l.chieu, gia: g, khoi_luong: lay, chu_dong: true });
+            self.bot(l.side.inverse(), g, lay);
+            fill.push(Fill { ma: l.ma, side: l.side, price: g, quantity: lay, aggressive: true });
             con -= lay;
         }
 
         if con > 0 {
-            let truoc = self.khoi_luong_tai(l.chieu, l.gia);
-            self.them(l.chieu, l.gia, con);
-            self.lenh_cua_ta
-                .insert(l.ma, LenhCuaTa { con_lai: con, khoi_luong_truoc: truoc, ..l });
+            let prev = self.qty_at(l.side, l.price);
+            self.them(l.side, l.price, con);
+            self.our_orders
+                .insert(l.ma, OurOrder { remaining: con, prev_quantity: prev, ..l });
         }
-        khop
+        fill
     }
 
-    pub fn huy_lenh_cua_ta(&mut self, ma: MaLenh) -> bool {
-        match self.lenh_cua_ta.remove(&ma) {
+    pub fn cancel_our_order(&mut self, ma: OrderId) -> bool {
+        match self.our_orders.remove(&ma) {
             Some(l) => {
-                self.bot(l.chieu, l.gia, l.con_lai);
+                self.bot(l.side, l.price, l.remaining);
                 true
             }
             None => false,
         }
     }
 
-    pub fn lenh_treo_cua_ta(&self) -> Vec<LenhCuaTa> {
-        self.lenh_cua_ta.values().copied().collect()
+    pub fn our_resting_orders(&self) -> Vec<OurOrder> {
+        self.our_orders.values().copied().collect()
     }
 
     /// Khi thị trường khớp ở giá `g`, lệnh treo của ta ở giá tốt bằng hoặc hơn
     /// sẽ được khớp — nhưng chỉ sau khi hàng đứng trước đã tiêu hết.
-    pub fn xu_ly_khop_thi_truong(&mut self, gia: Gia, mut khoi_luong: SoLuong) -> Vec<KhopLenh> {
+    pub fn on_market_trade(&mut self, price: Price, mut quantity: Quantity) -> Vec<Fill> {
         let mut ra = Vec::new();
-        let mut ma_xong = Vec::new();
+        let mut id_done = Vec::new();
 
-        let mut ung_vien: Vec<LenhCuaTa> = self
-            .lenh_cua_ta
+        let mut candidates: Vec<OurOrder> = self
+            .our_orders
             .values()
             .copied()
-            .filter(|l| match l.chieu {
-                Chieu::Mua => l.gia >= gia,
-                Chieu::Ban => l.gia <= gia,
+            .filter(|l| match l.side {
+                Side::Buy => l.price >= price,
+                Side::Sell => l.price <= price,
             })
             .collect();
         // Ưu tiên thời gian: ai vào trước được phục vụ trước.
-        ung_vien.sort_by_key(|l| (l.thoi_diem_vao, l.ma));
+        candidates.sort_by_key(|l| (l.entered_at, l.ma));
 
-        for l in ung_vien {
-            if khoi_luong <= 0 {
+        for l in candidates {
+            if quantity <= 0 {
                 break;
             }
             // Hàng đứng trước ăn phần của nó trước.
-            let sau_hang = khoi_luong - l.khoi_luong_truoc;
-            if sau_hang <= 0 {
-                if let Some(m) = self.lenh_cua_ta.get_mut(&l.ma) {
-                    m.khoi_luong_truoc -= khoi_luong;
+            let next_queue = quantity - l.prev_quantity;
+            if next_queue <= 0 {
+                if let Some(m) = self.our_orders.get_mut(&l.ma) {
+                    m.prev_quantity -= quantity;
                 }
                 break;
             }
-            let lay = sau_hang.min(l.con_lai);
-            if let Some(m) = self.lenh_cua_ta.get_mut(&l.ma) {
-                m.khoi_luong_truoc = 0;
-                m.con_lai -= lay;
-                if m.con_lai <= 0 {
-                    ma_xong.push(l.ma);
+            let lay = next_queue.min(l.remaining);
+            if let Some(m) = self.our_orders.get_mut(&l.ma) {
+                m.prev_quantity = 0;
+                m.remaining -= lay;
+                if m.remaining <= 0 {
+                    id_done.push(l.ma);
                 }
             }
-            self.bot(l.chieu, l.gia, lay);
-            ra.push(KhopLenh { ma: l.ma, chieu: l.chieu, gia: l.gia, khoi_luong: lay, chu_dong: false });
-            khoi_luong -= lay + l.khoi_luong_truoc;
+            self.bot(l.side, l.price, lay);
+            ra.push(Fill { ma: l.ma, side: l.side, price: l.price, quantity: lay, aggressive: false });
+            quantity -= lay + l.prev_quantity;
         }
-        for m in ma_xong {
-            self.lenh_cua_ta.remove(&m);
+        for m in id_done {
+            self.our_orders.remove(&m);
         }
         ra
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct KhopLenh {
-    pub ma: MaLenh,
+pub struct Fill {
+    pub ma: OrderId,
     /// Chiều của LỆNH TA — mang theo, không suy ra từ giá. Đoán chiều từ giá
     /// là một lỗi thật đã gặp: đoán sai thì vị thế chạy ngược và mọi hạn mức
     /// rủi ro trở nên vô nghĩa.
-    pub chieu: Chieu,
-    pub gia: Gia,
-    pub khoi_luong: SoLuong,
+    pub side: Side,
+    pub price: Price,
+    pub quantity: Quantity,
     /// `true` = ta chủ động ăn giá (trả phí taker), `false` = ta được khớp thụ động.
-    pub chu_dong: bool,
+    pub aggressive: bool,
 }
 
 // ============================================================================
@@ -803,97 +803,97 @@ pub struct KhopLenh {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SanChuoiKhoi {
-    pub du_tru_x: u128,
-    pub du_tru_y: u128,
+pub struct ChainVenue {
+    pub reserve_x: u128,
+    pub reserve_y: u128,
     /// Phí theo phần vạn: 30 = 0,30%.
-    pub phi_phan_van: u32,
+    pub fee_bps: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LoiHoanDoi {
-    DauVaoBangKhong,
-    BeRong,
-    KhongDatToiThieu { nhan_duoc: u128, yeu_cau: u128 },
+pub enum SwapError {
+    ZeroInput,
+    EmptyPool,
+    BelowMinOut { nhan_duoc: u128, yeu_cau: u128 },
 }
 
-impl SanChuoiKhoi {
-    pub fn moi(x: u128, y: u128, phi_phan_van: u32) -> Self {
-        SanChuoiKhoi { du_tru_x: x, du_tru_y: y, phi_phan_van }
+impl ChainVenue {
+    pub fn new(x: u128, y: u128, fee_bps: u32) -> Self {
+        ChainVenue { reserve_x: x, reserve_y: y, fee_bps }
     }
 
     pub fn k(&self) -> u128 {
-        self.du_tru_x * self.du_tru_y
+        self.reserve_x * self.reserve_y
     }
 
     /// Giá niêm yết của X tính theo Y. Đây là giá **cận biên**, chỉ đúng cho
     /// khối lượng vô cùng nhỏ — mọi giao dịch thật đều tệ hơn con số này.
-    pub fn gia_x(&self) -> f64 {
-        if self.du_tru_x == 0 {
+    pub fn price_x(&self) -> f64 {
+        if self.reserve_x == 0 {
             return 0.0;
         }
-        self.du_tru_y as f64 / self.du_tru_x as f64
+        self.reserve_y as f64 / self.reserve_x as f64
     }
 
-    pub fn thu_hoan_doi(&self, vao_x: bool, vao: u128) -> Result<u128, LoiHoanDoi> {
-        if vao == 0 {
-            return Err(LoiHoanDoi::DauVaoBangKhong);
+    pub fn try_swap(&self, x_in: bool, amount_in: u128) -> Result<u128, SwapError> {
+        if amount_in == 0 {
+            return Err(SwapError::ZeroInput);
         }
-        if self.du_tru_x == 0 || self.du_tru_y == 0 {
-            return Err(LoiHoanDoi::BeRong);
+        if self.reserve_x == 0 || self.reserve_y == 0 {
+            return Err(SwapError::EmptyPool);
         }
         let (dt_vao, dt_ra) =
-            if vao_x { (self.du_tru_x, self.du_tru_y) } else { (self.du_tru_y, self.du_tru_x) };
-        let sau_phi = vao * (10_000 - self.phi_phan_van as u128);
+            if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
+        let next_phi = amount_in * (10_000 - self.fee_bps as u128);
         // Làm tròn LUÔN có lợi cho bể — đó là chủ ý, không phải cẩu thả.
-        Ok((sau_phi * dt_ra) / (dt_vao * 10_000 + sau_phi))
+        Ok((next_phi * dt_ra) / (dt_vao * 10_000 + next_phi))
     }
 
-    pub fn hoan_doi(&mut self, vao_x: bool, vao: u128, toi_thieu_ra: u128) -> Result<u128, LoiHoanDoi> {
-        let ra = self.thu_hoan_doi(vao_x, vao)?;
+    pub fn swap(&mut self, x_in: bool, amount_in: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
+        let ra = self.try_swap(x_in, amount_in)?;
         if ra < toi_thieu_ra {
-            return Err(LoiHoanDoi::KhongDatToiThieu { nhan_duoc: ra, yeu_cau: toi_thieu_ra });
+            return Err(SwapError::BelowMinOut { nhan_duoc: ra, yeu_cau: toi_thieu_ra });
         }
-        if vao_x {
-            self.du_tru_x += vao;
-            self.du_tru_y -= ra;
+        if x_in {
+            self.reserve_x += amount_in;
+            self.reserve_y -= ra;
         } else {
-            self.du_tru_y += vao;
-            self.du_tru_x -= ra;
+            self.reserve_y += amount_in;
+            self.reserve_x -= ra;
         }
         Ok(ra)
     }
 
-    /// Giá trung bình thực nhận — luôn tệ hơn `gia_x()`. Đây mới là con số
+    /// Giá trung bình thực nhận — luôn tệ hơn `price_x()`. Đây mới là con số
     /// dùng để so với sàn truyền thống khi tìm chênh lệch.
-    pub fn gia_thuc_te(&self, vao_x: bool, vao: u128) -> Option<f64> {
-        let ra = self.thu_hoan_doi(vao_x, vao).ok()?;
+    pub fn effective_price(&self, x_in: bool, amount_in: u128) -> Option<f64> {
+        let ra = self.try_swap(x_in, amount_in).ok()?;
         if ra == 0 {
             return None;
         }
-        Some(if vao_x { ra as f64 / vao as f64 } else { vao as f64 / ra as f64 })
+        Some(if x_in { ra as f64 / amount_in as f64 } else { amount_in as f64 / ra as f64 })
     }
 
-    /// Nghịch đảo của `thu_hoan_doi`: cần bỏ vào bao nhiêu để nhận ĐÚNG `ra`?
+    /// Nghịch đảo của `try_swap`: cần bỏ vào bao nhiêu để nhận ĐÚNG `ra`?
     /// Cần thiết cho phòng vệ chính xác — không có nó, chân phòng vệ lệch khối
     /// lượng và vị thế ròng không bao giờ về 0.
-    pub fn dau_vao_can(&self, vao_x: bool, ra_mong_muon: u128) -> Option<u128> {
+    pub fn input_for_output(&self, x_in: bool, ra_mong_muon: u128) -> Option<u128> {
         if ra_mong_muon == 0 {
             return None;
         }
         let (dt_vao, dt_ra) =
-            if vao_x { (self.du_tru_x, self.du_tru_y) } else { (self.du_tru_y, self.du_tru_x) };
+            if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
         if ra_mong_muon >= dt_ra {
             return None; // không thể rút hết một phía
         }
         let tu = dt_vao * ra_mong_muon * 10_000;
-        let mau = (dt_ra - ra_mong_muon) * (10_000 - self.phi_phan_van as u128);
+        let mau = (dt_ra - ra_mong_muon) * (10_000 - self.fee_bps as u128);
         Some(tu / mau + 1) // +1: làm tròn LÊN, luôn có lợi cho bể
     }
 
-    pub fn ap_dung(&mut self, sk: &LoaiSuKien) {
-        if let LoaiSuKien::HoanDoiTrenBe { vao_x, khoi_luong } = sk {
-            let _ = self.hoan_doi(*vao_x, *khoi_luong, 0);
+    pub fn apply(&mut self, sk: &EventKind) {
+        if let EventKind::PoolSwap { x_in, quantity } = sk {
+            let _ = self.swap(*x_in, *quantity, 0);
         }
     }
 }
@@ -905,33 +905,33 @@ impl SanChuoiKhoi {
 /// Cái mà chiến lược được phép nhìn thấy — và **chỉ** cái này. Không có
 /// tham chiếu tới phiên, không có chỉ số sự kiện, nên không thể nhìn trộm tương lai.
 #[derive(Debug, Clone, Copy)]
-pub struct AnhChupThiTruong {
-    pub thoi_diem: Nano,
-    pub tt_mua: Option<MucGia>,
-    pub tt_ban: Option<MucGia>,
-    pub tt_vi_gia: Option<f64>,
-    pub tt_mat_can_bang: Option<f64>,
-    pub ck_gia: f64,
-    pub ck_du_tru_x: u128,
-    pub ck_du_tru_y: u128,
+pub struct MarketSnapshot {
+    pub timestamp: Nanos,
+    pub lit_buy: Option<PriceLevel>,
+    pub lit_sell: Option<PriceLevel>,
+    pub lit_micro_price: Option<f64>,
+    pub lit_imbalance: Option<f64>,
+    pub chain_price: f64,
+    pub chain_reserve_x: u128,
+    pub chain_reserve_y: u128,
 }
 
-impl AnhChupThiTruong {
-    pub fn gia_giua_truyen_thong(&self) -> Option<f64> {
-        match (self.tt_mua, self.tt_ban) {
-            (Some(m), Some(b)) => Some((m.gia + b.gia) as f64 / 2.0),
+impl MarketSnapshot {
+    pub fn mid_price_traditional(&self) -> Option<f64> {
+        match (self.lit_buy, self.lit_sell) {
+            (Some(m), Some(b)) => Some((m.price + b.price) as f64 / 2.0),
             _ => None,
         }
     }
 
     /// Chênh lệch giá giữa hai sàn, tính bằng điểm cơ bản. Dương nghĩa là
     /// sàn chuỗi khối đang đắt hơn → mua truyền thống, bán chuỗi khối.
-    pub fn chenh_lech_hai_san_bp(&self) -> Option<f64> {
-        let tt = self.gia_giua_truyen_thong()?;
+    pub fn cross_venue_bps(&self) -> Option<f64> {
+        let tt = self.mid_price_traditional()?;
         if tt <= 0.0 {
             return None;
         }
-        Some((self.ck_gia - tt) / tt * 10_000.0)
+        Some((self.chain_price - tt) / tt * 10_000.0)
     }
 }
 
@@ -940,9 +940,9 @@ impl AnhChupThiTruong {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum YDinh {
-    DatLenh { san: San, chieu: Chieu, gia: Gia, khoi_luong: SoLuong },
-    HuyLenh { san: San, ma: MaLenh },
+pub enum Intent {
+    Place { san: Venue, side: Side, price: Price, quantity: Quantity },
+    CancelOrder { san: Venue, ma: OrderId },
     /// Lệnh chính kèm **phòng vệ theo khối lượng đã khớp** trên sàn còn lại.
     ///
     /// Đặt cứng cả hai chân cùng lúc nghe có vẻ đúng nhưng vẫn hỏng: chân AMM
@@ -952,163 +952,163 @@ pub enum YDinh {
     ///
     /// Cách làm của ngành: thực thi chân KHÔNG CHẮC trước, rồi phòng vệ đúng
     /// bằng khối lượng thực sự khớp được.
-    DatCoPhongVe { san: San, chieu: Chieu, gia: Gia, khoi_luong: SoLuong, phong_ve_tren: San },
+    PlaceHedged { san: Venue, side: Side, price: Price, quantity: Quantity, hedge_on: Venue },
 }
 
-impl YDinh {
-    pub fn chan_don(san: San, chieu: Chieu, gia: Gia, khoi_luong: SoLuong) -> Self {
-        YDinh::DatLenh { san, chieu, gia, khoi_luong }
+impl Intent {
+    pub fn block_don(san: Venue, side: Side, price: Price, quantity: Quantity) -> Self {
+        Intent::Place { san, side, price, quantity }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TuChoi {
-    DaNgatKhanCap,
-    GiaNgoaiBien,
-    KhoiLuongQuaLon,
-    GiaTriLenhQuaLon,
-    VuotHanMucViThe,
-    VuotHanMucLo,
-    VuotTanSuat,
+pub enum RejectReason {
+    KillSwitchOn,
+    PriceOutOfBand,
+    QuantityTooLarge,
+    OrderValueTooLarge,
+    PositionLimit,
+    LossLimit,
+    RateLimit,
 }
 
 /// Trạng thái vị thế theo giá vốn trung bình. Trường hợp **đảo chiều**
 /// (vượt qua 0) phải xử lý riêng, nếu không giá vốn sai và mọi con số sau đó sai theo.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ViThe {
-    pub so_luong: SoLuong,
-    pub gia_von: f64,
-    pub lai_lo_da_chot: f64,
+pub struct Position {
+    pub quantity: Quantity,
+    pub cost_basis: f64,
+    pub realized_pnl: f64,
 }
 
-impl ViThe {
-    pub fn ghi_nhan(&mut self, chieu: Chieu, gia: Gia, khoi_luong: SoLuong) {
-        let truoc = self.so_luong;
-        let d = chieu.dau() * khoi_luong;
+impl Position {
+    pub fn record(&mut self, side: Side, price: Price, quantity: Quantity) {
+        let prev = self.quantity;
+        let d = side.first() * quantity;
 
-        if truoc == 0 || truoc.signum() == d.signum() {
+        if prev == 0 || prev.signum() == d.signum() {
             // Mở rộng cùng chiều: cập nhật giá vốn trung bình có trọng số.
-            let tong = (truoc.abs() + khoi_luong) as f64;
+            let tong = (prev.abs() + quantity) as f64;
             if tong > 0.0 {
-                self.gia_von =
-                    (self.gia_von * truoc.abs() as f64 + gia as f64 * khoi_luong as f64) / tong;
+                self.cost_basis =
+                    (self.cost_basis * prev.abs() as f64 + price as f64 * quantity as f64) / tong;
             }
-            self.so_luong = truoc + d;
+            self.quantity = prev + d;
         } else {
-            let dong = khoi_luong.min(truoc.abs());
-            self.lai_lo_da_chot +=
-                (gia as f64 - self.gia_von) * dong as f64 * truoc.signum() as f64;
-            self.so_luong = truoc + d;
-            if self.so_luong.signum() != truoc.signum() && self.so_luong != 0 {
+            let dong = quantity.min(prev.abs());
+            self.realized_pnl +=
+                (price as f64 - self.cost_basis) * dong as f64 * prev.signum() as f64;
+            self.quantity = prev + d;
+            if self.quantity.signum() != prev.signum() && self.quantity != 0 {
                 // Đảo chiều: phần dư mở vị thế mới ở đúng giá này.
-                self.gia_von = gia as f64;
-            } else if self.so_luong == 0 {
-                self.gia_von = 0.0;
+                self.cost_basis = price as f64;
+            } else if self.quantity == 0 {
+                self.cost_basis = 0.0;
             }
         }
     }
 
-    pub fn lai_lo_chua_chot(&self, gia_hien_tai: f64) -> f64 {
-        (gia_hien_tai - self.gia_von) * self.so_luong as f64
+    pub fn unrealized_pnl(&self, gia_hien_tai: f64) -> f64 {
+        (gia_hien_tai - self.cost_basis) * self.quantity as f64
     }
 
-    pub fn tong_lai_lo(&self, gia_hien_tai: f64) -> f64 {
-        self.lai_lo_da_chot + self.lai_lo_chua_chot(gia_hien_tai)
+    pub fn total_pnl(&self, gia_hien_tai: f64) -> f64 {
+        self.realized_pnl + self.unrealized_pnl(gia_hien_tai)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct CongRuiRo {
-    pub gia_toi_thieu: Gia,
-    pub gia_toi_da: Gia,
-    pub khoi_luong_toi_da: SoLuong,
-    pub gia_tri_lenh_toi_da: i64,
-    pub vi_the_toi_da: SoLuong,
-    pub lo_toi_da: f64,
-    pub lenh_moi_giay_toi_da: u32,
-    pub da_ngat: bool,
+pub struct RiskGate {
+    pub min_price: Price,
+    pub max_price: Price,
+    pub max_quantity: Quantity,
+    pub max_order_value: i64,
+    pub max_position: Quantity,
+    pub max_loss: f64,
+    pub max_orders_per_sec: u32,
+    pub kill_switch_on: bool,
     // trạng thái
-    dau_cua_so: Nano,
-    dem_trong_cua_so: u32,
-    pub so_lan_tu_choi: BTreeMap<u8, u32>,
+    window_start: Nanos,
+    window_count: u32,
+    pub reject_counts: BTreeMap<u8, u32>,
 }
 
-impl CongRuiRo {
-    pub fn dien_hinh() -> Self {
-        CongRuiRo {
-            gia_toi_thieu: 1,
-            gia_toi_da: 10_000_000,
-            khoi_luong_toi_da: 1_000,
-            gia_tri_lenh_toi_da: 100_000_000,
-            vi_the_toi_da: 500,
-            lo_toi_da: 100_000.0,
-            lenh_moi_giay_toi_da: 10_000,
-            da_ngat: false,
-            dau_cua_so: 0,
-            dem_trong_cua_so: 0,
-            so_lan_tu_choi: BTreeMap::new(),
+impl RiskGate {
+    pub fn typical() -> Self {
+        RiskGate {
+            min_price: 1,
+            max_price: 10_000_000,
+            max_quantity: 1_000,
+            max_order_value: 100_000_000,
+            max_position: 500,
+            max_loss: 100_000.0,
+            max_orders_per_sec: 10_000,
+            kill_switch_on: false,
+            window_start: 0,
+            window_count: 0,
+            reject_counts: BTreeMap::new(),
         }
     }
 
-    fn ghi_tu_choi(&mut self, t: TuChoi) -> TuChoi {
-        *self.so_lan_tu_choi.entry(t as u8).or_insert(0) += 1;
+    fn record_reject(&mut self, t: RejectReason) -> RejectReason {
+        *self.reject_counts.entry(t as u8).or_insert(0) += 1;
         t
     }
 
     /// Phơi nhiễm = vị thế đã khớp **cộng** khối lượng đang treo cùng chiều.
     /// Đếm thiếu phần treo là cách vị thế vượt hạn mức gấp ba lần mà không ai hay.
-    pub fn kiem(
+    pub fn check(
         &mut self,
-        y: &YDinh,
-        vi_the: SoLuong,
-        treo_mua: SoLuong,
-        treo_ban: SoLuong,
-        lai_lo: f64,
-        bay_gio: Nano,
-    ) -> Result<(), TuChoi> {
-        let (chieu, gia, khoi_luong) = match y {
-            YDinh::HuyLenh { .. } => return Ok(()), // huỷ luôn luôn được phép
-            YDinh::DatLenh { chieu, gia, khoi_luong, .. } => (*chieu, *gia, *khoi_luong),
+        y: &Intent,
+        position: Quantity,
+        resting_bid: Quantity,
+        resting_ask: Quantity,
+        pnl: f64,
+        now: Nanos,
+    ) -> Result<(), RejectReason> {
+        let (side, price, quantity) = match y {
+            Intent::CancelOrder { .. } => return Ok(()), // huỷ luôn luôn được phép
+            Intent::Place { side, price, quantity, .. } => (*side, *price, *quantity),
             // Bộ điều phối tách thành chân đơn trước khi tới đây, vì chỉ nó
             // mới biết đặt chỗ tích luỹ cho cả chân chính lẫn chân phòng vệ.
-            YDinh::DatCoPhongVe { .. } => return Ok(()),
+            Intent::PlaceHedged { .. } => return Ok(()),
         };
 
-        if self.da_ngat {
-            return Err(self.ghi_tu_choi(TuChoi::DaNgatKhanCap));
+        if self.kill_switch_on {
+            return Err(self.record_reject(RejectReason::KillSwitchOn));
         }
-        if gia < self.gia_toi_thieu || gia > self.gia_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::GiaNgoaiBien));
+        if price < self.min_price || price > self.max_price {
+            return Err(self.record_reject(RejectReason::PriceOutOfBand));
         }
-        if khoi_luong <= 0 || khoi_luong > self.khoi_luong_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::KhoiLuongQuaLon));
+        if quantity <= 0 || quantity > self.max_quantity {
+            return Err(self.record_reject(RejectReason::QuantityTooLarge));
         }
-        if gia.saturating_mul(khoi_luong) > self.gia_tri_lenh_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::GiaTriLenhQuaLon));
+        if price.saturating_mul(quantity) > self.max_order_value {
+            return Err(self.record_reject(RejectReason::OrderValueTooLarge));
         }
-        if lai_lo < -self.lo_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::VuotHanMucLo));
+        if pnl < -self.max_loss {
+            return Err(self.record_reject(RejectReason::LossLimit));
         }
 
         // Kiểm CẢ HAI chiều phơi nhiễm, kể cả chiều mà lệnh này không chạm tới:
         // một lệnh mua vẫn phải bị chặn nếu chiều bán đã vượt hạn mức.
-        let (sau_mua, sau_ban) = match chieu {
-            Chieu::Mua => (vi_the + treo_mua + khoi_luong, vi_the - treo_ban),
-            Chieu::Ban => (vi_the + treo_mua, vi_the - treo_ban - khoi_luong),
+        let (sau_mua, sau_ban) = match side {
+            Side::Buy => (position + resting_bid + quantity, position - resting_ask),
+            Side::Sell => (position + resting_bid, position - resting_ask - quantity),
         };
-        if sau_mua.abs() > self.vi_the_toi_da || sau_ban.abs() > self.vi_the_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::VuotHanMucViThe));
+        if sau_mua.abs() > self.max_position || sau_ban.abs() > self.max_position {
+            return Err(self.record_reject(RejectReason::PositionLimit));
         }
 
         // Cửa sổ trượt một giây.
-        if bay_gio.saturating_sub(self.dau_cua_so) >= 1_000_000_000 {
-            self.dau_cua_so = bay_gio;
-            self.dem_trong_cua_so = 0;
+        if now.saturating_sub(self.window_start) >= 1_000_000_000 {
+            self.window_start = now;
+            self.window_count = 0;
         }
-        if self.dem_trong_cua_so >= self.lenh_moi_giay_toi_da {
-            return Err(self.ghi_tu_choi(TuChoi::VuotTanSuat));
+        if self.window_count >= self.max_orders_per_sec {
+            return Err(self.record_reject(RejectReason::RateLimit));
         }
-        self.dem_trong_cua_so += 1;
+        self.window_count += 1;
         Ok(())
     }
 }
@@ -1117,94 +1117,94 @@ impl CongRuiRo {
 // 9. CHIẾN LƯỢC
 // ============================================================================
 
-pub trait ChienLuoc {
-    fn ten(&self) -> &str;
+pub trait Strategy {
+    fn name(&self) -> &str;
     /// Nhận ảnh chụp + vị thế hiện tại, trả về các ý định. Không có tham số nào
     /// cho phép nhìn về tương lai — đó là ràng buộc kiến trúc, không phải quy ước.
-    fn danh_gia(&mut self, anh: &AnhChupThiTruong, vi_the: SoLuong) -> Vec<YDinh>;
+    fn evaluate(&mut self, snap: &MarketSnapshot, position: Quantity) -> Vec<Intent>;
 }
 
 /// Nhà tạo lập hai chiều có kiểm soát tồn kho: càng lệch vị thế thì càng
 /// nghiêng báo giá về phía kéo vị thế về 0.
-pub struct TaoLapCoKiemSoat {
-    pub chenh_lech_muc_tieu: Gia,
-    pub khoi_luong: SoLuong,
-    pub han_muc_ton_kho: SoLuong,
-    pub he_so_nghieng: f64,
-    pub lan_bao_gia_cuoi: Nano,
-    pub khoang_bao_gia_ns: Nano,
+pub struct ManagedMaker {
+    pub target_spread: Price,
+    pub quantity: Quantity,
+    pub inventory_limit: Quantity,
+    pub skew_factor: f64,
+    pub last_quote_at: Nanos,
+    pub quote_interval_ns: Nanos,
 }
 
-impl TaoLapCoKiemSoat {
-    pub fn moi(han_muc_ton_kho: SoLuong) -> Self {
-        TaoLapCoKiemSoat {
-            chenh_lech_muc_tieu: 4,
-            khoi_luong: 20,
-            han_muc_ton_kho,
-            he_so_nghieng: 0.5,
-            lan_bao_gia_cuoi: 0,
-            khoang_bao_gia_ns: 1_000_000,
+impl ManagedMaker {
+    pub fn new(inventory_limit: Quantity) -> Self {
+        ManagedMaker {
+            target_spread: 4,
+            quantity: 20,
+            inventory_limit,
+            skew_factor: 0.5,
+            last_quote_at: 0,
+            quote_interval_ns: 1_000_000,
         }
     }
 }
 
-impl ChienLuoc for TaoLapCoKiemSoat {
-    fn ten(&self) -> &str {
+impl Strategy for ManagedMaker {
+    fn name(&self) -> &str {
         "tao_lap_co_kiem_soat"
     }
 
-    fn danh_gia(&mut self, anh: &AnhChupThiTruong, vi_the: SoLuong) -> Vec<YDinh> {
-        if anh.thoi_diem.saturating_sub(self.lan_bao_gia_cuoi) < self.khoang_bao_gia_ns {
+    fn evaluate(&mut self, snap: &MarketSnapshot, position: Quantity) -> Vec<Intent> {
+        if snap.timestamp.saturating_sub(self.last_quote_at) < self.quote_interval_ns {
             return Vec::new();
         }
-        let giua = match anh.tt_vi_gia.or_else(|| anh.gia_giua_truyen_thong()) {
+        let mid = match snap.lit_micro_price.or_else(|| snap.mid_price_traditional()) {
             Some(g) => g,
             None => return Vec::new(),
         };
-        self.lan_bao_gia_cuoi = anh.thoi_diem;
+        self.last_quote_at = snap.timestamp;
 
         // Nghiêng báo giá theo tồn kho: dài vị thế thì hạ cả hai giá để dễ bán hơn.
-        let ty_le = if self.han_muc_ton_kho > 0 {
-            vi_the as f64 / self.han_muc_ton_kho as f64
+        let ratio = if self.inventory_limit > 0 {
+            position as f64 / self.inventory_limit as f64
         } else {
             0.0
         };
-        let nghieng = ty_le * self.he_so_nghieng * self.chenh_lech_muc_tieu as f64;
-        let nua = self.chenh_lech_muc_tieu as f64 / 2.0;
+        let skew = ratio * self.skew_factor * self.target_spread as f64;
+        let half = self.target_spread as f64 / 2.0;
 
-        let mut gia_mua = (giua - nua - nghieng).round() as Gia;
-        let mut gia_ban = (giua + nua - nghieng).round() as Gia;
+        let mut price_buy = (mid - half - skew).round() as Price;
+        let mut price_sell = (mid + half - skew).round() as Price;
 
         // KHÔNG BAO GIỜ cắt qua sổ. Một nhà tạo lập cắt giá sẽ TRẢ chênh lệch
         // thay vì THU nó — nó trở thành người chủ động, và toàn bộ mô hình kinh
         // doanh sụp đổ. Đây là ràng buộc, không phải tối ưu hoá.
-        if let Some(b) = anh.tt_ban {
-            gia_mua = gia_mua.min(b.gia - 1);
+        if let Some(b) = snap.lit_sell {
+            price_buy = price_buy.min(b.price - 1);
         }
-        if let Some(m) = anh.tt_mua {
-            gia_ban = gia_ban.max(m.gia + 1);
+        if let Some(m) = snap.lit_buy {
+            price_sell = price_sell.max(m.price + 1);
         }
-        if gia_mua <= 0 || gia_ban <= gia_mua {
+        if price_buy <= 0 || price_sell <= price_buy {
             return Vec::new();
         }
 
         let mut ra = Vec::new();
         // Chỉ báo giá bên nào chưa chạm hạn mức — hàng phòng vệ thứ nhất,
         // trước cả cổng rủi ro.
-        if vi_the < self.han_muc_ton_kho {
-            ra.push(YDinh::DatLenh {
-                san: San::TruyenThong,
-                chieu: Chieu::Mua,
-                gia: gia_mua,
-                khoi_luong: self.khoi_luong,
+        if position < self.inventory_limit {
+            ra.push(Intent::Place {
+                san: Venue::Lit,
+                side: Side::Buy,
+                price: price_buy,
+                quantity: self.quantity,
             });
         }
-        if vi_the > -self.han_muc_ton_kho {
-            ra.push(YDinh::DatLenh {
-                san: San::TruyenThong,
-                chieu: Chieu::Ban,
-                gia: gia_ban,
-                khoi_luong: self.khoi_luong,
+        if position > -self.inventory_limit {
+            ra.push(Intent::Place {
+                san: Venue::Lit,
+                side: Side::Sell,
+                price: price_sell,
+                quantity: self.quantity,
             });
         }
         ra
@@ -1213,58 +1213,58 @@ impl ChienLuoc for TaoLapCoKiemSoat {
 
 /// Chênh lệch giá giữa hai sàn — chiến lược **duy nhất** chạm cả hai loại thị
 /// trường, và là lý do hệ sinh thái này phải hợp nhất chúng vào một ảnh chụp.
-pub struct ChenhLechHaiSan {
-    pub nguong_bp: f64,
-    pub khoi_luong: SoLuong,
-    pub so_co_hoi_thay: u64,
+pub struct CrossVenueArb {
+    pub threshold_bps: f64,
+    pub quantity: Quantity,
+    pub opportunities_seen: u64,
 }
 
-impl ChenhLechHaiSan {
-    pub fn moi(nguong_bp: f64) -> Self {
-        ChenhLechHaiSan { nguong_bp, khoi_luong: 10, so_co_hoi_thay: 0 }
+impl CrossVenueArb {
+    pub fn new(threshold_bps: f64) -> Self {
+        CrossVenueArb { threshold_bps, quantity: 10, opportunities_seen: 0 }
     }
 }
 
-impl ChienLuoc for ChenhLechHaiSan {
-    fn ten(&self) -> &str {
+impl Strategy for CrossVenueArb {
+    fn name(&self) -> &str {
         "chenh_lech_hai_san"
     }
 
-    fn danh_gia(&mut self, anh: &AnhChupThiTruong, _vi_the: SoLuong) -> Vec<YDinh> {
-        let cl = match anh.chenh_lech_hai_san_bp() {
+    fn evaluate(&mut self, snap: &MarketSnapshot, _vi_the: Quantity) -> Vec<Intent> {
+        let cl = match snap.cross_venue_bps() {
             Some(x) => x,
             None => return Vec::new(),
         };
-        if cl.abs() < self.nguong_bp {
+        if cl.abs() < self.threshold_bps {
             return Vec::new();
         }
-        self.so_co_hoi_thay += 1;
+        self.opportunities_seen += 1;
 
         // Chênh lệch giá là giao dịch HAI CHÂN. Chỉ đặt một chân thì đó không
         // phải chênh lệch giá — đó là cược một chiều đội lốt, và nó sẽ tích luỹ
         // vị thế cho tới khi chạm hạn mức rồi ngồi đó chịu lỗ.
-        let (chieu_tt, muc) = if cl > 0.0 {
+        let (chieu_tt, level) = if cl > 0.0 {
             // Chuỗi khối đắt hơn → mua chân rẻ (truyền thống), bán chân đắt.
-            (Chieu::Mua, anh.tt_ban)
+            (Side::Buy, snap.lit_sell)
         } else {
-            (Chieu::Ban, anh.tt_mua)
+            (Side::Sell, snap.lit_buy)
         };
-        let m = match muc {
+        let m = match level {
             Some(m) => m,
             None => return Vec::new(),
         };
-        let kl = self.khoi_luong.min(m.khoi_luong);
+        let kl = self.quantity.min(m.quantity);
         if kl <= 0 {
             return Vec::new();
         }
         // Chân truyền thống là chân KHÔNG CHẮC (phải xếp hàng, sổ có thể đã đổi).
         // Chân chuỗi khối là phòng vệ, chỉ chạy đúng bằng phần thực sự khớp.
-        vec![YDinh::DatCoPhongVe {
-            san: San::TruyenThong,
-            chieu: chieu_tt,
-            gia: m.gia,
-            khoi_luong: kl,
-            phong_ve_tren: San::ChuoiKhoi,
+        vec![Intent::PlaceHedged {
+            san: Venue::Lit,
+            side: chieu_tt,
+            price: m.price,
+            quantity: kl,
+            hedge_on: Venue::Chain,
         }]
     }
 }
@@ -1276,97 +1276,97 @@ impl ChienLuoc for ChenhLechHaiSan {
 /// Biểu đồ thùng logarit: giữ được dải từ 1 ns tới hàng phút với sai số tương
 /// đối cố định, chỉ tốn vài trăm byte.
 #[derive(Debug, Clone, Default)]
-pub struct BieuDoTre {
+pub struct LatencyHistogram {
     thung: BTreeMap<u32, u64>,
-    pub so_mau: u64,
+    pub samples: u64,
     pub tong: u64,
-    pub lon_nhat: u64,
+    pub max: u64,
 }
 
-impl BieuDoTre {
-    pub fn moi() -> Self {
-        BieuDoTre::default()
+impl LatencyHistogram {
+    pub fn new() -> Self {
+        LatencyHistogram::default()
     }
 
-    pub fn ghi(&mut self, ns: u64) {
+    pub fn record(&mut self, ns: u64) {
         let k = if ns == 0 { 0 } else { 64 - ns.leading_zeros() };
         *self.thung.entry(k).or_insert(0) += 1;
-        self.so_mau += 1;
+        self.samples += 1;
         self.tong += ns;
-        self.lon_nhat = self.lon_nhat.max(ns);
+        self.max = self.max.max(ns);
     }
 
-    pub fn trung_binh(&self) -> f64 {
-        if self.so_mau == 0 {
+    pub fn mean(&self) -> f64 {
+        if self.samples == 0 {
             0.0
         } else {
-            self.tong as f64 / self.so_mau as f64
+            self.tong as f64 / self.samples as f64
         }
     }
 
     /// Phân vị là con số DUY NHẤT đáng nhìn trong HFT. Trung bình chỉ hữu ích
     /// để phát hiện là mình đã đo sai.
-    pub fn phan_vi(&self, p: f64) -> u64 {
-        if self.so_mau == 0 {
+    pub fn percentile(&self, p: f64) -> u64 {
+        if self.samples == 0 {
             return 0;
         }
-        let muc = (self.so_mau as f64 * p).ceil() as u64;
-        let mut luy_ke = 0;
+        let level = (self.samples as f64 * p).ceil() as u64;
+        let mut accum_ke = 0;
         for (&k, &c) in &self.thung {
-            luy_ke += c;
-            if luy_ke >= muc {
+            accum_ke += c;
+            if accum_ke >= level {
                 return if k == 0 { 0 } else { 1u64 << (k - 1) };
             }
         }
-        self.lon_nhat
+        self.max
     }
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct BoDoLuong {
-    pub tre_tin_hieu_toi_lenh: BieuDoTre,
-    pub so_y_dinh: u64,
-    pub so_lenh_gui: u64,
-    pub so_lenh_bi_chan: u64,
-    pub so_khop: u64,
-    pub khoi_luong_khop: SoLuong,
-    pub khoi_luong_chu_dong: SoLuong,
-    pub duong_von: Vec<f64>,
+pub struct Metrics {
+    pub signal_to_order: LatencyHistogram,
+    pub intents: u64,
+    pub orders_sent: u64,
+    pub orders_blocked: u64,
+    pub fill_count: u64,
+    pub filled_qty: Quantity,
+    pub aggressive_qty: Quantity,
+    pub equity_curve: Vec<f64>,
 }
 
-impl BoDoLuong {
-    pub fn moi() -> Self {
-        BoDoLuong::default()
+impl Metrics {
+    pub fn new() -> Self {
+        Metrics::default()
     }
 
-    pub fn ty_le_chan(&self) -> f64 {
-        if self.so_y_dinh == 0 {
+    pub fn block_ratio(&self) -> f64 {
+        if self.intents == 0 {
             0.0
         } else {
-            self.so_lenh_bi_chan as f64 / self.so_y_dinh as f64
+            self.orders_blocked as f64 / self.intents as f64
         }
     }
 
     /// Tỉ lệ thụ động: phần khối lượng ta được khớp mà không phải ăn giá.
     /// Nhà tạo lập sống bằng con số này.
-    pub fn ty_le_thu_dong(&self) -> f64 {
-        if self.khoi_luong_khop == 0 {
+    pub fn passive_ratio(&self) -> f64 {
+        if self.filled_qty == 0 {
             0.0
         } else {
-            (self.khoi_luong_khop - self.khoi_luong_chu_dong) as f64 / self.khoi_luong_khop as f64
+            (self.filled_qty - self.aggressive_qty) as f64 / self.filled_qty as f64
         }
     }
 
-    pub fn sut_giam_toi_da(&self) -> f64 {
-        let mut dinh = f64::NEG_INFINITY;
-        let mut sut: f64 = 0.0;
-        for &v in &self.duong_von {
-            dinh = dinh.max(v);
-            if dinh.is_finite() {
-                sut = sut.max(dinh - v);
+    pub fn max_drawdown(&self) -> f64 {
+        let mut peak = f64::NEG_INFINITY;
+        let mut dd: f64 = 0.0;
+        for &v in &self.equity_curve {
+            peak = peak.max(v);
+            if peak.is_finite() {
+                dd = dd.max(peak - v);
             }
         }
-        sut
+        dd
     }
 }
 
@@ -1374,151 +1374,151 @@ impl BoDoLuong {
 // 11. HỆ SINH THÁI — BỘ ĐIỀU PHỐI
 // ============================================================================
 
-/// Lệnh đang bay tới sàn. Nó **chưa tồn tại** với sàn cho tới `den_luc`.
+/// Lệnh đang bay tới sàn. Nó **chưa tồn tại** với sàn cho tới `arrives_at`.
 /// Bỏ qua khoảng này là dạng nhìn trộm tương lai tinh vi nhất trong HFT.
 #[derive(Debug, Clone, Copy)]
-struct LenhDangBay {
-    den_luc: Nano,
-    phat_luc: Nano,
-    y_dinh: YDinh,
-    ma: MaLenh,
+struct InFlightOrder {
+    arrives_at: Nanos,
+    sent_at: Nanos,
+    intent: Intent,
+    ma: OrderId,
 }
 
-pub struct HeSinhThai {
-    pub dong_ho: DongHoAo,
-    pub toc_do: TocDoPhat,
-    pub do_tre: MoHinhDoTre,
-    pub san_tt: SanTruyenThong,
-    pub san_ck: SanChuoiKhoi,
-    pub cong: CongRuiRo,
-    pub vi_the: ViThe,
-    pub do_luong: BoDoLuong,
-    pub ma_ke_tiep: MaLenh,
-    dang_bay: VecDeque<LenhDangBay>,
-    treo_mua: SoLuong,
-    treo_ban: SoLuong,
+pub struct Ecosystem {
+    pub clock: VirtualClock,
+    pub speed: ReplaySpeed,
+    pub latency: LatencyModel,
+    pub venue_lit: LitVenue,
+    pub venue_chain: ChainVenue,
+    pub gate: RiskGate,
+    pub position: Position,
+    pub metrics: Metrics,
+    pub next_id: OrderId,
+    in_flight: VecDeque<InFlightOrder>,
+    resting_bid: Quantity,
+    resting_ask: Quantity,
     /// Phơi nhiễm của lệnh ĐANG BAY — đã phát nhưng chưa tới sàn.
     /// Không đếm phần này là lỗ hổng kinh điển: nhiều lệnh phát trong cùng một
     /// nhịp đều thấy CÙNG một trạng thái vị thế, đều được cổng cho qua, rồi
     /// cùng khớp — và hạn mức bị vượt dù mọi phép kiểm đều "đã chạy".
-    bay_mua: SoLuong,
-    bay_ban: SoLuong,
+    in_flight_bid: Quantity,
+    in_flight_ask: Quantity,
     /// Mã lệnh cần phòng vệ, và phòng vệ trên sàn nào.
-    can_phong_ve: BTreeMap<MaLenh, San>,
+    pending_hedge: BTreeMap<OrderId, Venue>,
     /// Số lần phòng vệ đã chạy — chỉ số vận hành, không phải trang trí.
-    pub so_lan_phong_ve: u64,
+    pub hedge_count: u64,
     /// Nhật ký lệnh đã gửi — cơ sở của bài kiểm thử tính tất định.
-    pub nhat_ky: Vec<(Nano, San, Chieu, Gia, SoLuong)>,
+    pub order_log: Vec<(Nanos, Venue, Side, Price, Quantity)>,
     /// Tuổi tối đa của một báo giá trước khi bị tự động rút. Không có chính sách
     /// này thì báo giá chất đống, phơi nhiễm treo tăng vô hạn và cổng rủi ro
     /// chặn gần như mọi lệnh mới — hệ thống tự bóp cổ mình.
-    pub tuoi_bao_gia_toi_da_ns: Nano,
+    pub max_quote_age_ns: Nanos,
 }
 
-impl HeSinhThai {
-    pub fn moi(san_ck: SanChuoiKhoi, do_tre: MoHinhDoTre, toc_do: TocDoPhat) -> Self {
-        HeSinhThai {
-            dong_ho: DongHoAo::default(),
-            toc_do,
-            do_tre,
-            san_tt: SanTruyenThong::moi(),
-            san_ck,
-            cong: CongRuiRo::dien_hinh(),
-            vi_the: ViThe::default(),
-            do_luong: BoDoLuong::moi(),
-            ma_ke_tiep: 1_000_000,
-            dang_bay: VecDeque::new(),
-            treo_mua: 0,
-            treo_ban: 0,
-            bay_mua: 0,
-            bay_ban: 0,
-            can_phong_ve: BTreeMap::new(),
-            so_lan_phong_ve: 0,
-            nhat_ky: Vec::new(),
-            tuoi_bao_gia_toi_da_ns: 20_000_000, // 20 ms
+impl Ecosystem {
+    pub fn new(venue_chain: ChainVenue, latency: LatencyModel, speed: ReplaySpeed) -> Self {
+        Ecosystem {
+            clock: VirtualClock::default(),
+            speed,
+            latency,
+            venue_lit: LitVenue::new(),
+            venue_chain,
+            gate: RiskGate::typical(),
+            position: Position::default(),
+            metrics: Metrics::new(),
+            next_id: 1_000_000,
+            in_flight: VecDeque::new(),
+            resting_bid: 0,
+            resting_ask: 0,
+            in_flight_bid: 0,
+            in_flight_ask: 0,
+            pending_hedge: BTreeMap::new(),
+            hedge_count: 0,
+            order_log: Vec::new(),
+            max_quote_age_ns: 20_000_000, // 20 ms
         }
     }
 
-    pub fn anh_chup(&self) -> AnhChupThiTruong {
-        AnhChupThiTruong {
-            thoi_diem: self.dong_ho.bay_gio(),
-            tt_mua: self.san_tt.gia_mua_tot_nhat(),
-            tt_ban: self.san_tt.gia_ban_tot_nhat(),
-            tt_vi_gia: self.san_tt.vi_gia(),
-            tt_mat_can_bang: self.san_tt.mat_can_bang(),
-            ck_gia: self.san_ck.gia_x(),
-            ck_du_tru_x: self.san_ck.du_tru_x,
-            ck_du_tru_y: self.san_ck.du_tru_y,
+    pub fn snapshot(&self) -> MarketSnapshot {
+        MarketSnapshot {
+            timestamp: self.clock.now(),
+            lit_buy: self.venue_lit.best_bid(),
+            lit_sell: self.venue_lit.best_ask(),
+            lit_micro_price: self.venue_lit.micro_price(),
+            lit_imbalance: self.venue_lit.imbalance(),
+            chain_price: self.venue_chain.price_x(),
+            chain_reserve_x: self.venue_chain.reserve_x,
+            chain_reserve_y: self.venue_chain.reserve_y,
         }
     }
 
-    fn gia_tham_chieu(&self) -> f64 {
-        self.san_tt
-            .gia_giua()
-            .or_else(|| self.san_tt.gia_mua_tot_nhat().map(|m| m.gia as f64))
-            .unwrap_or(self.vi_the.gia_von)
+    fn reference_price(&self) -> f64 {
+        self.venue_lit
+            .mid()
+            .or_else(|| self.venue_lit.best_bid().map(|m| m.price as f64))
+            .unwrap_or(self.position.cost_basis)
     }
 
     /// Giao các lệnh đã tới hạn. Chúng được khớp theo trạng thái sàn
     /// **tại thời điểm đến**, không phải lúc phát — đó là toàn bộ ý nghĩa của độ trễ.
-    fn giao_lenh_den_han(&mut self) {
-        let bay_gio = self.dong_ho.bay_gio();
-        while self.dang_bay.front().map_or(false, |l| l.den_luc <= bay_gio) {
-            let l = self.dang_bay.pop_front().unwrap();
-            match l.y_dinh {
-                YDinh::HuyLenh { san: San::TruyenThong, ma } => {
-                    if let Some(t) = self.san_tt.lenh_treo_cua_ta().iter().find(|x| x.ma == ma) {
-                        match t.chieu {
-                            Chieu::Mua => self.treo_mua -= t.con_lai,
-                            Chieu::Ban => self.treo_ban -= t.con_lai,
+    fn deliver_due(&mut self) {
+        let now = self.clock.now();
+        while self.in_flight.front().map_or(false, |l| l.arrives_at <= now) {
+            let l = self.in_flight.pop_front().unwrap();
+            match l.intent {
+                Intent::CancelOrder { san: Venue::Lit, ma } => {
+                    if let Some(t) = self.venue_lit.our_resting_orders().iter().find(|x| x.ma == ma) {
+                        match t.side {
+                            Side::Buy => self.resting_bid -= t.remaining,
+                            Side::Sell => self.resting_ask -= t.remaining,
                         }
                     }
-                    self.san_tt.huy_lenh_cua_ta(ma);
+                    self.venue_lit.cancel_our_order(ma);
                 }
-                YDinh::HuyLenh { .. } => {}
-                YDinh::DatCoPhongVe { .. } => {}
-                YDinh::DatLenh { san: San::TruyenThong, chieu, gia, khoi_luong } => {
-                    match chieu {
-                        Chieu::Mua => {
-                            self.bay_mua = (self.bay_mua - khoi_luong).max(0);
-                            self.treo_mua += khoi_luong;
+                Intent::CancelOrder { .. } => {}
+                Intent::PlaceHedged { .. } => {}
+                Intent::Place { san: Venue::Lit, side, price, quantity } => {
+                    match side {
+                        Side::Buy => {
+                            self.in_flight_bid = (self.in_flight_bid - quantity).max(0);
+                            self.resting_bid += quantity;
                         }
-                        Chieu::Ban => {
-                            self.bay_ban = (self.bay_ban - khoi_luong).max(0);
-                            self.treo_ban += khoi_luong;
+                        Side::Sell => {
+                            self.in_flight_ask = (self.in_flight_ask - quantity).max(0);
+                            self.resting_ask += quantity;
                         }
                     }
-                    let khop = self.san_tt.dat_lenh_cua_ta(LenhCuaTa {
+                    let fill = self.venue_lit.place_our_order(OurOrder {
                         ma: l.ma,
-                        chieu,
-                        gia,
-                        con_lai: khoi_luong,
-                        thoi_diem_vao: l.den_luc,
-                        khoi_luong_truoc: 0,
+                        side,
+                        price,
+                        remaining: quantity,
+                        entered_at: l.arrives_at,
+                        prev_quantity: 0,
                     });
-                    self.do_luong.tre_tin_hieu_toi_lenh.ghi(l.den_luc - l.phat_luc);
-                    self.nhat_ky.push((l.den_luc, San::TruyenThong, chieu, gia, khoi_luong));
-                    for k in khop {
-                        self.ap_dung_khop(k);
+                    self.metrics.signal_to_order.record(l.arrives_at - l.sent_at);
+                    self.order_log.push((l.arrives_at, Venue::Lit, side, price, quantity));
+                    for k in fill {
+                        self.apply_fill(k);
                     }
                 }
-                YDinh::DatLenh { san: San::ChuoiKhoi, chieu, gia, khoi_luong } => {
+                Intent::Place { san: Venue::Chain, side, price, quantity } => {
                     // Sàn AMM khớp tức thì theo công thức — không xếp hàng, nhưng
                     // vẫn phải chịu độ trễ tới lượt được đưa vào khối.
-                    match chieu {
-                        Chieu::Mua => self.bay_mua = (self.bay_mua - khoi_luong).max(0),
-                        Chieu::Ban => self.bay_ban = (self.bay_ban - khoi_luong).max(0),
+                    match side {
+                        Side::Buy => self.in_flight_bid = (self.in_flight_bid - quantity).max(0),
+                        Side::Sell => self.in_flight_ask = (self.in_flight_ask - quantity).max(0),
                     }
-                    let vao_x = chieu == Chieu::Ban;
-                    if self.san_ck.hoan_doi(vao_x, khoi_luong as u128, 0).is_ok() {
-                        self.do_luong.tre_tin_hieu_toi_lenh.ghi(l.den_luc - l.phat_luc);
-                        self.nhat_ky.push((l.den_luc, San::ChuoiKhoi, chieu, gia, khoi_luong));
-                        self.ap_dung_khop(KhopLenh {
+                    let x_in = side == Side::Sell;
+                    if self.venue_chain.swap(x_in, quantity as u128, 0).is_ok() {
+                        self.metrics.signal_to_order.record(l.arrives_at - l.sent_at);
+                        self.order_log.push((l.arrives_at, Venue::Chain, side, price, quantity));
+                        self.apply_fill(Fill {
                             ma: l.ma,
-                            chieu,
-                            gia,
-                            khoi_luong,
-                            chu_dong: true,
+                            side,
+                            price,
+                            quantity,
+                            aggressive: true,
                         });
                     }
                 }
@@ -1526,201 +1526,201 @@ impl HeSinhThai {
         }
     }
 
-    fn ap_dung_khop(&mut self, k: KhopLenh) {
-        self.vi_the.ghi_nhan(k.chieu, k.gia, k.khoi_luong);
+    fn apply_fill(&mut self, k: Fill) {
+        self.position.record(k.side, k.price, k.quantity);
 
         // Phòng vệ NGAY, đúng bằng khối lượng vừa khớp. Đây là chỗ bất đối xứng
         // khớp được triệt tiêu: chân chắc chắn chỉ chạy sau khi chân không chắc
         // đã cho biết nó khớp được bao nhiêu.
-        if let Some(&san_pv) = self.can_phong_ve.get(&k.ma) {
-            if san_pv == San::ChuoiKhoi && k.khoi_luong > 0 {
-                let nguoc = k.chieu.nguoc();
-                let kl = k.khoi_luong as u128;
+        if let Some(&san_pv) = self.pending_hedge.get(&k.ma) {
+            if san_pv == Venue::Chain && k.quantity > 0 {
+                let inverse = k.side.inverse();
+                let kl = k.quantity as u128;
                 // Giá phải là giá THỰC NHẬN trên bể, không phải giá của sàn kia.
                 // Ghi sổ chân phòng vệ ở giá sàn truyền thống khiến chênh lệch
                 // thu được luôn bằng 0 — chiến lược "phi rủi ro" chỉ còn chi phí.
-                let gia_thuc = match nguoc {
+                let exec_price = match inverse {
                     // Bán X trên bể: bỏ vào kl X, nhận `ra` Y → giá = ra/kl.
-                    Chieu::Ban => self
-                        .san_ck
-                        .hoan_doi(true, kl, 0)
+                    Side::Sell => self
+                        .venue_chain
+                        .swap(true, kl, 0)
                         .ok()
                         .map(|ra| ra as f64 / kl as f64),
                     // Mua X trên bể: cần bỏ vào bao nhiêu Y để nhận đúng kl X?
-                    Chieu::Mua => self.san_ck.dau_vao_can(false, kl).and_then(|vao_y| {
-                        self.san_ck
-                            .hoan_doi(false, vao_y, 0)
+                    Side::Buy => self.venue_chain.input_for_output(false, kl).and_then(|vao_y| {
+                        self.venue_chain
+                            .swap(false, vao_y, 0)
                             .ok()
                             .map(|_| vao_y as f64 / kl as f64)
                     }),
                 };
-                if let Some(g) = gia_thuc {
-                    let gt = g.round().max(1.0) as Gia;
-                    self.vi_the.ghi_nhan(nguoc, gt, k.khoi_luong);
-                    self.so_lan_phong_ve += 1;
-                    self.nhat_ky.push((
-                        self.dong_ho.bay_gio(),
-                        San::ChuoiKhoi,
-                        nguoc,
+                if let Some(g) = exec_price {
+                    let gt = g.round().max(1.0) as Price;
+                    self.position.record(inverse, gt, k.quantity);
+                    self.hedge_count += 1;
+                    self.order_log.push((
+                        self.clock.now(),
+                        Venue::Chain,
+                        inverse,
                         gt,
-                        k.khoi_luong,
+                        k.quantity,
                     ));
                 }
             }
         }
 
-        self.do_luong.so_khop += 1;
-        self.do_luong.khoi_luong_khop += k.khoi_luong;
-        if k.chu_dong {
-            self.do_luong.khoi_luong_chu_dong += k.khoi_luong;
+        self.metrics.fill_count += 1;
+        self.metrics.filled_qty += k.quantity;
+        if k.aggressive {
+            self.metrics.aggressive_qty += k.quantity;
         }
-        match k.chieu {
-            Chieu::Mua => self.treo_mua = (self.treo_mua - k.khoi_luong).max(0),
-            Chieu::Ban => self.treo_ban = (self.treo_ban - k.khoi_luong).max(0),
+        match k.side {
+            Side::Buy => self.resting_bid = (self.resting_bid - k.quantity).max(0),
+            Side::Sell => self.resting_ask = (self.resting_ask - k.quantity).max(0),
         }
     }
 
     /// Đưa các ý định qua cổng rủi ro rồi xếp vào hàng đợi bay.
-    pub fn phat_y_dinh(&mut self, cac_y: Vec<YDinh>) {
-        let bay_gio = self.dong_ho.bay_gio();
-        let lai_lo = self.vi_the.tong_lai_lo(self.gia_tham_chieu());
+    pub fn publish(&mut self, cac_y: Vec<Intent>) {
+        let now = self.clock.now();
+        let pnl = self.position.total_pnl(self.reference_price());
 
         for y in cac_y {
-            self.do_luong.so_y_dinh += 1;
+            self.metrics.intents += 1;
 
             // --- lệnh chính + phòng vệ theo khối lượng đã khớp ---
-            if let YDinh::DatCoPhongVe { san, chieu, gia, khoi_luong, phong_ve_tren } = y {
-                let don = YDinh::chan_don(san, chieu, gia, khoi_luong);
+            if let Intent::PlaceHedged { san, side, price, quantity, hedge_on } = y {
+                let don = Intent::block_don(san, side, price, quantity);
                 if self
-                    .cong
-                    .kiem(
+                    .gate
+                    .check(
                         &don,
-                        self.vi_the.so_luong,
-                        self.treo_mua + self.bay_mua,
-                        self.treo_ban + self.bay_ban,
-                        lai_lo,
-                        bay_gio,
+                        self.position.quantity,
+                        self.resting_bid + self.in_flight_bid,
+                        self.resting_ask + self.in_flight_ask,
+                        pnl,
+                        now,
                     )
                     .is_err()
                 {
-                    self.do_luong.so_lenh_bi_chan += 1;
+                    self.metrics.orders_blocked += 1;
                     continue;
                 }
-                let ma = self.ma_ke_tiep;
-                self.ma_ke_tiep += 1;
-                match chieu {
-                    Chieu::Mua => self.bay_mua += khoi_luong,
-                    Chieu::Ban => self.bay_ban += khoi_luong,
+                let ma = self.next_id;
+                self.next_id += 1;
+                match side {
+                    Side::Buy => self.in_flight_bid += quantity,
+                    Side::Sell => self.in_flight_ask += quantity,
                 }
                 // Ghi nhớ: mọi phần khớp của mã này phải được phòng vệ ngay.
-                self.can_phong_ve.insert(ma, phong_ve_tren);
-                let tre = self.do_tre.tre_lenh(ma ^ bay_gio);
-                self.dang_bay.push_back(LenhDangBay {
-                    den_luc: bay_gio + tre,
-                    phat_luc: bay_gio,
-                    y_dinh: don,
+                self.pending_hedge.insert(ma, hedge_on);
+                let lat = self.latency.order_latency(ma ^ now);
+                self.in_flight.push_back(InFlightOrder {
+                    arrives_at: now + lat,
+                    sent_at: now,
+                    intent: don,
                     ma,
                 });
-                self.do_luong.so_lenh_gui += 1;
+                self.metrics.orders_sent += 1;
                 continue;
             }
 
             // Cộng cả phơi nhiễm đang bay: đây là điểm khác biệt giữa một cổng
             // rủi ro đúng và một cổng chỉ trông có vẻ đúng.
-            let ok = self.cong.kiem(
+            let ok = self.gate.check(
                 &y,
-                self.vi_the.so_luong,
-                self.treo_mua + self.bay_mua,
-                self.treo_ban + self.bay_ban,
-                lai_lo,
-                bay_gio,
+                self.position.quantity,
+                self.resting_bid + self.in_flight_bid,
+                self.resting_ask + self.in_flight_ask,
+                pnl,
+                now,
             );
             if ok.is_err() {
-                self.do_luong.so_lenh_bi_chan += 1;
+                self.metrics.orders_blocked += 1;
                 continue;
             }
             // ĐẶT CHỖ ngay lập tức, trước khi xét ý định tiếp theo trong cùng nhịp.
             #[allow(clippy::single_match)]
-            if let YDinh::DatLenh { chieu, khoi_luong, .. } = y {
-                match chieu {
-                    Chieu::Mua => self.bay_mua += khoi_luong,
-                    Chieu::Ban => self.bay_ban += khoi_luong,
+            if let Intent::Place { side, quantity, .. } = y {
+                match side {
+                    Side::Buy => self.in_flight_bid += quantity,
+                    Side::Sell => self.in_flight_ask += quantity,
                 }
             }
-            let ma = self.ma_ke_tiep;
-            self.ma_ke_tiep += 1;
+            let ma = self.next_id;
+            self.next_id += 1;
             // Hạt giống dẫn xuất từ (mã lệnh, thời điểm) → dao động tất định.
-            let tre = self.do_tre.tre_lenh(ma ^ bay_gio);
-            self.dang_bay.push_back(LenhDangBay {
-                den_luc: bay_gio + tre,
-                phat_luc: bay_gio,
-                y_dinh: y,
+            let lat = self.latency.order_latency(ma ^ now);
+            self.in_flight.push_back(InFlightOrder {
+                arrives_at: now + lat,
+                sent_at: now,
+                intent: y,
                 ma,
             });
-            self.do_luong.so_lenh_gui += 1;
+            self.metrics.orders_sent += 1;
         }
         // Hàng đợi phải theo thứ tự thời gian đến; dao động có thể đảo thứ tự phát.
-        let mut v: Vec<LenhDangBay> = self.dang_bay.drain(..).collect();
-        v.sort_by_key(|l| (l.den_luc, l.ma));
-        self.dang_bay = v.into();
+        let mut v: Vec<InFlightOrder> = self.in_flight.drain(..).collect();
+        v.sort_by_key(|l| (l.arrives_at, l.ma));
+        self.in_flight = v.into();
     }
 
     /// Chạy trọn một phiên. Đây là điểm mà mọi mảnh của chương 74–78 gặp nhau.
-    pub fn chay(&mut self, phien: &PhienDaGhi, cac_chien_luoc: &mut [Box<dyn ChienLuoc>]) {
-        for sk in &phien.cac_su_kien {
+    pub fn run(&mut self, session: &RecordedSession, cac_chien_luoc: &mut [Box<dyn Strategy>]) {
+        for sk in &session.all_event {
             // 1. Thời gian tiến tới thời điểm sự kiện.
-            if !self.dong_ho.tien_toi(sk.thoi_diem) {
+            if !self.clock.advance(sk.timestamp) {
                 continue;
             }
             // 2. Giao mọi lệnh đã tới nơi TRƯỚC sự kiện này.
-            self.giao_lenh_den_han();
+            self.deliver_due();
 
             // 2b. Rút báo giá đã quá cũ. Huỷ đi thẳng, không qua độ trễ gửi:
             // sàn thật xử lý huỷ trên đường ưu tiên, và quan trọng hơn — nếu
             // huỷ cũng phải xếp hàng thì rủi ro tồn kho không bao giờ giảm được.
             let cu = self
-                .san_tt
-                .lenh_cua_ta_cu_hon(self.dong_ho.bay_gio(), self.tuoi_bao_gia_toi_da_ns);
+                .venue_lit
+                .our_orders_older_than(self.clock.now(), self.max_quote_age_ns);
             for ma in cu {
-                if let Some(t) = self.san_tt.lenh_treo_cua_ta().iter().find(|x| x.ma == ma) {
-                    match t.chieu {
-                        Chieu::Mua => self.treo_mua = (self.treo_mua - t.con_lai).max(0),
-                        Chieu::Ban => self.treo_ban = (self.treo_ban - t.con_lai).max(0),
+                if let Some(t) = self.venue_lit.our_resting_orders().iter().find(|x| x.ma == ma) {
+                    match t.side {
+                        Side::Buy => self.resting_bid = (self.resting_bid - t.remaining).max(0),
+                        Side::Sell => self.resting_ask = (self.resting_ask - t.remaining).max(0),
                     }
                 }
-                self.san_tt.huy_lenh_cua_ta(ma);
+                self.venue_lit.cancel_our_order(ma);
             }
 
             // 3. Áp dụng sự kiện lên đúng sàn của nó.
             match sk.san {
-                San::TruyenThong => {
-                    self.san_tt.ap_dung(&sk.loai);
+                Venue::Lit => {
+                    self.venue_lit.apply(&sk.kind);
                     // Lệnh thị trường cắt qua lệnh treo của ta → khớp thụ động.
-                    for k in self.san_tt.lay_khop_thu_dong() {
-                        self.ap_dung_khop(k);
+                    for k in self.venue_lit.take_passive_fills() {
+                        self.apply_fill(k);
                     }
-                    if let LoaiSuKien::DaKhop { gia, khoi_luong } = sk.loai {
-                        for k in self.san_tt.xu_ly_khop_thi_truong(gia, khoi_luong) {
-                            self.ap_dung_khop(k);
+                    if let EventKind::Traded { price, quantity } = sk.kind {
+                        for k in self.venue_lit.on_market_trade(price, quantity) {
+                            self.apply_fill(k);
                         }
                     }
                 }
-                San::ChuoiKhoi => self.san_ck.ap_dung(&sk.loai),
+                Venue::Chain => self.venue_chain.apply(&sk.kind),
             }
 
             // 4. Chiến lược nhìn ảnh chụp SAU sự kiện — và chỉ ảnh chụp.
-            let anh = self.anh_chup();
-            let mut y_dinh = Vec::new();
+            let snap = self.snapshot();
+            let mut intent = Vec::new();
             for cl in cac_chien_luoc.iter_mut() {
-                y_dinh.extend(cl.danh_gia(&anh, self.vi_the.so_luong));
+                intent.extend(cl.evaluate(&snap, self.position.quantity));
             }
-            self.phat_y_dinh(y_dinh);
+            self.publish(intent);
 
-            self.do_luong.duong_von.push(self.vi_the.tong_lai_lo(self.gia_tham_chieu()));
+            self.metrics.equity_curve.push(self.position.total_pnl(self.reference_price()));
         }
         // Xả nốt các lệnh còn đang bay.
-        self.dong_ho.tien_toi(self.dong_ho.bay_gio() + 1_000_000_000);
-        self.giao_lenh_den_han();
+        self.clock.advance(self.clock.now() + 1_000_000_000);
+        self.deliver_due();
     }
 }
 
@@ -1734,71 +1734,71 @@ impl HeSinhThai {
 /// để sổ không phình ra rồi chéo vĩnh viễn.
 pub const BE_KHOI_DAU: (u128, u128, u32) = (2_000_000, 20_000_000_000, 30);
 
-pub fn sinh_phien(so_su_kien: usize, hat_giong: u64, gia_neo: Gia) -> PhienDaGhi {
-    let mut p = PhienDaGhi::moi();
-    let mut t: Nano = 1_000_000_000;
-    let mut ma: MaLenh = 1;
-    let mut song: VecDeque<MaLenh> = VecDeque::new();
-    let mut gia_hien = gia_neo;
+pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> RecordedSession {
+    let mut p = RecordedSession::new();
+    let mut t: Nanos = 1_000_000_000;
+    let mut ma: OrderId = 1;
+    let mut song: VecDeque<OrderId> = VecDeque::new();
+    let mut price_show = gia_neo;
     // Bản sao bể để chọn CHIỀU hoán đổi. Nó đại diện cho **phần còn lại của
     // thị trường**: những nhà chênh lệch khác liên tục kéo giá bể về sát sàn
     // truyền thống. Không có lực này, bể trôi tự do và mọi chiến lược chênh
     // lệch trong mô hình sẽ in ra tiền — một kết quả hoàn toàn giả.
-    let mut be_mo_phong = SanChuoiKhoi::moi(BE_KHOI_DAU.0, BE_KHOI_DAU.1, BE_KHOI_DAU.2);
+    let mut pool = ChainVenue::new(BE_KHOI_DAU.0, BE_KHOI_DAU.1, BE_KHOI_DAU.2);
 
-    for i in 0..so_su_kien {
-        let r = bam64(hat_giong ^ (i as u64).wrapping_mul(0x1000193));
+    for i in 0..event_count {
+        let r = hash64(hat_giong ^ (i as u64).wrapping_mul(0x1000193));
         t += 1_000 + (r % 200_000);
 
         // Bước ngẫu nhiên có neo: kéo giá về `gia_neo` để chuỗi không trôi mất.
-        let buoc = (bam64(r) % 5) as Gia - 2;
-        gia_hien = (gia_hien + buoc).max(gia_neo - 40).min(gia_neo + 40);
+        let step = (hash64(r) % 5) as Price - 2;
+        price_show = (price_show + step).max(gia_neo - 40).min(gia_neo + 40);
 
         let nhanh = r % 100;
         if nhanh < 8 {
             // Hoán đổi trên bể chuỗi khối. Chiều được chọn để KÉO giá bể về
             // phía giá sàn truyền thống, cộng thêm một phần nhiễu từ người
             // giao dịch thường.
-            let lech = be_mo_phong.gia_x() - gia_hien as f64;
-            let nhieu = bam64(r ^ 0x5A5A) % 5 == 0; // 20% là nhiễu thuần
-            let vao_x = if nhieu { (r >> 8) % 2 == 0 } else { lech > 0.0 };
-            let kl = 1 + (bam64(r ^ 0xABC) % 500) as u128;
-            let _ = be_mo_phong.hoan_doi(vao_x, kl, 0);
-            p.ghi(SuKienPhien {
-                thoi_diem: t,
-                san: San::ChuoiKhoi,
-                loai: LoaiSuKien::HoanDoiTrenBe { vao_x, khoi_luong: kl },
+            let lech = pool.price_x() - price_show as f64;
+            let many = hash64(r ^ 0x5A5A) % 5 == 0; // 20% là nhiễu thuần
+            let x_in = if many { (r >> 8) % 2 == 0 } else { lech > 0.0 };
+            let kl = 1 + (hash64(r ^ 0xABC) % 500) as u128;
+            let _ = pool.swap(x_in, kl, 0);
+            p.record(SessionEvent {
+                timestamp: t,
+                san: Venue::Chain,
+                kind: EventKind::PoolSwap { x_in, quantity: kl },
             });
         } else if nhanh < 20 && !song.is_empty() {
             // Giao dịch đã khớp trên sàn truyền thống.
-            let kl = 1 + (bam64(r ^ 0xDEF) % 40) as SoLuong;
-            p.ghi(SuKienPhien {
-                thoi_diem: t,
-                san: San::TruyenThong,
-                loai: LoaiSuKien::DaKhop { gia: gia_hien, khoi_luong: kl },
+            let kl = 1 + (hash64(r ^ 0xDEF) % 40) as Quantity;
+            p.record(SessionEvent {
+                timestamp: t,
+                san: Venue::Lit,
+                kind: EventKind::Traded { price: price_show, quantity: kl },
             });
         } else if song.len() >= 120 || (nhanh < 55 && song.len() > 20) {
             // Huỷ lệnh SỐNG CŨ NHẤT — mô phỏng đúng hành vi nhà tạo lập thật.
             if let Some(m) = song.pop_front() {
-                p.ghi(SuKienPhien {
-                    thoi_diem: t,
-                    san: San::TruyenThong,
-                    loai: LoaiSuKien::HuyLenh { ma: m },
+                p.record(SessionEvent {
+                    timestamp: t,
+                    san: Venue::Lit,
+                    kind: EventKind::CancelOrder { ma: m },
                 });
             }
         } else {
-            let ben_mua = (r >> 16) % 2 == 0;
-            let lech = 1 + (bam64(r ^ 0x777) % 6) as Gia;
-            let (chieu, gia) = if ben_mua {
-                (Chieu::Mua, gia_hien - lech)
+            let side_buy = (r >> 16) % 2 == 0;
+            let lech = 1 + (hash64(r ^ 0x777) % 6) as Price;
+            let (side, price) = if side_buy {
+                (Side::Buy, price_show - lech)
             } else {
-                (Chieu::Ban, gia_hien + lech)
+                (Side::Sell, price_show + lech)
             };
-            let kl = 10 + (bam64(r ^ 0x999) % 90) as SoLuong;
-            p.ghi(SuKienPhien {
-                thoi_diem: t,
-                san: San::TruyenThong,
-                loai: LoaiSuKien::ThemLenh { ma, chieu, gia, khoi_luong: kl },
+            let kl = 10 + (hash64(r ^ 0x999) % 90) as Quantity;
+            p.record(SessionEvent {
+                timestamp: t,
+                san: Venue::Lit,
+                kind: EventKind::AddOrder { ma, side, price, quantity: kl },
             });
             song.push_back(ma);
             ma += 1;
@@ -1814,80 +1814,80 @@ pub fn sinh_phien(so_su_kien: usize, hat_giong: u64, gia_neo: Gia) -> PhienDaGhi
 fn main() {
     println!("=== CHƯƠNG 85: HỆ SINH THÁI HFT TÍCH HỢP ===\n");
 
-    let phien = sinh_phien(20_000, 0xC0FFEE, 10_000);
+    let session = generate_session(20_000, 0xC0FFEE, 10_000);
     println!("1. PHIÊN ĐÃ GHI");
-    println!("   sự kiện        : {}", phien.so_su_kien());
-    println!("   khoảng thời gian: {:.3} giây", phien.khoang_thoi_gian_ns() as f64 / 1e9);
-    println!("   đúng thứ tự    : {}", phien.dung_thu_tu());
+    println!("   sự kiện        : {}", session.event_count());
+    println!("   khoảng thời gian: {:.3} giây", session.span_ns() as f64 / 1e9);
+    println!("   đúng thứ tự    : {}", session.is_ordered());
 
     println!("\n2. PHÁT LẠI Ở NHIỀU TỐC ĐỘ — kết quả PHẢI trùng nhau");
     println!("   {:<16} {:>10} {:>10} {:>12}", "tốc độ", "lệnh gửi", "khớp", "lãi/lỗ");
-    let mut dau_tien = None;
-    for toc in [TocDoPhat::VoHan, TocDoPhat::Nhanh(1_000), TocDoPhat::ThoiGianThuc] {
-        let mut hst = HeSinhThai::moi(
-            SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-            MoHinhDoTre::dien_hinh(),
+    let mut first_tien = None;
+    for toc in [ReplaySpeed::Unbounded, ReplaySpeed::Fast(1_000), ReplaySpeed::RealTime] {
+        let mut eco = Ecosystem::new(
+            ChainVenue::new(2_000_000, 20_000_000_000, 30),
+            LatencyModel::typical(),
             toc,
         );
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![
-            Box::new(TaoLapCoKiemSoat::moi(200)),
-            Box::new(ChenhLechHaiSan::moi(150.0)),
+        let mut cls: Vec<Box<dyn Strategy>> = vec![
+            Box::new(ManagedMaker::new(200)),
+            Box::new(CrossVenueArb::new(150.0)),
         ];
-        hst.chay(&phien, &mut cls);
-        let ll = hst.vi_the.tong_lai_lo(hst.gia_tham_chieu());
-        let ten = match toc {
-            TocDoPhat::VoHan => "vô hạn",
-            TocDoPhat::Nhanh(n) => {
+        eco.run(&session, &mut cls);
+        let ll = eco.position.total_pnl(eco.reference_price());
+        let name = match toc {
+            ReplaySpeed::Unbounded => "vô hạn",
+            ReplaySpeed::Fast(n) => {
                 let _ = n;
                 "×1000"
             }
-            TocDoPhat::ThoiGianThuc => "thời gian thực",
+            ReplaySpeed::RealTime => "thời gian thực",
         };
         println!(
             "   {:<16} {:>10} {:>10} {:>12.1}",
-            ten, hst.do_luong.so_lenh_gui, hst.do_luong.so_khop, ll
+            name, eco.metrics.orders_sent, eco.metrics.fill_count, ll
         );
-        let dau_van = (hst.do_luong.so_lenh_gui, hst.do_luong.so_khop, hst.nhat_ky.len());
-        match dau_tien {
-            None => dau_tien = Some(dau_van),
-            Some(d) => assert_eq!(d, dau_van, "phát lại KHÔNG tất định giữa các tốc độ"),
+        let first_van = (eco.metrics.orders_sent, eco.metrics.fill_count, eco.order_log.len());
+        match first_tien {
+            None => first_tien = Some(first_van),
+            Some(d) => assert_eq!(d, first_van, "phát lại KHÔNG tất định giữa các tốc độ"),
         }
     }
 
     println!("\n3. HỆ SINH THÁI ĐẦY ĐỦ — hai sàn, hai chiến lược");
-    let mut hst = HeSinhThai::moi(
-        SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-        MoHinhDoTre::dien_hinh(),
-        TocDoPhat::VoHan,
+    let mut eco = Ecosystem::new(
+        ChainVenue::new(2_000_000, 20_000_000_000, 30),
+        LatencyModel::typical(),
+        ReplaySpeed::Unbounded,
     );
-    let mut cls: Vec<Box<dyn ChienLuoc>> = vec![
-        Box::new(TaoLapCoKiemSoat::moi(200)),
-        Box::new(ChenhLechHaiSan::moi(150.0)),
+    let mut cls: Vec<Box<dyn Strategy>> = vec![
+        Box::new(ManagedMaker::new(200)),
+        Box::new(CrossVenueArb::new(150.0)),
     ];
-    hst.chay(&phien, &mut cls);
+    eco.run(&session, &mut cls);
 
-    let m = &hst.do_luong;
-    println!("   ý định sinh ra     : {}", m.so_y_dinh);
-    println!("   lệnh gửi đi        : {}", m.so_lenh_gui);
-    println!("   bị cổng rủi ro chặn: {} ({:.1}%)", m.so_lenh_bi_chan, m.ty_le_chan() * 100.0);
-    println!("   số lần khớp        : {}", m.so_khop);
-    println!("   khối lượng khớp    : {}", m.khoi_luong_khop);
-    println!("   tỉ lệ thụ động     : {:.1}%", m.ty_le_thu_dong() * 100.0);
-    println!("   lần phòng vệ chạy  : {}", hst.so_lan_phong_ve);
-    println!("   vị thế cuối        : {}", hst.vi_the.so_luong);
-    println!("   lãi/lỗ đã chốt     : {:.1}", hst.vi_the.lai_lo_da_chot);
-    println!("   sụt giảm tối đa    : {:.1}", m.sut_giam_toi_da());
+    let m = &eco.metrics;
+    println!("   ý định sinh ra     : {}", m.intents);
+    println!("   lệnh gửi đi        : {}", m.orders_sent);
+    println!("   bị cổng rủi ro chặn: {} ({:.1}%)", m.orders_blocked, m.block_ratio() * 100.0);
+    println!("   số lần khớp        : {}", m.fill_count);
+    println!("   khối lượng khớp    : {}", m.filled_qty);
+    println!("   tỉ lệ thụ động     : {:.1}%", m.passive_ratio() * 100.0);
+    println!("   lần phòng vệ chạy  : {}", eco.hedge_count);
+    println!("   vị thế cuối        : {}", eco.position.quantity);
+    println!("   lãi/lỗ đã chốt     : {:.1}", eco.position.realized_pnl);
+    println!("   sụt giảm tối đa    : {:.1}", m.max_drawdown());
 
     println!("\n4. ĐỘ TRỄ TÍN HIỆU → LỆNH TỚI SÀN (nanosecond)");
-    let h = &m.tre_tin_hieu_toi_lenh;
-    println!("   mẫu   : {}", h.so_mau);
-    println!("   trung bình: {:.0}", h.trung_binh());
-    println!("   p50   : {}", h.phan_vi(0.50));
-    println!("   p99   : {}", h.phan_vi(0.99));
-    println!("   lớn nhất: {}", h.lon_nhat);
+    let h = &m.signal_to_order;
+    println!("   mẫu   : {}", h.samples);
+    println!("   trung bình: {:.0}", h.mean());
+    println!("   p50   : {}", h.percentile(0.50));
+    println!("   p99   : {}", h.percentile(0.99));
+    println!("   lớn nhất: {}", h.max);
 
     println!("\n5. CỔNG RỦI RO ĐÃ CHẶN GÌ");
-    let ten = |k: u8| match k {
+    let name = |k: u8| match k {
         0 => "đã ngắt khẩn cấp",
         1 => "giá ngoài biên",
         2 => "khối lượng quá lớn",
@@ -1896,11 +1896,11 @@ fn main() {
         5 => "vượt hạn mức lỗ",
         _ => "vượt tần suất",
     };
-    if hst.cong.so_lan_tu_choi.is_empty() {
+    if eco.gate.reject_counts.is_empty() {
         println!("   (không có lệnh nào bị chặn)");
     }
-    for (k, v) in &hst.cong.so_lan_tu_choi {
-        println!("   {:<24} {}", ten(*k), v);
+    for (k, v) in &eco.gate.reject_counts {
+        println!("   {:<24} {}", name(*k), v);
     }
 
     println!("\n6. VÌ SAO KHÔNG ĐƯỢC TIN CON SỐ LÃI/LỖ Ở TRÊN");
@@ -1914,10 +1914,10 @@ fn main() {
     println!("\n7. BẤT BIẾN RỦI RO");
     println!(
         "   |vị thế| ≤ hạn mức {} : {}",
-        hst.cong.vi_the_toi_da,
-        hst.vi_the.so_luong.abs() <= hst.cong.vi_the_toi_da
+        eco.gate.max_position,
+        eco.position.quantity.abs() <= eco.gate.max_position
     );
-    println!("   sổ lệnh không chéo   : {}", !hst.san_tt.bi_cheo());
+    println!("   sổ lệnh không chéo   : {}", !eco.venue_lit.is_crossed());
 }
 
 // ============================================================================
@@ -1925,377 +1925,377 @@ fn main() {
 // ============================================================================
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn he_moi() -> HeSinhThai {
-        HeSinhThai::moi(
-            SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-            MoHinhDoTre::dien_hinh(),
-            TocDoPhat::VoHan,
+    fn new_ecosystem() -> Ecosystem {
+        Ecosystem::new(
+            ChainVenue::new(2_000_000, 20_000_000_000, 30),
+            LatencyModel::typical(),
+            ReplaySpeed::Unbounded,
         )
     }
 
     // ---- đồng hồ ảo ----
 
     #[test]
-    fn dong_ho_chi_tien_khong_lui() {
-        let mut d = DongHoAo::moi(100);
-        assert!(d.tien_toi(200));
-        assert_eq!(d.bay_gio(), 200);
-        assert!(!d.tien_toi(150), "phải từ chối lùi thời gian");
-        assert_eq!(d.bay_gio(), 200);
+    fn clock_only_moves_forward() {
+        let mut d = VirtualClock::new(100);
+        assert!(d.advance(200));
+        assert_eq!(d.now(), 200);
+        assert!(!d.advance(150), "phải từ chối lùi thời gian");
+        assert_eq!(d.now(), 200);
     }
 
     #[test]
-    fn toc_do_phat_khong_doi_thoi_gian_ao() {
-        assert_eq!(TocDoPhat::ThoiGianThuc.cho_bao_lau(1_000_000), 1_000_000);
-        assert_eq!(TocDoPhat::Nhanh(1000).cho_bao_lau(1_000_000), 1_000);
-        assert_eq!(TocDoPhat::VoHan.cho_bao_lau(1_000_000), 0);
+    fn replay_speed_leaves_virtual_time_intact() {
+        assert_eq!(ReplaySpeed::RealTime.wall_delay(1_000_000), 1_000_000);
+        assert_eq!(ReplaySpeed::Fast(1000).wall_delay(1_000_000), 1_000);
+        assert_eq!(ReplaySpeed::Unbounded.wall_delay(1_000_000), 0);
     }
 
     // ---- phiên ----
 
     #[test]
-    fn phien_tu_choi_su_kien_lui_thoi_gian() {
-        let mut p = PhienDaGhi::moi();
-        assert!(p.ghi(SuKienPhien {
-            thoi_diem: 100,
-            san: San::TruyenThong,
-            loai: LoaiSuKien::DaKhop { gia: 10, khoi_luong: 1 },
+    fn session_rejects_backwards_events() {
+        let mut p = RecordedSession::new();
+        assert!(p.record(SessionEvent {
+            timestamp: 100,
+            san: Venue::Lit,
+            kind: EventKind::Traded { price: 10, quantity: 1 },
         }));
-        assert!(!p.ghi(SuKienPhien {
-            thoi_diem: 50,
-            san: San::TruyenThong,
-            loai: LoaiSuKien::DaKhop { gia: 10, khoi_luong: 1 },
+        assert!(!p.record(SessionEvent {
+            timestamp: 50,
+            san: Venue::Lit,
+            kind: EventKind::Traded { price: 10, quantity: 1 },
         }));
-        assert_eq!(p.so_su_kien(), 1);
+        assert_eq!(p.event_count(), 1);
     }
 
     #[test]
-    fn phien_sinh_ra_luon_dung_thu_tu() {
-        let p = sinh_phien(5_000, 1, 10_000);
-        assert!(p.dung_thu_tu());
-        assert_eq!(p.so_su_kien(), 5_000);
+    fn generated_session_is_ordered() {
+        let p = generate_session(5_000, 1, 10_000);
+        assert!(p.is_ordered());
+        assert_eq!(p.event_count(), 5_000);
     }
 
     #[test]
-    fn phien_co_ca_hai_san() {
-        let p = sinh_phien(5_000, 7, 10_000);
-        let tt = p.cac_su_kien.iter().filter(|s| s.san == San::TruyenThong).count();
-        let ck = p.cac_su_kien.iter().filter(|s| s.san == San::ChuoiKhoi).count();
+    fn session_covers_both_venues() {
+        let p = generate_session(5_000, 7, 10_000);
+        let tt = p.all_event.iter().filter(|s| s.san == Venue::Lit).count();
+        let ck = p.all_event.iter().filter(|s| s.san == Venue::Chain).count();
         assert!(tt > 0 && ck > 0, "phiên phải phủ cả hai loại thị trường");
     }
 
     // ---- sổ lệnh truyền thống ----
 
     #[test]
-    fn so_lenh_giu_gia_tot_nhat() {
-        let mut s = SanTruyenThong::moi();
+    fn book_tracks_best_prices() {
+        let mut s = LitVenue::new();
         for (ma, c, g, k) in [
-            (1, Chieu::Mua, 99, 10),
-            (2, Chieu::Mua, 100, 20),
-            (3, Chieu::Ban, 102, 15),
-            (4, Chieu::Ban, 101, 5),
+            (1, Side::Buy, 99, 10),
+            (2, Side::Buy, 100, 20),
+            (3, Side::Sell, 102, 15),
+            (4, Side::Sell, 101, 5),
         ] {
-            s.ap_dung(&LoaiSuKien::ThemLenh { ma, chieu: c, gia: g, khoi_luong: k });
+            s.apply(&EventKind::AddOrder { ma, side: c, price: g, quantity: k });
         }
-        assert_eq!(s.gia_mua_tot_nhat().unwrap().gia, 100);
-        assert_eq!(s.gia_ban_tot_nhat().unwrap().gia, 101);
-        assert_eq!(s.chenh_lech(), Some(1));
-        assert!(!s.bi_cheo());
+        assert_eq!(s.best_bid().unwrap().price, 100);
+        assert_eq!(s.best_ask().unwrap().price, 101);
+        assert_eq!(s.spread(), Some(1));
+        assert!(!s.is_crossed());
     }
 
     #[test]
-    fn huy_lenh_lam_so_co_lai() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Mua, gia: 100, khoi_luong: 50 });
-        assert_eq!(s.khoi_luong_tai(Chieu::Mua, 100), 50);
-        s.ap_dung(&LoaiSuKien::HuyLenh { ma: 1 });
-        assert_eq!(s.khoi_luong_tai(Chieu::Mua, 100), 0);
-        assert!(s.gia_mua_tot_nhat().is_none());
+    fn cancel_shrinks_book() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Buy, price: 100, quantity: 50 });
+        assert_eq!(s.qty_at(Side::Buy, 100), 50);
+        s.apply(&EventKind::CancelOrder { ma: 1 });
+        assert_eq!(s.qty_at(Side::Buy, 100), 0);
+        assert!(s.best_bid().is_none());
     }
 
     #[test]
-    fn bo_qua_lenh_huy_lam_so_phinh_va_chenh_lech_gia() {
+    fn skipping_cancels_inflates_book() {
         // LỖI THẬT đã gặp: bộ phát lại chỉ xử lý "thêm". Với động cơ khớp đúng,
         // hậu quả không phải là sổ chéo (lệnh cắt qua bị khớp mất) mà là
         // BÁO GIÁ CŨ KHÔNG BAO GIỜ BIẾN MẤT: sổ phình ra và chênh lệch hẹp giả tạo.
         // Chiến lược khi đó thấy thanh khoản không tồn tại.
-        let mut co_huy = SanTruyenThong::moi();
-        let mut khong_huy = SanTruyenThong::moi();
-        let p = sinh_phien(3_000, 42, 10_000);
-        for sk in &p.cac_su_kien {
-            if sk.san != San::TruyenThong {
+        let mut has_cancel = LitVenue::new();
+        let mut no_cancel = LitVenue::new();
+        let p = generate_session(3_000, 42, 10_000);
+        for sk in &p.all_event {
+            if sk.san != Venue::Lit {
                 continue;
             }
-            co_huy.ap_dung(&sk.loai);
-            if !matches!(sk.loai, LoaiSuKien::HuyLenh { .. }) {
-                khong_huy.ap_dung(&sk.loai);
+            has_cancel.apply(&sk.kind);
+            if !matches!(sk.kind, EventKind::CancelOrder { .. }) {
+                no_cancel.apply(&sk.kind);
             }
         }
         assert!(
-            khong_huy.tong_khoi_luong() > co_huy.tong_khoi_luong() * 2,
+            no_cancel.total_qty() > has_cancel.total_qty() * 2,
             "bỏ lệnh huỷ thì sổ phình lên: {} so với {}",
-            khong_huy.tong_khoi_luong(),
-            co_huy.tong_khoi_luong()
+            no_cancel.total_qty(),
+            has_cancel.total_qty()
         );
     }
 
     #[test]
-    fn vi_gia_nghieng_ve_ben_mong() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Mua, gia: 100, khoi_luong: 900 });
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 2, chieu: Chieu::Ban, gia: 102, khoi_luong: 100 });
-        let giua = s.gia_giua().unwrap();
-        let vi = s.vi_gia().unwrap();
-        assert!(vi > giua, "bên mua đông → vi giá phải cao hơn giá giữa");
+    fn micro_price_leans_to_thin_side() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Buy, price: 100, quantity: 900 });
+        s.apply(&EventKind::AddOrder { ma: 2, side: Side::Sell, price: 102, quantity: 100 });
+        let mid = s.mid().unwrap();
+        let vi = s.micro_price().unwrap();
+        assert!(vi > mid, "bên mua đông → vi giá phải cao hơn giá giữa");
         assert!(vi < 102.0);
     }
 
     #[test]
-    fn mat_can_bang_dung_dau() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Mua, gia: 100, khoi_luong: 900 });
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 2, chieu: Chieu::Ban, gia: 102, khoi_luong: 100 });
-        assert!((s.mat_can_bang().unwrap() - 0.8).abs() < 1e-9);
+    fn imbalance_has_correct_sign() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Buy, price: 100, quantity: 900 });
+        s.apply(&EventKind::AddOrder { ma: 2, side: Side::Sell, price: 102, quantity: 100 });
+        assert!((s.imbalance().unwrap() - 0.8).abs() < 1e-9);
     }
 
     #[test]
-    fn lenh_chu_dong_khop_ngay() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Ban, gia: 100, khoi_luong: 30 });
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 2, chieu: Chieu::Ban, gia: 101, khoi_luong: 30 });
-        let khop = s.dat_lenh_cua_ta(LenhCuaTa {
+    fn aggressive_order_fills_immediately() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Sell, price: 100, quantity: 30 });
+        s.apply(&EventKind::AddOrder { ma: 2, side: Side::Sell, price: 101, quantity: 30 });
+        let fill = s.place_our_order(OurOrder {
             ma: 9,
-            chieu: Chieu::Mua,
-            gia: 101,
-            con_lai: 50,
-            thoi_diem_vao: 0,
-            khoi_luong_truoc: 0,
+            side: Side::Buy,
+            price: 101,
+            remaining: 50,
+            entered_at: 0,
+            prev_quantity: 0,
         });
-        assert_eq!(khop.len(), 2);
-        assert_eq!(khop[0].gia, 100, "phải ăn giá tốt nhất trước");
-        assert_eq!(khop.iter().map(|k| k.khoi_luong).sum::<SoLuong>(), 50);
-        assert!(khop.iter().all(|k| k.chu_dong));
+        assert_eq!(fill.len(), 2);
+        assert_eq!(fill[0].price, 100, "phải ăn giá tốt nhất trước");
+        assert_eq!(fill.iter().map(|k| k.quantity).sum::<Quantity>(), 50);
+        assert!(fill.iter().all(|k| k.aggressive));
     }
 
     #[test]
-    fn lenh_thu_dong_cho_trong_hang() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Mua, gia: 100, khoi_luong: 200 });
-        let khop = s.dat_lenh_cua_ta(LenhCuaTa {
+    fn passive_order_waits_in_queue() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Buy, price: 100, quantity: 200 });
+        let fill = s.place_our_order(OurOrder {
             ma: 9,
-            chieu: Chieu::Mua,
-            gia: 100,
-            con_lai: 50,
-            thoi_diem_vao: 0,
-            khoi_luong_truoc: 0,
+            side: Side::Buy,
+            price: 100,
+            remaining: 50,
+            entered_at: 0,
+            prev_quantity: 0,
         });
-        assert!(khop.is_empty(), "không cắt qua thì không khớp ngay");
-        let treo = s.lenh_treo_cua_ta();
-        assert_eq!(treo.len(), 1);
-        assert_eq!(treo[0].khoi_luong_truoc, 200, "phải ghi nhận hàng đứng trước");
+        assert!(fill.is_empty(), "không cắt qua thì không khớp ngay");
+        let resting = s.our_resting_orders();
+        assert_eq!(resting.len(), 1);
+        assert_eq!(resting[0].prev_quantity, 200, "phải ghi nhận hàng đứng trước");
     }
 
     #[test]
-    fn hang_dung_truoc_duoc_phuc_vu_truoc() {
-        let mut s = SanTruyenThong::moi();
-        s.ap_dung(&LoaiSuKien::ThemLenh { ma: 1, chieu: Chieu::Mua, gia: 100, khoi_luong: 100 });
-        s.dat_lenh_cua_ta(LenhCuaTa {
+    fn queue_ahead_is_served_first() {
+        let mut s = LitVenue::new();
+        s.apply(&EventKind::AddOrder { ma: 1, side: Side::Buy, price: 100, quantity: 100 });
+        s.place_our_order(OurOrder {
             ma: 9,
-            chieu: Chieu::Mua,
-            gia: 100,
-            con_lai: 50,
-            thoi_diem_vao: 1,
-            khoi_luong_truoc: 0,
+            side: Side::Buy,
+            price: 100,
+            remaining: 50,
+            entered_at: 1,
+            prev_quantity: 0,
         });
         // Thị trường khớp 60: 100 đơn vị đứng trước chưa tiêu hết → ta không được gì.
-        let k = s.xu_ly_khop_thi_truong(100, 60);
+        let k = s.on_market_trade(100, 60);
         assert!(k.is_empty(), "hàng đứng trước phải tiêu hết trước khi tới lượt ta");
         // Khớp thêm 120: vượt qua 40 còn lại của hàng → ta được khớp phần dư.
-        let k2 = s.xu_ly_khop_thi_truong(100, 120);
+        let k2 = s.on_market_trade(100, 120);
         assert!(!k2.is_empty());
-        assert!(k2.iter().all(|x| !x.chu_dong));
+        assert!(k2.iter().all(|x| !x.aggressive));
     }
 
     // ---- sàn chuỗi khối ----
 
     #[test]
-    fn hoan_doi_giu_tich_khong_giam() {
-        let mut b = SanChuoiKhoi::moi(1_000_000, 1_000_000, 30);
+    fn swap_never_decreases_k() {
+        let mut b = ChainVenue::new(1_000_000, 1_000_000, 30);
         let k0 = b.k();
-        b.hoan_doi(true, 10_000, 0).unwrap();
+        b.swap(true, 10_000, 0).unwrap();
         assert!(b.k() >= k0, "phí làm tích TĂNG, không bao giờ giảm");
     }
 
     #[test]
-    fn mua_cang_nhieu_gia_cang_te() {
-        let b = SanChuoiKhoi::moi(1_000_000, 1_000_000, 30);
-        let nho = b.gia_thuc_te(true, 1_000).unwrap();
-        let lon = b.gia_thuc_te(true, 100_000).unwrap();
-        assert!(lon < nho, "khối lượng lớn nhận được ít hơn trên mỗi đơn vị");
+    fn larger_size_gets_worse_price() {
+        let b = ChainVenue::new(1_000_000, 1_000_000, 30);
+        let small = b.effective_price(true, 1_000).unwrap();
+        let large = b.effective_price(true, 100_000).unwrap();
+        assert!(large < small, "khối lượng lớn nhận được ít hơn trên mỗi đơn vị");
     }
 
     #[test]
-    fn be_khong_bao_gio_can_kiet() {
-        let mut b = SanChuoiKhoi::moi(1_000, 1_000, 30);
+    fn pool_never_runs_dry() {
+        let mut b = ChainVenue::new(1_000, 1_000, 30);
         for _ in 0..50 {
-            let _ = b.hoan_doi(true, 10_000, 0);
+            let _ = b.swap(true, 10_000, 0);
         }
-        assert!(b.du_tru_y > 0, "x·y=k khiến bể không thể bị hút cạn");
+        assert!(b.reserve_y > 0, "x·y=k khiến bể không thể bị hút cạn");
     }
 
     #[test]
-    fn so_nhan_toi_thieu_chan_gia_xau() {
-        let mut b = SanChuoiKhoi::moi(1_000_000, 1_000_000, 30);
-        let du_kien = b.thu_hoan_doi(true, 10_000).unwrap();
-        let r = b.hoan_doi(true, 10_000, du_kien + 1);
-        assert!(matches!(r, Err(LoiHoanDoi::KhongDatToiThieu { .. })));
-        assert_eq!(b.du_tru_x, 1_000_000, "giao dịch bị chặn thì bể không đổi");
+    fn min_out_blocks_bad_price() {
+        let mut b = ChainVenue::new(1_000_000, 1_000_000, 30);
+        let amount_in = b.try_swap(true, 10_000).unwrap();
+        let r = b.swap(true, 10_000, amount_in + 1);
+        assert!(matches!(r, Err(SwapError::BelowMinOut { .. })));
+        assert_eq!(b.reserve_x, 1_000_000, "giao dịch bị chặn thì bể không đổi");
     }
 
     // ---- vị thế & lãi lỗ ----
 
     #[test]
-    fn gia_von_trung_binh_dung() {
-        let mut v = ViThe::default();
-        v.ghi_nhan(Chieu::Mua, 100, 10);
-        v.ghi_nhan(Chieu::Mua, 110, 10);
-        assert_eq!(v.so_luong, 20);
-        assert!((v.gia_von - 105.0).abs() < 1e-9);
+    fn average_cost_basis_is_correct() {
+        let mut v = Position::default();
+        v.record(Side::Buy, 100, 10);
+        v.record(Side::Buy, 110, 10);
+        assert_eq!(v.quantity, 20);
+        assert!((v.cost_basis - 105.0).abs() < 1e-9);
     }
 
     #[test]
-    fn dong_bot_chot_lai_dung() {
-        let mut v = ViThe::default();
-        v.ghi_nhan(Chieu::Mua, 100, 10);
-        v.ghi_nhan(Chieu::Ban, 120, 4);
-        assert_eq!(v.so_luong, 6);
-        assert!((v.lai_lo_da_chot - 80.0).abs() < 1e-9, "(120−100)×4 = 80");
+    fn partial_close_realizes_correct_pnl() {
+        let mut v = Position::default();
+        v.record(Side::Buy, 100, 10);
+        v.record(Side::Sell, 120, 4);
+        assert_eq!(v.quantity, 6);
+        assert!((v.realized_pnl - 80.0).abs() < 1e-9, "(120−100)×4 = 80");
     }
 
     #[test]
-    fn dao_chieu_dat_lai_gia_von() {
-        let mut v = ViThe::default();
-        v.ghi_nhan(Chieu::Mua, 100, 10);
-        v.ghi_nhan(Chieu::Ban, 120, 15); // đóng 10, mở bán 5
-        assert_eq!(v.so_luong, -5);
-        assert!((v.lai_lo_da_chot - 200.0).abs() < 1e-9);
-        assert!((v.gia_von - 120.0).abs() < 1e-9, "phần dư mở ở giá giao dịch");
+    fn reversal_resets_cost_basis() {
+        let mut v = Position::default();
+        v.record(Side::Buy, 100, 10);
+        v.record(Side::Sell, 120, 15); // đóng 10, mở bán 5
+        assert_eq!(v.quantity, -5);
+        assert!((v.realized_pnl - 200.0).abs() < 1e-9);
+        assert!((v.cost_basis - 120.0).abs() < 1e-9, "phần dư mở ở giá giao dịch");
     }
 
     #[test]
-    fn dong_het_thi_gia_von_ve_khong() {
-        let mut v = ViThe::default();
-        v.ghi_nhan(Chieu::Mua, 100, 10);
-        v.ghi_nhan(Chieu::Ban, 105, 10);
-        assert_eq!(v.so_luong, 0);
-        assert_eq!(v.gia_von, 0.0);
-        assert!((v.lai_lo_da_chot - 50.0).abs() < 1e-9);
+    fn full_close_zeroes_cost_basis() {
+        let mut v = Position::default();
+        v.record(Side::Buy, 100, 10);
+        v.record(Side::Sell, 105, 10);
+        assert_eq!(v.quantity, 0);
+        assert_eq!(v.cost_basis, 0.0);
+        assert!((v.realized_pnl - 50.0).abs() < 1e-9);
     }
 
     // ---- cổng rủi ro ----
 
     #[test]
-    fn cong_chan_gia_ngoai_bien() {
-        let mut c = CongRuiRo::dien_hinh();
-        let y = YDinh::DatLenh {
-            san: San::TruyenThong,
-            chieu: Chieu::Mua,
-            gia: 0,
-            khoi_luong: 10,
+    fn gate_blocks_out_of_band_price() {
+        let mut c = RiskGate::typical();
+        let y = Intent::Place {
+            san: Venue::Lit,
+            side: Side::Buy,
+            price: 0,
+            quantity: 10,
         };
-        assert_eq!(c.kiem(&y, 0, 0, 0, 0.0, 0), Err(TuChoi::GiaNgoaiBien));
+        assert_eq!(c.check(&y, 0, 0, 0, 0.0, 0), Err(RejectReason::PriceOutOfBand));
     }
 
     #[test]
-    fn cong_dem_ca_lenh_dang_treo() {
-        let mut c = CongRuiRo::dien_hinh();
-        c.vi_the_toi_da = 100;
-        let y = YDinh::DatLenh {
-            san: San::TruyenThong,
-            chieu: Chieu::Mua,
-            gia: 100,
-            khoi_luong: 50,
+    fn gate_counts_resting_orders() {
+        let mut c = RiskGate::typical();
+        c.max_position = 100;
+        let y = Intent::Place {
+            san: Venue::Lit,
+            side: Side::Buy,
+            price: 100,
+            quantity: 50,
         };
         // Vị thế 0 nhưng đã treo mua 60 → thêm 50 nữa là vượt 100.
-        assert_eq!(c.kiem(&y, 0, 60, 0, 0.0, 0), Err(TuChoi::VuotHanMucViThe));
+        assert_eq!(c.check(&y, 0, 60, 0, 0.0, 0), Err(RejectReason::PositionLimit));
         // Không có lệnh treo thì cùng lệnh đó qua được.
-        assert!(c.kiem(&y, 0, 0, 0, 0.0, 0).is_ok());
+        assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
     }
 
     #[test]
-    fn cong_chan_khi_vuot_lo() {
-        let mut c = CongRuiRo::dien_hinh();
-        c.lo_toi_da = 1_000.0;
-        let y = YDinh::DatLenh {
-            san: San::TruyenThong,
-            chieu: Chieu::Mua,
-            gia: 100,
-            khoi_luong: 10,
+    fn gate_blocks_on_loss_limit() {
+        let mut c = RiskGate::typical();
+        c.max_loss = 1_000.0;
+        let y = Intent::Place {
+            san: Venue::Lit,
+            side: Side::Buy,
+            price: 100,
+            quantity: 10,
         };
-        assert_eq!(c.kiem(&y, 0, 0, 0, -1_500.0, 0), Err(TuChoi::VuotHanMucLo));
+        assert_eq!(c.check(&y, 0, 0, 0, -1_500.0, 0), Err(RejectReason::LossLimit));
     }
 
     #[test]
-    fn cong_ngat_khan_cap_chan_moi_lenh() {
-        let mut c = CongRuiRo::dien_hinh();
-        c.da_ngat = true;
-        let y = YDinh::DatLenh {
-            san: San::TruyenThong,
-            chieu: Chieu::Mua,
-            gia: 100,
-            khoi_luong: 1,
+    fn kill_switch_blocks_new_orders() {
+        let mut c = RiskGate::typical();
+        c.kill_switch_on = true;
+        let y = Intent::Place {
+            san: Venue::Lit,
+            side: Side::Buy,
+            price: 100,
+            quantity: 1,
         };
-        assert_eq!(c.kiem(&y, 0, 0, 0, 0.0, 0), Err(TuChoi::DaNgatKhanCap));
+        assert_eq!(c.check(&y, 0, 0, 0, 0.0, 0), Err(RejectReason::KillSwitchOn));
     }
 
     #[test]
-    fn huy_lenh_luon_duoc_phep() {
-        let mut c = CongRuiRo::dien_hinh();
-        c.da_ngat = true;
+    fn cancels_always_allowed() {
+        let mut c = RiskGate::typical();
+        c.kill_switch_on = true;
         // Ngắt khẩn cấp phải cho HUỶ qua — nếu không, bạn không rút được chân ra.
-        let y = YDinh::HuyLenh { san: San::TruyenThong, ma: 1 };
-        assert!(c.kiem(&y, 0, 0, 0, 0.0, 0).is_ok());
+        let y = Intent::CancelOrder { san: Venue::Lit, ma: 1 };
+        assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
     }
 
     #[test]
-    fn cong_gioi_han_tan_suat_theo_cua_so_truot() {
-        let mut c = CongRuiRo::dien_hinh();
-        c.lenh_moi_giay_toi_da = 3;
-        let y = YDinh::DatLenh {
-            san: San::TruyenThong,
-            chieu: Chieu::Mua,
-            gia: 100,
-            khoi_luong: 1,
+    fn gate_rate_limits_on_sliding_window() {
+        let mut c = RiskGate::typical();
+        c.max_orders_per_sec = 3;
+        let y = Intent::Place {
+            san: Venue::Lit,
+            side: Side::Buy,
+            price: 100,
+            quantity: 1,
         };
         for _ in 0..3 {
-            assert!(c.kiem(&y, 0, 0, 0, 0.0, 0).is_ok());
+            assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
         }
-        assert_eq!(c.kiem(&y, 0, 0, 0, 0.0, 0), Err(TuChoi::VuotTanSuat));
+        assert_eq!(c.check(&y, 0, 0, 0, 0.0, 0), Err(RejectReason::RateLimit));
         // Sang giây mới thì cửa sổ mở lại.
-        assert!(c.kiem(&y, 0, 0, 0, 0.0, 1_000_000_000).is_ok());
+        assert!(c.check(&y, 0, 0, 0, 0.0, 1_000_000_000).is_ok());
     }
 
     // ---- độ trễ ----
 
     #[test]
-    fn do_tre_co_dao_dong_nhung_tat_dinh() {
-        let m = MoHinhDoTre::dien_hinh();
-        let a: Vec<u64> = (0..100).map(|i| m.tre_lenh(i)).collect();
-        let b: Vec<u64> = (0..100).map(|i| m.tre_lenh(i)).collect();
+    fn latency_jitters_but_is_deterministic() {
+        let m = LatencyModel::typical();
+        let a: Vec<u64> = (0..100).map(|i| m.order_latency(i)).collect();
+        let b: Vec<u64> = (0..100).map(|i| m.order_latency(i)).collect();
         assert_eq!(a, b, "cùng hạt giống phải cho cùng độ trễ");
         assert!(a.iter().any(|&x| x != a[0]), "phải có dao động thật, không phải hằng số");
-        assert!(a.iter().all(|&x| x >= m.lenh_ra_ns));
+        assert!(a.iter().all(|&x| x >= m.outbound_ns));
     }
 
     #[test]
-    fn bam_phan_bo_deu_khong_co_cum() {
+    fn hash_is_uniformly_distributed() {
         // Số học chia dư đơn thuần làm giá trị co cụm và phá mọi phép đo phân phối.
         let mut thung = [0u32; 8];
         for i in 0..8_000u64 {
-            thung[(bam64(i) % 8) as usize] += 1;
+            thung[(hash64(i) % 8) as usize] += 1;
         }
         assert!(thung.iter().all(|&c| c > 800 && c < 1_200), "phân bố phải đều: {:?}", thung);
     }
@@ -2303,154 +2303,154 @@ mod kiem_thu {
     // ---- biểu đồ ----
 
     #[test]
-    fn phan_vi_bat_duoc_duoi_ma_trung_binh_bo_lo() {
-        let mut h = BieuDoTre::moi();
+    fn percentiles_catch_tail_that_mean_hides() {
+        let mut h = LatencyHistogram::new();
         for i in 0..10_000 {
             // 99,9% nhanh, 0,1% chậm 50 µs — đúng hình dạng độ trễ thật.
-            h.ghi(if i % 1000 == 0 { 50_000 } else { 300 });
+            h.record(if i % 1000 == 0 { 50_000 } else { 300 });
         }
-        assert!(h.phan_vi(0.50) <= 512);
-        assert!(h.phan_vi(0.99) <= 512, "p99 vẫn nhanh — cái đuôi bị giấu");
-        assert_eq!(h.lon_nhat, 50_000);
-        assert!(h.lon_nhat as f64 > h.trung_binh() * 100.0, "max lớn hơn trung bình >100×");
+        assert!(h.percentile(0.50) <= 512);
+        assert!(h.percentile(0.99) <= 512, "p99 vẫn nhanh — cái đuôi bị giấu");
+        assert_eq!(h.max, 50_000);
+        assert!(h.max as f64 > h.mean() * 100.0, "max lớn hơn trung bình >100×");
     }
 
     // ---- chiến lược ----
 
     #[test]
-    fn tao_lap_nghieng_bao_gia_theo_ton_kho() {
-        let anh = AnhChupThiTruong {
-            thoi_diem: 10_000_000,
-            tt_mua: Some(MucGia { gia: 100, khoi_luong: 50 }),
-            tt_ban: Some(MucGia { gia: 104, khoi_luong: 50 }),
-            tt_vi_gia: Some(102.0),
-            tt_mat_can_bang: Some(0.0),
-            ck_gia: 102.0,
-            ck_du_tru_x: 1,
-            ck_du_tru_y: 102,
+    fn maker_skews_quotes_by_inventory() {
+        let snap = MarketSnapshot {
+            timestamp: 10_000_000,
+            lit_buy: Some(PriceLevel { price: 100, quantity: 50 }),
+            lit_sell: Some(PriceLevel { price: 104, quantity: 50 }),
+            lit_micro_price: Some(102.0),
+            lit_imbalance: Some(0.0),
+            chain_price: 102.0,
+            chain_reserve_x: 1,
+            chain_reserve_y: 102,
         };
-        let lay = |vi_the| {
-            let mut m = TaoLapCoKiemSoat::moi(100);
-            let y = m.danh_gia(&anh, vi_the);
+        let lay = |position| {
+            let mut m = ManagedMaker::new(100);
+            let y = m.evaluate(&snap, position);
             y.iter()
                 .filter_map(|x| match x {
-                    YDinh::DatLenh { chieu: Chieu::Mua, gia, .. } => Some(*gia),
+                    Intent::Place { side: Side::Buy, price, .. } => Some(*price),
                     _ => None,
                 })
                 .next()
         };
-        let trung_lap = lay(0).unwrap();
-        let dai = lay(80).unwrap();
-        assert!(dai < trung_lap, "dài vị thế → hạ giá mua để bớt mua thêm");
+        let duplicate_loop = lay(0).unwrap();
+        let long = lay(80).unwrap();
+        assert!(long < duplicate_loop, "dài vị thế → hạ giá mua để bớt mua thêm");
     }
 
     #[test]
-    fn tao_lap_khong_bao_gio_cat_qua_so() {
+    fn maker_never_crosses_book() {
         // Sổ hẹp hơn chênh lệch mục tiêu của nhà tạo lập — nếu không có ràng buộc,
         // báo giá sẽ cắt qua và biến nhà tạo lập thành người chủ động.
-        let anh = AnhChupThiTruong {
-            thoi_diem: 10_000_000,
-            tt_mua: Some(MucGia { gia: 101, khoi_luong: 50 }),
-            tt_ban: Some(MucGia { gia: 102, khoi_luong: 50 }),
-            tt_vi_gia: Some(101.5),
-            tt_mat_can_bang: Some(0.0),
-            ck_gia: 101.5,
-            ck_du_tru_x: 1,
-            ck_du_tru_y: 101,
+        let snap = MarketSnapshot {
+            timestamp: 10_000_000,
+            lit_buy: Some(PriceLevel { price: 101, quantity: 50 }),
+            lit_sell: Some(PriceLevel { price: 102, quantity: 50 }),
+            lit_micro_price: Some(101.5),
+            lit_imbalance: Some(0.0),
+            chain_price: 101.5,
+            chain_reserve_x: 1,
+            chain_reserve_y: 101,
         };
-        let mut m = TaoLapCoKiemSoat::moi(100);
-        for y in m.danh_gia(&anh, 0) {
-            if let YDinh::DatLenh { chieu, gia, .. } = y {
-                match chieu {
-                    Chieu::Mua => assert!(gia < 102, "giá mua {} cắt qua giá bán tốt nhất", gia),
-                    Chieu::Ban => assert!(gia > 101, "giá bán {} cắt qua giá mua tốt nhất", gia),
+        let mut m = ManagedMaker::new(100);
+        for y in m.evaluate(&snap, 0) {
+            if let Intent::Place { side, price, .. } = y {
+                match side {
+                    Side::Buy => assert!(price < 102, "giá mua {} cắt qua giá bán tốt nhất", price),
+                    Side::Sell => assert!(price > 101, "giá bán {} cắt qua giá mua tốt nhất", price),
                 }
             }
         }
     }
 
     #[test]
-    fn tao_lap_chu_yeu_khop_thu_dong() {
+    fn maker_fills_mostly_passively() {
         // Hệ quả đo được của ràng buộc trên: phần lớn khối lượng phải đến từ
         // khớp THỤ ĐỘNG. Nhà tạo lập chủ yếu chủ động là nhà tạo lập đang lỗ.
-        let p = sinh_phien(10_000, 0x4242, 10_000);
-        let mut h = he_moi();
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert!(h.do_luong.khoi_luong_khop > 0);
+        let p = generate_session(10_000, 0x4242, 10_000);
+        let mut h = new_ecosystem();
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert!(h.metrics.filled_qty > 0);
         assert!(
-            h.do_luong.ty_le_thu_dong() > 0.8,
+            h.metrics.passive_ratio() > 0.8,
             "tỉ lệ thụ động chỉ {:.1}% — nhà tạo lập đang cắt qua sổ",
-            h.do_luong.ty_le_thu_dong() * 100.0
+            h.metrics.passive_ratio() * 100.0
         );
     }
 
     #[test]
-    fn tao_lap_ngung_bao_gia_khi_cham_han_muc() {
-        let anh = AnhChupThiTruong {
-            thoi_diem: 10_000_000,
-            tt_mua: Some(MucGia { gia: 100, khoi_luong: 50 }),
-            tt_ban: Some(MucGia { gia: 104, khoi_luong: 50 }),
-            tt_vi_gia: Some(102.0),
-            tt_mat_can_bang: Some(0.0),
-            ck_gia: 102.0,
-            ck_du_tru_x: 1,
-            ck_du_tru_y: 102,
+    fn maker_stops_quoting_at_limit() {
+        let snap = MarketSnapshot {
+            timestamp: 10_000_000,
+            lit_buy: Some(PriceLevel { price: 100, quantity: 50 }),
+            lit_sell: Some(PriceLevel { price: 104, quantity: 50 }),
+            lit_micro_price: Some(102.0),
+            lit_imbalance: Some(0.0),
+            chain_price: 102.0,
+            chain_reserve_x: 1,
+            chain_reserve_y: 102,
         };
-        let mut m = TaoLapCoKiemSoat::moi(100);
-        let y = m.danh_gia(&anh, 100);
+        let mut m = ManagedMaker::new(100);
+        let y = m.evaluate(&snap, 100);
         assert!(
-            y.iter().all(|x| !matches!(x, YDinh::DatLenh { chieu: Chieu::Mua, .. })),
+            y.iter().all(|x| !matches!(x, Intent::Place { side: Side::Buy, .. })),
             "chạm hạn mức dài thì không báo giá mua nữa"
         );
     }
 
     #[test]
-    fn chenh_lech_chi_kich_hoat_khi_vuot_nguong() {
-        let mut anh = AnhChupThiTruong {
-            thoi_diem: 1,
-            tt_mua: Some(MucGia { gia: 10_000, khoi_luong: 100 }),
-            tt_ban: Some(MucGia { gia: 10_002, khoi_luong: 100 }),
-            tt_vi_gia: Some(10_001.0),
-            tt_mat_can_bang: Some(0.0),
-            ck_gia: 10_001.0,
-            ck_du_tru_x: 1,
-            ck_du_tru_y: 10_001,
+    fn arb_fires_only_above_threshold() {
+        let mut snap = MarketSnapshot {
+            timestamp: 1,
+            lit_buy: Some(PriceLevel { price: 10_000, quantity: 100 }),
+            lit_sell: Some(PriceLevel { price: 10_002, quantity: 100 }),
+            lit_micro_price: Some(10_001.0),
+            lit_imbalance: Some(0.0),
+            chain_price: 10_001.0,
+            chain_reserve_x: 1,
+            chain_reserve_y: 10_001,
         };
-        let mut c = ChenhLechHaiSan::moi(50.0);
-        assert!(c.danh_gia(&anh, 0).is_empty(), "hai sàn ngang giá → không giao dịch");
+        let mut c = CrossVenueArb::new(50.0);
+        assert!(c.evaluate(&snap, 0).is_empty(), "hai sàn ngang giá → không giao dịch");
 
-        anh.ck_gia = 10_001.0 * 1.02; // lệch 200 bp
-        let y = c.danh_gia(&anh, 0);
+        snap.chain_price = 10_001.0 * 1.02; // lệch 200 bp
+        let y = c.evaluate(&snap, 0);
         assert_eq!(y.len(), 1);
         match y[0] {
-            YDinh::DatCoPhongVe { san, chieu, phong_ve_tren, .. } => {
+            Intent::PlaceHedged { san, side, hedge_on, .. } => {
                 // Chân KHÔNG CHẮC (sổ lệnh) chạy trước; chân chắc chắn (AMM)
                 // chỉ phòng vệ đúng phần thực sự khớp.
-                assert_eq!(san, San::TruyenThong);
-                assert_eq!(chieu, Chieu::Mua, "chuỗi khối đắt hơn → mua chân truyền thống");
-                assert_eq!(phong_ve_tren, San::ChuoiKhoi);
+                assert_eq!(san, Venue::Lit);
+                assert_eq!(side, Side::Buy, "chuỗi khối đắt hơn → mua chân truyền thống");
+                assert_eq!(hedge_on, Venue::Chain);
             }
             _ => panic!("chênh lệch giá phải là lệnh có phòng vệ, không phải lệnh trần"),
         }
     }
 
     #[test]
-    fn chenh_lech_hai_chan_giu_vi_the_gan_bang_khong() {
+    fn hedged_arb_stays_flat() {
         // Hệ quả kiểm chứng được của việc đặt đủ hai chân: chiến lược chênh lệch
         // giá KHÔNG tích luỹ vị thế ròng, khác hẳn bản chỉ đặt một chân.
-        let p = sinh_phien(8_000, 0x7777, 10_000);
-        let mut h = HeSinhThai::moi(
-            SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-            MoHinhDoTre::dien_hinh(),
-            TocDoPhat::VoHan,
+        let p = generate_session(8_000, 0x7777, 10_000);
+        let mut h = Ecosystem::new(
+            ChainVenue::new(2_000_000, 20_000_000_000, 30),
+            LatencyModel::typical(),
+            ReplaySpeed::Unbounded,
         );
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(ChenhLechHaiSan::moi(20.0))];
-        h.chay(&p, &mut cls);
-        assert!(h.do_luong.so_khop > 0, "phải có giao dịch xảy ra");
-        assert!(h.so_lan_phong_ve > 0, "phải có phòng vệ chạy trên sàn còn lại");
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(CrossVenueArb::new(20.0))];
+        h.run(&p, &mut cls);
+        assert!(h.metrics.fill_count > 0, "phải có giao dịch xảy ra");
+        assert!(h.hedge_count > 0, "phải có phòng vệ chạy trên sàn còn lại");
         assert_eq!(
-            h.vi_the.so_luong, 0,
+            h.position.quantity, 0,
             "phòng vệ theo khối lượng đã khớp phải triệt tiêu vị thế ròng hoàn toàn"
         );
     }
@@ -2458,182 +2458,182 @@ mod kiem_thu {
     // ---- hệ sinh thái end-to-end ----
 
     #[test]
-    fn he_sinh_thai_chay_tron_phien() {
-        let p = sinh_phien(8_000, 0xABC, 10_000);
-        let mut h = he_moi();
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert!(h.do_luong.so_y_dinh > 0, "chiến lược phải sinh ra ý định");
-        assert!(h.do_luong.so_lenh_gui > 0, "phải có lệnh ra khỏi cổng rủi ro");
-        assert!(h.do_luong.so_khop > 0, "phải có lệnh được khớp");
+    fn ecosystem_runs_full_session() {
+        let p = generate_session(8_000, 0xABC, 10_000);
+        let mut h = new_ecosystem();
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert!(h.metrics.intents > 0, "chiến lược phải sinh ra ý định");
+        assert!(h.metrics.orders_sent > 0, "phải có lệnh ra khỏi cổng rủi ro");
+        assert!(h.metrics.fill_count > 0, "phải có lệnh được khớp");
     }
 
     #[test]
-    fn phat_lai_tat_dinh_giua_hai_lan_chay() {
-        let p = sinh_phien(8_000, 0xBEEF, 10_000);
-        let chay = || {
-            let mut h = he_moi();
-            let mut cls: Vec<Box<dyn ChienLuoc>> = vec![
-                Box::new(TaoLapCoKiemSoat::moi(200)),
-                Box::new(ChenhLechHaiSan::moi(50.0)),
+    fn replay_is_deterministic_across_runs() {
+        let p = generate_session(8_000, 0xBEEF, 10_000);
+        let run = || {
+            let mut h = new_ecosystem();
+            let mut cls: Vec<Box<dyn Strategy>> = vec![
+                Box::new(ManagedMaker::new(200)),
+                Box::new(CrossVenueArb::new(50.0)),
             ];
-            h.chay(&p, &mut cls);
-            (h.nhat_ky.clone(), h.vi_the.so_luong, h.vi_the.lai_lo_da_chot.to_bits())
+            h.run(&p, &mut cls);
+            (h.order_log.clone(), h.position.quantity, h.position.realized_pnl.to_bits())
         };
-        assert_eq!(chay(), chay(), "hai lần chạy phải trùng khớp từng bit");
+        assert_eq!(run(), run(), "hai lần chạy phải trùng khớp từng bit");
     }
 
     #[test]
-    fn toc_do_phat_khong_doi_ket_qua() {
-        let p = sinh_phien(6_000, 0xF00D, 10_000);
-        let chay = |toc| {
-            let mut h = HeSinhThai::moi(
-                SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-                MoHinhDoTre::dien_hinh(),
+    fn replay_speed_does_not_change_results() {
+        let p = generate_session(6_000, 0xF00D, 10_000);
+        let run = |toc| {
+            let mut h = Ecosystem::new(
+                ChainVenue::new(2_000_000, 20_000_000_000, 30),
+                LatencyModel::typical(),
                 toc,
             );
-            let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-            h.chay(&p, &mut cls);
-            h.nhat_ky.clone()
+            let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+            h.run(&p, &mut cls);
+            h.order_log.clone()
         };
         // Đẩy tốc độ chỉ nén thời gian TƯỜNG. Thời gian ẢO không đổi, nên
         // kết quả chiến lược phải y hệt — miễn là không ai đọc đồng hồ thật.
-        assert_eq!(chay(TocDoPhat::VoHan), chay(TocDoPhat::Nhanh(1_000)));
-        assert_eq!(chay(TocDoPhat::VoHan), chay(TocDoPhat::ThoiGianThuc));
+        assert_eq!(run(ReplaySpeed::Unbounded), run(ReplaySpeed::Fast(1_000)));
+        assert_eq!(run(ReplaySpeed::Unbounded), run(ReplaySpeed::RealTime));
     }
 
     #[test]
-    fn khong_bao_gio_vuot_han_muc_vi_the() {
+    fn position_limit_is_never_breached() {
         for hat in [1u64, 99, 12345, 0xDEAD] {
-            let p = sinh_phien(8_000, hat, 10_000);
-            let mut h = he_moi();
-            h.cong.vi_the_toi_da = 150;
-            let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(120))];
-            h.chay(&p, &mut cls);
+            let p = generate_session(8_000, hat, 10_000);
+            let mut h = new_ecosystem();
+            h.gate.max_position = 150;
+            let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(120))];
+            h.run(&p, &mut cls);
             assert!(
-                h.vi_the.so_luong.abs() <= h.cong.vi_the_toi_da,
+                h.position.quantity.abs() <= h.gate.max_position,
                 "hạt {}: vị thế {} vượt hạn mức {}",
                 hat,
-                h.vi_the.so_luong,
-                h.cong.vi_the_toi_da
+                h.position.quantity,
+                h.gate.max_position
             );
         }
     }
 
     #[test]
-    fn do_tre_khien_lenh_toi_san_muon_hon() {
-        let p = sinh_phien(4_000, 5, 10_000);
-        let chay = |tre| {
-            let mut h = HeSinhThai::moi(
-                SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-                tre,
-                TocDoPhat::VoHan,
+    fn latency_delays_order_arrival() {
+        let p = generate_session(4_000, 5, 10_000);
+        let run = |lat| {
+            let mut h = Ecosystem::new(
+                ChainVenue::new(2_000_000, 20_000_000_000, 30),
+                lat,
+                ReplaySpeed::Unbounded,
             );
-            let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-            h.chay(&p, &mut cls);
-            h.nhat_ky.first().map(|x| x.0).unwrap_or(0)
+            let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+            h.run(&p, &mut cls);
+            h.order_log.first().map(|x| x.0).unwrap_or(0)
         };
-        let khong = chay(MoHinhDoTre::khong_tre());
-        let co = chay(MoHinhDoTre::dien_hinh());
-        assert!(co > khong, "có độ trễ thì lệnh đầu tiên tới sàn muộn hơn");
+        let no = run(LatencyModel::none());
+        let co = run(LatencyModel::typical());
+        assert!(co > no, "có độ trễ thì lệnh đầu tiên tới sàn muộn hơn");
     }
 
     #[test]
-    fn bo_qua_do_tre_lam_ket_qua_khac_han() {
+    fn ignoring_latency_changes_everything() {
         // Bỏ qua độ trễ là dạng nhìn trộm tương lai tinh vi nhất: không ai gọi
         // tên nó như vậy, nhưng nó cho chiến lược khớp ở giá đã không còn tồn tại.
-        let p = sinh_phien(6_000, 0x1234, 10_000);
-        let chay = |tre| {
-            let mut h = HeSinhThai::moi(
-                SanChuoiKhoi::moi(2_000_000, 20_000_000_000, 30),
-                tre,
-                TocDoPhat::VoHan,
+        let p = generate_session(6_000, 0x1234, 10_000);
+        let run = |lat| {
+            let mut h = Ecosystem::new(
+                ChainVenue::new(2_000_000, 20_000_000_000, 30),
+                lat,
+                ReplaySpeed::Unbounded,
             );
-            let mut cls: Vec<Box<dyn ChienLuoc>> = vec![
-                Box::new(TaoLapCoKiemSoat::moi(200)),
-                Box::new(ChenhLechHaiSan::moi(50.0)),
+            let mut cls: Vec<Box<dyn Strategy>> = vec![
+                Box::new(ManagedMaker::new(200)),
+                Box::new(CrossVenueArb::new(50.0)),
             ];
-            h.chay(&p, &mut cls);
-            (h.nhat_ky.clone(), h.do_luong.khoi_luong_khop)
+            h.run(&p, &mut cls);
+            (h.order_log.clone(), h.metrics.filled_qty)
         };
         assert_ne!(
-            chay(MoHinhDoTre::khong_tre()),
-            chay(MoHinhDoTre::dien_hinh()),
+            run(LatencyModel::none()),
+            run(LatencyModel::typical()),
             "backtest bỏ qua độ trễ cho dòng lệnh KHÁC HẲN — đó chính là vấn đề"
         );
     }
 
     #[test]
-    fn ngat_khan_cap_dung_moi_lenh_moi() {
-        let p = sinh_phien(4_000, 77, 10_000);
-        let mut h = he_moi();
-        h.cong.da_ngat = true;
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert_eq!(h.do_luong.so_lenh_gui, 0);
-        assert!(h.do_luong.so_lenh_bi_chan > 0);
-        assert_eq!(h.vi_the.so_luong, 0);
+    fn kill_switch_halts_new_orders() {
+        let p = generate_session(4_000, 77, 10_000);
+        let mut h = new_ecosystem();
+        h.gate.kill_switch_on = true;
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert_eq!(h.metrics.orders_sent, 0);
+        assert!(h.metrics.orders_blocked > 0);
+        assert_eq!(h.position.quantity, 0);
     }
 
     #[test]
-    fn ca_hai_san_deu_duoc_cap_nhat() {
-        let p = sinh_phien(6_000, 0x5EED, 10_000);
-        let mut h = he_moi();
-        let x0 = h.san_ck.du_tru_x;
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert_ne!(h.san_ck.du_tru_x, x0, "sự kiện chuỗi khối phải làm bể đổi");
-        assert!(h.san_tt.gia_giua().is_some(), "sổ truyền thống phải có hai chiều");
+    fn both_venues_get_updated() {
+        let p = generate_session(6_000, 0x5EED, 10_000);
+        let mut h = new_ecosystem();
+        let x0 = h.venue_chain.reserve_x;
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert_ne!(h.venue_chain.reserve_x, x0, "sự kiện chuỗi khối phải làm bể đổi");
+        assert!(h.venue_lit.mid().is_some(), "sổ truyền thống phải có hai chiều");
     }
 
     #[test]
-    fn nhat_ky_chi_ghi_lenh_da_qua_cong() {
-        let p = sinh_phien(5_000, 0x99, 10_000);
-        let mut h = he_moi();
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert_eq!(h.nhat_ky.len() as u64, h.do_luong.so_lenh_gui);
-        assert_eq!(h.do_luong.so_y_dinh, h.do_luong.so_lenh_gui + h.do_luong.so_lenh_bi_chan);
+    fn log_records_only_gated_orders() {
+        let p = generate_session(5_000, 0x99, 10_000);
+        let mut h = new_ecosystem();
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert_eq!(h.order_log.len() as u64, h.metrics.orders_sent);
+        assert_eq!(h.metrics.intents, h.metrics.orders_sent + h.metrics.orders_blocked);
     }
 
     #[test]
-    fn thoi_diem_trong_nhat_ky_khong_giam() {
-        let p = sinh_phien(6_000, 0x2468, 10_000);
-        let mut h = he_moi();
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
+    fn log_timestamps_never_decrease() {
+        let p = generate_session(6_000, 0x2468, 10_000);
+        let mut h = new_ecosystem();
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
         assert!(
-            h.nhat_ky.windows(2).all(|w| w[0].0 <= w[1].0),
+            h.order_log.windows(2).all(|w| w[0].0 <= w[1].0),
             "lệnh phải tới sàn theo đúng thứ tự thời gian, dù dao động đảo thứ tự phát"
         );
     }
 
     #[test]
-    fn sut_giam_toi_da_khong_am() {
-        let p = sinh_phien(5_000, 0x1111, 10_000);
-        let mut h = he_moi();
-        let mut cls: Vec<Box<dyn ChienLuoc>> = vec![Box::new(TaoLapCoKiemSoat::moi(200))];
-        h.chay(&p, &mut cls);
-        assert!(h.do_luong.sut_giam_toi_da() >= 0.0);
+    fn max_drawdown_is_non_negative() {
+        let p = generate_session(5_000, 0x1111, 10_000);
+        let mut h = new_ecosystem();
+        let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
+        h.run(&p, &mut cls);
+        assert!(h.metrics.max_drawdown() >= 0.0);
     }
 
     #[test]
-    fn hai_chien_luoc_sinh_nhieu_y_dinh_hon_mot() {
-        let p = sinh_phien(6_000, 0x3333, 10_000);
-        let dem = |n: usize| {
-            let mut h = he_moi();
-            let mut cls: Vec<Box<dyn ChienLuoc>> = if n == 1 {
-                vec![Box::new(TaoLapCoKiemSoat::moi(200))]
+    fn two_strategies_emit_more_intents() {
+        let p = generate_session(6_000, 0x3333, 10_000);
+        let count = |n: usize| {
+            let mut h = new_ecosystem();
+            let mut cls: Vec<Box<dyn Strategy>> = if n == 1 {
+                vec![Box::new(ManagedMaker::new(200))]
             } else {
                 vec![
-                    Box::new(TaoLapCoKiemSoat::moi(200)),
-                    Box::new(ChenhLechHaiSan::moi(1.0)),
+                    Box::new(ManagedMaker::new(200)),
+                    Box::new(CrossVenueArb::new(1.0)),
                 ]
             };
-            h.chay(&p, &mut cls);
-            h.do_luong.so_y_dinh
+            h.run(&p, &mut cls);
+            h.metrics.intents
         };
-        assert!(dem(2) > dem(1), "thêm chiến lược thì phải có thêm ý định");
+        assert!(count(2) > count(1), "thêm chiến lược thì phải có thêm ý định");
     }
 }
 ```
@@ -2644,10 +2644,10 @@ mod kiem_thu {
 
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
-| `E0502: cannot borrow as mutable` | Duyệt `self.lenh_cua_ta` rồi muốn sửa | Thu mã cần sửa vào `Vec` trước, sửa sau vòng lặp |
-| `E0499: two mutable borrows` | `self.san_tt` và `self.vi_the` cùng lúc | Tách thành hàm nhận từng `&mut`, hoặc lấy giá trị ra trước |
-| `E0038: trait cannot be made into an object` | `ChienLuoc` có phương thức generic | Giữ trait "object-safe": không generic, không `Self` ở vị trí trả về |
-| `E0277: dyn ChienLuoc is not Sized` | Chứa trait object trực tiếp trong `Vec` | `Vec<Box<dyn ChienLuoc>>` |
+| `E0502: cannot borrow as mutable` | Duyệt `self.our_orders` rồi muốn sửa | Thu mã cần sửa vào `Vec` trước, sửa sau vòng lặp |
+| `E0499: two mutable borrows` | `self.venue_lit` và `self.position` cùng lúc | Tách thành hàm nhận từng `&mut`, hoặc lấy giá trị ra trước |
+| `E0038: trait cannot be made into an object` | `Strategy` có phương thức generic | Giữ trait "object-safe": không generic, không `Self` ở vị trí trả về |
+| `E0277: dyn Strategy is not Sized` | Chứa trait object trực tiếp trong `Vec` | `Vec<Box<dyn Strategy>>` |
 | Kết quả khác nhau giữa hai lần chạy | `HashMap`, RNG chưa gieo hạt, hoặc `Instant::now()` | `BTreeMap` + hạt giống cố định + đồng hồ ảo |
 | Vị thế vượt hạn mức dù cổng "đã kiểm" | Không đếm lệnh đang bay | Đặt chỗ phơi nhiễm lúc **phát**, không lúc giao |
 
@@ -2680,8 +2680,8 @@ Ba triệu chứng đã gặp trong chính chương này, và cả ba đều đo
 ```rust
 #[derive(Debug, PartialEq)]
 pub enum CanhBao {
-    CongChanQuaNhieu { ty_le: f64 },
-    ChuDongQuaNhieu { ty_le_thu_dong: f64 },
+    CongChanQuaNhieu { ratio: f64 },
+    ChuDongQuaNhieu { passive_ratio: f64 },
     LenhTreoPhinhTo { so_lenh: usize },
     KhongCoKhopNao,
 }
@@ -2693,28 +2693,28 @@ pub struct GiamSatSucKhoe {
 }
 
 impl GiamSatSucKhoe {
-    pub fn dien_hinh() -> Self {
+    pub fn typical() -> Self {
         GiamSatSucKhoe { nguong_chan: 0.5, nguong_thu_dong: 0.5, nguong_lenh_treo: 200 }
     }
 
-    pub fn kiem(&self, h: &HeSinhThai) -> Vec<CanhBao> {
-        let m = &h.do_luong;
+    pub fn check(&self, h: &Ecosystem) -> Vec<CanhBao> {
+        let m = &h.metrics;
         let mut ra = Vec::new();
 
         // Triệu chứng ③+④: phơi nhiễm kẹt, cổng chặn gần như mọi thứ.
-        if m.so_y_dinh > 100 && m.ty_le_chan() > self.nguong_chan {
-            ra.push(CanhBao::CongChanQuaNhieu { ty_le: m.ty_le_chan() });
+        if m.intents > 100 && m.block_ratio() > self.nguong_chan {
+            ra.push(CanhBao::CongChanQuaNhieu { ratio: m.block_ratio() });
         }
         // Triệu chứng ⑤: nhà tạo lập đang cắt qua sổ.
-        if m.khoi_luong_khop > 0 && m.ty_le_thu_dong() < self.nguong_thu_dong {
-            ra.push(CanhBao::ChuDongQuaNhieu { ty_le_thu_dong: m.ty_le_thu_dong() });
+        if m.filled_qty > 0 && m.passive_ratio() < self.nguong_thu_dong {
+            ra.push(CanhBao::ChuDongQuaNhieu { passive_ratio: m.passive_ratio() });
         }
         // Triệu chứng ③: báo giá không bao giờ được rút.
-        let treo = h.san_tt.lenh_treo_cua_ta().len();
-        if treo > self.nguong_lenh_treo {
-            ra.push(CanhBao::LenhTreoPhinhTo { so_lenh: treo });
+        let resting = h.venue_lit.our_resting_orders().len();
+        if resting > self.nguong_lenh_treo {
+            ra.push(CanhBao::LenhTreoPhinhTo { so_lenh: resting });
         }
-        if m.so_lenh_gui > 100 && m.so_khop == 0 {
+        if m.orders_sent > 100 && m.fill_count == 0 {
             ra.push(CanhBao::KhongCoKhopNao);
         }
         ra
@@ -2740,70 +2740,70 @@ Trên nhiều tài sản, một sàn "dẫn" và sàn kia "theo" — hiện tư�
 
 ```rust
 pub struct TheoDanBe {
-    pub nguong_bp: f64,
-    pub khoi_luong: SoLuong,
-    pub han_muc: SoLuong,
+    pub threshold_bps: f64,
+    pub quantity: Quantity,
+    pub limit: Quantity,
     /// Thời điểm vào lệnh gần nhất — nền của giới hạn thời gian giữ.
-    pub vao_luc: Option<Nano>,
-    pub thoi_gian_giu_toi_da_ns: Nano,
+    pub entered_at: Option<Nanos>,
+    pub thoi_gian_giu_toi_da_ns: Nanos,
 }
 
 impl TheoDanBe {
-    pub fn moi(nguong_bp: f64, han_muc: SoLuong) -> Self {
+    pub fn new(threshold_bps: f64, limit: Quantity) -> Self {
         TheoDanBe {
-            nguong_bp,
-            khoi_luong: 10,
-            han_muc,
-            vao_luc: None,
+            threshold_bps,
+            quantity: 10,
+            limit,
+            entered_at: None,
             thoi_gian_giu_toi_da_ns: 50_000_000, // 50 ms
         }
     }
 }
 
-impl ChienLuoc for TheoDanBe {
-    fn ten(&self) -> &str { "theo_dan_be" }
+impl Strategy for TheoDanBe {
+    fn name(&self) -> &str { "theo_dan_be" }
 
-    fn danh_gia(&mut self, anh: &AnhChupThiTruong, vi_the: SoLuong) -> Vec<YDinh> {
+    fn evaluate(&mut self, snap: &MarketSnapshot, position: Quantity) -> Vec<Intent> {
         // Hết thời gian giữ → thoát, bất kể lãi hay lỗ. Một cược có hướng
         // không có giới hạn thời gian sẽ biến thành khoản đầu tư dài hạn
         // ngoài ý muốn.
-        if let Some(t0) = self.vao_luc {
-            if anh.thoi_diem.saturating_sub(t0) > self.thoi_gian_giu_toi_da_ns && vi_the != 0 {
-                self.vao_luc = None;
-                let (chieu, muc) = if vi_the > 0 {
-                    (Chieu::Ban, anh.tt_mua)
+        if let Some(t0) = self.entered_at {
+            if snap.timestamp.saturating_sub(t0) > self.thoi_gian_giu_toi_da_ns && position != 0 {
+                self.entered_at = None;
+                let (side, level) = if position > 0 {
+                    (Side::Sell, snap.lit_buy)
                 } else {
-                    (Chieu::Mua, anh.tt_ban)
+                    (Side::Buy, snap.lit_sell)
                 };
-                if let Some(m) = muc {
-                    return vec![YDinh::DatLenh {
-                        san: San::TruyenThong,
-                        chieu,
-                        gia: m.gia,
-                        khoi_luong: vi_the.abs().min(m.khoi_luong),
+                if let Some(m) = level {
+                    return vec![Intent::Place {
+                        san: Venue::Lit,
+                        side,
+                        price: m.price,
+                        quantity: position.abs().min(m.quantity),
                     }];
                 }
             }
         }
 
-        let cl = match anh.chenh_lech_hai_san_bp() { Some(x) => x, None => return Vec::new() };
-        if cl.abs() < self.nguong_bp { return Vec::new(); }
+        let cl = match snap.cross_venue_bps() { Some(x) => x, None => return Vec::new() };
+        if cl.abs() < self.threshold_bps { return Vec::new(); }
 
         // Bể đắt hơn → dự báo sàn truyền thống sẽ đi LÊN → mua.
-        let (chieu, muc) = if cl > 0.0 { (Chieu::Mua, anh.tt_ban) } else { (Chieu::Ban, anh.tt_mua) };
-        if (chieu == Chieu::Mua && vi_the >= self.han_muc)
-            || (chieu == Chieu::Ban && vi_the <= -self.han_muc)
+        let (side, level) = if cl > 0.0 { (Side::Buy, snap.lit_sell) } else { (Side::Sell, snap.lit_buy) };
+        if (side == Side::Buy && position >= self.limit)
+            || (side == Side::Sell && position <= -self.limit)
         {
             return Vec::new();
         }
-        match muc {
+        match level {
             Some(m) => {
-                self.vao_luc = Some(anh.thoi_diem);
-                vec![YDinh::DatLenh {
-                    san: San::TruyenThong,
-                    chieu,
-                    gia: m.gia,
-                    khoi_luong: self.khoi_luong.min(m.khoi_luong),
+                self.entered_at = Some(snap.timestamp);
+                vec![Intent::Place {
+                    san: Venue::Lit,
+                    side,
+                    price: m.price,
+                    quantity: self.quantity.min(m.quantity),
                 }]
             }
             None => Vec::new(),
@@ -2812,5 +2812,5 @@ impl ChienLuoc for TheoDanBe {
 }
 ```
 
-Khác biệt then chốt so với `ChenhLechHaiSan`: chiến lược này **không phòng vệ**, nên nó mang rủi ro hướng thật. Bù lại nó phải có hạn mức vị thế riêng và giới hạn thời gian giữ. Đó là đánh đổi cơ bản — bỏ phòng vệ để lấy kỳ vọng lợi nhuận cao hơn, và trả bằng rủi ro phải quản lý bằng tay.
+Khác biệt then chốt so với `CrossVenueArb`: chiến lược này **không phòng vệ**, nên nó mang rủi ro hướng thật. Bù lại nó phải có hạn mức vị thế riêng và giới hạn thời gian giữ. Đó là đánh đổi cơ bản — bỏ phòng vệ để lấy kỳ vọng lợi nhuận cao hơn, và trả bằng rủi ro phải quản lý bằng tay.
 </details>

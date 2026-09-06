@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Sau khi đã làm quen với các cấu trúc dữ liệu dạng tuyến tính (Linear Data Structures) như Mảng, Danh sách liên kết, Ngăn xếp và Hàng đợi, chúng ta chính thức bước vào thế giới của các cấu trúc dữ liệu dạng phân cấp (Hierarchical Data Structures): **Cấu trúc Cây (Trees)** và đỉnh cao ứng dụng là **Cây nhị phân tìm kiếm (Binary Search Tree - BST)**.
+Sau khi đã làm quen với các cấu trúc dữ liệu dạng tuyến tính (Linear Data Structures) như Mảng, Danh sách liên kết (Linked list), Ngăn xếp và Hàng đợi, chúng ta chính thức bước vào thế giới của các cấu trúc dữ liệu dạng phân cấp (Hierarchical Data Structures): **Cấu trúc Cây (Trees)** và đỉnh cao ứng dụng là **Cây nhị phân tìm kiếm (Binary Search Tree - BST)**.
 
 Trong thực tế công nghiệp phần mềm, cấu trúc Cây hiện diện ở khắp mọi nơi:
 - Hệ thống tệp tin và thư mục trên ổ đĩa máy tính (thư mục gốc `root`, thư mục con, tệp tin lá).
@@ -88,9 +88,9 @@ Một nút cây nhị phân cần lưu trữ giá trị của chính nó và hai
 
 ```rust
 pub struct NutCay<T> {
-    pub gia_tri: T,
-    pub trai: Option<Box<NutCay<T>>>,
-    pub phai: Option<Box<NutCay<T>>>,
+    pub value: T,
+    pub left: Option<Box<NutCay<T>>>,
+    pub must: Option<Box<NutCay<T>>>,
 }
 ```
 
@@ -126,14 +126,14 @@ Thứ tự xử lý một nút cha so với các nút con của nó quyết đ�
 impl<T: Copy> NutCay<T> {
     /// Gấp cây theo thứ tự trung thứ tự (trái → gốc → phải).
     /// `f` nhận (giá trị tích lũy, giá trị nút) và trả về giá trị tích lũy mới.
-    pub fn gap<A>(&self, khoi_tao: A, f: &impl Fn(A, T) -> A) -> A {
-        let mut acc = khoi_tao;
-        if let Some(trai) = &self.trai {
-            acc = trai.gap(acc, f);
+    pub fn gap<A>(&self, block_make: A, f: &impl Fn(A, T) -> A) -> A {
+        let mut acc = block_make;
+        if let Some(left) = &self.left {
+            acc = left.gap(acc, f);
         }
-        acc = f(acc, self.gia_tri);
-        if let Some(phai) = &self.phai {
-            acc = phai.gap(acc, f);
+        acc = f(acc, self.value);
+        if let Some(must) = &self.must {
+            acc = must.gap(acc, f);
         }
         acc
     }
@@ -144,9 +144,9 @@ Một hàm `gap` duy nhất giờ đây thay thế cho hàng loạt hàm chuyên
 
 ```rust
 let tong  = cay.gap(0i64, &|a, x| a + x);            // tính tổng
-let dem   = cay.gap(0usize, &|a, _| a + 1);          // đếm số nút
-let lon   = cay.gap(i64::MIN, &|a, x| a.max(x));     // tìm giá trị lớn nhất
-let ds    = cay.gap(Vec::new(), &|mut a, x| { a.push(x); a }); // xuất ra danh sách đã sắp xếp
+let count   = cay.gap(0usize, &|a, _| a + 1);          // đếm số nút
+let large   = cay.gap(i64::MIN, &|a, x| a.max(x));     // tìm giá trị lớn nhất
+let list    = cay.gap(Vec::new(), &|mut a, x| { a.push(x); a }); // xuất ra danh sách đã sắp xếp
 ```
 
 Khả năng "gấp được" này có tên chính thức là **Foldable**, và giá trị được tính ra bằng cách gấp một cấu trúc đệ quy gọi là một **catamorphism** (phép gấp). Bạn sẽ gặp lại toàn bộ nhóm khái niệm này ở Chương 18 và 19.
@@ -172,56 +172,56 @@ Dưới đây là một chương trình Rust hoàn chỉnh cài đặt cấu tr�
 /// Cấu trúc một nút bên trong Cây nhị phân tìm kiếm
 #[derive(Debug)]
 pub struct NutCay<T> {
-    pub gia_tri: T,
-    pub trai: Option<Box<NutCay<T>>>,
-    pub phai: Option<Box<NutCay<T>>>,
+    pub value: T,
+    pub left: Option<Box<NutCay<T>>>,
+    pub must: Option<Box<NutCay<T>>>,
 }
 
 impl<T> NutCay<T> {
-    pub fn new(gia_tri: T) -> Self {
+    pub fn new(value: T) -> Self {
         NutCay {
-            gia_tri,
-            trai: None,
-            phai: None,
+            value,
+            left: None,
+            must: None,
         }
     }
 }
 
 /// Cấu trúc Cây nhị phân tìm kiếm hoàn chỉnh
 #[derive(Debug)]
-pub struct CayNhiPhanTimKiem<T: Ord> {
-    goc: Option<Box<NutCay<T>>>,
-    so_luong: usize,
+pub struct BinarySearchTree<T: Ord> {
+    root: Option<Box<NutCay<T>>>,
+    quantity: usize,
 }
 
-impl<T: Ord> CayNhiPhanTimKiem<T> {
+impl<T: Ord> BinarySearchTree<T> {
     /// Khởi tạo một cây BST rỗng
     pub fn new() -> Self {
-        CayNhiPhanTimKiem {
-            goc: None,
-            so_luong: 0,
+        BinarySearchTree {
+            root: None,
+            quantity: 0,
         }
     }
 
     /// Thêm một phần tử vào cây - Duy trì tính chất BST
-    pub fn them(&mut self, gia_tri: T) {
-        if Self::them_de_quy(&mut self.goc, gia_tri) {
-            self.so_luong += 1;
+    pub fn them(&mut self, value: T) {
+        if Self::insert_recursive(&mut self.root, value) {
+            self.quantity += 1;
         }
     }
 
-    fn them_de_quy(nut: &mut Option<Box<NutCay<T>>>, gia_tri: T) -> bool {
+    fn insert_recursive(nut: &mut Option<Box<NutCay<T>>>, value: T) -> bool {
         match nut {
             // Khi tìm thấy vị trí lá trống thích hợp: Tạo Box mới
             None => {
-                *nut = Some(Box::new(NutCay::new(gia_tri)));
+                *nut = Some(Box::new(NutCay::new(value)));
                 true
             }
-            Some(hien_tai) => {
-                if gia_tri < hien_tai.gia_tri {
-                    Self::them_de_quy(&mut hien_tai.trai, gia_tri)
-                } else if gia_tri > hien_tai.gia_tri {
-                    Self::them_de_quy(&mut hien_tai.phai, gia_tri)
+            Some(current) => {
+                if value < current.value {
+                    Self::insert_recursive(&mut current.left, value)
+                } else if value > current.value {
+                    Self::insert_recursive(&mut current.must, value)
                 } else {
                     // Giá trị đã tồn tại trong cây (không cho phép trùng lặp)
                     false
@@ -231,15 +231,15 @@ impl<T: Ord> CayNhiPhanTimKiem<T> {
     }
 
     /// Tìm kiếm một giá trị trong cây - Tốc độ O(log N)
-    pub fn chua_khoa(&self, gia_tri: &T) -> bool {
-        let mut con_tro = &self.goc;
-        while let Some(nut) = con_tro {
-            if gia_tri == &nut.gia_tri {
+    pub fn contains_key(&self, value: &T) -> bool {
+        let mut pointer = &self.root;
+        while let Some(nut) = pointer {
+            if value == &nut.value {
                 return true;
-            } else if gia_tri < &nut.gia_tri {
-                con_tro = &nut.trai;
+            } else if value < &nut.value {
+                pointer = &nut.left;
             } else {
-                con_tro = &nut.phai;
+                pointer = &nut.must;
             }
         }
         false
@@ -247,49 +247,49 @@ impl<T: Ord> CayNhiPhanTimKiem<T> {
 
     /// Duyệt cây theo Trung thứ tự (In-order: Trái -> Gốc -> Phải)
     /// Trả về một Vector chứa các tham chiếu mượn được sắp xếp tăng dần!
-    pub fn duyet_in_order(&self) -> Vec<&T> {
+    pub fn in_order_walk(&self) -> Vec<&T> {
         let mut ket_qua = Vec::new();
-        Self::thu_thap_in_order(&self.goc, &mut ket_qua);
+        Self::collect_in_order(&self.root, &mut ket_qua);
         ket_qua
     }
 
-    fn thu_thap_in_order<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>) {
-        if let Some(hien_tai) = nut {
+    fn collect_in_order<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>) {
+        if let Some(current) = nut {
             // 1. Duyệt toàn bộ cây con bên trái
-            Self::thu_thap_in_order(&hien_tai.trai, ket_qua);
+            Self::collect_in_order(&current.left, ket_qua);
             // 2. Thu thập nút hiện tại
-            ket_qua.push(&hien_tai.gia_tri);
+            ket_qua.push(&current.value);
             // 3. Duyệt toàn bộ cây con bên phải
-            Self::thu_thap_in_order(&hien_tai.phai, ket_qua);
+            Self::collect_in_order(&current.must, ket_qua);
         }
     }
 
     /// Tính chiều cao của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
-    pub fn tinh_chieu_cao(&self) -> usize {
-        Self::chieu_cao_de_quy(&self.goc)
+    pub fn height(&self) -> usize {
+        Self::recursive_height(&self.root)
     }
 
-    fn chieu_cao_de_quy(nut: &Option<Box<NutCay<T>>>) -> usize {
+    fn recursive_height(nut: &Option<Box<NutCay<T>>>) -> usize {
         match nut {
             None => 0,
-            Some(hien_tai) => {
-                let cao_trai = Self::chieu_cao_de_quy(&hien_tai.trai);
-                let cao_phai = Self::chieu_cao_de_quy(&hien_tai.phai);
-                1 + cao_trai.max(cao_phai)
+            Some(current) => {
+                let high_left = Self::recursive_height(&current.left);
+                let high_must = Self::recursive_height(&current.must);
+                1 + high_left.max(high_must)
             }
         }
     }
 
     pub fn len(&self) -> usize {
-        self.so_luong
+        self.quantity
     }
 
     pub fn is_empty(&self) -> bool {
-        self.so_luong == 0
+        self.quantity == 0
     }
 }
 
-impl<T: Ord> Default for CayNhiPhanTimKiem<T> {
+impl<T: Ord> Default for BinarySearchTree<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -300,7 +300,7 @@ fn main() {
     println!("    HIỆN THỰC CÂY NHỊ PHÂN TÌM KIẾM (BST) AN TOÀN TRONG RUST");
     println!("============================================================");
 
-    let mut cay_bst: CayNhiPhanTimKiem<i32> = CayNhiPhanTimKiem::new();
+    let mut cay_bst: BinarySearchTree<i32> = BinarySearchTree::new();
 
     // 1. Thêm các phần tử vào cây
     // Cấu trúc dự kiến:
@@ -310,8 +310,8 @@ fn main() {
     //      /  \   /  \
     //     20  40 60  80
     println!("[1] Nạp các giá trị vào Cây nhị phân tìm kiếm:");
-    let cac_so = [50, 30, 70, 20, 40, 60, 80];
-    for &so in &cac_so {
+    let all_num = [50, 30, 70, 20, 40, 60, 80];
+    for &so in &all_num {
         cay_bst.them(so);
         print!("{} ", so);
     }
@@ -319,28 +319,28 @@ fn main() {
     assert_eq!(cay_bst.len(), 7);
 
     // 2. Kiểm tra chiều cao của cây
-    let chieu_cao = cay_bst.tinh_chieu_cao();
-    println!("\n[2] Chiều cao của cây: {}", chieu_cao);
-    assert_eq!(chieu_cao, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
+    let height = cay_bst.height();
+    println!("\n[2] Chiều cao của cây: {}", height);
+    assert_eq!(height, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
 
     // 3. Kiểm tra tính năng tìm kiếm O(log N)
     println!("\n[3] Kiểm tra tính năng tìm kiếm nhị phân:");
-    println!("    - Tìm số 40: {}", cay_bst.chua_khoa(&40));
-    println!("    - Tìm số 99: {}", cay_bst.chua_khoa(&99));
-    assert!(cay_bst.chua_khoa(&40));
-    assert!(!cay_bst.chua_khoa(&99));
+    println!("    - Tìm số 40: {}", cay_bst.contains_key(&40));
+    println!("    - Tìm số 99: {}", cay_bst.contains_key(&99));
+    assert!(cay_bst.contains_key(&40));
+    assert!(!cay_bst.contains_key(&99));
 
     // 4. Duyệt In-order xác nhận dãy số tăng dần hoàn hảo
     println!("\n[4] Duyệt cây In-order (Trái -> Gốc -> Phải):");
-    let danh_sach_tang_dan = cay_bst.duyet_in_order();
+    let list_up_derive = cay_bst.in_order_walk();
     print!("    - Kết quả in: ");
-    for &gia_tri in &danh_sach_tang_dan {
-        print!("{} ", gia_tri);
+    for &value in &list_up_derive {
+        print!("{} ", value);
     }
     println!();
 
-    let ky_vong = vec![&20, &30, &40, &50, &60, &70, &80];
-    assert_eq!(danh_sach_tang_dan, ky_vong);
+    let expectation = vec![&20, &30, &40, &50, &60, &70, &80];
+    assert_eq!(list_up_derive, expectation);
     println!("    => Dãy số được sắp xếp tăng dần hoàn hảo đúng theo lý thuyết BST!");
 
     println!("============================================================");
@@ -357,10 +357,10 @@ Khi làm việc với các cấu trúc cây đệ quy trong Rust, lập trình v
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait bound 'T: Ord' is not satisfied` | Cây nhị phân tìm kiếm bắt buộc các phần tử phải so sánh được với nhau (`<`, `>`, `==`). Nếu kiểu `T` không thỏa mãn trait `Ord`, phép so sánh sẽ bị cấm. | Bổ sung ràng buộc trait: `impl<T: Ord> CayNhiPhanTimKiem<T>`. Nếu là struct tự tạo, thêm `#[derive(Ord, PartialOrd, Eq, PartialEq)]`. |
-| **E0502** | `cannot borrow 'hien_tai.trai' as mutable more than once at a time` | Trong thân hàm đệ quy, bạn vừa mượn nhánh trái làm mutable, vừa cố mượn cả nút cha hoặc nhánh phải trong cùng một biểu thức. | Tách rời các bước rẽ nhánh điều kiện `if/else` để mỗi nhánh mượn nằm trong một khối lệnh độc lập. |
+| **E0277** | `the trait bound 'T: Ord' is not satisfied` | Cây nhị phân tìm kiếm bắt buộc các phần tử phải so sánh được với nhau (`<`, `>`, `==`). Nếu kiểu `T` không thỏa mãn trait `Ord`, phép so sánh sẽ bị cấm. | Bổ sung ràng buộc trait: `impl<T: Ord> BinarySearchTree<T>`. Nếu là struct tự tạo, thêm `#[derive(Ord, PartialOrd, Eq, PartialEq)]`. |
+| **E0502** | `cannot borrow 'current.trai' as mutable more than once at a time` | Trong thân hàm đệ quy, bạn vừa mượn nhánh trái làm mutable, vừa cố mượn cả nút cha hoặc nhánh phải trong cùng một biểu thức. | Tách rời các bước rẽ nhánh điều kiện `if/else` để mỗi nhánh mượn nằm trong một khối lệnh độc lập. |
 | **E0106** | `missing lifetime specifier` | Khi viết hàm duyệt cây trả về mảng tham chiếu mượn `Vec<&T>`, bạn quên gắn nhãn thời gian sống (lifetime) liên kết giữa cây mượn và danh sách trả về. | Khai báo thời gian sống rõ ràng: `fn thu_thap<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>)`. |
-| **E0382** | `use of moved value: 'gia_tri'` | Trong hàm đệ quy, bạn truyền `gia_tri` bằng giá trị (by value) vào nhánh trái, sau đó lại dùng lại nó trong nhánh phải. | Nếu kiểu `T` không phải là `Copy`, hãy chỉ di chuyển `gia_tri` khi chắc chắn rẽ vào nhánh đó, hoặc truyền mượn tham chiếu `&T` khi tìm kiếm. |
+| **E0382** | `use of moved value: 'value'` | Trong hàm đệ quy, bạn truyền `value` bằng giá trị (by value) vào nhánh trái, sau đó lại dùng lại nó trong nhánh phải. | Nếu kiểu `T` không phải là `Copy`, hãy chỉ di chuyển `value` khi chắc chắn rẽ vào nhánh đó, hoặc truyền mượn tham chiếu `&T` khi tìm kiếm. |
 
 ### Ví dụ phân tích lỗi `E0277` và cách gắn ràng buộc `Ord`:
 
@@ -373,7 +373,7 @@ struct ToaDo {
 
 // Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
 fn thu_nghiem_loi_bst() {
-    // let mut cay = CayNhiPhanTimKiem::new();
+    // let mut cay = BinarySearchTree::new();
     // cay.them(ToaDo { x: 1, y: 2 }); // LỖI E0277: ToaDo không thỏa mãn trait Ord!
 }
 
@@ -385,7 +385,7 @@ struct ToaDoChuan {
 }
 
 fn thu_nghiem_dung_bst() {
-    let mut cay = CayNhiPhanTimKiem::new();
+    let mut cay = BinarySearchTree::new();
     cay.them(ToaDoChuan { x: 10, y: 20 });
     cay.them(ToaDoChuan { x: 5, y: 15 });
     println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", cay.len());
@@ -404,11 +404,11 @@ Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu í
 
 ```rust
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
-    fn cay_mau() -> CayNhiPhanTimKiem<i32> {
-        let mut c = CayNhiPhanTimKiem::new();
+    fn cay_mau() -> BinarySearchTree<i32> {
+        let mut c = BinarySearchTree::new();
         for x in [50, 30, 70, 20, 40, 60, 80] {
             c.them(x);
         }
@@ -416,24 +416,24 @@ mod kiem_thu {
     }
 
     #[test]
-    fn duyet_in_order_luon_tang_dan() {
+    fn in_order_walk_is_sorted() {
         let c = cay_mau();
-        let so: Vec<i32> = c.duyet_in_order().into_iter().copied().collect();
+        let so: Vec<i32> = c.in_order_walk().into_iter().copied().collect();
         assert_eq!(so, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
     }
 
     #[test]
-    fn chua_khoa() {
+    fn contains_key() {
         let c = cay_mau();
-        assert!(c.chua_khoa(&40));
-        assert!(c.chua_khoa(&80));
-        assert!(!c.chua_khoa(&99));
-        assert!(!c.chua_khoa(&35));
+        assert!(c.contains_key(&40));
+        assert!(c.contains_key(&80));
+        assert!(!c.contains_key(&99));
+        assert!(!c.contains_key(&35));
     }
 
     #[test]
-    fn khong_chen_trung_lap() {
-        let mut c = CayNhiPhanTimKiem::new();
+    fn no_duplicate_inserts() {
+        let mut c = BinarySearchTree::new();
         c.them(5);
         c.them(5); // giá trị trùng bị bỏ qua
         c.them(5);
@@ -441,21 +441,21 @@ mod kiem_thu {
     }
 
     #[test]
-    fn cay_can_bang_thap_hon_cay_suy_bien() {
-        let mut suy_bien = CayNhiPhanTimKiem::new();
+    fn balanced_tree_is_shallower_than_degenerate() {
+        let mut suy_bien = BinarySearchTree::new();
         for x in 1..=7 {
             suy_bien.them(x); // chèn tuần tự -> suy biến thành danh sách
         }
-        assert_eq!(suy_bien.tinh_chieu_cao(), 7);
-        assert_eq!(cay_mau().tinh_chieu_cao(), 3); // cân đối -> ~log N
+        assert_eq!(suy_bien.height(), 7);
+        assert_eq!(cay_mau().height(), 3); // cân đối -> ~log N
     }
 
     #[test]
     fn cay_rong() {
-        let c: CayNhiPhanTimKiem<i32> = CayNhiPhanTimKiem::new();
+        let c: BinarySearchTree<i32> = BinarySearchTree::new();
         assert!(c.is_empty());
-        assert_eq!(c.tinh_chieu_cao(), 0);
-        assert_eq!(c.duyet_in_order().len(), 0);
+        assert_eq!(c.height(), 0);
+        assert_eq!(c.in_order_walk().len(), 0);
     }
 }
 ```
@@ -470,7 +470,7 @@ mod kiem_thu {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Tìm giá trị nhỏ nhất và lớn nhất)**:  
-   Viết hai phương thức cho `CayNhiPhanTimKiem`:
+   Viết hai phương thức cho `BinarySearchTree`:
    - `fn tim_min(&self) -> Option<&T>`: Lần theo nhánh trái tận cùng để tìm giá trị nhỏ nhất.
    - `fn tim_max(&self) -> Option<&T>`: Lần theo nhánh phải tận cùng để tìm giá trị lớn nhất.  
    *(Giải thích: Tại sao hai thao tác này chỉ tốn thời gian tương đương chiều cao của cây?)*

@@ -7,7 +7,7 @@ pub const PAGE_SIZE: usize = 4096;
 
 /// Cấu trúc khe lưu trữ trong thư mục Slotted-Page (4 bytes)
 #[derive(Debug, Clone, Copy)]
-pub struct KheBanGhi {
+pub struct RecordSlot {
     pub offset: u16,
     pub length: u16,
 }
@@ -15,135 +15,135 @@ pub struct KheBanGhi {
 /// Cấu trúc Trang dữ liệu phân khe chuẩn 4KB (Slotted-Page)
 pub struct SlottedPage {
     pub page_id: u32,
-    pub du_lieu: [u8; PAGE_SIZE],
+    pub data: [u8; PAGE_SIZE],
 }
 
 impl SlottedPage {
     /// Khởi tạo một trang mới tinh kích thước 4096 bytes
     pub fn new(page_id: u32) -> Self {
-        let mut trang = Self {
+        let mut state = Self {
             page_id,
-            du_lieu: [0u8; PAGE_SIZE],
+            data: [0u8; PAGE_SIZE],
         };
         // Ghi Header ban đầu:
         // Byte 0..4: page_id
-        trang.du_lieu[0..4].copy_from_slice(&page_id.to_le_bytes());
+        state.data[0..4].copy_from_slice(&page_id.to_le_bytes());
         // Byte 4..6: slot_count = 0
-        trang.du_lieu[4..6].copy_from_slice(&0u16.to_le_bytes());
+        state.data[4..6].copy_from_slice(&0u16.to_le_bytes());
         // Byte 6..8: free_space_pointer = 4096 (đáy trang)
-        trang.du_lieu[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
-        trang
+        state.data[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
+        state
     }
 
-    pub fn lay_so_khe(&self) -> u16 {
-        u16::from_le_bytes(self.du_lieu[4..6].try_into().unwrap())
+    pub fn slot_count(&self) -> u16 {
+        u16::from_le_bytes(self.data[4..6].try_into().unwrap())
     }
 
-    fn gan_so_khe(&mut self, count: u16) {
-        self.du_lieu[4..6].copy_from_slice(&count.to_le_bytes());
+    fn nearest_slot(&mut self, count: u16) {
+        self.data[4..6].copy_from_slice(&count.to_le_bytes());
     }
 
-    pub fn lay_con_tro_day(&self) -> u16 {
-        u16::from_le_bytes(self.du_lieu[6..8].try_into().unwrap())
+    pub fn tail_pointer(&self) -> u16 {
+        u16::from_le_bytes(self.data[6..8].try_into().unwrap())
     }
 
-    fn gan_con_tro_day(&mut self, ptr: u16) {
-        self.du_lieu[6..8].copy_from_slice(&ptr.to_le_bytes());
+    fn set_tail_pointer(&mut self, ptr: u16) {
+        self.data[6..8].copy_from_slice(&ptr.to_le_bytes());
     }
 
     /// Thêm một bản ghi nhị phân vào trang - Trả về slot_id (chỉ số khe)
-    pub fn them_ban_ghi(&mut self, bytes_ban_ghi: &[u8]) -> Option<u16> {
-        let so_khe_hien_tai = self.lay_so_khe();
-        let con_tro_day = self.lay_con_tro_day();
-        let do_dai_ghi = bytes_ban_ghi.len() as u16;
+    pub fn add_sell_record(&mut self, bytes_ban_ghi: &[u8]) -> Option<u16> {
+        let current_slot_count = self.slot_count();
+        let tail_pointer = self.tail_pointer();
+        let do_long_record = bytes_ban_ghi.len() as u16;
 
         // Tính toán vị trí tiêu tốn của Slot Directory ở trên đầu trang:
         // Header: 8 bytes. Mỗi khe: 4 bytes.
-        let vi_tri_khe_moi = 8 + (so_khe_hien_tai as usize * 4);
-        let dung_luong_con_lai = con_tro_day as usize - (vi_tri_khe_moi + 4);
+        let new_slot_index = 8 + (current_slot_count as usize * 4);
+        let capacity_remaining = tail_pointer as usize - (new_slot_index + 4);
 
         // Kiểm tra xem trang còn đủ chỗ cho cả Slot mới lẫn thân dữ liệu không
-        if do_dai_ghi as usize > dung_luong_con_lai {
+        if do_long_record as usize > capacity_remaining {
             return None; // Trang đã đầy (Page Full)!
         }
 
         // 1. Tính tọa độ đáy mới và ghi dữ liệu từ đáy trang ngược lên
-        let offset_day_moi = con_tro_day - do_dai_ghi;
-        let bat_dau = offset_day_moi as usize;
-        let ket_thuc = con_tro_day as usize;
-        self.du_lieu[bat_dau..ket_thuc].copy_from_slice(bytes_ban_ghi);
+        let offset_day_moi = tail_pointer - do_long_record;
+        let start = offset_day_moi as usize;
+        let end = tail_pointer as usize;
+        self.data[start..end].copy_from_slice(bytes_ban_ghi);
 
         // 2. Ghi thông tin Khe vào Slot Directory ở đầu trang
-        self.du_lieu[vi_tri_khe_moi..vi_tri_khe_moi + 2].copy_from_slice(&offset_day_moi.to_le_bytes());
-        self.du_lieu[vi_tri_khe_moi + 2..vi_tri_khe_moi + 4].copy_from_slice(&do_dai_ghi.to_le_bytes());
+        self.data[new_slot_index..new_slot_index + 2].copy_from_slice(&offset_day_moi.to_le_bytes());
+        self.data[new_slot_index + 2..new_slot_index + 4].copy_from_slice(&do_long_record.to_le_bytes());
 
         // 3. Cập nhật Header
-        self.gan_so_khe(so_khe_hien_tai + 1);
-        self.gan_con_tro_day(offset_day_moi);
+        self.nearest_slot(current_slot_count + 1);
+        self.set_tail_pointer(offset_day_moi);
 
-        Some(so_khe_hien_tai)
+        Some(current_slot_count)
     }
 
     /// Đọc bản ghi qua slot_id - O(1)
-    pub fn doc_ban_ghi(&self, slot_id: u16) -> Option<&[u8]> {
-        let so_khe = self.lay_so_khe();
-        if slot_id >= so_khe {
+    pub fn read_sell_record(&self, slot_id: u16) -> Option<&[u8]> {
+        let slot_count = self.slot_count();
+        if slot_id >= slot_count {
             return None;
         }
 
-        let vi_tri_khe = 8 + (slot_id as usize * 4);
-        let offset = u16::from_le_bytes(self.du_lieu[vi_tri_khe..vi_tri_khe + 2].try_into().unwrap()) as usize;
-        let length = u16::from_le_bytes(self.du_lieu[vi_tri_khe + 2..vi_tri_khe + 4].try_into().unwrap()) as usize;
+        let slot_pos = 8 + (slot_id as usize * 4);
+        let offset = u16::from_le_bytes(self.data[slot_pos..slot_pos + 2].try_into().unwrap()) as usize;
+        let length = u16::from_le_bytes(self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap()) as usize;
 
-        Some(&self.du_lieu[offset..offset + length])
+        Some(&self.data[offset..offset + length])
     }
 }
 
 /// Khung trang quản lý bên trong Buffer Pool
 pub struct Frame {
-    pub trang: SlottedPage,
+    pub state: SlottedPage,
     pub is_dirty: bool,
 }
 
 /// Hệ thống quản lý bộ nhớ đệm Buffer Pool với thuật toán LRU Eviction
 pub struct BufferPool {
-    suc_chua: usize,
+    capacity: usize,
     frames: HashMap<u32, Frame>,
-    lru_danh_sach: Vec<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
+    lru_list: Vec<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
 }
 
 impl BufferPool {
-    pub fn new(suc_chua: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            suc_chua,
+            capacity,
             frames: HashMap::new(),
-            lru_danh_sach: Vec::new(),
+            lru_list: Vec::new(),
         }
     }
 
     /// Cập nhật trang vừa được truy cập xuống cuối danh sách LRU
-    fn cap_nhat_lru(&mut self, page_id: u32) {
-        self.lru_danh_sach.retain(|&id| id != page_id);
-        self.lru_danh_sach.push(page_id);
+    fn touch_lru(&mut self, page_id: u32) {
+        self.lru_list.retain(|&id| id != page_id);
+        self.lru_list.push(page_id);
     }
 
     /// Lấy trang từ bộ nhớ đệm (nếu có)
     pub fn get_page(&mut self, page_id: u32) -> Option<&SlottedPage> {
         if self.frames.contains_key(&page_id) {
-            self.cap_nhat_lru(page_id);
-            return self.frames.get(&page_id).map(|f| &f.trang);
+            self.touch_lru(page_id);
+            return self.frames.get(&page_id).map(|f| &f.state);
         }
         None
     }
 
     /// Đưa trang vào Buffer Pool - Nếu đầy, tự động trục xuất (evict) trang cũ nhất
-    pub fn put_page(&mut self, trang: SlottedPage, is_dirty: bool) {
-        let id = trang.page_id;
+    pub fn put_page(&mut self, state: SlottedPage, is_dirty: bool) {
+        let id = state.page_id;
 
         // Nếu trang chưa có trong buffer và buffer đã đầy sức chứa
-        if !self.frames.contains_key(&id) && self.frames.len() >= self.suc_chua {
+        if !self.frames.contains_key(&id) && self.frames.len() >= self.capacity {
             // Trục xuất trang ở đầu danh sách LRU (nguội nhất)
-            let evict_id = self.lru_danh_sach.remove(0);
+            let evict_id = self.lru_list.remove(0);
             if let Some(khung_cu) = self.frames.remove(&evict_id) {
                 if khung_cu.is_dirty {
                     println!("    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...", evict_id);
@@ -153,11 +153,11 @@ impl BufferPool {
             }
         }
 
-        self.frames.insert(id, Frame { trang, is_dirty });
-        self.cap_nhat_lru(id);
+        self.frames.insert(id, Frame { state, is_dirty });
+        self.touch_lru(id);
     }
 
-    pub fn so_trang_hien_co(&self) -> usize {
+    pub fn num_state_show_has(&self) -> usize {
         self.frames.len()
     }
 }
@@ -169,28 +169,28 @@ fn main() {
 
     // 1. Khảo sát cấu trúc trang SlottedPage kích thước 4KB
     println!("[1] Thao tác trên Trang phân khe Slotted-Page (4096 bytes):");
-    let mut trang_1 = SlottedPage::new(1);
-    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", trang_1.du_lieu.len());
-    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", trang_1.lay_con_tro_day());
+    let mut state_1 = SlottedPage::new(1);
+    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", state_1.data.len());
+    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", state_1.tail_pointer());
 
     // Nạp các bản ghi có kích thước chuỗi thay đổi
-    let ban_ghi_a = b"NguoiDung: Nguyen Van An - Ha Noi";
-    let ban_ghi_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
-    let ban_ghi_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
+    let record_a = b"NguoiDung: Nguyen Van An - Ha Noi";
+    let record_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
+    let record_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
 
-    let slot_a = trang_1.them_ban_ghi(ban_ghi_a).expect("Lỗi chèn khe A");
-    let slot_b = trang_1.them_ban_ghi(ban_ghi_b).expect("Lỗi chèn khe B");
-    let slot_c = trang_1.them_ban_ghi(ban_ghi_c).expect("Lỗi chèn khe C");
+    let slot_a = state_1.add_sell_record(record_a).expect("Lỗi chèn khe A");
+    let slot_b = state_1.add_sell_record(record_b).expect("Lỗi chèn khe B");
+    let slot_c = state_1.add_sell_record(record_c).expect("Lỗi chèn khe C");
 
     println!("    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_a);
     println!("    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_b);
     println!("    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_c);
-    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", trang_1.lay_so_khe(), trang_1.lay_con_tro_day());
+    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", state_1.slot_count(), state_1.tail_pointer());
 
     // Đọc lại nội dung qua Slot ID
-    let doc_b = trang_1.doc_ban_ghi(slot_b).unwrap();
+    let doc_b = state_1.read_sell_record(slot_b).unwrap();
     println!("    - Đọc nội dung qua Slot ID {}: '{}'", slot_b, String::from_utf8_lossy(doc_b));
-    assert_eq!(doc_b, ban_ghi_b);
+    assert_eq!(doc_b, record_b);
 
     // 2. Khảo sát hệ thống Buffer Pool và thuật toán trục xuất LRU Eviction
     println!("\n[2] Vận hành Buffer Pool với sức chứa tối đa 2 trang:");
@@ -198,14 +198,14 @@ fn main() {
 
     // Đưa Trang 1 và Trang 2 vào Buffer Pool
     println!("    - Nạp Trang #1 (đã sửa đổi -> dirty=true) vào Buffer Pool");
-    buffer_pool.put_page(trang_1, true);
+    buffer_pool.put_page(state_1, true);
 
-    let trang_2 = SlottedPage::new(2);
+    let state_2 = SlottedPage::new(2);
     println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
-    buffer_pool.put_page(trang_2, false);
+    buffer_pool.put_page(state_2, false);
 
-    println!("    - Số trang hiện có trong Buffer: {}", buffer_pool.so_trang_hien_co());
-    assert_eq!(buffer_pool.so_trang_hien_co(), 2);
+    println!("    - Số trang hiện có trong Buffer: {}", buffer_pool.num_state_show_has());
+    assert_eq!(buffer_pool.num_state_show_has(), 2);
 
     // Người dùng truy cập lại Trang 1 -> Trang 1 trở thành trang dùng gần nhất
     println!("\n    - Người dùng đọc Trang #1 -> Cập nhật thứ tự ưu tiên LRU cho Trang #1!");
@@ -214,8 +214,8 @@ fn main() {
     // Giờ đây, Trang #2 là trang "nguội nhất" (lâu nhất không dùng).
     // Khi nạp thêm Trang #3 vào, Buffer Pool sẽ kích hoạt trục xuất (evict) Trang #2!
     println!("\n    - Nạp Trang #3 mới tinh vào (Vượt quá sức chứa 2 trang):");
-    let trang_3 = SlottedPage::new(3);
-    buffer_pool.put_page(trang_3, false);
+    let state_3 = SlottedPage::new(3);
+    buffer_pool.put_page(state_3, false);
 
     // Kiểm tra: Trang 2 đã bị loại bỏ, Trang 1 và Trang 3 vẫn nằm trong Buffer Pool
     assert!(buffer_pool.get_page(2).is_none());

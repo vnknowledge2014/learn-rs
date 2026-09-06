@@ -46,7 +46,7 @@ Hãy tưởng tượng bạn đang tham quan một **Nhà máy chế biến bán
 ```
 
 ### 1. Băng chuyền ngủ đông (Tính lười biếng - Lazy Evaluation)
-- Khi bạn viết `danh_sach.iter().map(...).filter(...)`, bạn mới chỉ đang **lắp ráp các cỗ máy lên khung băng chuyền**.
+- Khi bạn viết `list.iter().map(...).filter(...)`, bạn mới chỉ đang **lắp ráp các cỗ máy lên khung băng chuyền**.
 - Toàn bộ hệ thống vẫn đang trong trạng thái "ngủ đông". Băng chuyền chưa hề quay một milimét nào, chưa có một hạt bụi nào bị lọc, chưa có phép tính nào được thực hiện.
 - Chỉ đến khi bạn gọi một hàm tiêu thụ như `.collect()` hay `.fold()` (hành động người công nhân đặt thùng carton ở cuối băng chuyền và bấm nút kéo hàng), dòng dữ liệu mới bắt đầu dịch chuyển từng phần tử một qua các khâu xử lý.
 
@@ -83,12 +83,12 @@ pub trait Iterator {
 ```
 
 Mỗi lần phương thức `next()` được gọi:
-- Nếu vẫn còn dữ liệu, nó nhả ra `Some(gia_tri)`.
+- Nếu vẫn còn dữ liệu, nó nhả ra `Some(value)`.
 - Khi đã duyệt hết phần tử cuối cùng, nó nhả ra `None` để báo hiệu kết thúc dòng chảy.
 
 ```rust
-let danh_sach = vec![10, 20];
-let mut bo_lap = danh_sach.iter(); // bo_lap phải là mut vì vị trí con trỏ dịch chuyển
+let list = vec![10, 20];
+let mut bo_lap = list.iter(); // bo_lap phải là mut vì vị trí con trỏ dịch chuyển
 
 assert_eq!(bo_lap.next(), Some(&10));
 assert_eq!(bo_lap.next(), Some(&20));
@@ -110,7 +110,7 @@ Tùy theo mục đích sử dụng bộ nhớ và quyền sở hữu (ownership)
 - **Bộ điều hợp trung gian (Iterator Adapters)**:
   - Đặc điểm: Biến đổi một bộ lặp thành một bộ lặp mới.
   - Các hàm tiêu biểu: `.map()`, `.filter()`, `.take(n)`, `.skip(n)`, `.enumerate()`, `.zip()`.
-  - Tính chất: **Luôn lười biếng (Lazy)**. Nếu bạn viết `danh_sach.iter().map(|x| x * 2);` mà không hứng kết quả bằng một consumer, trình biên dịch `rustc` sẽ cảnh báo: *warning: unused `Map` that must be used*.
+  - Tính chất: **Luôn lười biếng (Lazy)**. Nếu bạn viết `list.iter().map(|x| x * 2);` mà không hứng kết quả bằng một consumer, trình biên dịch `rustc` sẽ cảnh báo: *warning: unused `Map` that must be used*.
 - **Hàm tiêu thụ kết thúc (Consumers)**:
   - Đặc điểm: Chủ động gọi liên tục phương thức `next()` cho đến khi nhận được `None`, tổng hợp dữ liệu thành kết quả cụ thể.
   - Các hàm tiêu biểu: `.collect()`, `.fold()`, `.sum()`, `.count()`, `.find()`, `.any()`, `.all()`.
@@ -132,18 +132,18 @@ Dưới đây là chương trình hoàn chỉnh xây dựng **Hệ thống Phân
 // Chương trình thực chiến làm chủ Iterator: map, filter, fold, collect trong Rust
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BanGhiCamBien {
+pub struct SensorRecord {
     pub ma_cam_bien: String,
-    pub nhiet_do_c: f64,
-    pub ap_suat_bar: f64,
-    pub hop_le: bool,
+    pub temp_c: f64,
+    pub pressure_bar: f64,
+    pub is_valid: bool,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ThongBaoNguyHiem {
-    pub thu_tu_ghi_nhan: usize,
-    pub noi_dung: String,
-    pub muc_do: String,
+pub struct ThongReportUnsafe {
+    pub fold_records: usize,
+    pub content: String,
+    pub level_do: String,
 }
 
 fn main() {
@@ -152,51 +152,51 @@ fn main() {
     println!("============================================================");
 
     // 1. Khởi tạo danh sách dữ liệu cảm biến thô ban đầu
-    let mut du_lieu_tho: Vec<BanGhiCamBien> = vec![
-        BanGhiCamBien {
+    let mut raw_data: Vec<SensorRecord> = vec![
+        SensorRecord {
             ma_cam_bien: String::from("CB-LO-01"),
-            nhiet_do_c: 85.5,
-            ap_suat_bar: 3.2,
-            hop_le: true,
+            temp_c: 85.5,
+            pressure_bar: 3.2,
+            is_valid: true,
         },
-        BanGhiCamBien {
+        SensorRecord {
             ma_cam_bien: String::from("CB-LO-02"),
-            nhiet_do_c: -999.0, // Dữ liệu lỗi do đứt dây cáp
-            ap_suat_bar: 0.0,
-            hop_le: false,
+            temp_c: -999.0, // Dữ liệu lỗi do đứt dây cáp
+            pressure_bar: 0.0,
+            is_valid: false,
         },
-        BanGhiCamBien {
+        SensorRecord {
             ma_cam_bien: String::from("CB-LO-03"),
-            nhiet_do_c: 125.0, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
-            ap_suat_bar: 4.8,
-            hop_le: true,
+            temp_c: 125.0, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
+            pressure_bar: 4.8,
+            is_valid: true,
         },
-        BanGhiCamBien {
+        SensorRecord {
             ma_cam_bien: String::from("CB-LO-04"),
-            nhiet_do_c: 72.0,
-            ap_suat_bar: 2.9,
-            hop_le: true,
+            temp_c: 72.0,
+            pressure_bar: 2.9,
+            is_valid: true,
         },
-        BanGhiCamBien {
+        SensorRecord {
             ma_cam_bien: String::from("CB-LO-05"),
-            nhiet_do_c: 110.5, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
-            ap_suat_bar: 5.1,
-            hop_le: true,
+            temp_c: 110.5, // Nhiệt độ quá ngưỡng cảnh báo (> 100°C)
+            pressure_bar: 5.1,
+            is_valid: true,
         },
     ];
 
-    println!("Số lượng bản ghi thu thập được: {}", du_lieu_tho.len());
+    println!("Số lượng bản ghi thu thập được: {}", raw_data.len());
 
     // ------------------------------------------------------------------------
     // KỸ THUẬT 1: Dùng .iter_mut() để hiệu chỉnh dữ liệu trực tiếp tại chỗ
     // Giả sử cảm biến có sai số cố định +0.5°C cần được bù trừ
     // ------------------------------------------------------------------------
     println!("\n1. Tiến hành bù trừ sai số thiết bị qua .iter_mut():");
-    du_lieu_tho
+    raw_data
         .iter_mut()
-        .filter(|ban_ghi| ban_ghi.hop_le)
-        .for_each(|ban_ghi| {
-            ban_ghi.nhiet_do_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
+        .filter(|sell_record| sell_record.is_valid)
+        .for_each(|sell_record| {
+            sell_record.temp_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
         });
     println!("-> Đã hiệu chỉnh sai số cho tất cả cảm biến hợp lệ thành công.");
 
@@ -205,11 +205,11 @@ fn main() {
     // Lấy danh sách nhiệt độ của các cảm biến an toàn (nhiệt độ <= 100°C)
     // ------------------------------------------------------------------------
     println!("\n2. Trích xuất danh sách nhiệt độ hoạt động an toàn (<= 100°C):");
-    let nhiet_do_an_toan: Vec<f64> = du_lieu_tho
+    let nhiet_do_an_toan: Vec<f64> = raw_data
         .iter()
-        .filter(|bg| bg.hop_le)                  // Lọc bỏ cảm biến hỏng
-        .filter(|bg| bg.nhiet_do_c <= 100.0)     // Lọc cảm biến trong ngưỡng an toàn
-        .map(|bg| bg.nhiet_do_c)                 // Chỉ trích xuất lấy số đo nhiệt độ
+        .filter(|bg| bg.is_valid)                  // Lọc bỏ cảm biến hỏng
+        .filter(|bg| bg.temp_c <= 100.0)     // Lọc cảm biến trong ngưỡng an toàn
+        .map(|bg| bg.temp_c)                 // Chỉ trích xuất lấy số đo nhiệt độ
         .collect();                              // Gom tụ thành Vector mới
 
     println!("-> Các mức nhiệt độ an toàn: {:?}", nhiet_do_an_toan);
@@ -219,17 +219,17 @@ fn main() {
     // Tính tổng nhiệt độ và đếm số lượng cảm biến an toàn để tính trung bình
     // ------------------------------------------------------------------------
     println!("\n3. Tính nhiệt độ trung bình của phân xưởng qua .fold():");
-    let (tong_nhiet, so_luong) = du_lieu_tho
+    let (tong_nhiet, quantity) = raw_data
         .iter()
-        .filter(|bg| bg.hop_le)
-        .fold((0.0, 0usize), |(tong, dem), bg| {
-            (tong + bg.nhiet_do_c, dem + 1)
+        .filter(|bg| bg.is_valid)
+        .fold((0.0, 0usize), |(tong, count), bg| {
+            (tong + bg.temp_c, count + 1)
         });
 
-    if so_luong > 0 {
-        let trung_binh = tong_nhiet / (so_luong as f64);
-        println!("-> Tổng nhiệt độ: {:.2}°C trên {} cảm biến.", tong_nhiet, so_luong);
-        println!("-> Nhiệt độ trung bình toàn xưởng: {:.2}°C", trung_binh);
+    if quantity > 0 {
+        let mean = tong_nhiet / (quantity as f64);
+        println!("-> Tổng nhiệt độ: {:.2}°C trên {} cảm biến.", tong_nhiet, quantity);
+        println!("-> Nhiệt độ trung bình toàn xưởng: {:.2}°C", mean);
     }
 
     // ------------------------------------------------------------------------
@@ -237,33 +237,33 @@ fn main() {
     // Tạo danh sách cảnh báo khẩn cấp cho các cảm biến vượt ngưỡng (> 100°C)
     // ------------------------------------------------------------------------
     println!("\n4. Phát hiện nguy cơ và tổng hợp danh sách cảnh báo khẩn cấp:");
-    let danh_sach_canh_bao: Vec<ThongBaoNguyHiem> = du_lieu_tho
+    let list_edge_report: Vec<ThongReportUnsafe> = raw_data
         .iter()
         .enumerate() // Cung cấp chỉ số thứ tự (0, 1, 2...) đi kèm với phần tử
-        .filter(|(_, bg)| bg.hop_le && bg.nhiet_do_c > 100.0)
-        .map(|(chi_so, bg)| ThongBaoNguyHiem {
-            thu_tu_ghi_nhan: chi_so + 1,
-            noi_dung: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.nhiet_do_c),
-            muc_do: String::from("KHẨN CẤP"),
+        .filter(|(_, bg)| bg.is_valid && bg.temp_c > 100.0)
+        .map(|(chi_so, bg)| ThongReportUnsafe {
+            fold_records: chi_so + 1,
+            content: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.temp_c),
+            level_do: String::from("KHẨN CẤP"),
         })
         .collect();
 
-    for cb in &danh_sach_canh_bao {
+    for cb in &list_edge_report {
         println!("  [!] Vị trí #{}: {} (Mức độ: {})", 
-                 cb.thu_tu_ghi_nhan, cb.noi_dung, cb.muc_do);
+                 cb.fold_records, cb.content, cb.level_do);
     }
 
     // ------------------------------------------------------------------------
     // KỸ THUẬT 5: Dùng .into_iter() để tiêu thụ toàn bộ dữ liệu và giải phóng bộ nhớ
     // ------------------------------------------------------------------------
     println!("\n5. Di chuyển quyền sở hữu toàn bộ qua .into_iter():");
-    let ma_tat_ca_cam_bien: Vec<String> = du_lieu_tho
+    let ma_tat_ca_cam_bien: Vec<String> = raw_data
         .into_iter()
         .map(|bg| bg.ma_cam_bien) // Đoạt quyền sở hữu trường String mà không cần clone!
         .collect();
 
     println!("-> Danh sách mã thiết bị sau khi thu hồi: {:?}", ma_tat_ca_cam_bien);
-    // du_lieu_tho đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
+    // raw_data đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
 
     println!("\n============================================================");
     println!("     XỬ LÝ TOÀN BỘ ĐƯỜNG ỐNG ITERATOR THÀNH CÔNG RỰC RỠ     ");
@@ -328,9 +328,9 @@ let so = [10i32, 3, 2];
 assert_eq!(so.iter().fold(0, |a, b| a + b), so.iter().rfold(0, |a, b| a + b)); // 15 == 15
 
 // NỐI CHUỖI: kết hợp nhưng KHÔNG giao hoán -> hai chiều cho kết quả KHÁC NHAU
-let trai: String = so.iter().fold(String::new(), |a, b| a + &b.to_string());   // "1032"
-let phai: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
-assert_ne!(trai, phai);
+let left: String = so.iter().fold(String::new(), |a, b| a + &b.to_string());   // "1032"
+let must: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
+assert_ne!(left, must);
 ```
 
 Hãy phân biệt cho thật rõ hai tính chất, vì chúng trả lời hai câu hỏi khác nhau:
@@ -370,19 +370,19 @@ Dòng cuối cùng đặc biệt quan trọng: gom `Iterator<Result<T,E>>` thàn
 
 ```rust
 // Đệ quy thông thường: phép cộng diễn ra SAU khi lời gọi con trả về
-fn tong(ds: &[i64]) -> i64 {
-    match ds {
+fn tong(list: &[i64]) -> i64 {
+    match list {
         [] => 0,
-        [dau, con_lai @ ..] => dau + tong(con_lai),  // còn việc phải làm sau lời gọi
+        [first, remaining @ ..] => first + tong(remaining),  // còn việc phải làm sau lời gọi
     }
 }
 
 // Đệ quy ĐUÔI (tail recursion): lời gọi đệ quy là việc CUỐI CÙNG,
-// kết quả tích lũy được mang theo trong tham số `tich_luy`.
-fn tong_duoi(ds: &[i64], tich_luy: i64) -> i64 {
-    match ds {
-        [] => tich_luy,
-        [dau, con_lai @ ..] => tong_duoi(con_lai, tich_luy + dau),  // không còn việc gì sau đó
+// kết quả tích lũy được mang theo trong tham số `accumulate`.
+fn tong_duoi(list: &[i64], accumulate: i64) -> i64 {
+    match list {
+        [] => accumulate,
+        [first, remaining @ ..] => tong_duoi(remaining, accumulate + first),  // không còn việc gì sau đó
     }
 }
 ```
@@ -405,14 +405,14 @@ Trong Haskell, PureScript hay Scheme, dạng thứ hai được trình biên d�
 Ví dụ chuyển đệ quy đuôi thành vòng lặp — chính là việc mà trình biên dịch Haskell làm giúp bạn:
 
 ```rust
-fn tong_lap(ds: &[i64]) -> i64 {
-    let mut con_lai = ds;
-    let mut tich_luy = 0;
-    while let [dau, duoi @ ..] = con_lai {   // "lời gọi đệ quy" trở thành phép gán
-        tich_luy += dau;
-        con_lai = duoi;
+fn tong_lap(list: &[i64]) -> i64 {
+    let mut remaining = list;
+    let mut accumulate = 0;
+    while let [first, below @ ..] = remaining {   // "lời gọi đệ quy" trở thành phép gán
+        accumulate += first;
+        remaining = below;
     }
-    tich_luy
+    accumulate
 }
 ```
 
@@ -434,10 +434,10 @@ rayon = "1"
 use rayon::prelude::*;
 
 // Tuần tự — chạy trên 1 nhân CPU
-let tong: u64 = du_lieu.iter().map(|x| tinh_toan_nang(x)).sum();
+let tong: u64 = data.iter().map(|x| tinh_toan_nang(x)).sum();
 
 // Song song — chạy trên TOÀN BỘ nhân CPU. Khác biệt: iter -> par_iter
-let tong: u64 = du_lieu.par_iter().map(|x| tinh_toan_nang(x)).sum();
+let tong: u64 = data.par_iter().map(|x| tinh_toan_nang(x)).sum();
 ```
 
 **Đổi đúng một từ.** Và bạn được bảo đảm ba điều:
@@ -465,24 +465,24 @@ use std::collections::{HashMap, HashSet};
 
 /// Bộ đếm ngược: minh họa việc chỉ cần cài `next()` là có ngay hàng chục
 /// phương thức miễn phí (map, filter, take, sum...).
-pub struct DemNguoc {
-    hien_tai: u32,
+pub struct CountInverse {
+    current: u32,
 }
 
-impl DemNguoc {
-    pub fn moi(bat_dau: u32) -> Self {
-        DemNguoc { hien_tai: bat_dau }
+impl CountInverse {
+    pub fn new(start: u32) -> Self {
+        CountInverse { current: start }
     }
 }
 
-impl Iterator for DemNguoc {
+impl Iterator for CountInverse {
     type Item = u32;
     fn next(&mut self) -> Option<u32> {
-        if self.hien_tai == 0 {
+        if self.current == 0 {
             None
         } else {
-            self.hien_tai -= 1;
-            Some(self.hien_tai + 1)
+            self.current -= 1;
+            Some(self.current + 1)
         }
     }
 }
@@ -492,38 +492,38 @@ impl Iterator for DemNguoc {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GioHang {
-    mat_hang: Vec<String>,
+pub struct Cart {
+    mat_queue: Vec<String>,
 }
 
-impl GioHang {
-    pub fn moi(mat_hang: Vec<String>) -> Self {
-        GioHang { mat_hang }
+impl Cart {
+    pub fn new(mat_queue: Vec<String>) -> Self {
+        Cart { mat_queue }
     }
 }
 
 /// Nhờ trait này, `for x in gio_hang` chạy được — đúng như với Vec.
-impl IntoIterator for GioHang {
+impl IntoIterator for Cart {
     type Item = String;
     type IntoIter = std::vec::IntoIter<String>;
     fn into_iter(self) -> Self::IntoIter {
-        self.mat_hang.into_iter()
+        self.mat_queue.into_iter()
     }
 }
 
 /// Và nhờ trait này, `for x in &gio_hang` cũng chạy được (chỉ mượn đọc).
-impl<'a> IntoIterator for &'a GioHang {
+impl<'a> IntoIterator for &'a Cart {
     type Item = &'a String;
     type IntoIter = std::slice::Iter<'a, String>;
     fn into_iter(self) -> Self::IntoIter {
-        self.mat_hang.iter()
+        self.mat_queue.iter()
     }
 }
 
-/// Và nhờ FromIterator, `collect()` gom thẳng được vào GioHang.
-impl FromIterator<String> for GioHang {
+/// Và nhờ FromIterator, `collect()` gom thẳng được vào Cart.
+impl FromIterator<String> for Cart {
     fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
-        GioHang { mat_hang: iter.into_iter().collect() }
+        Cart { mat_queue: iter.into_iter().collect() }
     }
 }
 
@@ -532,30 +532,30 @@ impl FromIterator<String> for GioHang {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GiaoDich {
-    pub ma: String,
+pub struct Trade {
+    pub id: String,
     pub khu_vuc: String,
     pub so_tien: u64,
 }
 
 /// Phân tích một dòng thô "MA|KHU_VUC|SO_TIEN". Trả None nếu dòng hỏng.
-pub fn phan_tich_dong(dong: &str) -> Option<GiaoDich> {
-    let phan: Vec<&str> = dong.split('|').map(|s| s.trim()).collect();
-    if phan.len() != 3 {
+pub fn analyze_close(dong: &str) -> Option<Trade> {
+    let part: Vec<&str> = dong.split('|').map(|s| s.trim()).collect();
+    if part.len() != 3 {
         return None;
     }
-    let so_tien = phan[2].parse::<u64>().ok()?;
-    if phan[0].is_empty() || phan[1].is_empty() {
+    let so_tien = part[2].parse::<u64>().ok()?;
+    if part[0].is_empty() || part[1].is_empty() {
         return None;
     }
-    Some(GiaoDich {
-        ma: phan[0].to_string(),
-        khu_vuc: phan[1].to_string(),
+    Some(Trade {
+        id: part[0].to_string(),
+        khu_vuc: part[1].to_string(),
         so_tien,
     })
 }
 
-fn du_lieu_tho() -> Vec<&'static str> {
+fn raw_data() -> Vec<&'static str> {
     vec![
         "GD-001 | Hà Nội       | 1250000",
         "GD-002 | TP.HCM       | 890000",
@@ -574,13 +574,13 @@ fn main() {
     println!("        BỘ CÔNG CỤ ITERATOR ĐẦY ĐỦ CỦA RUST                ");
     println!("============================================================");
 
-    let tho = du_lieu_tho();
+    let tho = raw_data();
     println!("\nDữ liệu thô: {} dòng (có cả dòng hỏng)", tho.len());
 
     // ------------------------------------------------------------------
     // 1. filter_map — LỌC VÀ BIẾN ĐỔI CÙNG LÚC
     // ------------------------------------------------------------------
-    let gd: Vec<GiaoDich> = tho.iter().filter_map(|d| phan_tich_dong(d)).collect();
+    let gd: Vec<Trade> = tho.iter().filter_map(|d| analyze_close(d)).collect();
     println!("\n1. filter_map: {} dòng hợp lệ / {} dòng thô", gd.len(), tho.len());
     for g in gd.iter().take(3) {
         println!("   {:?}", g);
@@ -593,22 +593,22 @@ fn main() {
     println!("\n2. any / all / find / position (đều dừng sớm)");
     println!("   Có giao dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
     println!("   Mọi giao dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
-    println!("   Giao dịch đầu ở Đà Nẵng         : {:?}", gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.ma));
+    println!("   Giao dịch đầu ở Đà Nẵng         : {:?}", gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.id));
     println!("   Vị trí giao dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
 
     // ------------------------------------------------------------------
     // 3. min_by_key / max_by_key
     // ------------------------------------------------------------------
     println!("\n3. min_by_key / max_by_key");
-    println!("   Giao dịch nhỏ nhất: {:?}", gd.iter().min_by_key(|g| g.so_tien).map(|g| (&g.ma, g.so_tien)));
-    println!("   Giao dịch lớn nhất: {:?}", gd.iter().max_by_key(|g| g.so_tien).map(|g| (&g.ma, g.so_tien)));
+    println!("   Giao dịch nhỏ nhất: {:?}", gd.iter().min_by_key(|g| g.so_tien).map(|g| (&g.id, g.so_tien)));
+    println!("   Giao dịch lớn nhất: {:?}", gd.iter().max_by_key(|g| g.so_tien).map(|g| (&g.id, g.so_tien)));
 
     // ------------------------------------------------------------------
     // 4. partition — CHIA ĐÔI TRONG MỘT LƯỢT
     // ------------------------------------------------------------------
-    let (lon, nho): (Vec<&GiaoDich>, Vec<&GiaoDich>) =
+    let (large, small): (Vec<&Trade>, Vec<&Trade>) =
         gd.iter().partition(|g| g.so_tien >= 800_000);
-    println!("\n4. partition: {} đơn lớn (>=800k), {} đơn nhỏ", lon.len(), nho.len());
+    println!("\n4. partition: {} đơn lớn (>=800k), {} đơn nhỏ", large.len(), small.len());
 
     // ------------------------------------------------------------------
     // 5. fold / reduce / try_fold — BA KIỂU GỘP
@@ -625,22 +625,22 @@ fn main() {
              rong.iter().copied().reduce(|a: u64, b: u64| a + b));
 
     // try_fold: gộp CÓ THỂ THẤT BẠI, dừng ngay ở lỗi đầu tiên
-    let an_toan: Option<u64> = gd.iter().try_fold(0u64, |a, g| a.checked_add(g.so_tien));
-    println!("   try_fold (chống tràn số)     : {:?}", an_toan);
+    let safe: Option<u64> = gd.iter().try_fold(0u64, |a, g| a.checked_add(g.so_tien));
+    println!("   try_fold (chống tràn số)     : {:?}", safe);
     let se_tran: Option<u64> = [u64::MAX, 1].iter().try_fold(0u64, |a, b| a.checked_add(*b));
     println!("   try_fold khi tràn số         : {:?} (dừng ngay, không panic)", se_tran);
 
     // ------------------------------------------------------------------
     // 6. scan — GIỐNG fold NHƯNG NHẢ RA TỪNG BƯỚC TRUNG GIAN
     // ------------------------------------------------------------------
-    let luy_ke: Vec<u64> = gd
+    let accum_ke: Vec<u64> = gd
         .iter()
         .scan(0u64, |tong, g| {
             *tong += g.so_tien;
             Some(*tong)
         })
         .collect();
-    println!("\n6. scan (tổng lũy kế từng bước): {:?}", luy_ke);
+    println!("\n6. scan (tổng lũy kế từng bước): {:?}", accum_ke);
 
     // ------------------------------------------------------------------
     // 7. take_while / skip_while — DỪNG SỚM, KHÁC HẲN filter
@@ -659,24 +659,24 @@ fn main() {
     // 8. zip / unzip / chain / rev / step_by
     // ------------------------------------------------------------------
     println!("\n8. zip / unzip / chain / rev / step_by");
-    let ma: Vec<&str> = gd.iter().map(|g| g.ma.as_str()).collect();
+    let id: Vec<&str> = gd.iter().map(|g| g.id.as_str()).collect();
     let tien: Vec<u64> = gd.iter().map(|g| g.so_tien).collect();
-    let ghep: Vec<(&&str, &u64)> = ma.iter().zip(tien.iter()).take(3).collect();
-    println!("   zip 3 cặp đầu : {:?}", ghep);
+    let compose: Vec<(&&str, &u64)> = id.iter().zip(tien.iter()).take(3).collect();
+    println!("   zip 3 cặp đầu : {:?}", compose);
 
     let (lai_ma, lai_tien): (Vec<&str>, Vec<u64>) =
-        ma.iter().copied().zip(tien.iter().copied()).unzip();
+        id.iter().copied().zip(tien.iter().copied()).unzip();
     println!("   unzip tách lại: {} mã, {} số tiền", lai_ma.len(), lai_tien.len());
 
-    let noi: Vec<i32> = (1..3).chain(10..12).collect();
-    println!("   chain         : {:?}", noi);
+    let concat: Vec<i32> = (1..3).chain(10..12).collect();
+    println!("   chain         : {:?}", concat);
     // CHÚ Ý: `rev()` đòi hỏi trait `DoubleEndedIterator` — iterator phải biết đi
-    // từ CẢ HAI đầu. `DemNguoc` tự viết chỉ cài `Iterator` (một chiều), nên
-    // `DemNguoc::moi(5).rev()` KHÔNG biên dịch được:
-    //     error[E0277]: the trait bound `DemNguoc: DoubleEndedIterator` is not satisfied
+    // từ CẢ HAI đầu. `CountInverse` tự viết chỉ cài `Iterator` (một chiều), nên
+    // `CountInverse::moi(5).rev()` KHÔNG biên dịch được:
+    //     error[E0277]: the trait bound `CountInverse: DoubleEndedIterator` is not satisfied
     // `Vec` thì có, nên ta gom lại trước rồi mới đảo:
-    let nguoc: Vec<u32> = DemNguoc::moi(5).collect::<Vec<u32>>().into_iter().rev().collect();
-    println!("   rev (cần DoubleEndedIterator): {:?}", nguoc);
+    let inverse: Vec<u32> = CountInverse::new(5).collect::<Vec<u32>>().into_iter().rev().collect();
+    println!("   rev (cần DoubleEndedIterator): {:?}", inverse);
     let cach_quang: Vec<i32> = (0..10).step_by(3).collect();
     println!("   step_by(3)    : {:?}", cach_quang);
 
@@ -700,15 +700,15 @@ fn main() {
     // 10. collect VÀO NHIỀU KIỂU KHÁC NHAU
     // ------------------------------------------------------------------
     println!("\n10. collect() gom vào nhiều kiểu đích");
-    let chuoi: String = ma.iter().copied().collect::<Vec<&str>>().join(", ");
-    println!("   -> String     : {}", chuoi);
+    let series: String = id.iter().copied().collect::<Vec<&str>>().join(", ");
+    println!("   -> String     : {}", series);
 
     let khu_vuc: HashSet<&str> = gd.iter().map(|g| g.khu_vuc.as_str()).collect();
     let mut kv: Vec<&&str> = khu_vuc.iter().collect();
     kv.sort();
     println!("   -> HashSet    : {:?} ({} khu vực)", kv, khu_vuc.len());
 
-    let bang: HashMap<&str, u64> = gd.iter().map(|g| (g.ma.as_str(), g.so_tien)).collect();
+    let bang: HashMap<&str, u64> = gd.iter().map(|g| (g.id.as_str(), g.so_tien)).collect();
     println!("   -> HashMap    : tra cứu GD-003 = {:?}", bang.get("GD-003"));
 
     let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
@@ -738,28 +738,28 @@ fn main() {
     let m = [10i32, 3, 2];
     println!("   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
              m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
-    let noi_trai: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
-    let noi_phai: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
+    let folded_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
+    let folded_right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
     println!("   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
-             noi_trai, noi_phai);
+             folded_left, folded_right);
     println!("   → Trước khi song song hóa, phải biết phép gộp của mình có tính gì!");
 
     // ------------------------------------------------------------------
     // 13. ITERATOR TỰ VIẾT VÀ IntoIterator TỰ VIẾT
     // ------------------------------------------------------------------
     println!("\n13. Iterator và IntoIterator tự cài đặt");
-    let dem: Vec<u32> = DemNguoc::moi(5).collect();
-    println!("   DemNguoc(5)                 : {:?}", dem);
-    println!("   Miễn phí luôn map/filter/sum: {}", DemNguoc::moi(100).filter(|x| x % 7 == 0).sum::<u32>());
+    let count: Vec<u32> = CountInverse::new(5).collect();
+    println!("   DemNguoc(5)                 : {:?}", count);
+    println!("   Miễn phí luôn map/filter/sum: {}", CountInverse::new(100).filter(|x| x % 7 == 0).sum::<u32>());
 
-    let gio = GioHang::moi(vec!["Bàn phím".into(), "Chuột".into(), "Màn hình".into()]);
+    let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into(), "Màn hình".into()]);
     print!("   for x in &gio_hang -> ");
     for m in &gio {
         print!("[{}] ", m);
     }
     println!();
 
-    let gio_moi: GioHang = gio
+    let gio_moi: Cart = gio
         .into_iter()
         .filter(|m| m.chars().count() > 5)
         .collect(); // ← nhờ FromIterator tự cài
@@ -768,9 +768,9 @@ fn main() {
     // ------------------------------------------------------------------
     // 14. Extend — NỐI THÊM VÀO TẬP HỢP ĐÃ CÓ
     // ------------------------------------------------------------------
-    let mut kho: Vec<i32> = vec![1, 2];
-    kho.extend(3..6);
-    println!("\n14. Extend: {:?}", kho);
+    let mut store: Vec<i32> = vec![1, 2];
+    store.extend(3..6);
+    println!("\n14. Extend: {:?}", store);
 
     println!("\n============================================================");
     println!("   MỘT `next()` — HÀNG CHỤC CÔNG CỤ MIỄN PHÍ ĐI KÈM         ");
@@ -782,17 +782,17 @@ fn main() {
 // ============================================================================
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
     fn filter_map_bo_qua_dong_hong() {
-        let gd: Vec<GiaoDich> = du_lieu_tho().iter().filter_map(|d| phan_tich_dong(d)).collect();
+        let gd: Vec<Trade> = raw_data().iter().filter_map(|d| analyze_close(d)).collect();
         assert_eq!(gd.len(), 6, "9 dòng thô, 3 dòng hỏng -> còn 6");
     }
 
     #[test]
-    fn take_while_khac_filter() {
+    fn take_while_differs_from_filter() {
         let so = [1, 3, 5, 4, 7, 9];
         let tw: Vec<i32> = so.iter().copied().take_while(|x| x % 2 == 1).collect();
         let ft: Vec<i32> = so.iter().copied().filter(|x| x % 2 == 1).collect();
@@ -801,42 +801,42 @@ mod kiem_thu {
     }
 
     #[test]
-    fn reduce_tra_none_khi_rong() {
+    fn reduce_returns_none_when_empty() {
         let rong: Vec<u64> = Vec::new();
         assert_eq!(rong.iter().copied().reduce(|a, b| a + b), None);
         assert_eq!(rong.iter().fold(0u64, |a, b| a + b), 0); // fold vẫn có câu trả lời
     }
 
     #[test]
-    fn try_fold_dung_ngay_khi_tran_so() {
+    fn try_fold_stops_on_overflow() {
         let kq: Option<u64> = [u64::MAX, 1, 2].iter().try_fold(0u64, |a, b| a.checked_add(*b));
         assert_eq!(kq, None);
     }
 
     #[test]
-    fn scan_nha_ra_tung_buoc_trung_gian() {
-        let luy_ke: Vec<i32> = [1, 2, 3, 4]
+    fn scan_emits_intermediate_steps() {
+        let accum_ke: Vec<i32> = [1, 2, 3, 4]
             .iter()
             .scan(0, |t, x| { *t += x; Some(*t) })
             .collect();
-        assert_eq!(luy_ke, vec![1, 3, 6, 10]);
+        assert_eq!(accum_ke, vec![1, 3, 6, 10]);
     }
 
     #[test]
-    fn fold_va_rfold_chi_khac_nhau_voi_phep_khong_giao_hoan() {
+    fn fold_and_rfold_differ_only_when_non_commutative() {
         let m = [10i32, 3, 2];
         // Phép cộng GIAO HOÁN -> duyệt hai chiều cho cùng kết quả
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
         // Nối chuỗi KHÔNG giao hoán -> duyệt hai chiều cho kết quả khác nhau
-        let trai: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
-        let phai: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
-        assert_eq!(trai, "1032");
-        assert_eq!(phai, "2310");
-        assert_ne!(trai, phai);
+        let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
+        let must: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
+        assert_eq!(left, "1032");
+        assert_eq!(must, "2310");
+        assert_ne!(left, must);
     }
 
     #[test]
-    fn collect_gom_duoc_nhieu_kieu_dich() {
+    fn collect_targets_many_types() {
         let v: Vec<i32> = (1..4).collect();
         assert_eq!(v, vec![1, 2, 3]);
         let s: String = ['R', 'u', 's', 't'].into_iter().collect();
@@ -850,30 +850,30 @@ mod kiem_thu {
     }
 
     #[test]
-    fn partition_chia_dung_hai_nhom() {
+    fn partition_splits_into_two_groups() {
         let (chan, le): (Vec<i32>, Vec<i32>) = (1..8).partition(|x| x % 2 == 0);
         assert_eq!(chan, vec![2, 4, 6]);
         assert_eq!(le, vec![1, 3, 5, 7]);
     }
 
     #[test]
-    fn iterator_tu_viet_hoat_dong() {
-        assert_eq!(DemNguoc::moi(3).collect::<Vec<u32>>(), vec![3, 2, 1]);
-        assert_eq!(DemNguoc::moi(10).filter(|x| x % 3 == 0).sum::<u32>(), 18); // 9+6+3
+    fn custom_iterator_works() {
+        assert_eq!(CountInverse::new(3).collect::<Vec<u32>>(), vec![3, 2, 1]);
+        assert_eq!(CountInverse::new(10).filter(|x| x % 3 == 0).sum::<u32>(), 18); // 9+6+3
     }
 
     #[test]
-    fn into_iterator_va_from_iterator_tu_viet() {
-        let gio = GioHang::moi(vec!["Bàn phím".into(), "Chuột".into()]);
-        let ten: Vec<&String> = (&gio).into_iter().collect();
-        assert_eq!(ten.len(), 2);
-        let loc: GioHang = gio.into_iter().filter(|m| m.chars().count() > 5).collect();
-        assert_eq!(loc, GioHang::moi(vec!["Bàn phím".into()]));
+    fn custom_into_and_from_iterator() {
+        let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into()]);
+        let name: Vec<&String> = (&gio).into_iter().collect();
+        assert_eq!(name.len(), 2);
+        let filter: Cart = gio.into_iter().filter(|m| m.chars().count() > 5).collect();
+        assert_eq!(filter, Cart::new(vec!["Bàn phím".into()]));
     }
 
     #[test]
     fn tong_hop_theo_khu_vuc_dung() {
-        let gd: Vec<GiaoDich> = du_lieu_tho().iter().filter_map(|d| phan_tich_dong(d)).collect();
+        let gd: Vec<Trade> = raw_data().iter().filter_map(|d| analyze_close(d)).collect();
         let theo_kv: HashMap<&str, u64> = gd.iter().fold(HashMap::new(), |mut b, g| {
             *b.entry(g.khu_vuc.as_str()).or_insert(0) += g.so_tien;
             b
@@ -895,7 +895,7 @@ Các lỗi biên dịch phổ biến nhất khi làm việc với Iterator trong
 | **E0282** | `type annotations needed for 'Vec<_>'` | Bạn gọi `.collect()` nhưng không ghi rõ kiểu dữ liệu mong muốn nhận về. Trình biên dịch không biết bạn muốn gom dữ liệu thành `Vec`, `HashSet` hay kiểu tập hợp nào. | Chú thích kiểu tường minh ở biến hứng: `let res: Vec<i32> = ...;` hoặc dùng cú pháp Turbofish: `.collect::<Vec<_>>()`. |
 | **E0507** | `cannot move out of '...' which is behind a shared reference` | Bạn đang dùng `.iter()` (chỉ mượn tham chiếu `&T`) nhưng trong closure của `.map()` bạn lại cố lấy quyền sở hữu của phần tử không có thuộc tính `Copy` (như `String`). | Đổi sang `.into_iter()` nếu muốn lấy quyền sở hữu, hoặc gọi `.clone()`, hoặc chỉ thao tác trên tham chiếu `&`. |
 | **E0277** | `the trait bound '...: Iterator' is not satisfied` | Bạn cố gọi một phương thức iterator (như `.map()`) trực tiếp trên một tập hợp mà quên chưa biến nó thành bộ lặp qua `.iter()`. | Gọi phương thức `.iter()`, `.iter_mut()`, hoặc `.into_iter()` trước khi gọi các adapter. |
-| **E0308** | `mismatched types in closure of fold` | Trong hàm `.fold(khoi_tao, |tich_luy, item| ...)`, giá trị trả về của closure không khớp với kiểu của biến tích lũy `khoi_tao`. | Kiểm tra lại kiểu của biểu thức cuối cùng trong thân closure của `.fold()`, đảm bảo nó khớp chính xác với kiểu khởi tạo. |
+| **E0308** | `mismatched types in closure of fold` | Trong hàm `.fold(block_make, |accumulate, item| ...)`, giá trị trả về của closure không khớp với kiểu của biến tích lũy `block_make`. | Kiểm tra lại kiểu của biểu thức cuối cùng trong thân closure của `.fold()`, đảm bảo nó khớp chính xác với kiểu khởi tạo. |
 
 ### Phân tích lỗi thực tế `E0282` (Thiếu chú thích kiểu khi gọi `collect`):
 
@@ -947,7 +947,7 @@ fn thu_nghiem_dung() {
    Dùng phương thức `.fold()` để tìm giá trị lớn nhất trong một lát cắt số nguyên `&[i32]` mà không sử dụng phương thức `.max()` có sẵn của Rust. Khởi tạo giá trị ban đầu một cách khéo léo để chương trình hoạt động chính xác.
 
 3. **Bài tập 3 (Tự tạo Trait Iterator đơn giản)**:  
-   Tạo một struct mang tên `BoDemNguoc { hien_tai: u32 }`. Triển khai Trait `Iterator` cho struct này sao cho mỗi lần gọi `.next()`, nó đếm lùi từ một con số cho trước về `1`, và trả về `None` khi số hiện tại chạm mốc `0`. Kiểm tra hoạt động của nó với vòng lặp `for`.
+   Tạo một struct mang tên `BoDemNguoc { current: u32 }`. Triển khai Trait `Iterator` cho struct này sao cho mỗi lần gọi `.next()`, nó đếm lùi từ một con số cho trước về `1`, và trả về `None` khi số hiện tại chạm mốc `0`. Kiểm tra hoạt động của nó với vòng lặp `for`.
 
 4. **Bài tập 4 (Làm sạch dữ liệu bẩn bằng `filter_map`)**:  
    Cho `let tho = ["12", "abc", "7", "", "30", "-5"];`. Hãy dùng **một** đường ống duy nhất để: bỏ qua mọi dòng không phân tích được thành `u32`, rồi tính tổng các số hợp lệ. Không dùng vòng lặp `for`, không dùng `unwrap()`.
@@ -994,19 +994,19 @@ Câu hỏi then chốt: **giá trị khởi tạo phải là gì?** Nếu khởi
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-pub fn lon_nhat(ds: &[i32]) -> Option<i32> {
-    if ds.is_empty() {
+pub fn max(list: &[i32]) -> Option<i32> {
+    if list.is_empty() {
         return None;   // câu trả lời trung thực cho danh sách rỗng
     }
     // i32::MIN là "âm vô cực": gộp với bất cứ số nào cũng thua.
-    Some(ds.iter().fold(i32::MIN, |lon_nhat, &x| if x > lon_nhat { x } else { lon_nhat }))
+    Some(list.iter().fold(i32::MIN, |max, &x| if x > max { x } else { max }))
 }
 
 fn main() {
-    assert_eq!(lon_nhat(&[3, 9, 2, 7]), Some(9));
-    assert_eq!(lon_nhat(&[-30, -9, -100]), Some(-9)); // khởi tạo bằng 0 sẽ SAI ở đây!
-    assert_eq!(lon_nhat(&[]), None);
-    println!("{:?}", lon_nhat(&[-30, -9, -100]));
+    assert_eq!(max(&[3, 9, 2, 7]), Some(9));
+    assert_eq!(max(&[-30, -9, -100]), Some(-9)); // khởi tạo bằng 0 sẽ SAI ở đây!
+    assert_eq!(max(&[]), None);
+    println!("{:?}", max(&[-30, -9, -100]));
 }
 ```
 
@@ -1016,7 +1016,7 @@ Hai bài học: (1) chọn sai phần tử khởi tạo là một lỗi im lặn
 <details>
 <summary><b>Bài tập 3 — Gợi ý</b></summary>
 
-Bạn chỉ phải viết đúng **một** phương thức: `fn next(&mut self) -> Option<Self::Item>`. Hãy cẩn thận thứ tự: giảm `hien_tai` trước rồi trả về, hay trả về trước rồi giảm? Hãy tự kiểm bằng cách viết ra kỳ vọng: `BoDemNguoc { hien_tai: 3 }` phải cho ra `3, 2, 1`.
+Bạn chỉ phải viết đúng **một** phương thức: `fn next(&mut self) -> Option<Self::Item>`. Hãy cẩn thận thứ tự: giảm `current` trước rồi trả về, hay trả về trước rồi giảm? Hãy tự kiểm bằng cách viết ra kỳ vọng: `BoDemNguoc { current: 3 }` phải cho ra `3, 2, 1`.
 </details>
 
 <details>
@@ -1024,18 +1024,18 @@ Bạn chỉ phải viết đúng **một** phương thức: `fn next(&mut self) 
 
 ```rust
 pub struct BoDemNguoc {
-    pub hien_tai: u32,
+    pub current: u32,
 }
 
 impl Iterator for BoDemNguoc {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
-        if self.hien_tai == 0 {
+        if self.current == 0 {
             None
         } else {
-            let ra = self.hien_tai;
-            self.hien_tai -= 1;
+            let ra = self.current;
+            self.current -= 1;
             Some(ra)
         }
     }
@@ -1044,19 +1044,19 @@ impl Iterator for BoDemNguoc {
 fn main() {
     // Dùng với vòng lặp for (nhờ IntoIterator có sẵn cho mọi Iterator)
     print!("Đếm ngược: ");
-    for n in (BoDemNguoc { hien_tai: 5 }) {
+    for n in (BoDemNguoc { current: 5 }) {
         print!("{} ", n);
     }
     println!("Phóng!");
 
     // PHẦN THƯỞNG: chỉ cài `next()` mà được dùng ngay hàng chục phương thức khác
-    let ds: Vec<u32> = BoDemNguoc { hien_tai: 5 }.collect();
-    assert_eq!(ds, vec![5, 4, 3, 2, 1]);
+    let list: Vec<u32> = BoDemNguoc { current: 5 }.collect();
+    assert_eq!(list, vec![5, 4, 3, 2, 1]);
 
-    let tong_chan: u32 = BoDemNguoc { hien_tai: 10 }.filter(|n| n % 2 == 0).sum();
+    let tong_chan: u32 = BoDemNguoc { current: 10 }.filter(|n| n % 2 == 0).sum();
     assert_eq!(tong_chan, 30); // 10+8+6+4+2
 
-    let ba_dau: Vec<u32> = BoDemNguoc { hien_tai: 100 }.take(3).collect();
+    let ba_dau: Vec<u32> = BoDemNguoc { current: 100 }.take(3).collect();
     assert_eq!(ba_dau, vec![100, 99, 98]);
 }
 ```
@@ -1103,12 +1103,12 @@ fn main() {
     let tot = ["12", "7", "30"];
 
     // KHÁC BIỆT DUY NHẤT so với bài 4: kiểu của biến hứng, và không có `.ok()`
-    let kq_hong: Result<Vec<u32>, _> = hong.iter().map(|s| s.parse::<u32>()).collect();
-    let kq_tot: Result<Vec<u32>, _> = tot.iter().map(|s| s.parse::<u32>()).collect();
+    let result_hong: Result<Vec<u32>, _> = hong.iter().map(|s| s.parse::<u32>()).collect();
+    let result_good: Result<Vec<u32>, _> = tot.iter().map(|s| s.parse::<u32>()).collect();
 
-    assert!(kq_hong.is_err());                 // MỘT dòng hỏng -> TOÀN BỘ hỏng
-    assert_eq!(kq_tot, Ok(vec![12, 7, 30]));   // mọi dòng tốt  -> được cả danh sách
-    println!("{:?}\n{:?}", kq_hong, kq_tot);
+    assert!(result_hong.is_err());                 // MỘT dòng hỏng -> TOÀN BỘ hỏng
+    assert_eq!(result_good, Ok(vec![12, 7, 30]));   // mọi dòng tốt  -> được cả danh sách
+    println!("{:?}\n{:?}", result_hong, result_good);
 }
 ```
 

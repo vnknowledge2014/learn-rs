@@ -59,12 +59,12 @@ Mục tiêu học tập:
 
 ```
         ┌──────────────┐
-        │   MoHinh     │  toàn bộ trạng thái ứng dụng ở MỘT chỗ
+        │   OpenImage     │  toàn bộ trạng thái ứng dụng ở MỘT chỗ
         │  (Model)     │
         └──────┬───────┘
                │ view (hàm thuần túy)
                ▼
-        [Giao diện]  ──sinh ra──►  ThongDiep (Message)
+        [Giao diện]  ──sinh ra──►  ThongMessage (Message)
                ▲                          │
                │                          ▼
                │              ┌───────────────────────┐
@@ -74,13 +74,13 @@ Mục tiêu học tập:
 ```
 
 Ba quy tắc:
-1. **Trạng thái tập trung** ở một `MoHinh`.
-2. **Mọi thay đổi là một `ThongDiep`** — liệt kê bằng enum (kiểu tổng, Chương 20). Không có hành động nào ngoài danh sách.
+1. **Trạng thái tập trung** ở một `OpenImage`.
+2. **Mọi thay đổi là một `ThongMessage`** — liệt kê bằng enum (kiểu tổng, Chương 20). Không có hành động nào ngoài danh sách.
 3. **Chỉ `update` được sửa trạng thái**, và nó **thuần túy**: `(model, msg) -> model`.
 
 Lợi ích không phải lý thuyết. Vì `update` thuần túy:
 - **Undo/redo**: chỉ cần lưu danh sách trạng thái hoặc thông điệp.
-- **Ghi nhật ký & phát lại**: ghi chuỗi thông điệp, phát lại để dựng đúng trạng thái — chính là *event sourcing* ở Chương 54. Test `update_thuan_tuy_cho_phep_phat_lai` chứng minh điều này.
+- **Ghi nhật ký & phát lại**: ghi chuỗi thông điệp, phát lại để dựng đúng trạng thái — chính là *event sourcing* ở Chương 54. Test `pure_update_enables_replay` chứng minh điều này.
 - **Kiểm thử tầm thường**: gọi `update` với thông điệp, kiểm trạng thái ra. Không cần giao diện.
 
 Đây là lý do gpui (của Zed) và mọi framework UI nghiêm túc đều dùng biến thể của mô hình này.
@@ -93,7 +93,7 @@ Trong Tauri, giao diện chạy trong một **webview bị cô lập** — nó K
 Frontend:  invoke("luu_tep", { ten: "note.txt" })   ──►   Rust: #[tauri::command] fn luu_tep(...)
 ```
 
-Đây không chỉ là cách giao tiếp — nó là **mô hình bảo mật**. Webview có thể chứa mã độc (quảng cáo bên thứ ba, XSS ở Chương 57), nhưng nó chỉ gọi được **các lệnh đã đăng ký**, và lõi Rust **kiểm duyệt từng lời gọi**. Test `ipc_chan_path_traversal` cho thấy: dù frontend gửi `../../etc/passwd`, lõi Rust chặn — webview không bao giờ ghi được ra ngoài thư mục app. Đây là "danh sách trắng" (Chương 57) áp vào ranh giới desktop.
+Đây không chỉ là cách giao tiếp — nó là **mô hình bảo mật**. Webview có thể chứa mã độc (quảng cáo bên thứ ba, XSS ở Chương 57), nhưng nó chỉ gọi được **các lệnh đã đăng ký**, và lõi Rust **kiểm duyệt từng lời gọi**. Test `ipc_blocks_path_traversal` cho thấy: dù frontend gửi `../../etc/passwd`, lõi Rust chặn — webview không bao giờ ghi được ra ngoài thư mục app. Đây là "danh sách trắng" (Chương 57) áp vào ranh giới desktop.
 
 ### 3. Ba con đường xây desktop bằng Rust
 
@@ -113,7 +113,7 @@ Frontend:  invoke("luu_tep", { ten: "note.txt" })   ──►   Rust: #[tauri::c
 
 ### 4. "Một lõi, nhiều nền tảng" — sức mạnh thực sự
 
-Điểm mạnh chung: **lõi nghiệp vụ Rust viết một lần, chạy mọi nơi**. Cùng một `MoHinh` + `update` có thể phục vụ:
+Điểm mạnh chung: **lõi nghiệp vụ Rust viết một lần, chạy mọi nơi**. Cùng một `OpenImage` + `update` có thể phục vụ:
 - App desktop (Tauri/gpui),
 - App web (WASM, Chương 62),
 - App di động (Tauri 2.0),
@@ -144,142 +144,142 @@ use std::collections::HashMap;
 // mọi thay đổi đi qua MỘT hàm `update` thuần túy. Không sửa trạng thái lung tung.
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MoHinh {
-    pub cong_viec: Vec<CongViec>,
-    pub bo_loc: BoLoc,
-    pub id_ke_tiep: u64,
+pub struct OpenImage {
+    pub job: Vec<WorkPort>,
+    pub filter: Filter,
+    pub next_id: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CongViec {
+pub struct WorkPort {
     pub id: u64,
-    pub tieu_de: String,
-    pub xong: bool,
+    pub title: String,
+    pub done: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BoLoc { TatCa, ChuaXong, DaXong }
+pub enum Filter { TatCa, ChuaXong, DaXong }
 
 /// Mọi thứ CÓ THỂ xảy ra trong ứng dụng, liệt kê bằng enum (kiểu tổng, Chương 20).
 /// Không có hành động nào ngoài danh sách này — trạng thái thay đổi có kiểm soát.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ThongDiep {
+pub enum ThongMessage {
     ThemViec(String),
     BatTat(u64),
     Xoa(u64),
-    DoiBoLoc(BoLoc),
+    DoiBoLoc(Filter),
     XoaDaXong,
 }
 
-impl MoHinh {
-    pub fn moi() -> Self {
-        MoHinh { cong_viec: Vec::new(), bo_loc: BoLoc::TatCa, id_ke_tiep: 1 }
+impl OpenImage {
+    pub fn new() -> Self {
+        OpenImage { job: Vec::new(), filter: Filter::TatCa, next_id: 1 }
     }
 
     /// HÀM `update` THUẦN TÚY: (trạng thái cũ, thông điệp) -> trạng thái mới.
     /// Đây là trái tim của kiến trúc: mọi thay đổi phải đi qua đây, nên dễ
     /// suy luận, dễ kiểm thử, dễ ghi lại (undo/redo, ghi nhật ký, phát lại).
-    pub fn update(mut self, td: ThongDiep) -> Self {
+    pub fn update(mut self, td: ThongMessage) -> Self {
         match td {
-            ThongDiep::ThemViec(tieu_de) => {
-                let t = tieu_de.trim();
+            ThongMessage::ThemViec(title) => {
+                let t = title.trim();
                 if !t.is_empty() {
-                    self.cong_viec.push(CongViec {
-                        id: self.id_ke_tiep, tieu_de: t.to_string(), xong: false,
+                    self.job.push(WorkPort {
+                        id: self.next_id, title: t.to_string(), done: false,
                     });
-                    self.id_ke_tiep += 1;
+                    self.next_id += 1;
                 }
             }
-            ThongDiep::BatTat(id) => {
-                if let Some(cv) = self.cong_viec.iter_mut().find(|c| c.id == id) {
-                    cv.xong = !cv.xong;
+            ThongMessage::BatTat(id) => {
+                if let Some(cv) = self.job.iter_mut().find(|c| c.id == id) {
+                    cv.done = !cv.done;
                 }
             }
-            ThongDiep::Xoa(id) => {
-                self.cong_viec.retain(|c| c.id != id);
+            ThongMessage::Xoa(id) => {
+                self.job.retain(|c| c.id != id);
             }
-            ThongDiep::DoiBoLoc(bl) => {
-                self.bo_loc = bl;
+            ThongMessage::DoiBoLoc(bl) => {
+                self.filter = bl;
             }
-            ThongDiep::XoaDaXong => {
-                self.cong_viec.retain(|c| !c.xong);
+            ThongMessage::XoaDaXong => {
+                self.job.retain(|c| !c.done);
             }
         }
         self
     }
 
     /// Dẫn xuất: danh sách hiển thị theo bộ lọc hiện tại (view thuần túy).
-    pub fn hien_thi(&self) -> Vec<&CongViec> {
-        self.cong_viec.iter().filter(|c| match self.bo_loc {
-            BoLoc::TatCa => true,
-            BoLoc::ChuaXong => !c.xong,
-            BoLoc::DaXong => c.xong,
+    pub fn display(&self) -> Vec<&WorkPort> {
+        self.job.iter().filter(|c| match self.filter {
+            Filter::TatCa => true,
+            Filter::ChuaXong => !c.done,
+            Filter::DaXong => c.done,
         }).collect()
     }
 
-    pub fn so_chua_xong(&self) -> usize {
-        self.cong_viec.iter().filter(|c| !c.xong).count()
+    pub fn pending_count(&self) -> usize {
+        self.job.iter().filter(|c| !c.done).count()
     }
 }
 
 // ============================================================================
 // 2. CẦU IPC — frontend gọi backend (như Tauri command)
 // ============================================================================
-// Trong Tauri, giao diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", tham_so)`.
+// Trong Tauri, giao diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", param)`.
 // Ta mô phỏng cầu đó: một bộ điều phối nhận tên lệnh + tham số, trả kết quả JSON.
 
 #[derive(Debug, PartialEq)]
-pub enum KetQuaLenh {
+pub enum ResultOrder {
     Ok(String),
     Loi(String),
 }
 
-pub trait LenhBackend {
-    fn ten(&self) -> &str;
-    fn chay(&self, tham_so: &HashMap<String, String>) -> KetQuaLenh;
+pub trait BackendCommand {
+    fn name(&self) -> &str;
+    fn run(&self, param: &HashMap<String, String>) -> ResultOrder;
 }
 
 /// Ví dụ lệnh: đọc thông tin hệ thống (backend làm việc mà webview không làm được).
-pub struct LenhThongTinHeThong;
-impl LenhBackend for LenhThongTinHeThong {
-    fn ten(&self) -> &str { "thong_tin_he_thong" }
-    fn chay(&self, _: &HashMap<String, String>) -> KetQuaLenh {
-        KetQuaLenh::Ok("os=cross-platform;kien_truc=x86_64".to_string())
+pub struct SystemInfoRequest;
+impl BackendCommand for SystemInfoRequest {
+    fn name(&self) -> &str { "thong_tin_he_thong" }
+    fn run(&self, _: &HashMap<String, String>) -> ResultOrder {
+        ResultOrder::Ok("os=cross-platform;kien_truc=x86_64".to_string())
     }
 }
 
 /// Ví dụ lệnh: lưu tệp (thao tác hệ thống — chỉ backend được phép, vì bảo mật).
-pub struct LenhLuuTep;
-impl LenhBackend for LenhLuuTep {
-    fn ten(&self) -> &str { "luu_tep" }
-    fn chay(&self, tham_so: &HashMap<String, String>) -> KetQuaLenh {
-        let ten = match tham_so.get("ten") {
+pub struct OrderSaveFile;
+impl BackendCommand for OrderSaveFile {
+    fn name(&self) -> &str { "luu_tep" }
+    fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
+        let name = match param.get("ten") {
             Some(t) if !t.is_empty() => t,
-            _ => return KetQuaLenh::Loi("thiếu tên tệp".into()),
+            _ => return ResultOrder::Loi("thiếu tên tệp".into()),
         };
         // Chặn path traversal (Chương 57) — webview không được ghi ra ngoài thư mục app!
-        if ten.contains("..") || ten.starts_with('/') {
-            return KetQuaLenh::Loi("đường dẫn không an toàn".into());
+        if name.contains("..") || name.starts_with('/') {
+            return ResultOrder::Loi("đường dẫn không an toàn".into());
         }
-        KetQuaLenh::Ok(format!("đã lưu {}", ten))
+        ResultOrder::Ok(format!("đã lưu {}", name))
     }
 }
 
 /// Cầu IPC: đăng ký lệnh và điều phối lời gọi từ frontend.
-pub struct CauIPC {
-    lenh: Vec<Box<dyn LenhBackend>>,
+pub struct IpcBridge {
+    order: Vec<Box<dyn BackendCommand>>,
 }
-impl CauIPC {
-    pub fn moi() -> Self { CauIPC { lenh: Vec::new() } }
-    pub fn dang_ky(mut self, l: Box<dyn LenhBackend>) -> Self {
-        self.lenh.push(l);
+impl IpcBridge {
+    pub fn new() -> Self { IpcBridge { order: Vec::new() } }
+    pub fn register(mut self, l: Box<dyn BackendCommand>) -> Self {
+        self.order.push(l);
         self
     }
-    /// invoke(ten, tham_so) — y hệt `invoke` của Tauri.
-    pub fn invoke(&self, ten: &str, tham_so: HashMap<String, String>) -> KetQuaLenh {
-        match self.lenh.iter().find(|l| l.ten() == ten) {
-            Some(l) => l.chay(&tham_so),
-            None => KetQuaLenh::Loi(format!("lệnh {:?} không được đăng ký", ten)),
+    /// invoke(ten, param) — y hệt `invoke` của Tauri.
+    pub fn invoke(&self, name: &str, param: HashMap<String, String>) -> ResultOrder {
+        match self.order.iter().find(|l| l.name() == name) {
+            Some(l) => l.run(&param),
+            None => ResultOrder::Loi(format!("lệnh {:?} không được đăng ký", name)),
         }
     }
 }
@@ -290,27 +290,27 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     println!("\n1. KIẾN TRÚC TRẠNG THÁI (Elm/Redux) — mọi thay đổi qua `update`");
-    let m = MoHinh::moi()
-        .update(ThongDiep::ThemViec("Học Tauri".into()))
-        .update(ThongDiep::ThemViec("Viết ứng dụng".into()))
-        .update(ThongDiep::ThemViec("Đóng gói đa nền tảng".into()))
-        .update(ThongDiep::BatTat(1)); // đánh dấu việc #1 xong
+    let m = OpenImage::new()
+        .update(ThongMessage::ThemViec("Học Tauri".into()))
+        .update(ThongMessage::ThemViec("Viết ứng dụng".into()))
+        .update(ThongMessage::ThemViec("Đóng gói đa nền tảng".into()))
+        .update(ThongMessage::BatTat(1)); // đánh dấu việc #1 xong
 
-    println!("   Tổng công việc: {}, chưa xong: {}", m.cong_viec.len(), m.so_chua_xong());
-    let m = m.update(ThongDiep::DoiBoLoc(BoLoc::ChuaXong));
-    println!("   Lọc 'chưa xong': {:?}", m.hien_thi().iter().map(|c| &c.tieu_de).collect::<Vec<_>>());
+    println!("   Tổng công việc: {}, chưa xong: {}", m.job.len(), m.pending_count());
+    let m = m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong));
+    println!("   Lọc 'chưa xong': {:?}", m.display().iter().map(|c| &c.title).collect::<Vec<_>>());
 
     println!("\n2. CẦU IPC — frontend (Svelte/JS) gọi backend (Rust)");
-    let cau = CauIPC::moi()
-        .dang_ky(Box::new(LenhThongTinHeThong))
-        .dang_ky(Box::new(LenhLuuTep));
+    let cau = IpcBridge::new()
+        .register(Box::new(SystemInfoRequest))
+        .register(Box::new(OrderSaveFile));
 
     println!("   invoke('thong_tin_he_thong'): {:?}", cau.invoke("thong_tin_he_thong", HashMap::new()));
     let mut ts = HashMap::new();
     ts.insert("ten".to_string(), "ghi_chu.txt".to_string());
-    println!("   invoke('luu_tep', {{ten: 'ghi_chu.txt'}}): {:?}", cau.invoke("luu_tep", ts.clone()));
+    println!("   invoke('luu_tep', {{name: 'ghi_chu.txt'}}): {:?}", cau.invoke("luu_tep", ts.clone()));
     ts.insert("ten".to_string(), "../../etc/passwd".to_string());
-    println!("   invoke('luu_tep', {{ten: '../../etc/passwd'}}): {:?}", cau.invoke("luu_tep", ts));
+    println!("   invoke('luu_tep', {{name: '../../etc/passwd'}}): {:?}", cau.invoke("luu_tep", ts));
     println!("   invoke('lenh_la'): {:?}", cau.invoke("lenh_la", HashMap::new()));
 
     println!("\n═══════════════════════════════════════════════════════════════");
@@ -319,99 +319,99 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
-    fn them_viec_va_tang_id() {
-        let m = MoHinh::moi()
-            .update(ThongDiep::ThemViec("A".into()))
-            .update(ThongDiep::ThemViec("B".into()));
-        assert_eq!(m.cong_viec.len(), 2);
-        assert_eq!(m.cong_viec[0].id, 1);
-        assert_eq!(m.cong_viec[1].id, 2);
+    fn add_task_increments_id() {
+        let m = OpenImage::new()
+            .update(ThongMessage::ThemViec("A".into()))
+            .update(ThongMessage::ThemViec("B".into()));
+        assert_eq!(m.job.len(), 2);
+        assert_eq!(m.job[0].id, 1);
+        assert_eq!(m.job[1].id, 2);
     }
 
     #[test]
-    fn them_viec_rong_bi_bo_qua() {
-        let m = MoHinh::moi()
-            .update(ThongDiep::ThemViec("   ".into()))
-            .update(ThongDiep::ThemViec("".into()));
-        assert_eq!(m.cong_viec.len(), 0);
+    fn add_work_empty_is_unit_qua() {
+        let m = OpenImage::new()
+            .update(ThongMessage::ThemViec("   ".into()))
+            .update(ThongMessage::ThemViec("".into()));
+        assert_eq!(m.job.len(), 0);
     }
 
     #[test]
-    fn bat_tat_trang_thai() {
-        let m = MoHinh::moi().update(ThongDiep::ThemViec("X".into()));
-        assert!(!m.cong_viec[0].xong);
-        let m = m.update(ThongDiep::BatTat(1));
-        assert!(m.cong_viec[0].xong);
-        let m = m.update(ThongDiep::BatTat(1)); // bật lại
-        assert!(!m.cong_viec[0].xong);
+    fn toggle_state() {
+        let m = OpenImage::new().update(ThongMessage::ThemViec("X".into()));
+        assert!(!m.job[0].done);
+        let m = m.update(ThongMessage::BatTat(1));
+        assert!(m.job[0].done);
+        let m = m.update(ThongMessage::BatTat(1)); // bật lại
+        assert!(!m.job[0].done);
     }
 
     #[test]
-    fn xoa_va_xoa_da_xong() {
-        let m = MoHinh::moi()
-            .update(ThongDiep::ThemViec("A".into()))
-            .update(ThongDiep::ThemViec("B".into()))
-            .update(ThongDiep::ThemViec("C".into()))
-            .update(ThongDiep::BatTat(1))
-            .update(ThongDiep::BatTat(3));
+    fn remove_and_clear_completed() {
+        let m = OpenImage::new()
+            .update(ThongMessage::ThemViec("A".into()))
+            .update(ThongMessage::ThemViec("B".into()))
+            .update(ThongMessage::ThemViec("C".into()))
+            .update(ThongMessage::BatTat(1))
+            .update(ThongMessage::BatTat(3));
         // Xóa 1 việc cụ thể
-        let m2 = m.clone().update(ThongDiep::Xoa(2));
-        assert_eq!(m2.cong_viec.len(), 2);
+        let m2 = m.clone().update(ThongMessage::Xoa(2));
+        assert_eq!(m2.job.len(), 2);
         // Xóa mọi việc đã xong (1 và 3)
-        let m3 = m.update(ThongDiep::XoaDaXong);
-        assert_eq!(m3.cong_viec.len(), 1);
-        assert_eq!(m3.cong_viec[0].tieu_de, "B");
+        let m3 = m.update(ThongMessage::XoaDaXong);
+        assert_eq!(m3.job.len(), 1);
+        assert_eq!(m3.job[0].title, "B");
     }
 
     #[test]
-    fn bo_loc_hien_thi_dung() {
-        let m = MoHinh::moi()
-            .update(ThongDiep::ThemViec("A".into()))
-            .update(ThongDiep::ThemViec("B".into()))
-            .update(ThongDiep::BatTat(1)); // A xong
-        assert_eq!(m.clone().update(ThongDiep::DoiBoLoc(BoLoc::TatCa)).hien_thi().len(), 2);
-        assert_eq!(m.clone().update(ThongDiep::DoiBoLoc(BoLoc::DaXong)).hien_thi().len(), 1);
-        assert_eq!(m.update(ThongDiep::DoiBoLoc(BoLoc::ChuaXong)).hien_thi().len(), 1);
+    fn filter_shows_correct_items() {
+        let m = OpenImage::new()
+            .update(ThongMessage::ThemViec("A".into()))
+            .update(ThongMessage::ThemViec("B".into()))
+            .update(ThongMessage::BatTat(1)); // A xong
+        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::TatCa)).display().len(), 2);
+        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::DaXong)).display().len(), 1);
+        assert_eq!(m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong)).display().len(), 1);
     }
 
     #[test]
-    fn update_thuan_tuy_cho_phep_phat_lai() {
+    fn pure_update_enables_replay() {
         // Vì update thuần túy, ta có thể PHÁT LẠI một chuỗi thông điệp để dựng
         // lại đúng trạng thái — nền của undo/redo và event sourcing (Chương 54).
-        let lich_su = vec![
-            ThongDiep::ThemViec("A".into()),
-            ThongDiep::ThemViec("B".into()),
-            ThongDiep::BatTat(1),
+        let history = vec![
+            ThongMessage::ThemViec("A".into()),
+            ThongMessage::ThemViec("B".into()),
+            ThongMessage::BatTat(1),
         ];
-        let dung = |ds: &[ThongDiep]| ds.iter().cloned().fold(MoHinh::moi(), |m, td| m.update(td));
+        let dung = |list: &[ThongMessage]| list.iter().cloned().fold(OpenImage::new(), |m, td| m.update(td));
         // Phát lại hai lần cho CÙNG kết quả (tất định)
-        assert_eq!(dung(&lich_su), dung(&lich_su));
+        assert_eq!(dung(&history), dung(&history));
     }
 
     #[test]
-    fn ipc_dieu_phoi_lenh() {
-        let cau = CauIPC::moi()
-            .dang_ky(Box::new(LenhThongTinHeThong))
-            .dang_ky(Box::new(LenhLuuTep));
-        assert!(matches!(cau.invoke("thong_tin_he_thong", HashMap::new()), KetQuaLenh::Ok(_)));
-        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), KetQuaLenh::Loi(_)));
+    fn ipc_dispatches_commands() {
+        let cau = IpcBridge::new()
+            .register(Box::new(SystemInfoRequest))
+            .register(Box::new(OrderSaveFile));
+        assert!(matches!(cau.invoke("thong_tin_he_thong", HashMap::new()), ResultOrder::Ok(_)));
+        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Loi(_)));
     }
 
     #[test]
-    fn ipc_chan_path_traversal() {
-        let cau = CauIPC::moi().dang_ky(Box::new(LenhLuuTep));
+    fn ipc_blocks_path_traversal() {
+        let cau = IpcBridge::new().register(Box::new(OrderSaveFile));
         let mut ok = HashMap::new();
         ok.insert("ten".into(), "note.txt".to_string());
-        assert!(matches!(cau.invoke("luu_tep", ok), KetQuaLenh::Ok(_)));
+        assert!(matches!(cau.invoke("luu_tep", ok), ResultOrder::Ok(_)));
 
         let mut xau = HashMap::new();
         xau.insert("ten".into(), "../../../etc/passwd".to_string());
         // Cầu IPC chặn — webview KHÔNG được ghi ra ngoài thư mục app (bảo mật)
-        assert!(matches!(cau.invoke("luu_tep", xau), KetQuaLenh::Loi(_)));
+        assert!(matches!(cau.invoke("luu_tep", xau), ResultOrder::Loi(_)));
     }
 }
 ```
@@ -429,18 +429,18 @@ use std::sync::Mutex;
 // Lệnh backend: giao diện gọi qua invoke("them_viec", {...})
 #[tauri::command]
 fn them_viec(
-    tieu_de: String,
-    trang_thai: tauri::State<Mutex<MoHinh>>,  // trạng thái chia sẻ (Chương 61)
+    title: String,
+    state: tauri::State<Mutex<OpenImage>>,  // trạng thái chia sẻ (Chương 61)
 ) -> Result<usize, String> {
-    let mut m = trang_thai.lock().unwrap();
-    *m = m.clone().update(ThongDiep::ThemViec(tieu_de));
-    Ok(m.so_chua_xong())
+    let mut m = state.lock().unwrap();
+    *m = m.clone().update(ThongMessage::ThemViec(title));
+    Ok(m.pending_count())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]  // Tauri 2.0: chạy cả trên di động!
 pub fn run() {
     tauri::Builder::default()
-        .manage(Mutex::new(MoHinh::moi()))
+        .manage(Mutex::new(OpenImage::new()))
         .invoke_handler(tauri::generate_handler![them_viec])
         .run(tauri::generate_context!())
         .expect("lỗi khởi chạy ứng dụng Tauri");
@@ -451,19 +451,19 @@ pub fn run() {
 <!-- src/App.svelte  (giao diện Svelte) -->
 <script>
   import { invoke } from '@tauri-apps/api/core';
-  let tieu_de = '';
-  let con_lai = 0;
+  let title = '';
+  let remaining = 0;
 
   async function them() {
     // Gọi thẳng hàm Rust — Tauri lo phần serialize/IPC
-    con_lai = await invoke('them_viec', { tieuDe: tieu_de });
-    tieu_de = '';
+    remaining = await invoke('them_viec', { tieuDe: title });
+    title = '';
   }
 </script>
 
-<input bind:value={tieu_de} placeholder="Việc mới..." />
+<input bind:value={title} placeholder="Việc mới..." />
 <button on:click={them}>Thêm</button>
-<p>Còn lại: {con_lai} việc chưa xong</p>
+<p>Còn lại: {remaining} việc chưa xong</p>
 ```
 
 Chạy `cargo tauri dev` để phát triển, `cargo tauri build` để đóng gói ra `.dmg` (macOS), `.msi` (Windows), `.deb`/`.AppImage` (Linux) — **cùng một mã nguồn**.
@@ -502,17 +502,17 @@ impl Render for BoDem {
 1. **Kiến trúc Elm: mọi thay đổi qua một `update` thuần túy.** Trạng thái tập trung, thay đổi là enum thông điệp, chỉ `update` được sửa. Cho undo/redo và phát lại gần như miễn phí.
 2. **Cầu IPC là ranh giới bảo mật.** Webview bị cô lập, chỉ gọi được lệnh đã đăng ký; lõi Rust kiểm duyệt từng lời gọi (chặn path traversal, Chương 57).
 3. **Ba con đường**: Tauri (giao diện web, nhẹ, đa nền tảng cả di động) · gpui (native GPU, nhanh nhất) · wgpu (đồ họa cấp thấp).
-4. **Một lõi Rust, nhiều nền tảng.** Cùng `MoHinh`+`update` phục vụ desktop, web, di động, server — đỉnh cao của "lõi thuần túy, vỏ mệnh lệnh" (Chương 20).
+4. **Một lõi Rust, nhiều nền tảng.** Cùng `OpenImage`+`update` phục vụ desktop, web, di động, server — đỉnh cao của "lõi thuần túy, vỏ mệnh lệnh" (Chương 20).
 
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Undo/Redo)**
-Dùng tính thuần túy của `update`, viết `LichSu` lưu chuỗi `MoHinh` cho phép `hoan_tac()` và `lam_lai()`. Test một chuỗi thao tác rồi hoàn tác.
+Dùng tính thuần túy của `update`, viết `LichSu` lưu chuỗi `OpenImage` cho phép `hoan_tac()` và `lam_lai()`. Test một chuỗi thao tác rồi hoàn tác.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Lưu `Vec<MoHinh>` và một con trỏ vị trí hiện tại. `update` mới thì cắt bỏ phần "tương lai" (redo cũ) và thêm trạng thái mới; `hoan_tac` lùi con trỏ; `lam_lai` tiến con trỏ. Vì mỗi `MoHinh` là một ảnh chụp bất biến, không có gì bị hỏng — đây chính là lợi ích của trạng thái bất biến (Chương 13).
+Lưu `Vec<OpenImage>` và một con trỏ vị trí hiện tại. `update` mới thì cắt bỏ phần "tương lai" (redo cũ) và thêm trạng thái mới; `hoan_tac` lùi con trỏ; `lam_lai` tiến con trỏ. Vì mỗi `OpenImage` là một ảnh chụp bất biến, không có gì bị hỏng — đây chính là lợi ích của trạng thái bất biến (Chương 13).
 </details>
 
 <details>
@@ -520,20 +520,20 @@ Lưu `Vec<MoHinh>` và một con trỏ vị trí hiện tại. `update` mới th
 
 ```rust
 pub struct LichSu {
-    trang_thai: Vec<MoHinh>,
-    vi_tri: usize,
+    state: Vec<OpenImage>,
+    pos_value: usize,
 }
 impl LichSu {
-    pub fn moi() -> Self { LichSu { trang_thai: vec![MoHinh::moi()], vi_tri: 0 } }
-    pub fn hien_tai(&self) -> &MoHinh { &self.trang_thai[self.vi_tri] }
-    pub fn thuc_hien(&mut self, td: ThongDiep) {
-        let moi = self.hien_tai().clone().update(td);
-        self.trang_thai.truncate(self.vi_tri + 1); // bỏ nhánh redo cũ
-        self.trang_thai.push(moi);
-        self.vi_tri += 1;
+    pub fn new() -> Self { LichSu { state: vec![OpenImage::new()], pos_value: 0 } }
+    pub fn current(&self) -> &OpenImage { &self.state[self.pos_value] }
+    pub fn thuc_hien(&mut self, td: ThongMessage) {
+        let new = self.current().clone().update(td);
+        self.state.truncate(self.pos_value + 1); // bỏ nhánh redo cũ
+        self.state.push(new);
+        self.pos_value += 1;
     }
-    pub fn hoan_tac(&mut self) { if self.vi_tri > 0 { self.vi_tri -= 1; } }
-    pub fn lam_lai(&mut self) { if self.vi_tri + 1 < self.trang_thai.len() { self.vi_tri += 1; } }
+    pub fn hoan_tac(&mut self) { if self.pos_value > 0 { self.pos_value -= 1; } }
+    pub fn lam_lai(&mut self) { if self.pos_value + 1 < self.state.len() { self.pos_value += 1; } }
 }
 
 #[cfg(test)]
@@ -541,14 +541,14 @@ mod bt1 {
     use super::*;
     #[test]
     fn undo_redo_hoat_dong() {
-        let mut ls = LichSu::moi();
-        ls.thuc_hien(ThongDiep::ThemViec("A".into()));
-        ls.thuc_hien(ThongDiep::ThemViec("B".into()));
-        assert_eq!(ls.hien_tai().cong_viec.len(), 2);
+        let mut ls = LichSu::new();
+        ls.thuc_hien(ThongMessage::ThemViec("A".into()));
+        ls.thuc_hien(ThongMessage::ThemViec("B".into()));
+        assert_eq!(ls.current().job.len(), 2);
         ls.hoan_tac();
-        assert_eq!(ls.hien_tai().cong_viec.len(), 1); // quay về sau khi thêm A
+        assert_eq!(ls.current().job.len(), 1); // quay về sau khi thêm A
         ls.lam_lai();
-        assert_eq!(ls.hien_tai().cong_viec.len(), 2);
+        assert_eq!(ls.current().job.len(), 2);
     }
 }
 ```
@@ -562,15 +562,15 @@ Thêm lệnh `doc_tep` chỉ cho đọc tệp trong thư mục app (chặn `..` 
 
 ```rust
 pub struct LenhDocTep;
-impl LenhBackend for LenhDocTep {
-    fn ten(&self) -> &str { "doc_tep" }
-    fn chay(&self, tham_so: &HashMap<String, String>) -> KetQuaLenh {
-        let ten = match tham_so.get("ten") { Some(t) if !t.is_empty() => t,
-            _ => return KetQuaLenh::Loi("thiếu tên".into()) };
-        if ten.contains("..") || ten.starts_with('/') || ten.contains('\0') {
-            return KetQuaLenh::Loi("đường dẫn không an toàn".into());
+impl BackendCommand for LenhDocTep {
+    fn name(&self) -> &str { "doc_tep" }
+    fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
+        let name = match param.get("ten") { Some(t) if !t.is_empty() => t,
+            _ => return ResultOrder::Loi("thiếu tên".into()) };
+        if name.contains("..") || name.starts_with('/') || name.contains('\0') {
+            return ResultOrder::Loi("đường dẫn không an toàn".into());
         }
-        KetQuaLenh::Ok(format!("nội dung của {}", ten))
+        ResultOrder::Ok(format!("nội dung của {}", name))
     }
 }
 #[cfg(test)]
@@ -578,11 +578,11 @@ mod bt2 {
     use super::*;
     #[test]
     fn doc_tep_chan_duong_dan_xau() {
-        let cau = CauIPC::moi().dang_ky(Box::new(LenhDocTep));
+        let cau = IpcBridge::new().register(Box::new(LenhDocTep));
         let mut ok = HashMap::new(); ok.insert("ten".into(), "config.json".to_string());
-        assert!(matches!(cau.invoke("doc_tep", ok), KetQuaLenh::Ok(_)));
+        assert!(matches!(cau.invoke("doc_tep", ok), ResultOrder::Ok(_)));
         let mut xau = HashMap::new(); xau.insert("ten".into(), "/etc/shadow".to_string());
-        assert!(matches!(cau.invoke("doc_tep", xau), KetQuaLenh::Loi(_)));
+        assert!(matches!(cau.invoke("doc_tep", xau), ResultOrder::Loi(_)));
     }
 }
 ```

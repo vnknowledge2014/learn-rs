@@ -123,18 +123,18 @@ use std::time::Instant;
 /// Minh họa giải thuật O(1) - Truy cập phần tử qua chỉ số mảng
 /// Bất kể danh sách có 10 phần tử hay 10 triệu phần tử,
 /// CPU chỉ cần 1 phép tính cộng địa chỉ bộ nhớ là lấy được giá trị ngay!
-pub fn truy_cap_chi_so_o1(danh_sach: &[i32], chi_so: usize) -> Option<i32> {
+pub fn index_access_o1(list: &[i32], chi_so: usize) -> Option<i32> {
     // Thao tác kiểm tra biên giới và đọc ô nhớ diễn ra trong thời gian hằng số O(1)
-    danh_sach.get(chi_so).copied()
+    list.get(chi_so).copied()
 }
 
 /// Minh họa giải thuật O(N) - Tìm kiếm tuyến tính (Linear Search)
 /// Trong trường hợp xấu nhất (Worst-case), phần tử cần tìm nằm ở cuối danh sách
 /// hoặc không tồn tại, hàm bắt buộc phải duyệt qua toàn bộ N phần tử.
-pub fn tim_kiem_tuyen_tinh_on(danh_sach: &[i32], muc_tieu: i32) -> Option<usize> {
-    for (vi_tri, &gia_tri) in danh_sach.iter().enumerate() {
-        if gia_tri == muc_tieu {
-            return Some(vi_tri); // Tìm thấy tại vị trí vi_tri
+pub fn linear_search_on(list: &[i32], level_spend: i32) -> Option<usize> {
+    for (pos_value, &value) in list.iter().enumerate() {
+        if value == level_spend {
+            return Some(pos_value); // Tìm thấy tại vị trí pos_value
         }
     }
     None // Không tìm thấy sau khi duyệt hết N phần tử
@@ -143,30 +143,30 @@ pub fn tim_kiem_tuyen_tinh_on(danh_sach: &[i32], muc_tieu: i32) -> Option<usize>
 /// Minh họa giải thuật O(log N) - Tìm kiếm nhị phân (Binary Search)
 /// Điều kiện tiên quyết: Mảng đầu vào PHẢI được sắp xếp tăng dần từ trước.
 /// Tại mỗi bước, ta so sánh mục tiêu với phần tử ở giữa và loại bỏ 50% phạm vi tìm kiếm.
-pub fn tim_kiem_nhi_phan_ologn(danh_sach: &[i32], muc_tieu: i32) -> Option<usize> {
-    if danh_sach.is_empty() {
+pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
+    if list.is_empty() {
         return None;
     }
 
-    let mut trai: usize = 0;
-    let mut phai: usize = danh_sach.len() - 1;
+    let mut left: usize = 0;
+    let mut must: usize = list.len() - 1;
 
-    while trai <= phai {
+    while left <= must {
         // Tính vị trí ở giữa an toàn để tránh nguy cơ tràn số (integer overflow)
-        let giua = trai + (phai - trai) / 2;
-        let gia_tri_giua = danh_sach[giua];
+        let mid = left + (must - left) / 2;
+        let value_mid = list[mid];
 
-        if gia_tri_giua == muc_tieu {
-            return Some(giua);
-        } else if gia_tri_giua < muc_tieu {
+        if value_mid == level_spend {
+            return Some(mid);
+        } else if value_mid < level_spend {
             // Mục tiêu nằm ở nửa bên phải, dời biên trái lên
-            trai = giua + 1;
+            left = mid + 1;
         } else {
             // Mục tiêu nằm ở nửa bên trái, dời biên phải xuống
-            if giua == 0 {
+            if mid == 0 {
                 break; // Ngăn chặn tràn số usize khi trừ về dưới 0
             }
-            phai = giua - 1;
+            must = mid - 1;
         }
     }
 
@@ -175,18 +175,18 @@ pub fn tim_kiem_nhi_phan_ologn(danh_sach: &[i32], muc_tieu: i32) -> Option<usize
 
 /// Minh họa độ phức tạp không gian O(1) vs O(N)
 /// Hàm 1: Tính tổng tích lũy tại chỗ - Tiêu tốn O(1) bộ nhớ phụ
-pub fn tinh_tong_tai_cho_o1_space(danh_sach: &[i32]) -> i64 {
+pub fn sum_in_place_o1(list: &[i32]) -> i64 {
     let mut tong: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
-    for &so in danh_sach {
+    for &so in list {
         tong += so as i64;
     }
     tong
 }
 
 /// Hàm 2: Tạo mảng nhân đôi - Tiêu tốn O(N) bộ nhớ phụ trên Heap
-pub fn tao_mang_nhan_doi_on_space(danh_sach: &[i32]) -> Vec<i32> {
-    let mut ket_qua = Vec::with_capacity(danh_sach.len());
-    for &so in danh_sach {
+pub fn grow_doubling(list: &[i32]) -> Vec<i32> {
+    let mut ket_qua = Vec::with_capacity(list.len());
+    for &so in list {
         ket_qua.push(so * 2);
     }
     ket_qua
@@ -198,15 +198,15 @@ fn main() {
     println!("============================================================");
 
     // Chuẩn bị tập dữ liệu lớn gồm 1.000.000 (1 triệu) số nguyên đã sắp xếp
-    let quy_mo: usize = 1_000_000;
-    println!("Khởi tạo danh sách gồm {} phần tử...", quy_mo);
-    let danh_sach: Vec<i32> = (0..quy_mo as i32).collect();
+    let scale: usize = 1_000_000;
+    println!("Khởi tạo danh sách gồm {} phần tử...", scale);
+    let list: Vec<i32> = (0..scale as i32).collect();
 
-    let muc_tieu: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
+    let level_spend: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
     let bat_dau_o1 = Instant::now();
-    let ket_qua_o1 = truy_cap_chi_so_o1(&danh_sach, quy_mo - 1);
+    let ket_qua_o1 = index_access_o1(&list, scale - 1);
     let thoi_gian_o1 = bat_dau_o1.elapsed();
     println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
     println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
@@ -214,7 +214,7 @@ fn main() {
 
     // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
     let bat_dau_on = Instant::now();
-    let ket_qua_on = tim_kiem_tuyen_tinh_on(&danh_sach, muc_tieu);
+    let ket_qua_on = linear_search_on(&list, level_spend);
     let thoi_gian_on = bat_dau_on.elapsed();
     println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_on);
@@ -222,15 +222,15 @@ fn main() {
 
     // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
     let bat_dau_ologn = Instant::now();
-    let ket_qua_ologn = tim_kiem_nhi_phan_ologn(&danh_sach, muc_tieu);
+    let ket_qua_ologn = binary_search_ologn(&list, level_spend);
     let thoi_gian_ologn = bat_dau_ologn.elapsed();
     println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
     println!("    - Thời gian thực thi: {:?}", thoi_gian_ologn);
 
     // Xác nhận tính nhất quán của kết quả
-    assert_eq!(ket_qua_on, Some(quy_mo - 1));
-    assert_eq!(ket_qua_ologn, Some(quy_mo - 1));
+    assert_eq!(ket_qua_on, Some(scale - 1));
+    assert_eq!(ket_qua_ologn, Some(scale - 1));
 
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
     if thoi_gian_ologn.as_nanos() > 0 {
@@ -239,8 +239,8 @@ fn main() {
     }
 
     // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian
-    let tong_o1 = tinh_tong_tai_cho_o1_space(&danh_sach[0..100]);
-    let mang_on = tao_mang_nhan_doi_on_space(&danh_sach[0..100]);
+    let tong_o1 = sum_in_place_o1(&list[0..100]);
+    let mang_on = grow_doubling(&list[0..100]);
     println!("\n[4] Không gian bộ nhớ:");
     println!("    - Tổng O(1) Space: {}", tong_o1);
     println!("    - Kích thước mảng phụ O(N) Space: {} phần tử", mang_on.len());
@@ -257,32 +257,32 @@ Khi lập trình các thuật toán tìm kiếm và đo đạc độ phức tạ
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0382** | `use of moved value: '...'` | Bạn truyền một `Vec` lớn vào hàm giải thuật bằng giá trị (by value) thay vì mượn tham chiếu `&[T]`. Quyền sở hữu đã bị chuyển đi, khiến biến gốc không dùng lại được. | Đổi chữ ký hàm nhận lát cắt tham chiếu `&[T]` thay vì sở hữu `Vec<T>`. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`trai`, `phai`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut trai = 0;`. |
+| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`left`, `right`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut left = 0;`. |
 | **E0308** | `mismatched types: expected 'usize', found 'i32'` | Chỉ số mảng trong Rust luôn mang kiểu số nguyên không dấu `usize`. Việc dùng kiểu `i32` làm chỉ số truy cập sẽ bị trình biên dịch từ chối ngay lập tức. | Chuyển đổi kiểu tường minh bằng từ khóa `as usize` hoặc khai báo biến chỉ số ngay từ đầu là `usize`. |
-| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến `&danh_sach` để lặp, vừa gọi phương thức làm biến đổi danh sách (như `.push()`) trong cùng một phạm vi. | Tách rời thao tác đọc và thao tác ghi thành hai bước độc lập để tôn trọng quy tắc mượn của Rust. |
+| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến `&list` để lặp, vừa gọi phương thức làm biến đổi danh sách (như `.push()`) trong cùng một phạm vi. | Tách rời thao tác đọc và thao tác ghi thành hai bước độc lập để tôn trọng quy tắc mượn của Rust. |
 
 ### Ví dụ phân tích lỗi `E0382` và cách khắc phục:
 
 ```rust
 // Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu vector vào hàm đo thời gian
-fn dem_phan_tu_loi(ds: Vec<i32>) -> usize {
-    ds.len() // Hàm đoạt lấy quyền sở hữu và giải phóng bộ nhớ khi kết thúc
+fn dem_phan_tu_loi(list: Vec<i32>) -> usize {
+    list.len() // Hàm đoạt lấy quyền sở hữu và giải phóng bộ nhớ khi kết thúc
 }
 
 fn thu_nghiem_loi() {
-    let du_lieu = vec![1, 2, 3, 4, 5];
-    // let n = dem_phan_tu_loi(du_lieu); 
-    // println!("Dữ liệu có: {}", du_lieu.len()); // LỖI E0382: du_lieu đã bị di chuyển!
+    let data = vec![1, 2, 3, 4, 5];
+    // let n = dem_phan_tu_loi(data); 
+    // println!("Dữ liệu có: {}", data.len()); // LỖI E0382: data đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Mượn lát cắt (Slice) tham chiếu &[i32]
-fn dem_phan_tu_chuan(ds: &[i32]) -> usize {
-    ds.len() // Chỉ mượn tham chiếu, không đoạt quyền sở hữu
+fn dem_phan_tu_chuan(list: &[i32]) -> usize {
+    list.len() // Chỉ mượn tham chiếu, không đoạt quyền sở hữu
 }
 
 fn thu_nghiem_dung() {
-    let du_lieu = vec![1, 2, 3, 4, 5];
-    let n = dem_phan_tu_chuan(&du_lieu);
+    let data = vec![1, 2, 3, 4, 5];
+    let n = dem_phan_tu_chuan(&data);
     println!("Dữ liệu mượn hợp lệ, vẫn còn sử dụng được: độ dài = {}", n);
 }
 ```
@@ -299,53 +299,53 @@ Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu í
 
 ```rust
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
-    fn truy_cap_o1_dung_va_ngoai_bien() {
-        let ds = [10, 20, 30];
-        assert_eq!(truy_cap_chi_so_o1(&ds, 1), Some(20));
-        assert_eq!(truy_cap_chi_so_o1(&ds, 5), None); // an toàn, không panic
+    fn index_access_is_o1_and_bounds_checked() {
+        let list = [10, 20, 30];
+        assert_eq!(index_access_o1(&list, 1), Some(20));
+        assert_eq!(index_access_o1(&list, 5), None); // an toàn, không panic
     }
 
     #[test]
-    fn tim_kiem_tuyen_tinh() {
-        let ds = [4, 8, 15, 16, 23, 42];
-        assert_eq!(tim_kiem_tuyen_tinh_on(&ds, 15), Some(2));
-        assert_eq!(tim_kiem_tuyen_tinh_on(&ds, 99), None);
+    fn linear_search() {
+        let list = [4, 8, 15, 16, 23, 42];
+        assert_eq!(linear_search_on(&list, 15), Some(2));
+        assert_eq!(linear_search_on(&list, 99), None);
     }
 
     #[test]
-    fn tim_kiem_nhi_phan_khop_voi_tuyen_tinh() {
-        let ds: Vec<i32> = (0..1000).map(|x| x * 3).collect();
-        for &muc_tieu in &[0, 297, 1500, 2997, 1, 2998] {
+    fn binary_search_matches_linear() {
+        let list: Vec<i32> = (0..1000).map(|x| x * 3).collect();
+        for &level_spend in &[0, 297, 1500, 2997, 1, 2998] {
             // hai thuật toán phải cho CÙNG kết luận có/không
             assert_eq!(
-                tim_kiem_nhi_phan_ologn(&ds, muc_tieu).is_some(),
-                tim_kiem_tuyen_tinh_on(&ds, muc_tieu).is_some(),
-                "bất đồng ở {}", muc_tieu
+                binary_search_ologn(&list, level_spend).is_some(),
+                linear_search_on(&list, level_spend).is_some(),
+                "bất đồng ở {}", level_spend
             );
         }
-        assert_eq!(tim_kiem_nhi_phan_ologn(&ds, 297), Some(99));
+        assert_eq!(binary_search_ologn(&list, 297), Some(99));
     }
 
     #[test]
-    fn tim_kiem_nhi_phan_mang_rong_va_mot_phan_tu() {
-        assert_eq!(tim_kiem_nhi_phan_ologn(&[], 5), None);
-        assert_eq!(tim_kiem_nhi_phan_ologn(&[5], 5), Some(0));
-        assert_eq!(tim_kiem_nhi_phan_ologn(&[5], 3), None);
+    fn binary_search_on_empty_and_single() {
+        assert_eq!(binary_search_ologn(&[], 5), None);
+        assert_eq!(binary_search_ologn(&[5], 5), Some(0));
+        assert_eq!(binary_search_ologn(&[5], 3), None);
     }
 
     #[test]
-    fn tong_o1_khong_gian() {
-        assert_eq!(tinh_tong_tai_cho_o1_space(&[1, 2, 3, 4]), 10);
-        assert_eq!(tinh_tong_tai_cho_o1_space(&[]), 0);
+    fn sum_uses_o1_space() {
+        assert_eq!(sum_in_place_o1(&[1, 2, 3, 4]), 10);
+        assert_eq!(sum_in_place_o1(&[]), 0);
     }
 
     #[test]
-    fn nhan_doi_on_khong_gian() {
-        assert_eq!(tao_mang_nhan_doi_on_space(&[1, 2, 3]), vec![2, 4, 6]);
+    fn doubling_grows_in_on_space() {
+        assert_eq!(grow_doubling(&[1, 2, 3]), vec![2, 4, 6]);
     }
 }
 ```
@@ -368,10 +368,10 @@ mod kiem_thu {
    Đoạn mã sau đây có độ phức tạp thời gian là bao nhiêu? Làm thế nào để cải tiến nó?
    ```rust
    // Đoạn mã kiểm tra xem mảng có chứa hai số trùng nhau hay không
-   fn co_phan_tu_trung(ds: &[i32]) -> bool {
-       for i in 0..ds.len() {
-           for j in (i + 1)..ds.len() {
-               if ds[i] == ds[j] {
+   fn co_phan_tu_trung(list: &[i32]) -> bool {
+       for i in 0..list.len() {
+           for j in (i + 1)..list.len() {
+               if list[i] == list[j] {
                    return true;
                }
            }

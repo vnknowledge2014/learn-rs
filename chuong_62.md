@@ -51,7 +51,7 @@ Mục tiêu học tập:
 
 ### 1. Hệ phản ứng — tín hiệu và giá trị dẫn xuất
 
-**Tín hiệu (signal)** là một ô trạng thái "thông minh": đọc được, ghi được, và khi ghi thì *thông báo* cho những ai phụ thuộc vào nó. Trong mã dưới, `TinHieu<T>` dùng `Rc<RefCell<T>>` (khả biến nội tại, Chương 27) và một số **phiên bản** tăng mỗi lần đổi.
+**Tín hiệu (signal)** là một ô trạng thái "thông minh": đọc được, ghi được, và khi ghi thì *thông báo* cho những ai phụ thuộc vào nó. Trong mã dưới, `Signal<T>` dùng `Rc<RefCell<T>>` (khả biến nội tại, Chương 27) và một số **phiên bản** tăng mỗi lần đổi.
 
 Một chi tiết tối ưu quan trọng: `dat` chỉ tăng phiên bản khi giá trị **thực sự khác** — nhờ vậy đặt lại cùng giá trị không kích hoạt render thừa. Đây là lý do framework hiện đại nhanh: chúng làm càng ít việc càng tốt.
 
@@ -61,7 +61,7 @@ Một chi tiết tối ưu quan trọng: `dat` chỉ tăng phiên bản khi giá
 
 Thao tác lên DOM thật của trình duyệt **rất tốn kém** (kích hoạt tính toán lại bố cục, vẽ lại). Nếu mỗi lần trạng thái đổi mà dựng lại toàn bộ DOM, giao diện sẽ giật.
 
-Giải pháp: mô tả giao diện bằng một **cây ảo nhẹ** (`NutAo` — chỉ là struct/enum trong bộ nhớ, dựng cực rẻ). Khi trạng thái đổi, dựng cây ảo *mới*, **so** với cây *cũ* bằng thuật toán **diff**, rồi chỉ áp những **bản vá tối thiểu** lên DOM thật.
+Giải pháp: mô tả giao diện bằng một **cây ảo nhẹ** (`VirtualNode` — chỉ là struct/enum trong bộ nhớ, dựng cực rẻ). Khi trạng thái đổi, dựng cây ảo *mới*, **so** với cây *cũ* bằng thuật toán **diff**, rồi chỉ áp những **bản vá tối thiểu** lên DOM thật.
 
 ### 3. Thuật toán Diff — trái tim của tốc độ
 
@@ -70,19 +70,19 @@ Giải pháp: mô tả giao diện bằng một **cây ảo nhẹ** (`NutAo` —
 - Hai **thẻ cùng tên** → so thuộc tính và đệ quy so các con.
 - **Khác loại/khác tên thẻ** → thay thế cả nút.
 
-Điểm đắt giá minh họa trong test `diff_component_dem_chi_va_van_ban`: khi bộ đếm đổi từ 3 sang 4, chỉ có **một** bản vá (đổi nội dung `<h1>`) — hai nút `<button>` giữ nguyên, không bị dựng lại. Đây chính xác là điều làm React/Leptos mượt: **cập nhật ngoại khoa, không phẫu thuật toàn thân**.
+Điểm đắt giá minh họa trong test `diff_detects_attr_and_text_changes`: khi bộ đếm đổi từ 3 sang 4, chỉ có **một** bản vá (đổi nội dung `<h1>`) — hai nút `<button>` giữ nguyên, không bị dựng lại. Đây chính xác là điều làm React/Leptos mượt: **cập nhật ngoại khoa, không phẫu thuật toàn thân**.
 
 > **Ghi chú**: thuật toán diff ở đây so con *theo vị trí* (O(n)). Framework thật dùng thêm *khóa (key)* để nhận diện phần tử khi danh sách được sắp xếp lại — nếu không, đảo thứ tự một danh sách sẽ sinh nhiều bản vá không cần thiết. Đây là lý do React cảnh báo "mỗi phần tử trong list cần một `key` duy nhất".
 
 ### 4. Giao diện là hàm thuần túy của trạng thái
 
-`view_dem` là một **hàm thuần túy**: nhận trạng thái, trả về cây ảo. Không tác dụng phụ, không thao tác DOM trực tiếp. Đây là **UI khai báo (declarative)**: bạn mô tả *giao diện trông thế nào ứng với trạng thái này*, framework lo phần *làm sao đạt được nó*.
+`counter_view` là một **hàm thuần túy**: nhận trạng thái, trả về cây ảo. Không tác dụng phụ, không thao tác DOM trực tiếp. Đây là **UI khai báo (declarative)**: bạn mô tả *giao diện trông thế nào ứng với trạng thái này*, framework lo phần *làm sao đạt được nó*.
 
 So sánh với UI **mệnh lệnh** (jQuery): "tìm thẻ #dem, xóa chữ, viết chữ mới". Khai báo thắng vì cùng một lý do lập trình hàm thắng lập trình mệnh lệnh (Chương 13): ít trạng thái ẩn hơn, dễ suy luận hơn, ít lỗi hơn.
 
 ### 5. Chống XSS ngay trong kết xuất
 
-`thanh_html` **thoát ký tự** mọi văn bản trước khi nhúng (Chương 57). Đây là "an toàn theo mặc định": framework thoát tự động, bạn phải *chủ động* yêu cầu "tin tưởng" thì nó mới không thoát. Nhờ vậy XSS lưu trữ — kẻ tấn công nhét `<script>` vào bình luận — bị chặn ngay ở tầng render, không cần lập trình viên nhớ thoát thủ công.
+`to_html` **thoát ký tự** mọi văn bản trước khi nhúng (Chương 57). Đây là "an toàn theo mặc định": framework thoát tự động, bạn phải *chủ động* yêu cầu "tin tưởng" thì nó mới không thoát. Nhờ vậy XSS lưu trữ — kẻ tấn công nhét `<script>` vào bình luận — bị chặn ngay ở tầng render, không cần lập trình viên nhớ thoát thủ công.
 
 ---
 
@@ -109,48 +109,48 @@ use std::rc::Rc;
 /// Một "tín hiệu" (signal): ô trạng thái mà khi thay đổi sẽ tự động thông báo
 /// cho những ai đang lắng nghe. Đây là cơ chế khiến UI tự cập nhật khi dữ liệu đổi.
 #[derive(Clone)]
-pub struct TinHieu<T> {
-    gia_tri: Rc<RefCell<T>>,
-    phien_ban: Rc<RefCell<u64>>, // tăng mỗi lần đặt giá trị -> phát hiện thay đổi
+pub struct Signal<T> {
+    value: Rc<RefCell<T>>,
+    session_sell: Rc<RefCell<u64>>, // tăng mỗi lần đặt giá trị -> phát hiện thay đổi
 }
 
-impl<T: Clone + PartialEq> TinHieu<T> {
-    pub fn moi(gia_tri: T) -> Self {
-        TinHieu {
-            gia_tri: Rc::new(RefCell::new(gia_tri)),
-            phien_ban: Rc::new(RefCell::new(0)),
+impl<T: Clone + PartialEq> Signal<T> {
+    pub fn new(value: T) -> Self {
+        Signal {
+            value: Rc::new(RefCell::new(value)),
+            session_sell: Rc::new(RefCell::new(0)),
         }
     }
     pub fn lay(&self) -> T {
-        self.gia_tri.borrow().clone()
+        self.value.borrow().clone()
     }
     /// Đặt giá trị mới. Chỉ tăng phiên bản nếu giá trị THỰC SỰ đổi (tránh render thừa).
-    pub fn dat(&self, moi: T) {
-        if *self.gia_tri.borrow() != moi {
-            *self.gia_tri.borrow_mut() = moi;
-            *self.phien_ban.borrow_mut() += 1;
+    pub fn set(&self, new: T) {
+        if *self.value.borrow() != new {
+            *self.value.borrow_mut() = new;
+            *self.session_sell.borrow_mut() += 1;
         }
     }
-    pub fn cap_nhat(&self, f: impl FnOnce(&T) -> T) {
-        let moi = f(&self.gia_tri.borrow());
-        self.dat(moi);
+    pub fn update(&self, f: impl FnOnce(&T) -> T) {
+        let new = f(&self.value.borrow());
+        self.set(new);
     }
-    pub fn phien_ban(&self) -> u64 {
-        *self.phien_ban.borrow()
+    pub fn session_sell(&self) -> u64 {
+        *self.session_sell.borrow()
     }
 }
 
 /// Giá trị DẪN XUẤT (derived/computed): tự tính lại từ các tín hiệu nguồn.
 /// Ví dụ: "tổng tiền" dẫn xuất từ "giỏ hàng". Đổi giỏ -> tổng tự cập nhật.
-pub struct DanXuat<T> {
-    tinh: Box<dyn Fn() -> T>,
+pub struct DeriveExport<T> {
+    compute: Box<dyn Fn() -> T>,
 }
-impl<T> DanXuat<T> {
-    pub fn moi(tinh: impl Fn() -> T + 'static) -> Self {
-        DanXuat { tinh: Box::new(tinh) }
+impl<T> DeriveExport<T> {
+    pub fn new(compute: impl Fn() -> T + 'static) -> Self {
+        DeriveExport { compute: Box::new(compute) }
     }
     pub fn lay(&self) -> T {
-        (self.tinh)()
+        (self.compute)()
     }
 }
 
@@ -161,102 +161,102 @@ impl<T> DanXuat<T> {
 /// Một nút trong cây giao diện ảo. Framework dựng cây này từ trạng thái,
 /// so nó với cây cũ, rồi chỉ cập nhật phần THAY ĐỔI lên DOM thật (tốn kém).
 #[derive(Debug, Clone, PartialEq)]
-pub enum NutAo {
+pub enum VirtualNode {
     /// Thẻ HTML: tên thẻ, thuộc tính, các nút con.
     The {
-        ten: String,
-        thuoc_tinh: Vec<(String, String)>,
-        con: Vec<NutAo>,
+        name: String,
+        attribute: Vec<(String, String)>,
+        con: Vec<VirtualNode>,
     },
     /// Nút văn bản.
     Van(String),
 }
 
-impl NutAo {
-    pub fn the(ten: &str, thuoc_tinh: Vec<(&str, &str)>, con: Vec<NutAo>) -> Self {
-        NutAo::The {
-            ten: ten.to_string(),
-            thuoc_tinh: thuoc_tinh.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+impl VirtualNode {
+    pub fn the(name: &str, attribute: Vec<(&str, &str)>, con: Vec<VirtualNode>) -> Self {
+        VirtualNode::The {
+            name: name.to_string(),
+            attribute: attribute.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
             con,
         }
     }
     pub fn van(s: &str) -> Self {
-        NutAo::Van(s.to_string())
+        VirtualNode::Van(s.to_string())
     }
 
     /// Kết xuất thành chuỗi HTML (như server-side rendering).
     /// Chú ý: THOÁT ký tự để chống XSS (Chương 57)!
-    pub fn thanh_html(&self) -> String {
+    pub fn to_html(&self) -> String {
         match self {
-            NutAo::Van(s) => thoat_html(s),
-            NutAo::The { ten, thuoc_tinh, con } => {
-                let tt: String = thuoc_tinh.iter()
-                    .map(|(k, v)| format!(" {}=\"{}\"", k, thoat_html(v)))
+            VirtualNode::Van(s) => escape_html(s),
+            VirtualNode::The { name, attribute, con } => {
+                let tt: String = attribute.iter()
+                    .map(|(k, v)| format!(" {}=\"{}\"", k, escape_html(v)))
                     .collect();
-                let ben_trong: String = con.iter().map(|c| c.thanh_html()).collect();
-                format!("<{}{}>{}</{}>", ten, tt, ben_trong, ten)
+                let side_in: String = con.iter().map(|c| c.to_html()).collect();
+                format!("<{}{}>{}</{}>", name, tt, side_in, name)
             }
         }
     }
 }
 
-fn thoat_html(s: &str) -> String {
+fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// Một bản vá (patch) mô tả một thay đổi cần áp lên DOM thật.
 #[derive(Debug, Clone, PartialEq)]
-pub enum BanVa {
-    ThayThe { duong_dan: Vec<usize>, nut_moi: NutAo },
-    DoiVanBan { duong_dan: Vec<usize>, van_moi: String },
-    DoiThuocTinh { duong_dan: Vec<usize>, ten: String, gia_tri: String },
-    ThemCon { duong_dan: Vec<usize>, nut: NutAo },
-    XoaCon { duong_dan: Vec<usize>, chi_so: usize },
+pub enum SellAnd {
+    ThayThe { path: Vec<usize>, nut_moi: VirtualNode },
+    DoiVanBan { path: Vec<usize>, van_moi: String },
+    DoiThuocTinh { path: Vec<usize>, name: String, value: String },
+    ThemCon { path: Vec<usize>, nut: VirtualNode },
+    XoaCon { path: Vec<usize>, chi_so: usize },
 }
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
 /// Đây là điều khiến React/Leptos nhanh: không dựng lại cả DOM, chỉ vá chỗ đổi.
-pub fn diff(cu: &NutAo, moi: &NutAo, duong_dan: Vec<usize>) -> Vec<BanVa> {
-    match (cu, moi) {
+pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAnd> {
+    match (cu, new) {
         // Hai văn bản khác nội dung -> vá văn bản
-        (NutAo::Van(a), NutAo::Van(b)) => {
+        (VirtualNode::Van(a), VirtualNode::Van(b)) => {
             if a != b {
-                vec![BanVa::DoiVanBan { duong_dan, van_moi: b.clone() }]
+                vec![SellAnd::DoiVanBan { path, van_moi: b.clone() }]
             } else {
                 vec![]
             }
         }
         // Hai thẻ cùng tên -> so thuộc tính và con
-        (NutAo::The { ten: ta, thuoc_tinh: tta, con: ca },
-         NutAo::The { ten: tb, thuoc_tinh: ttb, con: cb }) if ta == tb => {
+        (VirtualNode::The { name: ta, attribute: tta, con: ca },
+         VirtualNode::The { name: tb, attribute: ttb, con: cb }) if ta == tb => {
             let mut va = Vec::new();
             // Thuộc tính thay đổi hoặc thêm
             let map_cu: HashMap<_, _> = tta.iter().cloned().collect();
             for (k, v) in ttb {
                 if map_cu.get(k) != Some(v) {
-                    va.push(BanVa::DoiThuocTinh {
-                        duong_dan: duong_dan.clone(), ten: k.clone(), gia_tri: v.clone(),
+                    va.push(SellAnd::DoiThuocTinh {
+                        path: path.clone(), name: k.clone(), value: v.clone(),
                     });
                 }
             }
             // So các con theo vị trí
             let chung = ca.len().min(cb.len());
             for i in 0..chung {
-                let mut dd = duong_dan.clone();
+                let mut dd = path.clone();
                 dd.push(i);
                 va.extend(diff(&ca[i], &cb[i], dd));
             }
             // Con thừa ở cây mới -> thêm; thừa ở cây cũ -> xóa
             for i in chung..cb.len() {
-                va.push(BanVa::ThemCon { duong_dan: duong_dan.clone(), nut: cb[i].clone() });
+                va.push(SellAnd::ThemCon { path: path.clone(), nut: cb[i].clone() });
             }
             for i in (chung..ca.len()).rev() {
-                va.push(BanVa::XoaCon { duong_dan: duong_dan.clone(), chi_so: i });
+                va.push(SellAnd::XoaCon { path: path.clone(), chi_so: i });
             }
             va
         }
         // Khác loại/khác tên thẻ -> thay thế cả nút
-        _ => vec![BanVa::ThayThe { duong_dan, nut_moi: moi.clone() }],
+        _ => vec![SellAnd::ThayThe { path, nut_moi: new.clone() }],
     }
 }
 
@@ -265,17 +265,17 @@ pub fn diff(cu: &NutAo, moi: &NutAo, duong_dan: Vec<usize>) -> Vec<BanVa> {
 // ============================================================================
 
 #[derive(Clone)]
-pub struct TrangThaiDem {
-    pub so: TinHieu<i64>,
+pub struct StateCount {
+    pub so: Signal<i64>,
 }
 
 /// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây giao diện ảo.
 /// Đây là bản chất của UI khai báo (declarative): giao diện là HÀM của trạng thái.
-pub fn view_dem(tt: &TrangThaiDem) -> NutAo {
-    NutAo::the("div", vec![("class", "dem")], vec![
-        NutAo::the("h1", vec![], vec![NutAo::van(&format!("Đếm: {}", tt.so.lay()))]),
-        NutAo::the("button", vec![("id", "tang")], vec![NutAo::van("Tăng")]),
-        NutAo::the("button", vec![("id", "giam")], vec![NutAo::van("Giảm")]),
+pub fn counter_view(tt: &StateCount) -> VirtualNode {
+    VirtualNode::the("div", vec![("class", "dem")], vec![
+        VirtualNode::the("h1", vec![], vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))]),
+        VirtualNode::the("button", vec![("id", "tang")], vec![VirtualNode::van("Tăng")]),
+        VirtualNode::the("button", vec![("id", "giam")], vec![VirtualNode::van("Giảm")]),
     ])
 }
 
@@ -285,36 +285,36 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     println!("\n1. HỆ PHẢN ỨNG");
-    let so = TinHieu::moi(0i64);
-    let tong = DanXuat::moi({
+    let so = Signal::new(0i64);
+    let tong = DeriveExport::new({
         let so = so.clone();
         move || so.lay() * 1000 // "tổng tiền" dẫn xuất từ "số lượng"
     });
     println!("   số = {}, tổng dẫn xuất = {}", so.lay(), tong.lay());
-    so.dat(5);
+    so.set(5);
     println!("   sau khi đặt số = 5: tổng tự cập nhật = {}", tong.lay());
-    println!("   phiên bản tín hiệu: {}", so.phien_ban());
-    so.dat(5); // đặt lại cùng giá trị -> KHÔNG tăng phiên bản
-    println!("   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)", so.phien_ban());
+    println!("   phiên bản tín hiệu: {}", so.session_sell());
+    so.set(5); // đặt lại cùng giá trị -> KHÔNG tăng phiên bản
+    println!("   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)", so.session_sell());
 
     println!("\n2. COMPONENT -> VIRTUAL DOM -> HTML");
-    let tt = TrangThaiDem { so: TinHieu::moi(3) };
-    let cay = view_dem(&tt);
-    println!("   {}", cay.thanh_html());
+    let tt = StateCount { so: Signal::new(3) };
+    let cay = counter_view(&tt);
+    println!("   {}", cay.to_html());
 
     println!("\n3. DIFF — chỉ vá chỗ THAY ĐỔI");
-    let tt2 = TrangThaiDem { so: TinHieu::moi(4) }; // số đổi 3 -> 4
-    let cay_moi = view_dem(&tt2);
-    let ban_va = diff(&cay, &cay_moi, vec![]);
-    println!("   Số bản vá cần áp lên DOM thật: {} (chỉ đổi văn bản, không dựng lại cả cây!)", ban_va.len());
-    for v in &ban_va {
+    let tt2 = StateCount { so: Signal::new(4) }; // số đổi 3 -> 4
+    let cay_moi = counter_view(&tt2);
+    let sell_and = diff(&cay, &cay_moi, vec![]);
+    println!("   Số bản vá cần áp lên DOM thật: {} (chỉ đổi văn bản, không dựng lại cả cây!)", sell_and.len());
+    for v in &sell_and {
         println!("     {:?}", v);
     }
 
     println!("\n4. CHỐNG XSS TRONG KẾT XUẤT (Chương 57)");
-    let doc_hai = NutAo::the("div", vec![], vec![NutAo::van("<script>hack()</script>")]);
+    let read_two = VirtualNode::the("div", vec![], vec![VirtualNode::van("<script>hack()</script>")]);
     println!("   Đầu vào độc: <script>hack()</script>");
-    println!("   Kết xuất an toàn: {}", doc_hai.thanh_html());
+    println!("   Kết xuất an toàn: {}", read_two.to_html());
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   GIAO DIỆN = HÀM CỦA TRẠNG THÁI · DIFF = CHỈ VÁ CHỖ ĐỔI       ");
@@ -322,99 +322,99 @@ fn main() {
 }
 
 #[cfg(test)]
-mod kiem_thu {
+mod tests {
     use super::*;
 
     #[test]
-    fn tin_hieu_luu_va_doi_gia_tri() {
-        let s = TinHieu::moi(10i64);
+    fn signal_stores_and_updates_value() {
+        let s = Signal::new(10i64);
         assert_eq!(s.lay(), 10);
-        s.dat(20);
+        s.set(20);
         assert_eq!(s.lay(), 20);
-        s.cap_nhat(|x| x + 5);
+        s.update(|x| x + 5);
         assert_eq!(s.lay(), 25);
     }
 
     #[test]
-    fn tin_hieu_bo_qua_thay_doi_thua() {
-        let s = TinHieu::moi(1i64);
-        assert_eq!(s.phien_ban(), 0);
-        s.dat(2);
-        assert_eq!(s.phien_ban(), 1);
-        s.dat(2); // cùng giá trị -> không tăng phiên bản
-        assert_eq!(s.phien_ban(), 1, "đặt cùng giá trị không được kích hoạt render");
-        s.dat(3);
-        assert_eq!(s.phien_ban(), 2);
+    fn signal_skips_redundant_updates() {
+        let s = Signal::new(1i64);
+        assert_eq!(s.session_sell(), 0);
+        s.set(2);
+        assert_eq!(s.session_sell(), 1);
+        s.set(2); // cùng giá trị -> không tăng phiên bản
+        assert_eq!(s.session_sell(), 1, "đặt cùng giá trị không được kích hoạt render");
+        s.set(3);
+        assert_eq!(s.session_sell(), 2);
     }
 
     #[test]
-    fn dan_xuat_tu_cap_nhat_theo_nguon() {
-        let so = TinHieu::moi(2i64);
-        let gap_doi = DanXuat::moi({ let so = so.clone(); move || so.lay() * 2 });
-        assert_eq!(gap_doi.lay(), 4);
-        so.dat(10);
-        assert_eq!(gap_doi.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
+    fn derived_signal_tracks_its_source() {
+        let so = Signal::new(2i64);
+        let doubled = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
+        assert_eq!(doubled.lay(), 4);
+        so.set(10);
+        assert_eq!(doubled.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
     }
 
     #[test]
-    fn ket_xuat_html_dung() {
-        let c = NutAo::the("div", vec![("class", "x")], vec![NutAo::van("chào")]);
-        assert_eq!(c.thanh_html(), "<div class=\"x\">chào</div>");
+    fn renders_correct_html() {
+        let c = VirtualNode::the("div", vec![("class", "x")], vec![VirtualNode::van("chào")]);
+        assert_eq!(c.to_html(), "<div class=\"x\">chào</div>");
     }
 
     #[test]
-    fn ket_xuat_thoat_xss() {
-        let c = NutAo::van("<script>alert(1)</script>");
-        let html = c.thanh_html();
+    fn render_escapes_xss() {
+        let c = VirtualNode::van("<script>alert(1)</script>");
+        let html = c.to_html();
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
     }
 
     #[test]
     fn diff_van_ban_chi_sinh_1_ban_va() {
-        let cu = NutAo::van("Đếm: 3");
-        let moi = NutAo::van("Đếm: 4");
-        let va = diff(&cu, &moi, vec![]);
+        let cu = VirtualNode::van("Đếm: 3");
+        let new = VirtualNode::van("Đếm: 4");
+        let va = diff(&cu, &new, vec![]);
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], BanVa::DoiVanBan { .. }));
+        assert!(matches!(va[0], SellAnd::DoiVanBan { .. }));
     }
 
     #[test]
-    fn diff_khong_doi_thi_khong_co_ban_va() {
-        let c = view_dem(&TrangThaiDem { so: TinHieu::moi(5) });
+    fn diff_of_identical_trees_is_empty() {
+        let c = counter_view(&StateCount { so: Signal::new(5) });
         let va = diff(&c, &c.clone(), vec![]);
         assert!(va.is_empty(), "cây giống hệt không được sinh bản vá");
     }
 
     #[test]
-    fn diff_component_dem_chi_va_van_ban() {
-        let a = view_dem(&TrangThaiDem { so: TinHieu::moi(3) });
-        let b = view_dem(&TrangThaiDem { so: TinHieu::moi(4) });
+    fn diff_detects_attr_and_text_changes() {
+        let a = counter_view(&StateCount { so: Signal::new(3) });
+        let b = counter_view(&StateCount { so: Signal::new(4) });
         let va = diff(&a, &b, vec![]);
         // Chỉ số trong <h1> đổi -> đúng 1 bản vá đổi văn bản, các nút button giữ nguyên
         assert_eq!(va.len(), 1);
         match &va[0] {
-            BanVa::DoiVanBan { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
+            SellAnd::DoiVanBan { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
             other => panic!("phải là DoiVanBan, nhận {:?}", other),
         }
     }
 
     #[test]
-    fn diff_them_va_xoa_con() {
-        let cu = NutAo::the("ul", vec![], vec![NutAo::van("a")]);
-        let moi = NutAo::the("ul", vec![], vec![NutAo::van("a"), NutAo::van("b")]);
-        let them = diff(&cu, &moi, vec![]);
-        assert!(them.iter().any(|v| matches!(v, BanVa::ThemCon { .. })));
-        let xoa = diff(&moi, &cu, vec![]);
-        assert!(xoa.iter().any(|v| matches!(v, BanVa::XoaCon { .. })));
+    fn diff_detects_child_insert_and_remove() {
+        let cu = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a")]);
+        let new = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a"), VirtualNode::van("b")]);
+        let them = diff(&cu, &new, vec![]);
+        assert!(them.iter().any(|v| matches!(v, SellAnd::ThemCon { .. })));
+        let remove = diff(&new, &cu, vec![]);
+        assert!(remove.iter().any(|v| matches!(v, SellAnd::XoaCon { .. })));
     }
 
     #[test]
-    fn diff_khac_the_thi_thay_the() {
-        let cu = NutAo::the("div", vec![], vec![]);
-        let moi = NutAo::the("span", vec![], vec![]);
-        let va = diff(&cu, &moi, vec![]);
-        assert!(matches!(va[0], BanVa::ThayThe { .. }));
+    fn diff_replaces_on_different_tag() {
+        let cu = VirtualNode::the("div", vec![], vec![]);
+        let new = VirtualNode::the("span", vec![], vec![]);
+        let va = diff(&cu, &new, vec![]);
+        assert!(matches!(va[0], SellAnd::ThayThe { .. }));
     }
 }
 ```
@@ -423,7 +423,7 @@ mod kiem_thu {
 
 ## Chuyển sang framework thật: Leptos
 
-Cùng bộ đếm viết bằng [Leptos](https://leptos.dev/) — chú ý `create_signal` chính là `TinHieu`, và `view!` dựng cây ảo:
+Cùng bộ đếm viết bằng [Leptos](https://leptos.dev/) — chú ý `create_signal` chính là `Signal`, và `view!` dựng cây ảo:
 
 ```rust
 // Cargo.toml:  leptos = { version = "0.7", features = ["csr"] }
@@ -431,7 +431,7 @@ use leptos::prelude::*;
 
 #[component]
 fn BoDem() -> impl IntoView {
-    // create_signal = TinHieu ở trên: (bộ đọc, bộ ghi)
+    // create_signal = Signal ở trên: (bộ đọc, bộ ghi)
     let (so, dat_so) = signal(0i64);
 
     view! {
@@ -490,18 +490,18 @@ fn tinh_tong(a: i64, b: i64) -> i64 { a + b }
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Danh sách việc cần làm)**
-Viết `view_todo(muc: &[(&str, bool)]) -> NutAo` dựng một `<ul>` với mỗi việc là một `<li>`, gạch ngang (thuộc tính `class="xong"`) nếu đã hoàn thành. Test số bản vá khi đánh dấu một việc là xong.
+Viết `view_todo(muc: &[(&str, bool)]) -> VirtualNode` dựng một `<ul>` với mỗi việc là một `<li>`, gạch ngang (thuộc tính `class="xong"`) nếu đã hoàn thành. Test số bản vá khi đánh dấu một việc là xong.
 
 <details>
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn view_todo(muc: &[(&str, bool)]) -> NutAo {
-    let items: Vec<NutAo> = muc.iter().map(|(ten, xong)| {
-        let lop = if *xong { "xong" } else { "chua" };
-        NutAo::the("li", vec![("class", lop)], vec![NutAo::van(ten)])
+pub fn view_todo(level: &[(&str, bool)]) -> VirtualNode {
+    let items: Vec<VirtualNode> = level.iter().map(|(name, done)| {
+        let lop = if *done { "xong" } else { "chua" };
+        VirtualNode::the("li", vec![("class", lop)], vec![VirtualNode::van(name)])
     }).collect();
-    NutAo::the("ul", vec![], items)
+    VirtualNode::the("ul", vec![], items)
 }
 
 #[cfg(test)]
@@ -514,14 +514,14 @@ mod bt1 {
         let va = diff(&a, &b, vec![]);
         // Chỉ đổi class của <li> đầu -> 1 bản vá đổi thuộc tính
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], BanVa::DoiThuocTinh { .. }));
+        assert!(matches!(va[0], SellAnd::DoiThuocTinh { .. }));
     }
 }
 ```
 </details>
 
 **Bài tập 2 (Bộ nhớ hóa giá trị dẫn xuất)**
-`DanXuat` hiện tính lại mỗi lần `lay()`. Thêm cache: chỉ tính lại khi phiên bản của tín hiệu nguồn thay đổi (ghi nhớ, Chương 60). Đây chính là tối ưu "memo" của Leptos/React.
+`DeriveExport` hiện tính lại mỗi lần `lay()`. Thêm cache: chỉ tính lại khi phiên bản của tín hiệu nguồn thay đổi (ghi nhớ, Chương 60). Đây chính là tối ưu "memo" của Leptos/React.
 
 <details>
 <summary><b>Gợi ý</b></summary>
