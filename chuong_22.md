@@ -183,13 +183,13 @@ macro_rules! phep_tinh_noi_bo {
 macro_rules! tao_ma_tran {
     (
         $(
-            [ $( $phan_tu:expr ),* $(,)? ]
+            [ $( $item:expr ),* $(,)? ]
         ),*
         $(,)?
     ) => {
         vec![
             $(
-                vec![ $( $phan_tu ),* ],
+                vec![ $( $item ),* ],
             )*
         ]
     };
@@ -325,12 +325,123 @@ macro_rules! in_dung_lap {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Macro Tính Tổng Đa năng)**:  
-   Viết một macro mang tên `tong_cong!($( $x:expr ),* $(,)?)` có thể nhận số lượng tham số tùy ý cách nhau bằng dấu phẩy, hỗ trợ dấu phẩy ở cuối, và trả về tổng của tất cả các số đó. Kiểm tra với:
-   - `tong_cong!()` (trả về 0)
-   - `tong_cong!(5, 10, 15,)` (trả về 30).
+   Viết một macro mang tên `sum_all!($( $x:expr ),* $(,)?)` có thể nhận số lượng tham số tùy ý cách nhau bằng dấu phẩy, hỗ trợ dấu phẩy ở cuối, và trả về tổng của tất cả các số đó. Kiểm tra với:
+   - `sum_all!()` (trả về 0)
+   - `sum_all!(5, 10, 15,)` (trả về 30).
 
 2. **Bài tập 2 (Macro Đếm Số lượng Đối số)**:  
-   Sử dụng cú pháp lặp `$(...)*` để tạo một macro `dem_so_luong!( $( $phan_tu:expr ),* )` trả về số lượng các tham số được truyền vào dưới dạng `usize` mà không cần duyệt mảng lúc chạy. *(Gợi ý: Mở rộng thành một mảng các số 1 `[ $( { let _ = &$phan_tu; 1usize } ),* ].len()`)*.
+   Sử dụng cú pháp lặp `$(...)*` để tạo một macro `count_args!( $( $item:expr ),* )` trả về số lượng các tham số được truyền vào dưới dạng `usize` mà không cần duyệt mảng lúc chạy. *(Gợi ý: Mở rộng thành một mảng các số 1 `[ $( { let _ = &$item; 1usize } ),* ].len()`)*.
 
 3. **Bài tập 3 (Xử lý Giới hạn Đệ quy)**:  
    Viết một macro TT Muncher in ra từng ký tự của một chuỗi thẻ bài. Điều gì xảy ra nếu bạn truyền vào một dãy 200 phần tử? Hãy thực hành thêm `#![recursion_limit = "256"]` để quan sát cách trình biên dịch mở rộng ngưỡng chịu tải.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Mẫu lặp `$( $x:expr ),*` bắt không hoặc nhiều biểu thức. `$(,)?` cho phép dấu phẩy thừa ở cuối. Cộng dồn bằng cách mở rộng thành `0 $( + $x )*`.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+macro_rules! sum_all {
+    // `$(,)?` = dấu phẩy cuối TUỲ CHỌN — nhờ nó `sum_all!(1, 2,)` hợp lệ.
+    ( $( $x:expr ),* $(,)? ) => {
+        // Bắt đầu từ 0 nên trường hợp KHÔNG tham số cũng đúng: chỉ còn `0`.
+        0 $( + $x )*
+    };
+}
+
+fn main() {
+    assert_eq!(sum_all!(), 0);
+    assert_eq!(sum_all!(5), 5);
+    assert_eq!(sum_all!(5, 10, 15), 30);
+    assert_eq!(sum_all!(5, 10, 15,), 30);   // dấu phẩy cuối
+
+
+    println!("{}", sum_all!(1, 2, 3, 4, 5));
+}
+```
+
+Mẹo `0 $( + $x )*` giải quyết trường hợp rỗng một cách gọn gàng: không có tham số thì biểu thức thu về đúng `0`, chứ không phải một biểu thức rỗng gây lỗi cú pháp.
+
+**Cái giá của mẹo này:** hạt giống `0` là số nguyên nên nó *ghim kiểu*, và `sum_all!(1.5, 2.5)` sẽ báo `E0277: cannot add a float to an integer`. Muốn dùng cho mọi kiểu cộng được thì bỏ hạt giống đi và dùng `reduce` thay vì `fold` — nhưng khi đó trường hợp rỗng lại không có câu trả lời. Đây đúng là đánh đổi giữa **nửa nhóm** (cộng được, không có phần tử đơn vị) và **vị nhóm** (có phần tử đơn vị, nhưng phần tử đó ghim kiểu) ở Chương 18.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Không được duyệt mảng lúc chạy. Ý tưởng: mở rộng mỗi tham số thành số `1usize`, rồi lấy `.len()` của mảng — độ dài mảng là hằng số biết lúc biên dịch.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+macro_rules! count_args {
+    ( $( $item:expr ),* $(,)? ) => {
+        // Mỗi tham số biến thành một phần tử `1usize`.
+        // `let _ = &$item;` giữ cho biểu thức được kiểm kiểu mà KHÔNG tính nó.
+        <[usize]>::len(&[ $( { let _ = &$item; 1usize } ),* ])
+    };
+}
+
+fn main() {
+    assert_eq!(count_args!(), 0);
+    assert_eq!(count_args!(1, 2, 3), 3);
+    assert_eq!(count_args!("a", "b", "c", "d"), 4);
+
+    // Biểu thức KHÔNG bị tính — chỉ bị kiểm kiểu.
+    let mut goi = 0;
+    let mut f = || { goi += 1; 0 };
+    let n = count_args!(f(), f(), f());
+    assert_eq!(n, 3);
+
+    println!("số tham số: {}", count_args!(10, 20, 30, 40, 50));
+}
+```
+
+Vì độ dài mảng là hằng số lúc biên dịch, `len()` bị tối ưu thành một số nguyên trực tiếp — không có vòng lặp nào chạy. Đây là kỹ thuật mà `vec![x; n]` và nhiều macro trong thư viện chuẩn dùng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+TT Muncher đệ quy một lần cho mỗi thẻ bài, nên 200 phần tử là 200 tầng mở rộng. Ngưỡng mặc định của `rustc` là 128.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+macro_rules! in_tung_the {
+    () => {};
+    ($dau:tt $($con_lai:tt)*) => {
+        print!("[{}] ", stringify!($dau));
+        in_tung_the!($($con_lai)*);   // "gặm" một thẻ rồi gọi lại chính mình
+    };
+}
+
+fn main() {
+    in_tung_the!(a b c 1 2 3);
+    println!();
+}
+```
+
+**Điều xảy ra với 200 phần tử:**
+
+```
+error: recursion limit reached while expanding `in_tung_the!`
+  = help: consider increasing the recursion limit by adding a
+          `#![recursion_limit = "256"]` attribute to your crate
+```
+
+Ngưỡng mặc định là **128**, và nó tính theo *số tầng mở rộng*, không phải số phần tử — nên một macro gọi hai lần mỗi tầng sẽ chạm ngưỡng sớm hơn nhiều.
+
+Thêm `#![recursion_limit = "256"]` ở **đầu tệp crate** (`main.rs` hoặc `lib.rs`, không phải giữa tệp) sẽ nới ngưỡng. Nhưng nới ngưỡng là chữa triệu chứng: mỗi tầng đệ quy làm trình biên dịch chậm đi, và với vài nghìn phần tử thì thời gian biên dịch tăng theo bậc hai. Cách chữa gốc là **gặm nhiều thẻ mỗi tầng** (`$a:tt $b:tt $c:tt $($r:tt)*`) hoặc chuyển sang macro thủ tục, nơi bạn dùng vòng lặp thật thay vì đệ quy.
+</details>

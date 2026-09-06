@@ -947,7 +947,7 @@ fn correct_example() {
    Dùng phương thức `.fold()` để tìm giá trị lớn nhất trong một lát cắt số nguyên `&[i32]` mà không sử dụng phương thức `.max()` có sẵn của Rust. Khởi tạo giá trị ban đầu một cách khéo léo để chương trình hoạt động chính xác.
 
 3. **Bài tập 3 (Tự tạo Trait Iterator đơn giản)**:  
-   Tạo một struct mang tên `BoDemNguoc { current: u32 }`. Triển khai Trait `Iterator` cho struct này sao cho mỗi lần gọi `.next()`, nó đếm lùi từ một con số cho trước về `1`, và trả về `None` khi số hiện tại chạm mốc `0`. Kiểm tra hoạt động của nó với vòng lặp `for`.
+   Tạo một struct mang tên `CountDown { current: u32 }`. Triển khai Trait `Iterator` cho struct này sao cho mỗi lần gọi `.next()`, nó đếm lùi từ một con số cho trước về `1`, và trả về `None` khi số hiện tại chạm mốc `0`. Kiểm tra hoạt động của nó với vòng lặp `for`.
 
 4. **Bài tập 4 (Làm sạch dữ liệu bẩn bằng `filter_map`)**:  
    Cho `let tho = ["12", "abc", "7", "", "30", "-5"];`. Hãy dùng **một** đường ống duy nhất để: bỏ qua mọi dòng không phân tích được thành `u32`, rồi tính tổng các số hợp lệ. Không dùng vòng lặp `for`, không dùng `unwrap()`.

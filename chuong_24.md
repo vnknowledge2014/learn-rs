@@ -309,7 +309,7 @@ Dưới đây là các lỗi thường gặp nhất khi triển khai và sử d�
 
 ### Phân tích lỗi thực tế: Quên khai báo Helper Attribute
 
-```rust
+```text
 // Đoạn mã lỗi minh họa (trong Crate thư viện proc-macro):
 // Khai báo thiếu attributes(bo_qua):
 // #[proc_macro_derive(InThongTin)] 
@@ -352,3 +352,82 @@ Dưới đây là các lỗi thường gặp nhất khi triển khai và sử d�
 
 3. **Bài tập 3 (Tổng kết Tư duy Siêu lập trình)**:  
    Siêu lập trình là một công cụ cực kỳ mạnh mẽ, nhưng tại sao các chuyên gia Rust luôn khuyên: *"Nếu bài toán có thể giải quyết được bằng Hàm (fn) hoặc Kiểu tổng quát (Generics), đừng bao giờ vội vàng viết Macro"*? Hãy nêu 3 nhược điểm lớn của việc lạm dụng macro trong dự án.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Ba câu hỏi phân loại: cần sinh `impl` cho nhiều kiểu → Derive; cần *bọc* một hàm có sẵn → Attribute-like; cần số tham số tuỳ ý → khai báo hoặc Function-like.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+| Bài toán | Loại macro | Vì sao |
+|---|---|---|
+| Sinh `fn khoi_tao_mac_dinh() -> Self` cho 20 struct | **Custom Derive** | Derive sinh ra một khối `impl` mới mà **không sửa** định nghĩa gốc. Đúng 20 lần viết `#[derive(...)]` là xong |
+| `#[kiem_tra_admin]` trước hàm xử lý | **Attribute-like** | Đây là *bọc*: macro nhận cả thân hàm, chèn phần kiểm quyền vào đầu, rồi trả lại hàm đã sửa. Derive **không làm được** vì nó chỉ thêm, không sửa |
+| `tao_danh_sach!(1, 2, 3)` | **`macro_rules!`** | Số tham số tuỳ ý, không cần phân tích cú pháp phức tạp. Function-like thủ tục cũng làm được nhưng thừa: nó kéo theo `syn` + `quote` + một crate riêng |
+
+**Quy tắc rút ra:** Derive khi bạn *thêm* hành vi cho một kiểu; Attribute khi bạn *biến đổi* một khối mã có sẵn; `macro_rules!` khi bạn chỉ cần *thay thế mẫu* và cú pháp đơn giản.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Thuộc tính phụ chỉ có nghĩa khi đi kèm derive khai báo chúng. Hãy thiết kế sao cho **đọc lên hiểu ngay** và **quên là biên dịch báo lỗi**, chứ không âm thầm bỏ qua.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```text
+#[derive(Auth)]
+struct DangKy {
+    #[auth(do_dai(min = 3, max = 32))]
+    ten_dang_nhap: String,
+
+    #[auth(do_dai(min = 12), co_chu_hoa, co_chu_so, co_ky_tu_dac_biet)]
+    mat_khau: String,
+
+    #[auth(duong, toi_da = 150)]
+    tuoi: u32,
+
+    #[auth(dinh_dang = "email")]
+    thu_dien_tu: String,
+
+    // Không có #[auth(...)] -> KHÔNG kiểm gì. Im lặng là một lựa chọn,
+    // nhưng phải là lựa chọn CÓ Ý THỨC.
+    ghi_chu: Option<String>,
+}
+```
+
+Macro sinh ra `fn kiem_tra(&self) -> Result<(), Vec<LoiKiemTra>>` — trả **mọi** lỗi cùng lúc chứ không dừng ở lỗi đầu, đúng như `applicative_collects_all_three_errors` ở Chương 19.
+
+**Ba quyết định thiết kế đáng bàn:**
+
+- **Gom dưới một tiền tố `auth`** thay vì rải `#[min_len]`, `#[positive]`. Tiền tố tránh đụng tên với derive khác, và cho người đọc biết ngay ai là chủ của thuộc tính đó.
+- **Thuộc tính lạ phải báo lỗi, không được bỏ qua.** Gõ nhầm `#[auth(do_daii(min=3))]` mà macro im lặng thì trường đó **không được kiểm** — một lỗ hổng bảo mật sinh ra từ một chữ cái thừa.
+- **Không kiểm được kiểu lúc mở rộng.** `#[auth(duong)]` trên một `String` chỉ vỡ khi mã sinh ra được biên dịch. Thông báo lỗi khi đó trỏ vào *mã sinh ra*, khó đọc — nên macro tốt dùng `syn::Error::new_spanned` để **trỏ ngược về đúng dòng người dùng viết**.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Ba nhược điểm nằm ở ba chỗ khác nhau: lúc gõ mã, lúc biên dịch, và lúc gỡ lỗi.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**1. Công cụ mất tác dụng.** Trong thân `macro_rules!`, IDE không gợi ý được, không nhảy tới định nghĩa được, không đổi tên hàng loạt được — với nó đó chỉ là các thẻ bài chưa có nghĩa. Với hàm thường, mọi công cụ đều hiểu. Với macro thủ tục còn tệ hơn: `rust-analyzer` phải *chạy* macro mới biết nó sinh ra gì.
+
+**2. Thông báo lỗi trỏ nhầm chỗ.** Lỗi kiểu bên trong mã sinh ra thường hiện ở vị trí *lời gọi macro*, kèm một đoạn mã người dùng chưa từng viết. Một dòng `E0308` trong hàm thường mất mười giây để hiểu; cùng lỗi đó qua ba tầng macro có thể mất nửa buổi.
+
+**3. Biên dịch chậm và không kiểm tra kiểu trước.** Macro chạy **trước** khi kiểm tra kiểu, nên nó không thể tận dụng thông tin kiểu; mọi phép kiểm phải tự viết bằng cách soi cú pháp. Macro thủ tục còn kéo theo `syn`/`quote` — thường là vài giây biên dịch cộng thêm cho mỗi lần build sạch.
+
+**Còn một nhược điểm ít được nhắc:** macro **không tổ hợp được**. Hai hàm ghép lại thành hàm thứ ba. Hai macro thì không — bạn phải viết macro thứ ba biết về cả hai. Đó là lý do `Generics` gần như luôn là lựa chọn tốt hơn khi nó đủ dùng: hàm generic vừa được kiểm kiểu, vừa ghép được, vừa có công cụ hỗ trợ.
+</details>

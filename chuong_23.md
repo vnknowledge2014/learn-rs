@@ -362,3 +362,105 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
 
 3. **Bài tập 3 (So sánh Kiến trúc)**:  
    Tại sao Rust lại quy định khắt khe rằng Macro thủ tục phải nằm trong một Crate riêng biệt và biên dịch thành thư viện động lúc Host Time, thay vì cho phép viết lẫn lộn trong `main.rs` như `macro_rules!`?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Hình dung `syn` bóc struct thành các tầng: gốc là `DeriveInput`, dưới đó là `Data::Struct`, rồi tới `Fields::Named`, rồi từng `Field`. Mỗi `Field` lại có tên, kiểu và mức hiển thị.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```text
+DeriveInput
+├── attrs: []                       (không có #[...] nào)
+├── vis: Inherited                  (struct không có `pub`)
+├── ident: "Account"                ← TÊN struct
+├── generics: <>                    (không có tham số kiểu)
+└── data: Data::Struct(DataStruct)
+    └── fields: Fields::Named(FieldsNamed)
+        ├── Field
+        │   ├── vis:   Visibility::Public   ← `pub`
+        │   ├── ident: Some("name")
+        │   └── ty:    Type::Path("String")
+        └── Field
+            ├── vis:   Visibility::Inherited
+            ├── ident: Some("balance")
+            └── ty:    Type::Path("f64")
+```
+
+Ba điểm đáng nhớ khi đọc cây này:
+
+- **`ident` là `Option`** vì struct dạng tuple (`struct Point(f32, f32)`) có trường *không tên*. Macro nào giả định `ident` luôn có sẽ vỡ ngay khi gặp tuple struct.
+- **`vis` nằm ở từng trường**, không phải ở struct — nên macro sinh getter phải tự quyết định có tôn trọng `pub` hay không.
+- **`ty` là `Type::Path`, không phải chuỗi.** `String` ở đây là một *đường dẫn cú pháp*, chưa được phân giải. Macro thủ tục chạy **trước** khi kiểm tra kiểu, nên nó không biết `String` là gì — nó chỉ thấy ba ký tự đó.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Muốn sinh ra `to_json()` thì cần đúng ba thứ: tên struct, danh sách tên trường, và cách gọi định dạng cho từng trường.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Cần bóc từ AST:**
+
+| Thông tin | Lấy từ đâu | Dùng để làm gì |
+|---|---|---|
+| Tên struct | `input.ident` | Viết `impl XuatFileJson for <tên>` |
+| Danh sách trường | `Fields::Named` | Sinh một dòng JSON cho mỗi trường |
+| Tên từng trường | `field.ident` | Làm **khoá** JSON |
+| Kiểu từng trường | `field.ty` | Chọn cách định dạng (chuỗi cần dấu nháy, số thì không) |
+| Generics | `input.generics` | Truyền lại vào `impl` để struct generic vẫn dùng được |
+
+**Mã sinh ra bằng `quote!`:**
+
+```text
+// Phác hoạ phần thân macro thủ tục
+let ten = &input.ident;
+let cac_truong = /* trích từ Fields::Named */;
+let dong: Vec<_> = cac_truong.iter().map(|f| {
+    let khoa = f.ident.as_ref().unwrap();
+    let nhan = khoa.to_string();
+    quote! { format!("\"{}\": {:?}", #nhan, self.#khoa) }
+}).collect();
+
+quote! {
+    impl XuatFileJson for #ten {
+        fn to_json(&self) -> String {
+            let phan = vec![ #( #dong ),* ];
+            format!("{{{}}}", phan.join(", "))
+        }
+    }
+}
+```
+
+**Chỗ khó thật sự** không nằm ở việc sinh mã mà ở **kiểu lồng nhau**: `Vec<Account>` thì phải gọi `to_json()` trên từng phần tử, chứ `{:?}` sẽ ra sai. Vì macro chạy trước kiểm tra kiểu nên nó *không biết* `Vec<Account>` là gì — nó chỉ thấy một `Type::Path`. Đó là lý do `serde` không tự đoán mà **yêu cầu mọi kiểu lồng bên trong cũng phải cài `Serialize`**, rồi để trình biên dịch kiểm tra giúp.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Macro thủ tục là **chương trình chạy trong lòng trình biên dịch**. Hãy nghĩ xem điều đó kéo theo ràng buộc gì về thứ tự biên dịch.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Vì macro thủ tục **được biên dịch trước, rồi chạy** trong tiến trình `rustc` khi biên dịch crate của bạn. Điều đó kéo theo ba ràng buộc:
+
+**1. Bài toán con gà và quả trứng.** Nếu macro nằm trong `main.rs`, thì để biên dịch `main.rs`, `rustc` cần chạy macro; nhưng để chạy macro, nó phải biên dịch xong `main.rs`. Vòng lặp không lối thoát. Tách ra crate riêng phá vòng: crate macro biên dịch **xong hẳn** thành thư viện động, rồi crate của bạn nạp nó lên.
+
+**2. Kiến trúc đích khác nhau.** Bạn có thể biên dịch chéo cho ARM, nhưng macro phải chạy trên máy **của bạn** (x86 chẳng hạn). Crate macro được biên dịch cho *host*, crate ứng dụng cho *target*. Trộn chung một crate thì không có cách nào diễn đạt hai đích khác nhau.
+
+**3. Ranh giới an toàn.** Macro thủ tục là mã tuỳ ý chạy lúc biên dịch — nó đọc được tệp, mở được mạng. Bắt nó nằm trong crate khai báo `proc-macro = true` khiến điều đó **hiện rõ trong `Cargo.toml`**, thay vì lẩn khuất giữa mã ứng dụng.
+
+`macro_rules!` không có vấn đề này vì nó không phải chương trình: nó là **quy tắc thay thế mẫu** mà chính `rustc` diễn giải, không cần biên dịch gì trước.
+</details>

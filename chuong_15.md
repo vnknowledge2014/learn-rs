@@ -451,11 +451,11 @@ fn main() {
     accumulate(8.0);
     accumulate(6.5);
     accumulate(9.0);
-    let final = accumulate(7.5);
+    let mean_cuoi = accumulate(7.5);
 
     // Closure phải kết thúc vòng đời (ra khỏi phạm vi mượn) thì mới đọc lại được biến gốc.
     drop(accumulate);
-    println!("Điểm trung bình cuối: {:.2} trên {} môn", final, so_mon);
+    println!("Điểm trung bình cuối: {:.2} trên {} môn", mean_cuoi, so_mon);
 }
 ```
 

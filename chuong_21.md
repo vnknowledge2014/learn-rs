@@ -321,7 +321,108 @@ macro_rules! in_gap_doi_sua {
    Hãy viết một macro mang tên `swap!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
 
 2. **Bài tập 2 (Macro So sánh Giá trị Lớn nhất)**:  
-   Viết một macro `tim_max!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.
+   Viết một macro `max_of!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.
 
 3. **Bài tập 3 (Tư duy thiết kế Macro vs Hàm)**:  
    Khi nào bạn nên viết một hàm bình thường `fn`, và khi nào bạn thực sự bắt buộc phải dùng `macro_rules!`? Hãy liệt kê 3 trường hợp mà hàm thông thường hoàn toàn bất lực không thể giải quyết được.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`$a:ident` bắt một **định danh**, nên bên trong macro bạn dùng nó như một biến bình thường. Cần một biến tạm — và biến đó do macro tự sinh, người dùng không thấy.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+macro_rules! swap {
+    ($a:ident, $b:ident) => {{
+        // Biến tạm này chỉ tồn tại trong khối `{{ }}` của macro.
+        // Nhờ TÍNH VỆ SINH, nó không bao giờ đụng biến cùng tên của người gọi.
+        let tam = $a;
+        $a = $b;
+        $b = tam;
+    }};
+}
+
+fn main() {
+    let mut x = 5;
+    let mut y = 10;
+    swap!(x, y);
+    assert_eq!((x, y), (10, 5));
+
+    // Người dùng CÓ một biến tên `tam` — macro vẫn chạy đúng.
+    let mut tam = 999;
+    let mut z = 1;
+    swap!(tam, z);
+    assert_eq!((tam, z), (1, 999));
+
+    println!("x={x} y={y} tam={tam} z={z}");
+}
+```
+
+Bài này tồn tại để chỉ ra **tính vệ sinh (hygiene)**: biến `tam` bên trong macro và biến `tam` của người gọi là hai thứ khác nhau, dù trùng tên. Trong C, cùng đoạn macro này sẽ hỏng — đó là lý do lập trình viên C phải đặt tên kiểu `__tmp_swap_internal`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`$a:expr` bắt một **biểu thức**. Macro phải trả về giá trị nên dùng `{{ }}` (khối biểu thức), và nhớ gán biểu thức vào biến trước khi so sánh — nếu không nó bị *tính hai lần*.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+macro_rules! max_of {
+    ($a:expr, $b:expr) => {{
+        // Gán ra biến TRƯỚC khi so sánh. Nếu viết thẳng
+        //     if $a > $b { $a } else { $b }
+        // thì $a bị tính HAI lần — với `max_of!(dem(), 3)` là gọi dem() hai lượt.
+        let a = $a;
+        let b = $b;
+        if a > b { a } else { b }
+    }};
+}
+
+fn main() {
+    let max = max_of!(15, 27);
+    assert_eq!(max, 27);
+
+    // Kiểm chứng: biểu thức chỉ được tính MỘT lần.
+    let mut so_lan = 0;
+    let mut dem = || { so_lan += 1; 7 };
+    let _ = max_of!(dem(), 3);
+    assert_eq!(so_lan, 1, "biểu thức phải chỉ tính một lần");
+
+    println!("max = {max}");
+}
+```
+
+Lỗi "tính nhiều lần" là cái bẫy kinh điển của macro. Nó vô hại với `max_of!(15, 27)` nhưng thành thảm hoạ với `max_of!(pop_khoi_hang_doi(), 0)`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Nghĩ tới ba thứ hàm **không thể** làm: nhận số tham số tuỳ ý, nhìn thấy mã nguồn của tham số, và sinh ra định nghĩa mới.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Ba trường hợp hàm bất lực:
+
+**1. Số lượng tham số tuỳ ý.** `println!("{} {}", a, b)` và `println!("{}", a)` là cùng một macro. Hàm Rust có **arity cố định** — muốn hỗ trợ 1..N tham số phải viết N hàm, hoặc ép người dùng đóng gói vào `Vec`/tuple (và khi đó mọi phần tử phải cùng kiểu).
+
+**2. Cần chính VĂN BẢN của tham số.** `assert_eq!(a, b)` khi thất bại in ra cả *tên biểu thức* lẫn *giá trị*: `assertion failed: a == b`. Hàm chỉ nhận được giá trị — nó không có cách nào biết người gọi đã viết gì. Tương tự `dbg!(x * 2)` in ra được `x * 2 = 14`.
+
+**3. Sinh ra định nghĩa mới.** Macro có thể mở rộng thành `struct`, `impl`, `fn` — những thứ hàm không tạo được vì hàm chạy *sau khi* biên dịch đã xong. Đây là cơ sở của `#[derive(Debug)]`: nó viết hộ bạn một khối `impl`.
+
+**Ngoài ra**, macro chạy trước kiểm tra kiểu nên nhận được đối số **khác kiểu nhau** ở cùng vị trí: `vec![1, 2, 3]` và `vec!["a", "b"]` dùng chung một macro mà không cần generic.
+</details>
