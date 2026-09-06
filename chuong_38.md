@@ -292,3 +292,155 @@ fn safe_version() {
    Viết một hàm nhận vào một lát cắt chuỗi `&str` và một chỉ số `index: usize`. Thay vì truy cập trực tiếp bằng toán tử chỉ mục `&text[index..index+4]` (có thể gây panic làm sập máy chủ), hãy sử dụng các phương thức an toàn của Rust để trích xuất 4 bytes con, trả về `Result<&str, &'static str>`.
 3. **Bài tập 3 (Mô hình tư duy: Double Free)**:  
    Hãy giải thích bằng ngôn ngữ đời sống: Hiện tượng "Giải phóng hai lần (Double Free)" là gì? Tại sao trong Rust, cơ chế tự động gọi hàm hủy `Drop` khi một biến hết phạm vi (scope) lại đảm bảo mỗi ô nhớ chỉ được giải phóng đúng 1 lần duy nhất?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Mấu chốt an toàn nằm ở phép `% CAP` khi tính chỉ số. Nó khiến chỉ số **không thể** vượt ra ngoài mảng, dù bạn ghi bao nhiêu lần.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+const CAP: usize = 8;
+
+/// Bộ đệm vòng KHÔNG THỂ ghi lấn ra ngoài — phép `% CAP` bảo đảm điều đó.
+pub struct SafeRingBuffer {
+    o: [u8; CAP],
+    head: usize,      // vị trí ĐỌC kế tiếp
+    tail: usize,      // vị trí GHI kế tiếp
+    quantity: usize,  // số byte đang có
+}
+
+impl SafeRingBuffer {
+    pub fn new() -> Self {
+        SafeRingBuffer { o: [0; CAP], head: 0, tail: 0, quantity: 0 }
+    }
+
+    /// Đầy thì ghi đè byte CŨ NHẤT. Không bao giờ ra ngoài mảng.
+    pub fn push(&mut self, byte: u8) {
+        self.o[self.tail] = byte;
+        self.tail = (self.tail + 1) % CAP;      // <- lá chắn duy nhất cần thiết
+        if self.quantity == CAP {
+            self.head = (self.head + 1) % CAP;  // đẩy byte cũ nhất ra
+        } else {
+            self.quantity += 1;
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<u8> {
+        if self.quantity == 0 { return None; }
+        let b = self.o[self.head];
+        self.head = (self.head + 1) % CAP;
+        self.quantity -= 1;
+        Some(b)
+    }
+
+    pub fn len(&self) -> usize { self.quantity }
+    pub fn is_empty(&self) -> bool { self.quantity == 0 }
+}
+
+#[test]
+fn ghi_100_byte_van_khong_lan_ra_ngoai() {
+    let mut r = SafeRingBuffer::new();
+    for i in 0..100u8 { r.push(i); }
+
+    assert_eq!(r.len(), CAP, "số byte KHÔNG BAO GIỜ vượt sức chứa");
+
+    // Còn lại đúng 8 byte CUỐI CÙNG: 92..=99
+    let con_lai: Vec<u8> = std::iter::from_fn(|| r.pop()).collect();
+    assert_eq!(con_lai, vec![92, 93, 94, 95, 96, 97, 98, 99]);
+    assert!(r.pop().is_none());
+}
+```
+
+**So sánh với C.** Cùng cấu trúc này viết bằng C thường có dạng `buf[tail++] = byte;` — quên `% CAP` là ghi lấn ra ngoài mảng, và đó chính là tràn bộ đệm. Ở Rust, quên `% CAP` **vẫn không thành lỗ hổng**: chỉ số vượt biên gây `panic` chứ không ghi bừa vào bộ nhớ hàng xóm. Kiểm tra biên biến một lỗ hổng bảo mật thành một lỗi sập chương trình — vẫn là lỗi, nhưng là loại lỗi bạn phát hiện ngay lúc kiểm thử thay vì bị khai thác lúc chạy thật.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`&text[i..i+4]` panic vì hai lý do: vượt biên, **và** cắt giữa một ký tự nhiều byte. `get()` xử lý cả hai bằng cách trả `Option`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Trích 4 BYTE bắt đầu từ `index`, không bao giờ panic.
+/// Hai thứ có thể sai: vượt biên, và cắt giữa một ký tự UTF-8.
+pub fn lay_4_byte(text: &str, index: usize) -> Result<&str, &'static str> {
+    text.get(index..index + 4)
+        .ok_or("chỉ số ngoài phạm vi hoặc cắt giữa ký tự UTF-8")
+}
+
+#[test]
+fn khong_bao_gio_panic_du_dau_vao_the_nao() {
+    assert_eq!(lay_4_byte("abcdefgh", 0), Ok("abcd"));
+    assert_eq!(lay_4_byte("abcdefgh", 4), Ok("efgh"));
+
+    // Vượt biên -> Err, KHÔNG panic
+    assert!(lay_4_byte("abc", 0).is_err());
+    assert!(lay_4_byte("abcdefgh", 100).is_err());
+
+    // Cắt GIỮA ký tự nhiều byte -> Err.
+    // "Việt" : 'V'(1) 'i'(1) 'ệ'(3) 't'(1)
+    let s = "Việt";
+    assert!(lay_4_byte(s, 1).is_err(), "cắt giữa chữ ệ phải bị từ chối");
+    assert_eq!(lay_4_byte(s, 0), Ok("Việ"), "0..4 rơi đúng ranh giới ký tự");
+}
+```
+
+**Vì sao `get()` an toàn hơn hẳn toán tử `[]`:**
+
+| | `&text[i..j]` | `text.get(i..j)` |
+|---|---|---|
+| Ngoài phạm vi | **panic** | `None` |
+| Cắt giữa ký tự UTF-8 | **panic** | `None` |
+| Kiểu trả về | `&str` | `Option<&str>` |
+
+Trên một máy chủ, `panic` trong một yêu cầu có thể giết luồng xử lý — và nếu kẻ tấn công điều khiển được `index`, họ có ngay một lỗ hổng từ chối dịch vụ chỉ bằng cách gửi số bậy.
+
+**Chi tiết dễ bỏ sót:** vế thứ hai. Nhiều người nghĩ chỉ cần kiểm `index + 4 <= text.len()` là đủ. Nhưng `"Việt"` có `len() == 6` byte, và `&s[1..5]` vẫn trong phạm vi mà **vẫn panic** vì nó cắt đôi chữ `ệ`. Chuỗi Rust là UTF-8, `len()` đếm **byte** chứ không đếm ký tự — đây là chỗ mã xử lý tiếng Việt hay vỡ nhất.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Hình dung hai người cùng cầm chìa khoá một căn phòng thuê. Cả hai đều trả phòng. Chuyện gì xảy ra với người thuê tiếp theo?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Giải phóng hai lần bằng ngôn ngữ đời sống:**
+
+Bạn thuê một căn phòng và được phát chìa. Bạn đưa chìa cho bạn mình giữ hộ. Hết hạn, bạn ra quầy trả phòng — lễ tân đánh dấu phòng trống và cho người khác thuê. Lát sau, bạn mình *cũng* ra trả cái phòng đó. Lễ tân, không biết phòng đã có chủ mới, lại đánh dấu trống lần nữa và cho **người thứ ba** thuê. Giờ hai người lạ cùng có chìa của một căn phòng.
+
+Trong bộ nhớ: `free(p)` hai lần khiến trình cấp phát đưa cùng một khối vào danh sách rỗi hai lần. Lần cấp phát sau, **hai phần khác nhau của chương trình** nhận về cùng một địa chỉ. Mỗi bên tưởng mình sở hữu riêng; bên này ghi thì bên kia đọc ra rác. Kẻ tấn công điều khiển được điều đó thường biến nó thành thực thi mã tuỳ ý.
+
+**Vì sao Rust không thể mắc lỗi này:**
+
+```rust
+let a = String::from("xin chào");
+let b = a;              // QUYỀN SỞ HỮU chuyển sang b; a không còn dùng được
+// println!("{a}");     // E0382: borrow of moved value
+
+// Cuối phạm vi: chỉ `b` gọi drop. `a` không gọi, vì nó không còn sở hữu gì.
+```
+
+Cơ chế nằm ở ba chỗ khớp nhau:
+
+1. **Mỗi giá trị có đúng một chủ.** Không có hai chủ thì không có hai lời gọi giải phóng.
+2. **Gán là *di chuyển*, không phải sao chép.** Chủ cũ bị vô hiệu hoá ngay lúc biên dịch.
+3. **`Drop` chạy đúng một lần, ở cuối phạm vi của chủ hiện tại.** Trình biên dịch sinh lời gọi đó, không phải bạn.
+
+Nói gọn: giải phóng hai lần đòi hỏi *hai chủ*, mà hệ thống sở hữu khiến điều đó không diễn đạt được. Đây là kiểu phòng thủ mạnh nhất — không phải phát hiện lỗi, mà làm cho lỗi **không viết ra được**.
+
+Muốn nhiều chủ thì dùng `Rc`/`Arc`: chúng đếm số chủ và chỉ giải phóng khi đếm về 0 — chính là `pin_count` của Chương 32, ở tầng ngôn ngữ.
+</details>

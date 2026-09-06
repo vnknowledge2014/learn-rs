@@ -347,3 +347,134 @@ fn lay_con_dung(nut: &NutDemo) {
    Viết một hàm kiểm thử kiểm tra xem toàn bộ các khóa trong mảng `keys` của một nút lá có luôn luôn được sắp xếp theo thứ tự tăng dần hay không (`keys.windows(2).all(|w| w[0] < w[1])`).
 3. **Bài tập 3 (Tư duy thiết kế)**:  
    Tại sao các cơ sở dữ liệu lại khuyên người dùng nên chọn Khóa chính (Primary Key) là số nguyên tự tăng (`AUTOINCREMENT` / `SERIAL` / `UUID v7`) thay vì một chuỗi ngẫu nhiên (`UUID v4`) khi sử dụng chỉ mục B+ Tree? Hiện tượng gì sẽ xảy ra với các nút lá nếu ta chèn các khóa ngẫu nhiên liên tục?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Mỗi tầng nhân số nút lên `M` lần. Hỏi: cần bao nhiêu tầng để `200^h ≥ 100.000.000`?
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**Chiều cao cây:**
+
+```
+M = 200 (hệ số phân nhánh), N = 100.000.000 bản ghi
+
+tầng 1 (gốc)     : 200      khoá
+tầng 2           : 200²     = 40.000
+tầng 3           : 200³     = 8.000.000        < 100 triệu, chưa đủ
+tầng 4           : 200⁴     = 1.600.000.000    ≥ 100 triệu  ✓
+
+chiều cao = 4 tầng
+```
+
+Kiểm bằng công thức: `h = ⌈log₂₀₀(10⁸)⌉ = ⌈8 / log₁₀(200)⌉ = ⌈8 / 2,301⌉ = ⌈3,48⌉ = **4**`.
+
+**Số lần đọc đĩa:** gốc đã nằm sẵn trong RAM, nên chỉ phải đọc 3 tầng còn lại → **tối đa 3 lần đọc đĩa** để tìm một bản ghi trong 100 triệu.
+
+Con số này là toàn bộ lý do B+ Tree tồn tại. So sánh:
+
+| Cấu trúc | Số lần đọc đĩa | Thời gian (SSD ~0,1 ms/lần) |
+|---|---|---|
+| B+ Tree, M=200 | 3 | ~0,3 ms |
+| Cây nhị phân cân bằng | ⌈log₂ 10⁸⌉ = 27 | ~2,7 ms |
+| Quét tuần tự | ~10⁸ / (số bản ghi mỗi trang) | hàng phút |
+
+Cây nhị phân *cũng* là O(log N) — nhưng cơ số 2 thay vì 200. Cùng độ phức tạp tiệm cận, chênh nhau **chín lần** số lần chạm đĩa. Đó là lời nhắc rằng big-O giấu mất hằng số, và với I/O thì hằng số mới là thứ trả tiền.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Bất biến của nút lá: khoá luôn tăng dần. Có sẵn `windows(2)` để kiểm hai phần tử liền kề.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Bất biến sống còn của B+ Tree: khoá trong MỌI nút lá phải tăng dần.
+/// Nếu sai thì `search` bằng tìm kiếm nhị phân sẽ trả kết quả sai — âm thầm.
+fn kiem_khoa_tang_dan<K: Ord + Copy + std::fmt::Debug, V: Clone>(
+    nut: &BPlusNode<K, V>,
+) -> bool {
+    match nut {
+        BPlusNode::Leaf { keys, values } => {
+            assert_eq!(keys.len(), values.len(), "mỗi khoá phải có đúng một giá trị");
+            keys.windows(2).all(|w| w[0] < w[1])
+        }
+        BPlusNode::Internal { keys, children } => {
+            assert_eq!(children.len(), keys.len() + 1,
+                       "nút trong luôn có nhiều hơn khoá đúng một con");
+            keys.windows(2).all(|w| w[0] < w[1])
+                && children.iter().all(|c| kiem_khoa_tang_dan(c))
+        }
+    }
+}
+
+#[test]
+fn moi_nut_la_deu_giu_thu_tu_tang_dan() {
+    let mut cay: BPlusTree<i32, String> = BPlusTree::new();
+    // Nạp theo thứ tự LỘN XỘN — bất biến vẫn phải đúng.
+    for k in [50, 10, 90, 30, 70, 20, 80, 40, 60] {
+        cay.insert(k, format!("v{k}"));
+    }
+    assert!(kiem_khoa_tang_dan(&cay.root));
+
+    // Cây rỗng cũng phải thoả (không có cặp nào để so).
+    let rong: BPlusTree<i32, String> = BPlusTree::new();
+    assert!(kiem_khoa_tang_dan(&rong.root));
+}
+```
+
+`windows(2).all(...)` đúng ngay cả với 0 hoặc 1 phần tử — `windows` trả về iterator rỗng, và `all` trên iterator rỗng là `true`. Đó là hành vi đúng: một nút có một khoá thì hiển nhiên đã sắp xếp.
+
+Hai `assert_eq!` bên trong bắt những bất biến *khác* mà đề bài không hỏi nhưng cũng quan trọng: số giá trị khớp số khoá ở lá, và nút trong luôn có `n+1` con cho `n` khoá. Bất biến vỡ ở đây thường là dấu hiệu tách nút sai.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Khoá tăng dần thì mọi lần chèn đều rơi vào **cùng một nút lá bên phải**. Khoá ngẫu nhiên thì rơi rải rác khắp cây. Nghĩ xem điều đó làm gì với bộ đệm và với việc tách nút.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Khoá tăng dần (`SERIAL`, `UUID v7`):**
+
+```
+Mọi lần chèn đều vào nút lá TẬN CÙNG BÊN PHẢI.
+  → chỉ 1 nút lá "nóng", luôn nằm trong buffer pool
+  → tách nút chỉ xảy ra ở rìa phải
+  → nút cũ giữ nguyên, đầy khoảng 100%
+  → ghi ra đĩa gần như TUẦN TỰ
+```
+
+**Khoá ngẫu nhiên (`UUID v4`):**
+
+```
+Mỗi lần chèn rơi vào một nút lá NGẪU NHIÊN trong hàng nghìn nút.
+  → nút đích thường KHÔNG có trong buffer pool  → phải đọc đĩa trước khi ghi
+  → tách nút xảy ra khắp nơi, mỗi lần tách để lại HAI nút đầy ~50%
+  → ghi ra đĩa NGẪU NHIÊN
+```
+
+Ba hậu quả đo được:
+
+| | Khoá tăng dần | Khoá ngẫu nhiên |
+|---|---|---|
+| Độ đầy nút lá | ~100% | **~50%** — cây to gấp đôi |
+| Trang phải đọc trước khi ghi | gần như không | gần như mọi lần |
+| Kiểu ghi đĩa | tuần tự | ngẫu nhiên |
+
+**Hiện tượng "nút đầy 50%"** đáng nói riêng: khi một nút đầy bị tách, nó chia đôi thành hai nút mỗi nút đầy một nửa. Với khoá tăng dần, nút trái sau đó không bao giờ nhận thêm gì nữa nhưng nút phải tiếp tục được lấp đầy — nên trung bình vẫn cao. Với khoá ngẫu nhiên, mọi nút đều bị tách rồi bỏ đó ở mức nửa vời. Cây phình gấp đôi, chiều cao tăng thêm một tầng, và mỗi truy vấn tốn thêm một lần đọc đĩa.
+
+**Vì sao UUID v7 giải quyết được:** nó đặt dấu thời gian mili giây vào 48 bit đầu, nên các UUID sinh gần nhau về thời gian thì cũng gần nhau về giá trị. Vẫn ngẫu nhiên đủ để không đoán được, nhưng **sắp xếp gần như tăng dần** — lấy được cả tính cục bộ của khoá tự tăng lẫn tính phân tán của UUID.
+</details>
