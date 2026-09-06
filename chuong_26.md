@@ -128,7 +128,7 @@ Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Ru
 
 ```rust
 /// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
-/// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
+/// Hàm này có tính tổng quát cực high: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
 pub fn total_tile_latency(data: &[i32]) -> i64 {
     let mut tong: i64 = 0;
@@ -203,14 +203,14 @@ fn main() {
     // 3. Tối ưu hóa trước với with_capacity
     println!("\n[3] Tối ưu hóa Vector với with_capacity(100):");
     let mut vec_toi_uu: Vec<i32> = Vec::with_capacity(100);
-    let ptr_goc = vec_toi_uu.as_ptr() as usize;
+    let ptr_before = vec_toi_uu.as_ptr() as usize;
     for i in 0..100 {
         vec_toi_uu.push(i);
     }
-    let ptr_sau = vec_toi_uu.as_ptr() as usize;
+    let ptr_after = vec_toi_uu.as_ptr() as usize;
     println!("    - Sau khi nạp 100 phần tử: len = {}, cap = {}", vec_toi_uu.len(), vec_toi_uu.capacity());
-    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_goc == ptr_sau { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
-    assert_eq!(ptr_goc, ptr_sau);
+    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_before == ptr_after { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
+    assert_eq!(ptr_before, ptr_after);
 
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
@@ -260,7 +260,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 
 ```rust
 // Đoạn mã lỗi minh họa: Vi phạm an toàn bộ nhớ do vector tái cấp phát
-fn minh_hoa_loi_e0502() {
+fn e0502_broken() {
     let mut list = vec![1, 2, 3];
     // Lát cắt giu_cho đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
     // let giu_cho = &list[0]; 
@@ -273,16 +273,16 @@ fn minh_hoa_loi_e0502() {
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng xong lát cắt trước khi biến đổi
-fn minh_hoa_dung_e0502() {
+fn e0502_correct() {
     let mut list = vec![1, 2, 3];
     
     // Bước 1: Đọc giá trị và sao chép (copy) ra biến độc lập trên Stack
-    let gia_tri_dau = list[0];
+    let first_value = list[0];
     
     // Bước 2: Tự do biến đổi vector mà không lo xung đột con trỏ
     list.push(4);
     
-    println!("Phần tử đầu đã sao chép an toàn: {}", gia_tri_dau);
+    println!("Phần tử đầu đã sao chép an toàn: {}", first_value);
     println!("Danh sách sau khi thêm mới: {:?}", list);
 }
 ```

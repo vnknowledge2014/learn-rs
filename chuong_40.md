@@ -164,7 +164,7 @@ pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
     false
 }
 
-/// Động cơ quét cổng mạng đa luồng tốc độ cao
+/// Động cơ quét cổng mạng đa luồng tốc độ high
 pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
     let (tx, rx) = channel::<PortResult>();
     let mut thread_handles = Vec::new();
@@ -225,7 +225,7 @@ fn main() {
         target_ip: "127.0.0.1".to_string(),
         start_port: 75,
         end_port: 85,
-        timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
+        timeout_ms: 100, // 100ms timeout cực fast cho mạng nội bộ
         thread_count: 4,  // 4 luồng quét song song
     };
 
@@ -237,7 +237,7 @@ fn main() {
     // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
     let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();
     if mock_listener.is_some() {
-        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem thu.");
+        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem attempt.");
     }
 
     let results = execute_concurrent_scan(config);
@@ -246,7 +246,7 @@ fn main() {
     println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
     println!("==================================================================");
     if results.is_empty() {
-        println!("    [!] Khong phat hien thay cong nao mo trong pham vi quet.");
+        println!("    [!] Low phat hien thay cong nao mo trong pham vi quet.");
     } else {
         for res in &results {
             println!(
@@ -282,7 +282,7 @@ use std::sync::mpsc::channel;
 use std::thread;
 
 // Đoạn mã lỗi minh họa E0382:
-fn vi_du_loi_e0382() {
+fn e0382_broken() {
     let (tx, _rx) = channel::<u16>();
 
     // Luồng 1 lấy quyền sở hữu tx

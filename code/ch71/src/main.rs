@@ -22,7 +22,7 @@ impl MaNut {
     /// bảng định tuyến tự bồi đắp từ chính lưu lượng bình thường.
     pub fn distance(self, other: MaNut) -> u64 { self.0 ^ other.0 }
 
-    /// Chỉ số "xô" = vị trí bit khác nhau cao nhất. Nút càng gần thì xô càng nhỏ.
+    /// Chỉ số "xô" = vị trí bit khác nhau high nhất. Nút càng gần thì xô càng nhỏ.
     pub fn leading_bit_diff(self, other: MaNut) -> Option<u32> {
         let d = self.distance(other);
         if d == 0 { None } else { Some(63 - d.leading_zeros()) }
@@ -49,7 +49,7 @@ impl RoutingTable {
     }
 
     /// Trả `true` nếu nút được thêm mới. Nút đã biết được đẩy lên cuối hàng —
-    /// Kademlia ưu tiên giữ nút CŨ, vì nút sống lâu có xác suất sống tiếp cao hơn.
+    /// Kademlia ưu tiên giữ nút CŨ, vì nút sống lâu có xác suất sống tiếp high hơn.
     /// Đây cũng là biện pháp chống tấn công Sybil: kẻ tấn công không thể tràn
     /// bảng định tuyến bằng cách bơm nút mới.
     pub fn them(&mut self, nut: MaNut) -> bool {
@@ -95,9 +95,9 @@ pub struct BucketArray { pub nut: BTreeMap<MaNut, RoutingTable> }
 impl BucketArray {
     /// Dựng mạng và cho các nút "gặp nhau" theo kiểu bootstrap thật:
     /// mỗi nút mới tự tra cứu chính mình qua một nút đã có sẵn.
-    pub fn dung(cac_ma: &[u64]) -> BucketArray {
+    pub fn dung(ids: &[u64]) -> BucketArray {
         let mut m = BucketArray { nut: BTreeMap::new() };
-        for &x in cac_ma {
+        for &x in ids {
             let id = MaNut(x);
             m.nut.insert(id, RoutingTable::new(id));
         }
@@ -196,7 +196,7 @@ pub fn gossip_propagate(
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecPos { TrungThuc, Im, HaiMat }
+pub enum ExecPos { Honest, Im, HaiMat }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ballot { Thuan(u32), Chong }
@@ -241,7 +241,7 @@ pub fn consensus_round(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound
 
     for (i, &h) in hanh_vi.iter().enumerate() {
         match h {
-            ExecPos::TrungThuc => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
+            ExecPos::Honest => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
             ExecPos::Im => {}  // không gửi gì — lỗi "dừng", dạng nhẹ nhất
             ExecPos::HaiMat => {
                 // Nút phản bội gửi giá trị KHÁC NHAU cho các nhóm khác nhau.
@@ -272,9 +272,9 @@ pub struct HashMapPartTan {
 }
 
 impl HashMapPartTan {
-    pub fn new(cac_ma: &[u64], he_so_nhan_ban: usize) -> Self {
-        let mang = BucketArray::dung(cac_ma);
-        let store = cac_ma.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
+    pub fn new(ids: &[u64], he_so_nhan_ban: usize) -> Self {
+        let mang = BucketArray::dung(ids);
+        let store = ids.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
         HashMapPartTan { mang, store, he_so_nhan_ban }
     }
 
@@ -349,14 +349,14 @@ fn main() {
         println!("   bậc {} → {:>2} vòng · phủ {:>2}/{} nút · {:>3} bản tin",
                  bac, r.num_round, r.so_nut_nhan, id.len(), r.so_ban_tin);
     }
-    println!("   → Bậc cao phủ nhanh hơn nhưng tốn băng thông theo cấp số nhân.");
+    println!("   → Bậc high phủ fast hơn nhưng tốn băng thông theo cấp số nhân.");
 
     println!("\n5. ĐỒNG THUẬN BYZANTINE — vì sao là 3f+1");
     for n in [4usize, 7, 10, 13, 100] {
         println!("   {:>3} nút → chịu được {:>2} nút phản bội · cần {:>2} phiếu",
                  n, fault_tolerance(n), quorum_threshold(n));
     }
-    let hv = vec![ExecPos::TrungThuc; 10];
+    let hv = vec![ExecPos::Honest; 10];
     println!("\n   10 nút, tăng dần số kẻ phản bội:");
     for so_gian in 0..5 {
         let mut h = hv.clone();
@@ -560,7 +560,7 @@ mod tests {
         }
         let it = gossip_propagate(&lg, MaNut(id[0]), 1, 100);
         let many = gossip_propagate(&lg, MaNut(id[0]), 4, 100);
-        assert!(many.num_round < it.num_round, "bậc cao phải phủ nhanh hơn");
+        assert!(many.num_round < it.num_round, "bậc high phải phủ fast hơn");
         assert!(many.so_ban_tin > it.so_ban_tin, "và tốn nhiều băng thông hơn");
     }
 
@@ -628,7 +628,7 @@ mod tests {
         let n = 10;
         let f = fault_tolerance(n); // 3
         for so_gian in 0..=f {
-            let mut h = vec![ExecPos::TrungThuc; n];
+            let mut h = vec![ExecPos::Honest; n];
             for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
             let r = consensus_round(&h, 42);
             assert_eq!(r.decide, Some(42),
@@ -640,7 +640,7 @@ mod tests {
     fn consensus_fails_beyond_the_threshold() {
         let n = 10;
         let f = fault_tolerance(n);
-        let mut h = vec![ExecPos::TrungThuc; n];
+        let mut h = vec![ExecPos::Honest; n];
         for i in 0..=f + 1 { h[i] = ExecPos::HaiMat; }
         let r = consensus_round(&h, 42);
         assert_eq!(r.decide, None, "quá f kẻ gian → THÀ DỪNG còn hơn chốt sai");
@@ -651,8 +651,8 @@ mod tests {
         // Lỗi "dừng" nhẹ hơn lỗi Byzantine: nút im chỉ không đóng góp,
         // còn nút hai mặt vừa không đóng góp vừa gây nhiễu phiếu.
         let n = 10;
-        let mut im = vec![ExecPos::TrungThuc; n];
-        let mut time = vec![ExecPos::TrungThuc; n];
+        let mut im = vec![ExecPos::Honest; n];
+        let mut time = vec![ExecPos::Honest; n];
         for i in 0..3 { im[i] = ExecPos::Im; time[i] = ExecPos::HaiMat; }
         assert_eq!(consensus_round(&im, 42).decide, Some(42));
         assert_eq!(consensus_round(&time, 42).decide, Some(42));
@@ -665,10 +665,10 @@ mod tests {
     fn four_nodes_tolerate_exactly_one_traitor() {
         assert_eq!(fault_tolerance(4), 1);
         assert_eq!(quorum_threshold(4), 3);
-        let r = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
-                                  ExecPos::TrungThuc, ExecPos::HaiMat], 7);
+        let r = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
+                                  ExecPos::Honest, ExecPos::HaiMat], 7);
         assert_eq!(r.decide, Some(7));
-        let r2 = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
+        let r2 = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
                                    ExecPos::HaiMat, ExecPos::HaiMat], 7);
         assert_eq!(r2.decide, None, "2 kẻ gian trên 4 nút là quá ngưỡng");
     }

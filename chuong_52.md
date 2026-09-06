@@ -226,7 +226,7 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM MÔ THỨC CACHE-ASIDE VÀ HẾT HẠN TTL
     // -------------------------------------------------------------
-    println!("\n[1] Kiem thu mo thuc Cache-Aside kem TTL Expiration:");
+    println!("\n[1] Kiem attempt mo thuc Cache-Aside kem TTL Expiration:");
     let cache = SafeCacheEngine::new();
 
     // Lần gọi 1: Chưa có trong cache -> Cache Miss
@@ -252,7 +252,7 @@ fn main() {
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM HÀNG ĐỢI THÔNG ĐIỆP ĐA LUỒNG PRODUCER-CONSUMER
     // -------------------------------------------------------------
-    println!("\n[2] Kiem thu Hang doi Thong diep phan tan (Message Queue):");
+    println!("\n[2] Kiem attempt Hang doi Thong diep phan tan (Message Queue):");
     let message_queue = Arc::new(DistributedMessageQueue::<String>::new(5));
 
     // Luồng Producer: Đẩy việc vào hàng đợi
@@ -261,7 +261,7 @@ fn main() {
         for i in 1..=4 {
             let msg = format!("DonHang_#{}", i);
             producer_q.push(msg.clone()).unwrap();
-            println!("    [Producer] Da day '{}' vao hang doi an toan.", msg);
+            println!("    [Producer] Da day '{}' vao hang doi an total.", msg);
         }
     });
 
@@ -302,7 +302,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 use std::collections::HashMap;
 
 // Đoạn mã lỗi minh họa E0502:
-fn xoa_loi(map: &mut HashMap<String, u64>) {
+fn delete_broken(map: &mut HashMap<String, u64>) {
     // for (k, &v) in map.iter() {
     //     if v == 0 {
     //         map.remove(k); // LỖI E0502: Không thể sửa map khi đang mượn bất biến để duyệt!
@@ -311,7 +311,7 @@ fn xoa_loi(map: &mut HashMap<String, u64>) {
 }
 
 // Cách sửa chữa đúng chuẩn: Thu thập danh sách khóa cần xóa trước
-fn xoa_dung(map: &mut HashMap<String, u64>) {
+fn delete_correct(map: &mut HashMap<String, u64>) {
     let expired_keys: Vec<String> = map
         .iter()
         .filter(|&(_, &v)| v == 0)

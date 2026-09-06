@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 /// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
-/// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
+/// Hàm này có tính tổng quát cực high: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
 pub fn total_tile_latency(data: &[i32]) -> i64 {
     let mut tong: i64 = 0;

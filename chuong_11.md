@@ -118,22 +118,22 @@ Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu
 >
 > ```rust
 > #[derive(Debug)]
-> enum LoiUngDung {
+> enum AppError {
 >     DocTep(std::io::Error),
 >     PhanTichSo(std::num::ParseIntError),
 > }
 >
 > // Hai cây cầu cho `?` đi qua:
-> impl From<std::io::Error> for LoiUngDung {
->     fn from(e: std::io::Error) -> Self { LoiUngDung::DocTep(e) }
+> impl From<std::io::Error> for AppError {
+>     fn from(e: std::io::Error) -> Self { AppError::DocTep(e) }
 > }
-> impl From<std::num::ParseIntError> for LoiUngDung {
->     fn from(e: std::num::ParseIntError) -> Self { LoiUngDung::PhanTichSo(e) }
+> impl From<std::num::ParseIntError> for AppError {
+>     fn from(e: std::num::ParseIntError) -> Self { AppError::PhanTichSo(e) }
 > }
 >
-> fn doc_cau_hinh(path: &str) -> Result<u16, LoiUngDung> {
->     let content = std::fs::read_to_string(path)?;  // io::Error  -> LoiUngDung
->     let gate: u16 = content.trim().parse()?;            // ParseIntError -> LoiUngDung
+> fn read_config(path: &str) -> Result<u16, AppError> {
+>     let content = std::fs::read_to_string(path)?;  // io::Error  -> AppError
+>     let gate: u16 = content.trim().parse()?;            // ParseIntError -> AppError
 >     Ok(gate)
 > }
 > ```
@@ -141,7 +141,7 @@ Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu
 > Nếu chưa có `impl From<...>`, trình biên dịch sẽ báo lỗi *"`?` couldn't convert the error"*. Khi đó bạn có hai lựa chọn: cài `From`, hoặc chuyển thủ công ngay tại chỗ bằng **`.map_err(...)`** trước dấu `?`:
 >
 > ```rust
-> let gate: u16 = content.trim().parse().map_err(LoiUngDung::PhanTichSo)?;
+> let gate: u16 = content.trim().parse().map_err(AppError::PhanTichSo)?;
 > ```
 >
 > Chúng ta sẽ gặp lại `map_err` ở **Chương 17** dưới cái tên "bẻ ghi sang đường ray thất bại", và ở **Chương 19** với tên chính thức của nó: *Bifunctor*.
@@ -159,18 +159,18 @@ Chương trình dưới đây mô phỏng một hệ thống đọc tệp cấu 
 // 1. Tự định nghĩa kiểu Lỗi Nghiệp Vụ Tùy Biến (Custom Error Type) bằng Enum
 #[derive(Debug)]
 enum MathError {
-    SoTienKhongHopLe(String),
-    TaiKhoanBiKhoa,
-    SoDuKhongDu { balance: f64, can_rut: f64 },
+    InvalidAmount(String),
+    AccountLocked,
+    InsufficientBalance { balance: f64, can_rut: f64 },
 }
 
 // Cài đặt khả năng in ấn đẹp mắt cho kiểu lỗi của chúng ta
 impl std::fmt::Display for MathError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            MathError::SoTienKhongHopLe(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
-            MathError::TaiKhoanBiKhoa => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
-            MathError::SoDuKhongDu { balance, can_rut } => {
+            MathError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
+            MathError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
+            MathError::InsufficientBalance { balance, can_rut } => {
                 write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
             }
         }
@@ -180,17 +180,17 @@ impl std::fmt::Display for MathError {
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
 fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
     let so_tien: f64 = input_buffer.trim().parse().map_err(|_| {
-        MathError::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
+        MathError::InvalidAmount(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
     if so_tien <= 0.0 {
-        return Err(MathError::SoTienKhongHopLe(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(MathError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
     }
 
     Ok(so_tien)
 }
 
-// 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
+// 3. Hàm thực hiện deliver dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
 fn display_trade(
     input_buffer: &str, 
     mut so_du_hien_tai: f64, 
@@ -198,7 +198,7 @@ fn display_trade(
 ) -> Result<f64, MathError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
     if !is_account_active {
-        return Err(MathError::TaiKhoanBiKhoa);
+        return Err(MathError::AccountLocked);
     }
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
@@ -207,7 +207,7 @@ fn display_trade(
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
-        return Err(MathError::SoDuKhongDu {
+        return Err(MathError::InsufficientBalance {
             balance: so_du_hien_tai,
             can_rut: so_tien_can_rut,
         });
@@ -257,7 +257,7 @@ fn main() {
     println!("\n[Kịch bản 5] Sử dụng unwrap_or để lấy giá trị mặc định an toàn:");
     let result_error: Result<f64, &str> = Err("Mất kết nối máy chủ");
     let num_tien_last_same = result_error.unwrap_or(0.0);
-    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
+    println!("- Giá trị an toàn attempt được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
 }
 ```
 

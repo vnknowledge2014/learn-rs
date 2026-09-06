@@ -48,8 +48,8 @@ let mut diem_so = 0;
 ### 3. Dán một tờ giấy mới đè lên vị trí cũ (Hiện tượng che khuất - Shadowing)
 Rust cho phép bạn khai báo lại một biến mới toanh có **cùng tên** với một biến cũ đã tồn tại bằng từ khóa `let`:
 ```rust
-let tien_luong = "5000000"; // Chuỗi văn bản
-let tien_luong = 5000000;   // Số nguyên thực tế
+let salary = "5000000"; // Chuỗi văn bản
+let salary = 5000000;   // Số nguyên thực tế
 ```
 Hiện tượng này giống như bạn có một chiếc bảng cũ, nhưng thay vì lau phấn, bạn lấy một tờ giấy dán tường mới tinh dán đè kín mít lên chiếc bảng đó. Từ nay về sau, khi ai đó nhắc đến "tờ giấy trên tường", họ chỉ nhìn thấy nội dung mới. Điều kỳ diệu là: tờ giấy mới có thể mang kiểu dáng, kích thước và màu sắc hoàn toàn khác biệt so với chiếc bảng cũ ban đầu!
 
@@ -158,12 +158,12 @@ fn main() {
 
     println!("\n=== 5. KIỂU LOGIC VÀ KÝ TỰ UNICODE ===");
     let dang_hoc_rust: bool = true;
-    let bieu_cam: char = '🎯'; // Ký tự Unicode chiếm trọn vẹn 4 bytes
-    let ky_tu_tieng_viet: char = 'Đ';
+    let emoji: char = '🎯'; // Ký tự Unicode chiếm trọn vẹn 4 bytes
+    let vietnamese_char: char = 'Đ';
 
     println!("Đang say mê học Rust? {}", dang_hoc_rust);
-    println!("Mục tiêu học tập    : {}", bieu_cam);
-    println!("Chữ cái tiếng Việt  : {}", ky_tu_tieng_viet);
+    println!("Mục tiêu học tập    : {}", emoji);
+    println!("Chữ cái tiếng Việt  : {}", vietnamese_char);
     println!("Kích thước char trên RAM: {} bytes", std::mem::size_of::<char>());
 
     println!("\n=== 6. ÉP KIỂU AN TOÀN VỚI TỪ KHÓA 'as' ===");

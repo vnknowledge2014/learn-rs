@@ -148,7 +148,7 @@ Chạy bằng `cargo run -p ch67`, kiểm thử bằng `cargo test -p ch67`.
 ```rust
 #![allow(dead_code)]
 //! Chương 67 — FPGA & Thiết kế phần cứng số bằng Rust: cổng logic, mạch tổ hợp,
-//! mạch tuần tự có xung nhịp, đường ống, và vì sao phần cứng nhanh hơn phần mềm.
+//! mạch tuần tự có xung nhịp, đường ống, và vì sao phần cứng fast hơn phần mềm.
 //!
 //! Tinh thần lấy từ rust-hdl (nay đang được tác giả viết lại thành `rhdl`):
 //! mô tả phần cứng bằng KIỂU của Rust, mô phỏng ngay trong `cargo test`,
@@ -162,26 +162,26 @@ use std::collections::HashMap;
 // ============================================================================
 
 /// Trong FPGA thật, tín hiệu còn có trạng thái 'X' (không xác định) và 'Z'
-/// (trở kháng cao). Ta mô hình hóa cả 'X' vì nó là nguồn lỗi kinh điển:
+/// (trở kháng high). Ta mô hình hóa cả 'X' vì nó là nguồn lỗi kinh điển:
 /// quên khởi tạo thanh ghi → mạch chạy đúng trong mô phỏng, sai trên chip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Signal { Thap, Cao, KhongXacDinh }
+pub enum Signal { Low, Cao, KhongXacDinh }
 
 impl Signal {
-    pub fn from_bool(b: bool) -> Signal { if b { Signal::Cao } else { Signal::Thap } }
+    pub fn from_bool(b: bool) -> Signal { if b { Signal::Cao } else { Signal::Low } }
     pub fn to_bool(self) -> Option<bool> {
-        match self { Signal::Cao => Some(true), Signal::Thap => Some(false), _ => None }
+        match self { Signal::Cao => Some(true), Signal::Low => Some(false), _ => None }
     }
 }
 
 pub fn nor_gate(a: Signal) -> Signal {
-    match a { Signal::Cao => Signal::Thap, Signal::Thap => Signal::Cao, x => x }
+    match a { Signal::Cao => Signal::Low, Signal::Low => Signal::Cao, x => x }
 }
 pub fn and_gate(a: Signal, b: Signal) -> Signal {
     // Lưu ý: 0 AND X = 0, KHÔNG phải X — vì kết quả đã xác định dù X là gì.
     // Đây gọi là "làm ngắn mạch giá trị điều khiển" và có thật trên silicon.
     match (a, b) {
-        (Signal::Thap, _) | (_, Signal::Thap) => Signal::Thap,
+        (Signal::Low, _) | (_, Signal::Low) => Signal::Low,
         (Signal::Cao, Signal::Cao) => Signal::Cao,
         _ => Signal::KhongXacDinh,
     }
@@ -189,7 +189,7 @@ pub fn and_gate(a: Signal, b: Signal) -> Signal {
 pub fn or_gate(a: Signal, b: Signal) -> Signal {
     match (a, b) {
         (Signal::Cao, _) | (_, Signal::Cao) => Signal::Cao,
-        (Signal::Thap, Signal::Thap) => Signal::Thap,
+        (Signal::Low, Signal::Low) => Signal::Low,
         _ => Signal::KhongXacDinh,
     }
 }
@@ -234,7 +234,7 @@ pub struct GateResult {
 /// Bộ cộng nhớ nối tiếp 8 bit — cách dựng đơn giản nhất, và CHẬM nhất.
 /// Bit nhớ phải "chảy" tuần tự qua cả 8 tầng: độ trễ tỉ lệ THUẬN với số bit.
 pub fn ripple_adder_8bit(a: u8, b: u8) -> GateResult {
-    let mut small = Signal::Thap;
+    let mut small = Signal::Low;
     let mut tong = 0u16;
     for i in 0..8 {
         let bit_a = Signal::from_bool((a >> i) & 1 == 1);
@@ -287,7 +287,7 @@ impl FlipFlopD {
     pub fn new() -> Self { FlipFlopD { q: Signal::KhongXacDinh } }
     pub fn q(&self) -> Signal { self.q }
     pub fn suon_len(&mut self, d: Signal) { self.q = d; }
-    pub fn set_lai(&mut self) { self.q = Signal::Thap; }
+    pub fn set_lai(&mut self) { self.q = Signal::Low; }
 }
 
 /// Thanh ghi dịch — dùng cho SPI, UART, tính CRC, tạo số giả ngẫu nhiên.
@@ -319,7 +319,7 @@ impl<const N: usize> IntoRecordDich<N> {
     pub fn doc(&self) -> Vec<Signal> { self.o.iter().map(|f| f.q()).collect() }
 }
 
-/// Máy trạng thái hữu hạn có xung nhịp — đèn giao thông.
+/// Máy trạng thái hữu hạn có xung nhịp — đèn deliver thông.
 /// Đây là dạng mạch mà FPGA làm tốt nhất: điều khiển tất định, độ trễ đếm được.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrafficLight { Do, DoVang, Xanh, Vang }
@@ -410,7 +410,7 @@ pub fn handle_with_pipeline(input: &[u32], so_tang: usize, f: impl Fn(u32) -> u3
 #[derive(Debug, Clone)]
 pub enum Nut {
     Input(String),
-    Khong(usize),
+    Low(usize),
     Va(usize, usize),
     Hoac(usize, usize),
     Xor(usize, usize),
@@ -433,7 +433,7 @@ impl Circuit {
         for (i, n) in self.nut.iter().enumerate() {
             gt[i] = match n {
                 Nut::Input(name) => *input.get(name).unwrap_or(&Signal::KhongXacDinh),
-                Nut::Khong(a) => nor_gate(gt[*a]),
+                Nut::Low(a) => nor_gate(gt[*a]),
                 Nut::Va(a, b) => and_gate(gt[*a], gt[*b]),
                 Nut::Hoac(a, b) => or_gate(gt[*a], gt[*b]),
                 Nut::Xor(a, b) => xor_gate(gt[*a], gt[*b]),
@@ -449,7 +449,7 @@ impl Circuit {
         for (i, n) in self.nut.iter().enumerate() {
             next[i] = match n {
                 Nut::Input(_) => 0,
-                Nut::Khong(a) => next[*a] + 1,
+                Nut::Low(a) => next[*a] + 1,
                 Nut::Va(a, b) | Nut::Hoac(a, b) | Nut::Xor(a, b) => next[*a].max(next[*b]) + 1,
             };
         }
@@ -464,10 +464,10 @@ fn main() {
 
     println!("\n1. BẢNG CHÂN TRỊ CÓ TRẠNG THÁI 'X'");
     println!("   0 AND X = {:?}  ← đã xác định! (0 là giá trị điều khiển của AND)",
-             and_gate(Signal::Thap, Signal::KhongXacDinh));
+             and_gate(Signal::Low, Signal::KhongXacDinh));
     println!("   1 AND X = {:?}", and_gate(Signal::Cao, Signal::KhongXacDinh));
     println!("   0 XOR X = {:?}  ← XOR không có giá trị điều khiển",
-             xor_gate(Signal::Thap, Signal::KhongXacDinh));
+             xor_gate(Signal::Low, Signal::KhongXacDinh));
 
     println!("\n2. HAI CÁCH DỰNG BỘ CỘNG 8 BIT — cùng kết quả, khác tốc độ");
     for (a, b) in [(200u8, 100u8), (255, 1), (37, 91)] {
@@ -477,7 +477,7 @@ fn main() {
                  a, b, nt.tong, nt.tran, nt.gate_depth, lt.gate_depth);
         assert_eq!(nt.tong, lt.tong);
     }
-    println!("   → Cùng đáp số, nhưng mạch nhìn trước chạy nhanh hơn ~{}×",
+    println!("   → Cùng đáp số, nhưng mạch nhìn trước chạy fast hơn ~{}×",
              ripple_adder_8bit(0,0).gate_depth / lookahead_adder_8bit(0,0).gate_depth);
 
     println!("\n3. THANH GHI DỊCH 4 BIT");
@@ -503,7 +503,7 @@ fn main() {
     let no = handle_without_pipeline(&input, 5, |x| x * x);
     let co = handle_with_pipeline(&input, 5, |x| x * x);
     println!("   Không ống: {} chu kỳ (độ trễ {})", no.num_period, no.latency);
-    println!("   Có ống   : {} chu kỳ (độ trễ {}) → nhanh gấp {:.1}×",
+    println!("   Có ống   : {} chu kỳ (độ trễ {}) → fast gấp {:.1}×",
              co.num_period, co.latency, no.num_period as f64 / co.num_period as f64);
     println!("   → Độ trễ KHÔNG giảm; chỉ THÔNG LƯỢNG tăng. Hai đại lượng khác nhau.");
 
@@ -530,18 +530,18 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Signal::{Cao, KhongXacDinh, Thap};
+    use Signal::{Cao, KhongXacDinh, Low};
 
     // ---------- Cổng logic ----------
     #[test]
     fn controlling_value_erases_x_state() {
         // Bài học phần cứng thật: 0·X = 0 và 1+X = 1, dù X là gì đi nữa.
-        assert_eq!(and_gate(Thap, KhongXacDinh), Thap);
-        assert_eq!(and_gate(KhongXacDinh, Thap), Thap);
+        assert_eq!(and_gate(Low, KhongXacDinh), Low);
+        assert_eq!(and_gate(KhongXacDinh, Low), Low);
         assert_eq!(or_gate(Cao, KhongXacDinh), Cao);
         // nhưng khi không có giá trị điều khiển thì X lan ra
         assert_eq!(and_gate(Cao, KhongXacDinh), KhongXacDinh);
-        assert_eq!(xor_gate(Thap, KhongXacDinh), KhongXacDinh);
+        assert_eq!(xor_gate(Low, KhongXacDinh), KhongXacDinh);
     }
 
     #[test]
@@ -550,9 +550,9 @@ mod tests {
         let no = |a| nand_gate(a, a);
         let va = |a, b| no(nand_gate(a, b));
         let hoac = |a, b| nand_gate(no(a), no(b));
-        for a in [Thap, Cao] {
+        for a in [Low, Cao] {
             assert_eq!(no(a), nor_gate(a));
-            for b in [Thap, Cao] {
+            for b in [Low, Cao] {
                 assert_eq!(va(a, b), and_gate(a, b));
                 assert_eq!(hoac(a, b), or_gate(a, b));
             }
@@ -561,14 +561,14 @@ mod tests {
 
     #[test]
     fn mux_behaves_like_an_if() {
-        assert_eq!(unit_pick(Thap, Cao, Thap), Cao, "chọn=0 → lấy nhánh 0");
-        assert_eq!(unit_pick(Cao, Cao, Thap), Thap, "chọn=1 → lấy nhánh 1");
+        assert_eq!(unit_pick(Low, Cao, Low), Cao, "chọn=0 → lấy nhánh 0");
+        assert_eq!(unit_pick(Cao, Cao, Low), Low, "chọn=1 → lấy nhánh 1");
     }
 
     #[test]
     fn de_morgan_holds_on_gates() {
-        for a in [Thap, Cao] {
-            for b in [Thap, Cao] {
+        for a in [Low, Cao] {
+            for b in [Low, Cao] {
                 assert_eq!(nor_gate(and_gate(a, b)),
                            or_gate(nor_gate(a), nor_gate(b)));
                 assert_eq!(nor_gate(or_gate(a, b)),
@@ -631,7 +631,7 @@ mod tests {
     fn flip_flop_latches_on_rising_edge() {
         let mut f = FlipFlopD::new();
         f.set_lai();
-        assert_eq!(f.q(), Thap);
+        assert_eq!(f.q(), Low);
         f.suon_len(Cao);
         assert_eq!(f.q(), Cao);
     }
@@ -642,11 +642,11 @@ mod tests {
         tg.set_lai();
         // Bit đầu tiên phải mất ĐÚNG N = 4 chu kỳ mới ra tới đầu kia.
         // Đây chính là độ trễ của thanh ghi dịch — nền của SPI và UART.
-        assert_eq!(tg.suon_len(Cao), Thap);
-        assert_eq!(tg.suon_len(Thap), Thap);
-        assert_eq!(tg.suon_len(Thap), Thap);
-        assert_eq!(tg.suon_len(Thap), Cao, "bit '1' xuất hiện đúng ở chu kỳ thứ 4");
-        assert_eq!(tg.suon_len(Thap), Thap, "sau đó ống rỗng trở lại");
+        assert_eq!(tg.suon_len(Cao), Low);
+        assert_eq!(tg.suon_len(Low), Low);
+        assert_eq!(tg.suon_len(Low), Low);
+        assert_eq!(tg.suon_len(Low), Cao, "bit '1' xuất hiện đúng ở chu kỳ thứ 4");
+        assert_eq!(tg.suon_len(Low), Low, "sau đó ống rỗng trở lại");
     }
 
     #[test]
@@ -727,7 +727,7 @@ mod tests {
         let a = m.them(Nut::Input("a".into()));
         let b = m.them(Nut::Input("b".into()));
         let x = m.them(Nut::Va(a, b));         // sâu 1
-        let y = m.them(Nut::Khong(x));         // sâu 2
+        let y = m.them(Nut::Low(x));         // sâu 2
         let _z = m.them(Nut::Hoac(y, a));      // sâu 3 (nhánh a sâu 0, lấy max)
         assert_eq!(m.critical_path(), 3);
     }
@@ -825,10 +825,10 @@ impl BoDem4Bit {
     pub fn suon_len(&mut self) -> u8 {
         // BƯỚC 1: tính MỌI tín hiệu đảo từ trạng thái CŨ (logic tổ hợp)
         let mut dao = [false; 4];
-        let mut tich = true;                  // "mọi bit thấp hơn đều là 1"
+        let mut products = true;                  // "mọi bit thấp hơn đều là 1"
         for i in 0..4 {
-            dao[i] = tich;
-            tich = tich && self.o[i].q() == Signal::Cao;
+            dao[i] = products;
+            products = products && self.o[i].q() == Signal::Cao;
         }
         // BƯỚC 2: cập nhật đồng thời (thanh ghi)
         for i in 0..4 {
@@ -846,7 +846,7 @@ impl BoDem4Bit {
 // Kiểm chứng:
 //   let mut d = BoDem4Bit::moi();
 //   d.set_lai();
-//   for mong_doi in 1..=15 { assert_eq!(d.suon_len(), mong_doi); }
+//   for expected in 1..=15 { assert_eq!(d.suon_len(), expected); }
 //   assert_eq!(d.suon_len(), 0, "tràn thì quay vòng về 0");
 ```
 
@@ -869,18 +869,18 @@ Trong **phần cứng**, đây không phải vòng lặp — đó là một **m�
 ```rust
 /// Trả về (tích 8 bit, số bộ cộng toàn phần đã dùng).
 pub fn nhan_4x4(a: u8, b: u8) -> (u8, usize) {
-    let mut tich = 0u16;
-    let mut so_bo_cong = 0;
+    let mut products = 0u16;
+    let mut gate_count = 0;
     for i in 0..4 {
         if (b >> i) & 1 == 1 {
             // Trong phần cứng: một hàng bộ cộng toàn phần, chạy SONG SONG
             // với các hàng khác. Ở đây ta chỉ đếm số cổng cần dựng.
             let queue = (a as u16 & 0x0F) << i;
-            tich = tich.wrapping_add(queue);
-            so_bo_cong += 4;
+            products = products.wrapping_add(queue);
+            gate_count += 4;
         }
     }
-    ((tich & 0xFF) as u8, so_bo_cong)
+    ((products & 0xFF) as u8, gate_count)
 }
 
 // Kiểm chứng vét cạn cả 256 tổ hợp:
@@ -909,14 +909,14 @@ Vì sao vòng lặp tổ hợp nguy hiểm? Vì mạch không bao giờ ổn đ�
 impl Circuit {
     /// Bất biến: mọi cổng chỉ được tham chiếu tới nút có chỉ số NHỎ HƠN.
     /// Vi phạm = có vòng lặp tổ hợp = mạch không bao giờ ổn định.
-    pub fn kiem_tra_khong_chu_trinh(&self) -> Result<(), String> {
+    pub fn assert_acyclic(&self) -> Result<(), String> {
         for (i, n) in self.nut.iter().enumerate() {
-            let cac_dau_vao: Vec<usize> = match n {
+            let inputs: Vec<usize> = match n {
                 Nut::Input(_) => vec![],
-                Nut::Khong(a) => vec![*a],
+                Nut::Low(a) => vec![*a],
                 Nut::Va(a, b) | Nut::Hoac(a, b) | Nut::Xor(a, b) => vec![*a, *b],
             };
-            for dv in cac_dau_vao {
+            for dv in inputs {
                 if dv >= i {
                     return Err(format!(
                         "vòng lặp tổ hợp: nút {} lấy đầu vào từ nút {} (không nhỏ hơn)", i, dv));

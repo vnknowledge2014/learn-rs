@@ -143,7 +143,7 @@ fn main() {
         strlen(raw_c_ptr)
     };
 
-    println!("    - Chuoi gui sang C : {:?}", c_greeting);
+    println!("    - Text gui sang C : {:?}", c_greeting);
     println!("    - Do dai do boi C strlen: {} bytes", length_from_c);
     assert_eq!(length_from_c, 26);
 

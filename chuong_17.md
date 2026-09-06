@@ -75,14 +75,14 @@ Trong Rust, có sự khác biệt tinh tế giữa con trỏ hàm thuần túy v
    - Bất kỳ con trỏ hàm `fn` nào cũng tự động thỏa mãn giao ước `Fn`, `FnMut`, và `FnOnce` (vì nó không bắt giữ gì, coi như struct rỗng).
 
 ```rust
-fn nhan_doi(x: i32) -> i32 { x * 2 }
+fn doubled(x: i32) -> i32 { x * 2 }
 
-// Hàm bậc cao nhận con trỏ hàm fn thuần túy
+// Hàm bậc high nhận con trỏ hàm fn thuần túy
 fn ap_dung_fn(pointer: fn(i32) -> i32, value: i32) -> i32 {
     pointer(value)
 }
 
-// Hàm bậc cao nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
+// Hàm bậc high nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
 fn ap_dung_generic<F: Fn(i32) -> i32>(hanh_dong: F, value: i32) -> i32 {
     hanh_dong(value)
 }
@@ -107,7 +107,7 @@ fn tao_bo_nhan(he_so: i32) -> impl Fn(i32) -> i32 {
 Khi hàm của bạn có thể trả về **hai closure khác nhau** tùy theo điều kiện `if/else`:
 Vì mỗi closure trong Rust có một kiểu ẩn danh duy nhất không trùng lặp, bạn không thể dùng `impl Fn` trong hai nhánh `if/else` khác nhau. Lúc này, ta phải đóng gói chúng vào con trỏ thông minh (smart pointer) `Box` trên vùng nhớ Heap:
 ```rust
-fn tao_bo_chuyen_doi(la_viet_hoa: bool) -> Box<dyn Fn(&str) -> String> {
+fn make_converter(la_viet_hoa: bool) -> Box<dyn Fn(&str) -> String> {
     if la_viet_hoa {
         Box::new(|s| s.to_uppercase())
     } else {
@@ -122,7 +122,7 @@ Hãy quan sát đoạn mã xử lý dữ liệu người dùng khi viết bằng
 
 ```rust
 // ❌ CÁCH VIẾT CỒNG KỀNH (Pyramid of Doom):
-fn phan_tich_tuoi_truyen_thong(series: Option<&str>) -> Option<u32> {
+fn parse_age_imperative(series: Option<&str>) -> Option<u32> {
     match series {
         Some(s) => {
             let cut_range_state = s.trim();
@@ -147,7 +147,7 @@ Giờ hãy chiêm ngưỡng vẻ đẹp của **Bộ kết hợp Combinators** t
 
 ```rust
 // ✅ CÁCH VIẾT PHẲNG PHIU THEO PHONG CÁCH ĐƯỜNG ỐNG (FP Combinators):
-fn phan_tich_tuoi_chuyen_nghiep(series: Option<&str>) -> Option<u32> {
+fn parse_age_idiomatic(series: Option<&str>) -> Option<u32> {
     series
         .map(|s| s.trim())                      // 1. Cắt tỉa khoảng trắng
         .filter(|s| !s.is_empty())              // 2. Lọc chuỗi không rỗng
@@ -262,7 +262,7 @@ pub struct ValidProxy {
 // 1. HÀM BẬC CAO: ĐO LƯỜNG THỜI GIAN VÀ GHI NHẬT KÝ KIỂM TOÁN (WRAPPER PATTERN)
 // ============================================================================
 
-/// Hàm bậc cao nhận vào tên tác vụ và một hành động F bất kỳ
+/// Hàm bậc high nhận vào tên tác vụ và một hành động F bất kỳ
 /// Thực hiện đo thời gian thực thi của hành động đó và trả về kết quả nguyên bản
 ///
 /// LƯU Ý VỀ TÍNH THUẦN TÚY: bản thân hàm này KHÔNG thuần túy — nó đọc đồng hồ
@@ -379,7 +379,7 @@ fn main() {
         age_series: Some(String::from("12")),             // Dưới 16 tuổi
     };
 
-    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
+    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc high đo thời gian
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
     let ket_qua_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
         auth_proxy_num(&proxy_num_standard, &check_do_long_name, &check_banned_words)
@@ -429,10 +429,10 @@ Khi thiết kế các hàm bậc cao và chuỗi combinators trong Rust, lập t
 
 ```rust
 // Đoạn mã lỗi minh họa:
-fn thu_nghiem_loi_closure(dieu_kien: bool) {
+fn broken_closure(condition: bool) {
     // LỖI E0308: Hai nhánh if và else trả về hai kiểu closure ẩn danh khác nhau!
     /*
-    let bo_xu_ly = if dieu_kien {
+    let bo_xu_ly = if condition {
         |x: i32| x + 1
     } else {
         |x: i32| x * 2
@@ -441,8 +441,8 @@ fn thu_nghiem_loi_closure(dieu_kien: bool) {
 }
 
 // Cách sửa chữa đúng chuẩn: Bọc qua Box<dyn Fn>
-fn thu_nghiem_dung_closure(dieu_kien: bool) {
-    let bo_xu_ly: Box<dyn Fn(i32) -> i32> = if dieu_kien {
+fn correct_closure(condition: bool) {
+    let bo_xu_ly: Box<dyn Fn(i32) -> i32> = if condition {
         Box::new(|x: i32| x + 1)
     } else {
         Box::new(|x: i32| x * 2)
@@ -477,23 +477,23 @@ fn thu_nghiem_dung_closure(dieu_kien: bool) {
    <summary><b>Lời giải</b></summary>
 
    ```rust
-   pub fn dem_thoa_man<T, F>(list: &[T], dieu_kien: F) -> usize
+   pub fn count_matching<T, F>(list: &[T], condition: F) -> usize
    where
        F: Fn(&T) -> bool,
    {
-       list.iter().filter(|x| dieu_kien(x)).count()
+       list.iter().filter(|x| condition(x)).count()
    }
 
    fn main() {
-       let tu = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
+       let tu = ["Rust", "an toàn", "fast", "đồng thời", "bộ nhớ"];
 
        // Đếm theo SỐ CHỮ CÁI, không phải số byte
-       let long = dem_thoa_man(&tu, |s: &&str| s.chars().count() > 5);
+       let long = count_matching(&tu, |s: &&str| s.chars().count() > 5);
        assert_eq!(long, 3); // "an toàn", "đồng thời", "bộ nhớ"
 
        // Cùng một hàm, đổi closure là đổi hẳn câu hỏi:
        let so_nguyen = [3, 8, 12, 5, 20];
-       assert_eq!(dem_thoa_man(&so_nguyen, |&n| n > 6), 3);
+       assert_eq!(count_matching(&so_nguyen, |&n| n > 6), 3);
 
        println!("Từ dài hơn 5 ký tự: {}", long);
    }

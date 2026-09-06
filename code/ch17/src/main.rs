@@ -26,7 +26,7 @@ pub struct ValidProxy {
 // 1. HÀM BẬC CAO: ĐO LƯỜNG THỜI GIAN VÀ GHI NHẬT KÝ KIỂM TOÁN (WRAPPER PATTERN)
 // ============================================================================
 
-/// Hàm bậc cao nhận vào tên tác vụ và một hành động F bất kỳ
+/// Hàm bậc high nhận vào tên tác vụ và một hành động F bất kỳ
 /// Thực hiện đo thời gian thực thi của hành động đó và trả về kết quả nguyên bản
 ///
 /// LƯU Ý VỀ TÍNH THUẦN TÚY: bản thân hàm này KHÔNG thuần túy — nó đọc đồng hồ
@@ -143,7 +143,7 @@ fn main() {
         age_series: Some(String::from("12")),             // Dưới 16 tuổi
     };
 
-    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
+    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc high đo thời gian
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
     let ket_qua_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
         auth_proxy_num(&proxy_num_standard, &check_do_long_name, &check_banned_words)

@@ -88,9 +88,9 @@ Khi trình biên dịch `rustc` tính toán kích thước vật lý của `NutL
 
 **Giải pháp với `Box<T>`**:
 ```rust
-struct NutChuan<T> {
+struct NodeIdiomatic<T> {
     value: T,
-    next: Option<Box<NutChuan<T>>>, // Hợp lệ 100%!
+    next: Option<Box<NodeIdiomatic<T>>>, // Hợp lệ 100%!
 }
 ```
 Bản thân `Box<T>` là một con trỏ thông minh (smart pointer). Kích thước của `Box` trên Stack luôn luôn cố định là **8 bytes** (kích thước một địa chỉ ô nhớ trên hệ điều hành 64-bit), dù dữ liệu thực tế nó trỏ tới trên Heap lớn đến đâu. Chuỗi đệ quy vô hạn đã bị chặn đứng!
@@ -326,18 +326,18 @@ Khi thiết kế danh sách liên kết và sử dụng con trỏ thông minh (s
 ### Ví dụ phân tích lỗi `E0507` và phương pháp khắc phục với `.take()`:
 
 ```rust
-struct NutMinhHoa {
+struct NodeDemo {
     value: i32,
-    next: Option<Box<NutMinhHoa>>,
+    next: Option<Box<NodeDemo>>,
 }
 
 // Đoạn mã lỗi minh họa E0507: Cố đoạt quyền sở hữu từ tham chiếu mượn
-fn lay_dinh_loi(peak: &mut Option<Box<NutMinhHoa>>) {
+fn peek_broken(peak: &mut Option<Box<NodeDemo>>) {
     // let nut_cu = *dinh; // LỖI E0507: cannot move out of `*dinh`!
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng Option::take()
-fn lay_dinh_dung(peak: &mut Option<Box<NutMinhHoa>>) {
+fn peek_correct(peak: &mut Option<Box<NodeDemo>>) {
     // .take() sẽ lấy Some(box) ra và gán lại None vào vị trí cũ một cách an toàn
     let nut_cu = peak.take();
     if let Some(nut) = nut_cu {

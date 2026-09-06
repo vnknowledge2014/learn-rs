@@ -83,12 +83,12 @@ Khi bạn gọi `in_du_lieu(100)` (số nguyên) và `in_du_lieu("Chào")` (chu�
 
 Một Trait định nghĩa một tập hợp các phương thức mà các kiểu dữ liệu khác phải cài đặt:
 ```rust
-trait ThietBiBaoDong {
+trait AlarmDevice {
     // Phương thức bắt buộc phải tự cài đặt
     fn ma_thiet_bi(&self) -> &str;
 
     // Phương thức có sẵn mặc định: Các struct có thể dùng ngay hoặc ghi đè (override)
-    fn phat_canh_bao(&self) {
+    fn raise_alarm(&self) {
         println!("[CÒI BÁO ĐỘNG] Reng reng! Thiết bị {} phát tín hiệu nguy hiểm!", self.ma_thiet_bi());
     }
 }
@@ -148,9 +148,9 @@ Vì sao có luật này? Vì nếu không, hai thư viện khác nhau có thể 
 **Lối thoát chính thức: mẫu kiểu bọc (newtype).** Bọc kiểu của người khác vào một struct của bạn, thế là bạn "sở hữu" nó:
 
 ```rust
-struct DanhSachSo(Vec<i32>);            // giờ đây kiểu này là CỦA BẠN
+struct NumberList(Vec<i32>);            // giờ đây kiểu này là CỦA BẠN
 
-impl std::fmt::Display for DanhSachSo { // hợp lệ 100%
+impl std::fmt::Display for NumberList { // hợp lệ 100%
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}]", self.0.iter().map(|n| n.to_string())
                               .collect::<Vec<_>>().join(", "))
@@ -174,13 +174,13 @@ Rust chuẩn hóa việc chuyển đổi giữa các kiểu bằng bốn trait �
 ```rust
 use std::convert::TryFrom;
 
-struct Tuoi(u8);
+struct Age(u8);
 
-impl TryFrom<i64> for Tuoi {
+impl TryFrom<i64> for Age {
     type Error = String;
     fn try_from(n: i64) -> Result<Self, Self::Error> {
         if (0..=130).contains(&n) {
-            Ok(Tuoi(n as u8))
+            Ok(Age(n as u8))
         } else {
             Err(format!("Tuổi {} không hợp lệ", n))
         }
@@ -216,13 +216,13 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống kiểm
 mod thiet_bi_thong_minh {
     use std::fmt::Display;
 
-    // 1. Định nghĩa Trait giao ước cho mọi cảm biến trong tòa nhà
+    // 1. Định nghĩa Trait deliver ước cho mọi cảm biến trong tòa nhà
     pub trait Sensor: Display {
         // Phương thức bắt buộc mọi cảm biến phải tự hiện thực
         fn read_value(&self) -> f64;
         fn don_pos_do(&self) -> &str;
 
-        // Phương thức mặc định (Default implementation): Dùng chung cho tất cả cảm biến
+        // Phương thức mặc định (Default implementation): Dùng shared cho tất cả cảm biến
         fn check_computed_state(&self) {
             println!("-> Cảm biến [{}] đang hoạt động bình thường.", self);
         }

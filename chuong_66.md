@@ -144,7 +144,7 @@ Mẫu Singleton cần một cờ toàn cục "đã giao ngoại vi chưa". Viế
 ```rust
 // ❌ SAI — có cửa sổ đua
 if !DA_LAY { DA_LAY = true; giao_ngoai_vi() }
-//         ▲ một ngắt chen vào ĐÂY sẽ khiến ngoại vi bị giao HAI lần
+//         ▲ một ngắt chen vào ĐÂY sẽ khiến ngoại vi bị deliver HAI lần
 ```
 
 `AtomicBool::swap` làm cả hai việc trong **một** thao tác không thể bị cắt ngang: đặt giá trị mới *và* trả về giá trị cũ. Nếu giá trị cũ là `true`, ta biết chắc có người lấy trước — không có khe hở nào.
@@ -272,7 +272,7 @@ pub struct UnitOutPos {
 /// Cờ nguyên tử thay cho `static mut`: an toàn cả khi có ngắt xen giữa.
 /// `swap` là thao tác ĐỌC-VÀ-ĐẶT không thể bị cắt ngang — nếu dùng
 /// `if !DA_LAY { DA_LAY = true }` thì một ngắt chen vào giữa hai câu lệnh
-/// có thể khiến ngoại vi bị giao HAI lần.
+/// có thể khiến ngoại vi bị deliver HAI lần.
 static DA_LAY: AtomicBool = AtomicBool::new(false);
 
 impl UnitOutPos {
@@ -294,7 +294,7 @@ impl UnitOutPos {
 // ============================================================================
 
 /// Q16.16: 16 bit phần nguyên, 16 bit phần thập phân, đựng trong một `i32`.
-/// Nhân/chia bằng số nguyên → nhanh gấp hàng chục lần mô phỏng dấu phẩy động.
+/// Nhân/chia bằng số nguyên → fast gấp hàng chục lần mô phỏng dấu phẩy động.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Q16(pub i32);
 
@@ -319,7 +319,7 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 }
 
 // ============================================================================
-// 5. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT — `heapless` thu nhỏ
+// 5. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT — `heapless` attempt nhỏ
 // ============================================================================
 
 /// Không `Vec`, không `Box`, không heap. Bộ nhớ nằm gọn trong struct,
@@ -719,16 +719,16 @@ Cẩn thận với tràn số: `tong` phải đủ rộng để chứa `N` mẫu
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct TrungBinhTruot<const N: usize> {
+pub struct MovingAverage<const N: usize> {
     mau: [Q16; N],
     chi_so: usize,
     samples: usize,
     tong: i64,      // i64 để chắc chắn không tràn khi cộng N mẫu i32
 }
 
-impl<const N: usize> TrungBinhTruot<N> {
+impl<const N: usize> MovingAverage<N> {
     pub const fn new() -> Self {
-        TrungBinhTruot { mau: [Q16(0); N], chi_so: 0, samples: 0, tong: 0 }
+        MovingAverage { mau: [Q16(0); N], chi_so: 0, samples: 0, tong: 0 }
     }
     /// O(1): trừ mẫu cũ, cộng mẫu mới — không duyệt lại cả mảng.
     pub fn them(&mut self, x: Q16) -> Q16 {
@@ -759,29 +759,29 @@ Vì sao chân thả nổi nguy hiểm? Nó không nối với nguồn cũng khô
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct KeoLen;
-pub struct KeoXuong;
-pub struct ThaNoi;
+pub struct PullUp;
+pub struct PullDown;
+pub struct Floating;
 
-pub struct DauVaoVoi<Tro>(PhantomData<Tro>);
+pub struct InputWith<Tro>(PhantomData<Tro>);
 
-impl<Tro> Block<DauVaoVoi<Tro>> {
+impl<Tro> Block<InputWith<Tro>> {
     fn doc_tho(&self, data: &IntoRecordPrice) -> bool { data.test_bit(self.serial()) }
 }
 
 // Chỉ chân có điện trở kéo mới có `doc()` — trạng thái nghỉ xác định.
-impl Block<DauVaoVoi<KeoLen>> {
+impl Block<InputWith<PullUp>> {
     /// Nút chưa bấm = mức CAO (bị điện trở kéo lên). Bấm = nối đất = THẤP.
     pub fn doc(&self, data: &IntoRecordPrice) -> bool { self.doc_tho(data) }
 }
-impl Block<DauVaoVoi<KeoXuong>> {
+impl Block<InputWith<PullDown>> {
     pub fn doc(&self, data: &IntoRecordPrice) -> bool { self.doc_tho(data) }
 }
 
-impl Block<DauVaoVoi<ThaNoi>> {
+impl Block<InputWith<Floating>> {
     /// Tên dài và xấu là CỐ Ý: chân thả nổi không có mức nghỉ xác định.
     /// Chỉ dùng khi mạch ngoài đã tự có điện trở kéo.
-    pub fn doc_khong_dam_bao(&self, data: &IntoRecordPrice) -> bool {
+    pub fn read_unchecked(&self, data: &IntoRecordPrice) -> bool {
         self.doc_tho(data)
     }
 }
@@ -810,18 +810,18 @@ Cặp Release/Acquire bảo đảm: khi bên kia *thấy* con trỏ mới, nó c
 use core::cell::UnsafeCell;
 use core::sync::atomic::AtomicUsize;   // `Ordering` chương đã nhập ở trên
 
-pub struct HangSpsc<const N: usize> {
+pub struct SpscQueue<const N: usize> {
     o: UnsafeCell<[u8; N]>,
     head: AtomicUsize,   // CHỈ người tiêu thụ ghi — vị trí ĐỌC
     tail: AtomicUsize,  // CHỈ người sản xuất ghi — vị trí GHI
 }
 
 // An toàn: mỗi con trỏ chỉ có ĐÚNG MỘT bên ghi, nên không có cuộc đua ghi-ghi.
-unsafe impl<const N: usize> Sync for HangSpsc<N> {}
+unsafe impl<const N: usize> Sync for SpscQueue<N> {}
 
-impl<const N: usize> HangSpsc<N> {
+impl<const N: usize> SpscQueue<N> {
     pub const fn new() -> Self {
-        HangSpsc {
+        SpscQueue {
             o: UnsafeCell::new([0; N]),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),

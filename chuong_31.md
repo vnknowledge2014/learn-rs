@@ -133,18 +133,18 @@ impl SellRecordUser {
         let do_long_name = ten_bytes.len() as u16;
 
         // Ước tính trước kích thước để cấp phát bộ nhớ một lần duy nhất
-        let mut bo_dem_byte = Vec::with_capacity(4 + 1 + 2 + ten_bytes.len());
+        let mut byte_buffer = Vec::with_capacity(4 + 1 + 2 + ten_bytes.len());
 
         // 1. Ghi ID (4 bytes Little-Endian)
-        bo_dem_byte.extend_from_slice(&self.id.to_le_bytes());
+        byte_buffer.extend_from_slice(&self.id.to_le_bytes());
         // 2. Ghi Tuổi (1 byte)
-        bo_dem_byte.push(self.age);
+        byte_buffer.push(self.age);
         // 3. Ghi Độ dài chuỗi tên (2 bytes Little-Endian)
-        bo_dem_byte.extend_from_slice(&do_long_name.to_le_bytes());
+        byte_buffer.extend_from_slice(&do_long_name.to_le_bytes());
         // 4. Ghi Chuỗi byte nội dung tên UTF-8
-        bo_dem_byte.extend_from_slice(ten_bytes);
+        byte_buffer.extend_from_slice(ten_bytes);
 
-        bo_dem_byte
+        byte_buffer
     }
 
     /// GIẢI MÃ TỪ BYTE (Deserialization)
@@ -232,11 +232,11 @@ impl BinaryPageStore {
         self.file.read_exact(&mut ten_buffer)?;
 
         // Ghép toàn bộ byte lại và giải mã
-        let mut toan_bo_byte = Vec::with_capacity(7 + do_long_name);
-        toan_bo_byte.extend_from_slice(&header);
-        toan_bo_byte.extend_from_slice(&ten_buffer);
+        let mut all_bytes = Vec::with_capacity(7 + do_long_name);
+        all_bytes.extend_from_slice(&header);
+        all_bytes.extend_from_slice(&ten_buffer);
 
-        let (sell_record, _) = SellRecordUser::deserialize(&toan_bo_byte)?;
+        let (sell_record, _) = SellRecordUser::deserialize(&all_bytes)?;
         Ok(sell_record)
     }
 }
@@ -254,36 +254,36 @@ fn main() -> io::Result<()> {
     println!("[1] Đã mở tệp lưu trữ nhị phân: '{}'", path_file);
 
     // 2. Chuẩn bị dữ liệu và tuần tự hóa thành chuỗi byte
-    let nguoi_1 = SellRecordUser::new(101, 24, "Nguyễn Văn An");
-    let nguoi_2 = SellRecordUser::new(102, 30, "Trần Thị Bình");
-    let nguoi_3 = SellRecordUser::new(103, 19, "Lê Hoàng Cường");
+    let person_1 = SellRecordUser::new(101, 24, "Nguyễn Văn An");
+    let person_2 = SellRecordUser::new(102, 30, "Trần Thị Bình");
+    let person_3 = SellRecordUser::new(103, 19, "Lê Hoàng Cường");
 
     println!("\n[2] Ghi tuần tự các bản ghi xuống đĩa:");
-    let offset_1 = store.record_sell_record(&nguoi_1)?;
-    println!("    - Ghi bản ghi 101 ({}): Tọa độ byte = {}", nguoi_1.full_name, offset_1);
+    let offset_1 = store.record_sell_record(&person_1)?;
+    println!("    - Ghi bản ghi 101 ({}): Tọa độ byte = {}", person_1.full_name, offset_1);
 
-    let offset_2 = store.record_sell_record(&nguoi_2)?;
-    println!("    - Ghi bản ghi 102 ({}): Tọa độ byte = {}", nguoi_2.full_name, offset_2);
+    let offset_2 = store.record_sell_record(&person_2)?;
+    println!("    - Ghi bản ghi 102 ({}): Tọa độ byte = {}", person_2.full_name, offset_2);
 
-    let offset_3 = store.record_sell_record(&nguoi_3)?;
-    println!("    - Ghi bản ghi 103 ({}): Tọa độ byte = {}", nguoi_3.full_name, offset_3);
+    let offset_3 = store.record_sell_record(&person_3)?;
+    println!("    - Ghi bản ghi 103 ({}): Tọa độ byte = {}", person_3.full_name, offset_3);
 
     // 3. Nhảy cóc ngẫu nhiên (Seek) đọc bản ghi bất kỳ mà không cần đọc từ đầu tệp!
     println!("\n[3] Đọc ngẫu nhiên bản ghi theo tọa độ byte (Offset):");
     let doc_lai_2 = store.read_record_at(offset_2)?;
     println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
         offset_2, doc_lai_2.id, doc_lai_2.age, doc_lai_2.full_name);
-    assert_eq!(doc_lai_2, nguoi_2);
+    assert_eq!(doc_lai_2, person_2);
 
     let doc_lai_1 = store.read_record_at(offset_1)?;
     println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
         offset_1, doc_lai_1.id, doc_lai_1.age, doc_lai_1.full_name);
-    assert_eq!(doc_lai_1, nguoi_1);
+    assert_eq!(doc_lai_1, person_1);
 
     let doc_lai_3 = store.read_record_at(offset_3)?;
     println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
         offset_3, doc_lai_3.id, doc_lai_3.age, doc_lai_3.full_name);
-    assert_eq!(doc_lai_3, nguoi_3);
+    assert_eq!(doc_lai_3, person_3);
 
     // 4. Dọn dẹp tệp thử nghiệm
     drop(store); // Đóng tệp tin an toàn
@@ -317,14 +317,14 @@ use std::fs::File;
 // Thiếu use std::io::Write;
 
 // Đoạn mã lỗi minh họa: Quên import trait Write
-fn ghi_tep_loi(mut f: File) {
+fn write_file_broken(mut f: File) {
     // f.write_all(b"Hello Rust").unwrap(); // LỖI E0599: no method named `write_all`!
 }
 
 // Cách sửa chữa đúng chuẩn: Import trait Write và Seek
 use std::io::Write;
 
-fn ghi_tep_dung(mut f: File) -> std::io::Result<()> {
+fn write_file_correct(mut f: File) -> std::io::Result<()> {
     f.write_all(b"Hello Rust")?;
     Ok(())
 }

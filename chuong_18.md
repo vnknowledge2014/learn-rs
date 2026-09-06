@@ -6,9 +6,9 @@
 
 ```rust
 let tong: i64        = so.iter().sum();                             // gộp các số
-let cau: String      = tu.concat();                                 // gộp các chuỗi
+let sentence: String      = tu.concat();                                 // gộp các chuỗi
 let all: Vec<i32> = nhieu_mang.into_iter().flatten().collect();  // gộp các danh sách
-let deu_dat: bool    = diem.iter().all(|d| *d >= 5.0);              // gộp các giá trị đúng/sai
+let evenly_split: bool    = diem.iter().all(|d| *d >= 5.0);              // gộp các giá trị đúng/sai
 ```
 
 Bốn dòng này trông khác hẳn nhau. Nhưng thực ra chúng là **cùng một phép toán**, chỉ khác kiểu dữ liệu:
@@ -262,7 +262,7 @@ pub trait PosGroup: Semigroup + Sized {
 }
 
 /// Hàm gộp vạn năng: dùng được cho MỌI vị nhóm.
-/// Nó thay thế cho tinh_tong, noi_chuoi, gop_mang, tim_max... tất cả.
+/// Nó thay thế cho sum_all, noi_chuoi, gop_mang, tim_max... tất cả.
 pub fn coalesce_all_all<M: PosGroup>(list: impl IntoIterator<Item = M>) -> M {
     list
         .into_iter()
@@ -529,8 +529,8 @@ fn main() {
     let so = vec![Tong(3), Tong(8), Tong(-2), Tong(11)];
     println!("   Tổng các số       : {:?}", coalesce_all_all(so));
 
-    let tich = vec![Product(2), Product(3), Product(7)];
-    println!("   Tích các số       : {:?}", coalesce_all_all(tich));
+    let products = vec![Product(2), Product(3), Product(7)];
+    println!("   Tích các số       : {:?}", coalesce_all_all(products));
 
     let series = vec![
         String::from("Rust "),
@@ -545,12 +545,12 @@ fn main() {
     let set = vec![MoiDeu(true), MoiDeu(true), MoiDeu(false)];
     println!("   Tất cả đều đạt?   : {:?}", coalesce_all_all(set));
 
-    let cau_hinh: Vec<FirstTien<&str>> = vec![
+    let config: Vec<FirstTien<&str>> = vec![
         FirstTien(None),                // biến môi trường: không có
         FirstTien(Some("config.toml")), // tệp cấu hình: có!
         FirstTien(Some("mac_dinh")),    // giá trị mặc định (không dùng tới)
     ];
-    println!("   Nguồn cấu hình đầu: {:?}", coalesce_all_all(cau_hinh));
+    println!("   Nguồn cấu hình đầu: {:?}", coalesce_all_all(config));
 
     // ------------------------------------------------------------------
     // 2. DANH SÁCH RỖNG — GIÁ TRỊ CỦA "HỘP RỖNG"
@@ -570,19 +570,19 @@ fn main() {
     println!("\n3. VỊ NHÓM TÍCH — 4 CHỈ SỐ, 1 LƯỢT DUYỆT");
     let order_log = vec![
         SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 42 },
-        SellRecordAccessCap { path: "/api/thanh-toan".into(), id_state: 500, time_ms: 1350 },
+        SellRecordAccessCap { path: "/api/thanh-total".into(), id_state: 500, time_ms: 1350 },
         SellRecordAccessCap { path: "/api/san-pham".into(), id_state: 200, time_ms: 17 },
         SellRecordAccessCap { path: "/api/kho".into(), id_state: 404, time_ms: 8 },
         SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 63 },
     ];
 
-    let (tong, cham_nhat, nhanh_nhat, co_loi_may_chu): ThongKe =
+    let (tong, slowest, nhanh_nhat, co_loi_may_chu): ThongKe =
         coalesce_all_all(order_log.iter().map(into_thong_ke));
 
     println!("   Số bản ghi          : {}", order_log.len());
     println!("   Tổng thời gian      : {} ms", tong.0);
     println!("   Trung bình          : {} ms", tong.0 / order_log.len() as i64);
-    println!("   Chậm nhất           : {} ms", cham_nhat.0);
+    println!("   Chậm nhất           : {} ms", slowest.0);
     println!("   Nhanh nhất          : {} ms", nhanh_nhat.0);
     println!("   Có lỗi máy chủ 5xx? : {}", co_loi_may_chu.0);
 
@@ -760,17 +760,17 @@ mod tests {
 
 ```rust
 // ❌ Đoạn mã lỗi minh họa (đã đóng chú thích để tệp vẫn biên dịch được):
-// impl Semigroup for i64 { fn ghep(self, k: Self) -> Self { self + k } }
-// impl Semigroup for i64 { fn ghep(self, k: Self) -> Self { self * k } }
+// impl Semigroup for i64 { fn combine(self, k: Self) -> Self { self + k } }
+// impl Semigroup for i64 { fn combine(self, k: Self) -> Self { self * k } }
 // LỖI E0119: conflicting implementations of trait `Semigroup` for type `i64`
 //
-// Trình biên dịch hỏi rất hợp lý: "Khi ai đó viết a.ghep(b) trên hai số i64,
+// Trình biên dịch hỏi rất hợp lý: "Khi ai đó viết a.combine(b) trên hai số i64,
 // tôi phải cộng hay phải nhân?" — Không có câu trả lời, nên nó từ chối.
 
 // ✅ Cách sửa: mỗi ý nghĩa một kiểu bọc riêng
 pub struct TongSo(pub i64);
-pub struct TichSo(pub i64);
-// Giờ `TongSo(2).ghep(TongSo(3))` và `TichSo(2).ghep(TichSo(3))` là hai chuyện khác nhau.
+pub struct Product(pub i64);
+// Giờ `TongSo(2).combine(TongSo(3))` và `Product(2).combine(Product(3))` là hai chuyện khác nhau.
 ```
 
 ---
@@ -801,25 +801,25 @@ Trong chương ta đã có `FirstTien` (giữ giá trị đầu tiên khác `Non
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CuoiCung<T>(pub Option<T>);
+pub struct LastWins<T>(pub Option<T>);
 
-impl<T> Semigroup for CuoiCung<T> {
+impl<T> Semigroup for LastWins<T> {
     fn compose(self, other: Self) -> Self {
         if other.0.is_some() { other } else { self }
     }
 }
-impl<T> PosGroup for CuoiCung<T> {
-    fn don_pos() -> Self { CuoiCung(None) }
+impl<T> PosGroup for LastWins<T> {
+    fn don_pos() -> Self { LastWins(None) }
 }
 
 fn main() {
     let nguon = vec![
-        CuoiCung(Some("mac_dinh")),
-        CuoiCung(Some("config.toml")),
-        CuoiCung(None),                // biến môi trường không đặt
-        CuoiCung(Some("--cong=8080")), // tham số dòng lệnh thắng
+        LastWins(Some("mac_dinh")),
+        LastWins(Some("config.toml")),
+        LastWins(None),                // biến môi trường không đặt
+        LastWins(Some("--cong=8080")), // tham số dòng lệnh thắng
     ];
-    assert_eq!(coalesce_all_all(nguon), CuoiCung(Some("--cong=8080")));
+    assert_eq!(coalesce_all_all(nguon), LastWins(Some("--cong=8080")));
 }
 ```
 
@@ -842,9 +842,9 @@ Trong hàm `ghep`, duyệt bảng thứ hai và với mỗi cặp `(khoa, so)` h
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BangDem(pub HashMap<String, u32>);
+pub struct CountTable(pub HashMap<String, u32>);
 
-impl Semigroup for BangDem {
+impl Semigroup for CountTable {
     fn compose(mut self, other: Self) -> Self {
         for (key, so) in other.0 {
             *self.0.entry(key).or_insert(0) += so;
@@ -852,19 +852,19 @@ impl Semigroup for BangDem {
         self
     }
 }
-impl PosGroup for BangDem {
-    fn don_pos() -> Self { BangDem(HashMap::new()) }
+impl PosGroup for CountTable {
+    fn don_pos() -> Self { CountTable(HashMap::new()) }
 }
 
-fn dem_mot(path: &str) -> BangDem {
+fn count_one(path: &str) -> CountTable {
     let mut b = HashMap::new();
     b.insert(path.to_string(), 1);
-    BangDem(b)
+    CountTable(b)
 }
 
 fn main() {
     let path = ["/api/a", "/api/b", "/api/a", "/api/a"];
-    let ket_qua = coalesce_all_all(path.iter().map(|d| dem_mot(d)));
+    let ket_qua = coalesce_all_all(path.iter().map(|d| count_one(d)));
     assert_eq!(ket_qua.0.get("/api/a"), Some(&3));
     assert_eq!(ket_qua.0.get("/api/b"), Some(&1));
     println!("{:?}", ket_qua);
@@ -896,17 +896,17 @@ Thử ba số `0, 0, 12`. Tính `(a⊕b)⊕c` rồi `a⊕(b⊕c)` và so sánh. 
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TichLuyTB { pub tong: f64, pub quantity: u64 }
+pub struct RunningMean { pub tong: f64, pub quantity: u64 }
 
-impl Semigroup for TichLuyTB {
+impl Semigroup for RunningMean {
     fn compose(self, k: Self) -> Self {
-        TichLuyTB { tong: self.tong + k.tong, quantity: self.quantity + k.quantity }
+        RunningMean { tong: self.tong + k.tong, quantity: self.quantity + k.quantity }
     }
 }
-impl PosGroup for TichLuyTB {
-    fn don_pos() -> Self { TichLuyTB { tong: 0.0, quantity: 0 } }
+impl PosGroup for RunningMean {
+    fn don_pos() -> Self { RunningMean { tong: 0.0, quantity: 0 } }
 }
-impl TichLuyTB {
+impl RunningMean {
     pub fn mean(&self) -> Option<f64> {
         if self.quantity == 0 { None } else { Some(self.tong / self.quantity as f64) }
     }

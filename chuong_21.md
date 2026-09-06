@@ -239,11 +239,11 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n2. Soi sáng biến số và biểu thức bằng siêu lập trình:");
     let point_mean = 8.75;
-    let danh_sach_lop = vec!["An", "Bình", "Cường"];
+    let class_list = vec!["An", "Bình", "Cường"];
 
     // Gỡ lỗi biến đơn lẻ qua $ident
     kiem_toan_bien!(point_mean);
-    kiem_toan_bien!(danh_sach_lop);
+    kiem_toan_bien!(class_list);
 
     // Gỡ lỗi biểu thức phức tạp qua $expr
     kiem_toan_bien!("Tính toán điểm cộng", point_mean + 1.25);
@@ -292,7 +292,7 @@ macro_rules! in_gap_doi {
     };
 }
 
-fn thu_nghiem_loi_macro() {
+fn broken_macro() {
     in_gap_doi!(10); // Hợp lệ!
 
     // LỖI: no rules expected the token `,`

@@ -12,20 +12,20 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 pub struct Server {
     pub name: String,
     pub current_connect: u32,
-    pub weight: u32, // máy mạnh hơn có trọng số cao hơn
+    pub weight: u32, // máy mạnh hơn có trọng số high hơn
 }
 
 pub trait StrategyCanTable {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server>;
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server>;
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
 pub struct RoundRobin { pos_value: usize }
 impl RoundRobin { pub fn new() -> Self { RoundRobin { pos_value: 0 } } }
 impl StrategyCanTable for RoundRobin {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        if may_chu.is_empty() { return None; }
-        let m = &may_chu[self.pos_value % may_chu.len()];
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        if server.is_empty() { return None; }
+        let m = &server[self.pos_value % server.len()];
         self.pos_value += 1;
         Some(m)
     }
@@ -34,8 +34,8 @@ impl StrategyCanTable for RoundRobin {
 /// Ít kết nối nhất (Least-Connections): gửi tới máy đang rảnh nhất.
 pub struct FewConnect;
 impl StrategyCanTable for FewConnect {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        may_chu.iter().min_by_key(|m| m.current_connect)
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        server.iter().min_by_key(|m| m.current_connect)
     }
 }
 
@@ -43,18 +43,18 @@ impl StrategyCanTable for FewConnect {
 pub struct WeightedRoundRobin { count: u32 }
 impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
 impl StrategyCanTable for WeightedRoundRobin {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        if may_chu.is_empty() { return None; }
-        let tong: u32 = may_chu.iter().map(|m| m.weight).sum();
-        if tong == 0 { return may_chu.first(); }
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        if server.is_empty() { return None; }
+        let tong: u32 = server.iter().map(|m| m.weight).sum();
+        if tong == 0 { return server.first(); }
         let level = self.count % tong;
         self.count += 1;
         let mut accumulate = 0;
-        for m in may_chu {
+        for m in server {
             accumulate += m.weight;
             if level < accumulate { return Some(m); }
         }
-        may_chu.last()
+        server.last()
     }
 }
 
@@ -151,7 +151,7 @@ pub enum KetQuaNhan {
 }
 
 /// Hàng đợi có giới hạn: khi đầy, TỪ CHỐI thay vì phình vô hạn.
-/// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống nhanh
+/// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống fast
 /// biết mà giảm tốc, thay vì âm thầm chất đống đến khi hết RAM.
 pub struct QueueLimit<T> {
     queue: VecDeque<T>,

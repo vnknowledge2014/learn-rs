@@ -14,7 +14,7 @@
 // Phần mềm giỏi nhất đạt tick-to-trade khoảng 1–5 µs, nhưng có ĐUÔI DÀI: hệ
 // điều hành xen vào, trượt cache, một cú dừng bất chợt. FPGA đạt 20–100 ns và
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
-// tới, người ổn định thắng người nhanh-nhưng-thất-thường.
+// tới, người ổn định thắng người fast-nhưng-thất-thường.
 
 /// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
@@ -66,8 +66,8 @@ impl FieldExtractor {
         // Tổng kiểm tra cũng tính SONG SONG bằng cây XOR — độ sâu log(n)
         // thay vì n bước cộng dồn như phần mềm.
         let account = xor_tree(&goi[..17]) & 0x00FF_FFFF;
-        let mong_doi = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
-        if account != mong_doi {
+        let expected = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
+        if account != expected {
             self.so_goi_hong += 1;
             return Some(PacketField { is_valid: false, ..t });
         }
@@ -115,7 +115,7 @@ pub const SO_MUC_PHAN_CUNG: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HwPriceLevel { pub price: i64, pub quantity: u32 }
 
-/// Sổ lệnh "nông nhưng nhanh": chỉ giữ 8 mức tốt nhất mỗi bên. Đủ cho gần
+/// Sổ lệnh "nông nhưng fast": chỉ giữ 8 mức tốt nhất mỗi bên. Đủ cho gần
 /// như mọi chiến lược, và vừa trọn trong thanh ghi FPGA.
 #[derive(Debug, Clone, Copy)]
 pub struct OrderBookHardware {
@@ -131,7 +131,7 @@ impl Default for OrderBookHardware {
 }
 
 impl OrderBookHardware {
-    /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
+    /// Bộ mã hoá ưu tiên: tìm mức bid có giá CAO nhất. Trên phần cứng đây là
     /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
@@ -219,7 +219,7 @@ pub struct RiskCircuit {
 impl RiskCircuit {
     /// TẤT CẢ điều kiện tính song song. Đây là điểm khác biệt cốt lõi so với
     /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một chu kỳ.
-    /// Không có "đường nhanh" và "đường chậm" → độ trễ không dao động, và
+    /// Không có "đường fast" và "đường chậm" → độ trễ không dao động, và
     /// thời gian phản hồi không tiết lộ điều gì về nội dung lệnh.
     pub fn check(&self, la_mua: bool, price: i64, quantity: i64) -> HasReject {
         let first = if la_mua { 1i64 } else { -1 };
@@ -290,12 +290,12 @@ pub fn software_latency_ns() -> f64 { 3_400.0 }
 // ============================================================================
 // 6. VÌ SAO VẪN CẦN PHẦN MỀM — kiến trúc lai
 // ============================================================================
-// FPGA rất nhanh nhưng rất khó sửa: một thay đổi nhỏ tốn hàng chục phút tổng
+// FPGA rất fast nhưng rất khó sửa: một thay đổi nhỏ tốn hàng chục phút tổng
 // hợp mạch. Thực tế người ta chia đôi: đường CỰC NÓNG nằm trên FPGA, còn
 // logic hay đổi thì nằm trên CPU.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExecutionUnit { PhanCung, PhanMem }
+pub enum ExecutionUnit { Hardware, PhanMem }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeavyStage {
@@ -309,7 +309,7 @@ pub struct HeavyStage {
 /// hàng chục phút, và một chiến lược không thử nghiệm được là chiến lược chết.
 pub fn partial_sum(c: &HeavyStage) -> ExecutionUnit {
     if c.on_hot_path && c.rate_swap <= 4 {
-        ExecutionUnit::PhanCung
+        ExecutionUnit::Hardware
     } else {
         ExecutionUnit::PhanMem
     }
@@ -376,7 +376,7 @@ fn main() {
     println!("   Độ trễ     : {} chu kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
     println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
              ong.first_period_block(), ong.packets_per_second() / 1e6);
-    println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
+    println!("   So với phần mềm ({} ns) → fast gấp {:.0} lần",
              software_latency_ns(), software_latency_ns() / ong.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
@@ -400,7 +400,7 @@ fn main() {
                  c.name, c.rate_swap, c.on_hot_path, partial_sum(c));
     }
     println!("   → Chiến lược ở lại phần mềm dù rất nóng: một chiến lược không");
-    println!("     thử nghiệm được là chiến lược chết, dù nó nhanh tới đâu.");
+    println!("     thử nghiệm được là chiến lược chết, dù nó fast tới đâu.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   PHẦN CỨNG THẮNG Ở SỰ ỔN ĐỊNH, KHÔNG CHỈ Ở TỐC ĐỘ         ");
@@ -522,7 +522,7 @@ mod tests {
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
             s.update(false, g, kl);
         }
-        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên bid lấy giá CAO nhất");
         assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
         assert_eq!(s.spread(), Some(10));
     }
@@ -692,7 +692,7 @@ mod tests {
     fn hardware_beats_software_by_an_order_of_magnitude() {
         let o = HwPipeline::typical();
         let ratio = software_latency_ns() / o.latency_nanos();
-        assert!(ratio > 50.0, "phải nhanh hơn ít nhất 50 lần, thực tế {:.0}", ratio);
+        assert!(ratio > 50.0, "phải fast hơn ít nhất 50 lần, thực tế {:.0}", ratio);
         assert!(o.latency_nanos() < 100.0, "tick-to-trade phải dưới 100 ns");
     }
 
@@ -707,7 +707,7 @@ mod tests {
     #[test]
     fn hot_and_stable_work_belongs_in_hardware() {
         let c = HeavyStage { name: "tách gói".into(), rate_swap: 1, on_hot_path: true };
-        assert_eq!(partial_sum(&c), ExecutionUnit::PhanCung);
+        assert_eq!(partial_sum(&c), ExecutionUnit::Hardware);
     }
 
     #[test]

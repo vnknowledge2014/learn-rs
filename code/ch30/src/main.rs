@@ -158,8 +158,8 @@ fn main() {
     println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
     assert_eq!(distance_to_c, None);
 
-    // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
-    println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
+    // 3. Kiểm thử Thuật toán Sắp xếp fast Quicksort
+    println!("\n[3] Kiểm thử Thuật toán Sắp xếp fast Quicksort tại chỗ:");
     let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
     println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
     quicksort(&mut mang_so);

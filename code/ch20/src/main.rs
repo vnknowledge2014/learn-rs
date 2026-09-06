@@ -16,9 +16,9 @@ pub mod mien {
     pub enum DomainError {
         EmailSai(String),
         TenSanPhamSai(String),
-        SoLuongSai(String),
+        BadQuantity(String),
         DonRong,
-        DonQuaLon { so_dong: usize, toi_da: usize },
+        OrderTooLarge { so_dong: usize, toi_da: usize },
     }
 
     impl fmt::Display for DomainError {
@@ -26,9 +26,9 @@ pub mod mien {
             match self {
                 DomainError::EmailSai(s) => write!(f, "Email không hợp lệ: {}", s),
                 DomainError::TenSanPhamSai(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
-                DomainError::SoLuongSai(s) => write!(f, "Số lượng không hợp lệ: {}", s),
+                DomainError::BadQuantity(s) => write!(f, "Số lượng không hợp lệ: {}", s),
                 DomainError::DonRong => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
-                DomainError::DonQuaLon { so_dong, toi_da } => {
+                DomainError::OrderTooLarge { so_dong, toi_da } => {
                     write!(f, "Đơn có {} dòng, vượt giới hạn {} dòng", so_dong, toi_da)
                 }
             }
@@ -104,9 +104,9 @@ pub mod mien {
 
         pub fn analyze(n: u32) -> Result<Self, DomainError> {
             if n == 0 {
-                Err(DomainError::SoLuongSai("phải lớn hơn 0".to_string()))
+                Err(DomainError::BadQuantity("phải lớn hơn 0".to_string()))
             } else if n > Self::TOI_DA {
-                Err(DomainError::SoLuongSai(format!("{} vượt quá {}", n, Self::TOI_DA)))
+                Err(DomainError::BadQuantity(format!("{} vượt quá {}", n, Self::TOI_DA)))
             } else {
                 Ok(Quantity(n))
             }
@@ -153,8 +153,8 @@ pub mod mien {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum MathOp {
         TienMat,
-        ChuyenKhoan { id_trade: String },
-        The { bon_so_cuoi: String },
+        Transfer { id_trade: String },
+        The { last_four: String },
     }
 
     // ---------------------------------------------------------------------
@@ -238,7 +238,7 @@ impl DonQueue<Import> {
             return Err(DomainError::DonRong);
         }
         if self.dong.len() > SO_DONG_TOI_DA {
-            return Err(DomainError::DonQuaLon {
+            return Err(DomainError::OrderTooLarge {
                 so_dong: self.dong.len(),
                 toi_da: SO_DONG_TOI_DA,
             });
@@ -486,7 +486,7 @@ fn main() {
     println!("   │ TỔNG THANH TOÁN : {}", invoice.total_payable);
     println!("   └────────────────────────────────────────────────");
 
-    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::ChuyenKhoan {
+    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::Transfer {
         id_trade: "VCB-99881234".to_string(),
     });
     println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());

@@ -111,11 +111,11 @@ Cụm từ *Kiểu dữ liệu đại số* nghe rất kêu, nhưng ý nghĩa c�
 ```rust
 // ❌ Kiểu TÍCH: có 2 tổ hợp VÔ NGHĨA
 struct DonQueue { is_paid: bool, id_trade: Option<String> }
-//   (true, None)      -> đã trả tiền mà không có mã giao dịch?!
+//   (true, None)      -> đã trả tiền mà không có mã deliver dịch?!
 //   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
 
 // ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
-enum TrangThaiThanhToan { ChuaTra, DaTra { id_trade: String } }
+enum PaymentState { ChuaTra, DaTra { id_trade: String } }
 ```
 
 Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** để loại bỏ cả một lớp lỗi khỏi chương trình.
@@ -130,7 +130,7 @@ let so = Some(7);
 let mang = [1, 2, 3, 4, 5];
 
 // 1) MẪU KHOẢNG (range pattern)
-let xep_loai = match diem {
+let grade = match diem {
     90..=100 => "Xuất sắc",
     80..=89  => "Giỏi",
     50..=79  => "Đạt",
@@ -138,7 +138,7 @@ let xep_loai = match diem {
 };
 
 // 2) MẪU HOẶC `|` — gộp nhiều nhánh
-let la_cuoi_tuan = match "Thứ 7" {
+let is_weekend = match "Thứ 7" {
     "Thứ 7" | "Chủ nhật" => true,
     _ => false,
 };
@@ -165,7 +165,7 @@ let tom_tat = match &mang[..] {
     [first, .., last] => format!("từ {} đến {}", first, last),
 };
 
-// 6) `matches!` — kiểm tra nhanh, trả về bool
+// 6) `matches!` — kiểm tra fast, trả về bool
 let co_gia_tri = matches!(so, Some(_));
 
 // 7) `let ... else` — bóc tách hoặc THOÁT SỚM, giữ mã phẳng phiu
@@ -184,14 +184,14 @@ fn handle(input: Option<i32>) -> i32 {
 Khi bạn so khớp một biểu thức với `match`, Rust bắt buộc bạn phải liệt kê **đầy đủ tất cả các trường hợp có thể xảy ra**.
 Nếu bạn quên một nhánh, trình biên dịch sẽ từ chối dịch mã với lỗi `E0004`:
 ```rust
-enum GioiTinh { Nam, Nu, Khac }
+enum Gender { Nam, Nu, Khac }
 
-let gioi_tinh = GioiTinh::Nam;
+let gender = Gender::Nam;
 
 // ĐOẠN MÃ NÀY BỊ LỖI E0004 VÌ QUÊN CHƯA XỬ LÝ NHÁNH 'Khac':
-match gioi_tinh {
-    GioiTinh::Nam => println!("Nam giới"),
-    GioiTinh::Nu => println!("Nữ giới"),
+match gender {
+    Gender::Nam => println!("Nam giới"),
+    Gender::Nu => println!("Nữ giới"),
 }
 ```
 Khi biên dịch đoạn mã trên, trình biên dịch Rust sẽ từ chối dịch mã với thông báo:
@@ -217,11 +217,11 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử l
 // 1. Enum biểu diễn các trạng thái đa dạng của một đơn hàng trực tuyến
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
 enum StateDonQueue {
-    ChoThanhToan,
+    AwaitingPayment,
     DangDongGoi { store_export_queue: String },
-    DangVanChuyen { ma_van_don: String, ten_tai_xe: String },
-    GiaoThanhCong { recipient: String, time_time_recv: String },
-    DaHuy(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
+    InTransit { ma_van_don: String, ten_tai_xe: String },
+    Delivered { recipient: String, time_time_recv: String },
+    Cancelled(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
 }
 
 // 2. Hàm chia kẹo an toàn: Trả về Option<u32> để ngăn chặn lỗi chia cho 0
@@ -239,24 +239,24 @@ fn safe_divide(so_keo: u32, so_tre_em: u32) -> Option<u32> {
 fn update_process(don_hang: &StateDonQueue) {
     println!("------------------------------------------------------------");
     match don_hang {
-        StateDonQueue::ChoThanhToan => {
+        StateDonQueue::AwaitingPayment => {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
         StateDonQueue::DangDongGoi { store_export_queue } => {
             println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", store_export_queue);
         }
-        // Bóc tách cả 2 trường dữ liệu từ nhánh DangVanChuyen
-        StateDonQueue::DangVanChuyen { ma_van_don, ten_tai_xe } => {
-            println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
+        // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
+        StateDonQueue::InTransit { ma_van_don, ten_tai_xe } => {
+            println!("[VẬN CHUYỂN] Đơn đang trên đường deliver!");
             println!("  + Mã vận đơn : {}", ma_van_don);
             println!("  + Shipper    : {}", ten_tai_xe);
         }
-        StateDonQueue::GiaoThanhCong { recipient, time_time_recv } => {
-            println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
+        StateDonQueue::Delivered { recipient, time_time_recv } => {
+            println!("[THÀNH CÔNG] Đơn hàng đã deliver thành công!");
             println!("  + Người ký nhận: {}", recipient);
             println!("  + Thời điểm    : {}", time_time_recv);
         }
-        StateDonQueue::DaHuy(ly_do) => {
+        StateDonQueue::Cancelled(ly_do) => {
             println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", ly_do);
         }
     }
@@ -268,19 +268,19 @@ fn main() {
     println!("============================================================");
 
     // --- PHẦN 1: SO KHỚP MẪU VỚI ENUM CHỨA DỮ LIỆU ---
-    let don_cho = StateDonQueue::ChoThanhToan;
+    let don_cho = StateDonQueue::AwaitingPayment;
     let don_dong_goi = StateDonQueue::DangDongGoi {
         store_export_queue: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
     };
-    let don_van_transfer = StateDonQueue::DangVanChuyen {
+    let don_van_transfer = StateDonQueue::InTransit {
         ma_van_don: String::from("SPX-987654321"),
         ten_tai_xe: String::from("Bác Ba Giao Hàng"),
     };
-    let order_delivered = StateDonQueue::GiaoThanhCong {
+    let order_delivered = StateDonQueue::Delivered {
         recipient: String::from("Trần Thị Bình"),
         time_time_recv: String::from("14:30 ngày 05/09/2026"),
     };
-    let don_cancel = StateDonQueue::DaHuy(String::from("Khách hàng đổi ý muốn chọn màu khác"));
+    let don_cancel = StateDonQueue::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
 
     update_process(&don_cho);
     update_process(&don_dong_goi);
@@ -314,7 +314,7 @@ fn main() {
         13..=17 if co_the_can_cuoc => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
         13..=17 => println!("Lứa tuổi vị thành niên (chưa làm thẻ CCCD)"),
         18..=60 => println!("Khách hàng trong độ tuổi lao động trưởng thành"),
-        _ => println!("Khách hàng cao tuổi ưu tiên"),
+        _ => println!("Khách hàng high tuổi ưu tiên"),
     }
 
     // --- PHẦN 4: CÚ PHÁP RÚT GỌN 'if let' ---

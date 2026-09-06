@@ -358,13 +358,13 @@ Dưới đây là các lỗi biên dịch điển hình khi thiết kế Slotted
 
 ```rust
 // Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu trang vào Buffer Pool
-fn thu_nghiem_loi_trang(mut pool: BufferPool, state: SlottedPage) {
+fn broken_page(mut pool: BufferPool, state: SlottedPage) {
     // pool.put_page(trang, false); // Quyền sở hữu trang bị chuyển vào HashMap!
     // println!("Mã trang: {}", trang.page_id); // LỖI E0382: trang đã bị moved!
 }
 
 // Cách sửa chữa đúng chuẩn: Lấy mã ID ra trước hoặc truy cập qua Pool
-fn thu_nghiem_dung_trang(mut pool: BufferPool, state: SlottedPage) {
+fn correct_page(mut pool: BufferPool, state: SlottedPage) {
     let id = state.page_id;
     pool.put_page(state, false);
     println!("Mã trang vừa nạp: {}", id);

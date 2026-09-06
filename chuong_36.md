@@ -487,7 +487,7 @@ struct DemoStore {
 
 // Đoạn mã lỗi minh họa E0502: Mượn lồng nhau gây xung đột
 impl DemoStore {
-    fn doc_loi(&mut self, key: &str) {
+    fn read_broken(&mut self, key: &str) {
         // let offset = self.index.get(key); // Mượn bất biến self.index
         // self.file.set_len(100).unwrap();  // LỖI E0502: Mượn khả biến self.file!
         // println!("Offset: {:?}", offset);

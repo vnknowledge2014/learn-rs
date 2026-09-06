@@ -158,10 +158,10 @@ impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
             }
             BPlusNode::Internal { keys, children } => {
                 for (i, child) in children.iter().enumerate() {
-                    // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có giao thoa
-                    let gioi_han_duoi_thoa = if i == 0 { true } else { keys[i - 1] <= *max_key };
-                    let gioi_han_tren_thoa = if i == keys.len() { true } else { keys[i] >= *min_key };
-                    if gioi_han_duoi_thoa && gioi_han_tren_thoa {
+                    // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có deliver thoa
+                    let lower_bound_ok = if i == 0 { true } else { keys[i - 1] <= *max_key };
+                    let upper_bound_ok = if i == keys.len() { true } else { keys[i] >= *min_key };
+                    if lower_bound_ok && upper_bound_ok {
                         child.range_scan(min_key, max_key, ket_qua);
                     }
                 }
@@ -309,10 +309,10 @@ enum NutDemo {
 }
 
 // Đoạn mã lỗi minh họa E0507: Cố đoạt quyền sở hữu con trỏ Box từ tham chiếu mượn
-fn lay_con_loi(nut: &NutDemo) {
+fn child_broken(nut: &NutDemo) {
     match nut {
         NutDemo::Internal(children) => {
-            // let con_dau = children[0]; // LỖI E0507: cannot move out of indexed content!
+            // let first_child = children[0]; // LỖI E0507: cannot move out of indexed content!
         }
         _ => {}
     }
@@ -322,7 +322,7 @@ fn lay_con_loi(nut: &NutDemo) {
 fn lay_con_dung(nut: &NutDemo) {
     match nut {
         NutDemo::Internal(children) => {
-            let con_dau: &NutDemo = &children[0]; // Chỉ mượn, không di chuyển quyền sở hữu!
+            let first_child: &NutDemo = &children[0]; // Chỉ mượn, không di chuyển quyền sở hữu!
             println!("Đã mượn nút con thành công.");
         }
         _ => {}

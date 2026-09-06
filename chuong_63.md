@@ -164,11 +164,11 @@ pub enum Filter { TatCa, ChuaXong, DaXong }
 /// Không có hành động nào ngoài danh sách này — trạng thái thay đổi có kiểm soát.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThongMessage {
-    ThemViec(String),
+    AddTask(String),
     BatTat(u64),
-    Xoa(u64),
-    DoiBoLoc(Filter),
-    XoaDaXong,
+    Remove(u64),
+    SetFilter(Filter),
+    ClearCompleted,
 }
 
 impl OpenImage {
@@ -181,7 +181,7 @@ impl OpenImage {
     /// suy luận, dễ kiểm thử, dễ ghi lại (undo/redo, ghi nhật ký, phát lại).
     pub fn update(mut self, td: ThongMessage) -> Self {
         match td {
-            ThongMessage::ThemViec(title) => {
+            ThongMessage::AddTask(title) => {
                 let t = title.trim();
                 if !t.is_empty() {
                     self.job.push(WorkPort {
@@ -195,13 +195,13 @@ impl OpenImage {
                     cv.done = !cv.done;
                 }
             }
-            ThongMessage::Xoa(id) => {
+            ThongMessage::Remove(id) => {
                 self.job.retain(|c| c.id != id);
             }
-            ThongMessage::DoiBoLoc(bl) => {
+            ThongMessage::SetFilter(bl) => {
                 self.filter = bl;
             }
-            ThongMessage::XoaDaXong => {
+            ThongMessage::ClearCompleted => {
                 self.job.retain(|c| !c.done);
             }
         }
@@ -225,13 +225,13 @@ impl OpenImage {
 // ============================================================================
 // 2. CẦU IPC — frontend gọi backend (như Tauri command)
 // ============================================================================
-// Trong Tauri, giao diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", param)`.
+// Trong Tauri, deliver diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", param)`.
 // Ta mô phỏng cầu đó: một bộ điều phối nhận tên lệnh + tham số, trả kết quả JSON.
 
 #[derive(Debug, PartialEq)]
 pub enum ResultOrder {
     Ok(String),
-    Loi(String),
+    Failed(String),
 }
 
 pub trait BackendCommand {
@@ -255,11 +255,11 @@ impl BackendCommand for OrderSaveFile {
     fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
         let name = match param.get("ten") {
             Some(t) if !t.is_empty() => t,
-            _ => return ResultOrder::Loi("thiếu tên tệp".into()),
+            _ => return ResultOrder::Failed("thiếu tên tệp".into()),
         };
         // Chặn path traversal (Chương 57) — webview không được ghi ra ngoài thư mục app!
         if name.contains("..") || name.starts_with('/') {
-            return ResultOrder::Loi("đường dẫn không an toàn".into());
+            return ResultOrder::Failed("đường dẫn không an toàn".into());
         }
         ResultOrder::Ok(format!("đã lưu {}", name))
     }
@@ -279,7 +279,7 @@ impl IpcBridge {
     pub fn invoke(&self, name: &str, param: HashMap<String, String>) -> ResultOrder {
         match self.order.iter().find(|l| l.name() == name) {
             Some(l) => l.run(&param),
-            None => ResultOrder::Loi(format!("lệnh {:?} không được đăng ký", name)),
+            None => ResultOrder::Failed(format!("lệnh {:?} không được đăng ký", name)),
         }
     }
 }
@@ -291,27 +291,27 @@ fn main() {
 
     println!("\n1. KIẾN TRÚC TRẠNG THÁI (Elm/Redux) — mọi thay đổi qua `update`");
     let m = OpenImage::new()
-        .update(ThongMessage::ThemViec("Học Tauri".into()))
-        .update(ThongMessage::ThemViec("Viết ứng dụng".into()))
-        .update(ThongMessage::ThemViec("Đóng gói đa nền tảng".into()))
+        .update(ThongMessage::AddTask("Học Tauri".into()))
+        .update(ThongMessage::AddTask("Viết ứng dụng".into()))
+        .update(ThongMessage::AddTask("Đóng gói đa nền tảng".into()))
         .update(ThongMessage::BatTat(1)); // đánh dấu việc #1 xong
 
     println!("   Tổng công việc: {}, chưa xong: {}", m.job.len(), m.pending_count());
-    let m = m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong));
+    let m = m.update(ThongMessage::SetFilter(Filter::ChuaXong));
     println!("   Lọc 'chưa xong': {:?}", m.display().iter().map(|c| &c.title).collect::<Vec<_>>());
 
     println!("\n2. CẦU IPC — frontend (Svelte/JS) gọi backend (Rust)");
-    let cau = IpcBridge::new()
+    let sentence = IpcBridge::new()
         .register(Box::new(SystemInfoRequest))
         .register(Box::new(OrderSaveFile));
 
-    println!("   invoke('thong_tin_he_thong'): {:?}", cau.invoke("thong_tin_he_thong", HashMap::new()));
+    println!("   invoke('thong_tin_he_thong'): {:?}", sentence.invoke("thong_tin_he_thong", HashMap::new()));
     let mut ts = HashMap::new();
     ts.insert("ten".to_string(), "ghi_chu.txt".to_string());
-    println!("   invoke('luu_tep', {{name: 'ghi_chu.txt'}}): {:?}", cau.invoke("luu_tep", ts.clone()));
+    println!("   invoke('luu_tep', {{name: 'ghi_chu.txt'}}): {:?}", sentence.invoke("luu_tep", ts.clone()));
     ts.insert("ten".to_string(), "../../etc/passwd".to_string());
-    println!("   invoke('luu_tep', {{name: '../../etc/passwd'}}): {:?}", cau.invoke("luu_tep", ts));
-    println!("   invoke('lenh_la'): {:?}", cau.invoke("lenh_la", HashMap::new()));
+    println!("   invoke('luu_tep', {{name: '../../etc/passwd'}}): {:?}", sentence.invoke("luu_tep", ts));
+    println!("   invoke('lenh_la'): {:?}", sentence.invoke("lenh_la", HashMap::new()));
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   MỘT LÕI RUST · NHIỀU NỀN TẢNG · GIAO DIỆN WEB HAY NATIVE      ");
@@ -325,8 +325,8 @@ mod tests {
     #[test]
     fn add_task_increments_id() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()));
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()));
         assert_eq!(m.job.len(), 2);
         assert_eq!(m.job[0].id, 1);
         assert_eq!(m.job[1].id, 2);
@@ -335,14 +335,14 @@ mod tests {
     #[test]
     fn add_work_empty_is_unit_qua() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("   ".into()))
-            .update(ThongMessage::ThemViec("".into()));
+            .update(ThongMessage::AddTask("   ".into()))
+            .update(ThongMessage::AddTask("".into()));
         assert_eq!(m.job.len(), 0);
     }
 
     #[test]
     fn toggle_state() {
-        let m = OpenImage::new().update(ThongMessage::ThemViec("X".into()));
+        let m = OpenImage::new().update(ThongMessage::AddTask("X".into()));
         assert!(!m.job[0].done);
         let m = m.update(ThongMessage::BatTat(1));
         assert!(m.job[0].done);
@@ -353,16 +353,16 @@ mod tests {
     #[test]
     fn remove_and_clear_completed() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()))
-            .update(ThongMessage::ThemViec("C".into()))
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()))
+            .update(ThongMessage::AddTask("C".into()))
             .update(ThongMessage::BatTat(1))
             .update(ThongMessage::BatTat(3));
         // Xóa 1 việc cụ thể
-        let m2 = m.clone().update(ThongMessage::Xoa(2));
+        let m2 = m.clone().update(ThongMessage::Remove(2));
         assert_eq!(m2.job.len(), 2);
         // Xóa mọi việc đã xong (1 và 3)
-        let m3 = m.update(ThongMessage::XoaDaXong);
+        let m3 = m.update(ThongMessage::ClearCompleted);
         assert_eq!(m3.job.len(), 1);
         assert_eq!(m3.job[0].title, "B");
     }
@@ -370,12 +370,12 @@ mod tests {
     #[test]
     fn filter_shows_correct_items() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()))
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()))
             .update(ThongMessage::BatTat(1)); // A xong
-        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::TatCa)).display().len(), 2);
-        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::DaXong)).display().len(), 1);
-        assert_eq!(m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong)).display().len(), 1);
+        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::TatCa)).display().len(), 2);
+        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::DaXong)).display().len(), 1);
+        assert_eq!(m.update(ThongMessage::SetFilter(Filter::ChuaXong)).display().len(), 1);
     }
 
     #[test]
@@ -383,8 +383,8 @@ mod tests {
         // Vì update thuần túy, ta có thể PHÁT LẠI một chuỗi thông điệp để dựng
         // lại đúng trạng thái — nền của undo/redo và event sourcing (Chương 54).
         let history = vec![
-            ThongMessage::ThemViec("A".into()),
-            ThongMessage::ThemViec("B".into()),
+            ThongMessage::AddTask("A".into()),
+            ThongMessage::AddTask("B".into()),
             ThongMessage::BatTat(1),
         ];
         let dung = |list: &[ThongMessage]| list.iter().cloned().fold(OpenImage::new(), |m, td| m.update(td));
@@ -394,24 +394,24 @@ mod tests {
 
     #[test]
     fn ipc_dispatches_commands() {
-        let cau = IpcBridge::new()
+        let sentence = IpcBridge::new()
             .register(Box::new(SystemInfoRequest))
             .register(Box::new(OrderSaveFile));
-        assert!(matches!(cau.invoke("thong_tin_he_thong", HashMap::new()), ResultOrder::Ok(_)));
-        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Loi(_)));
+        assert!(matches!(sentence.invoke("thong_tin_he_thong", HashMap::new()), ResultOrder::Ok(_)));
+        assert!(matches!(sentence.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Failed(_)));
     }
 
     #[test]
     fn ipc_blocks_path_traversal() {
-        let cau = IpcBridge::new().register(Box::new(OrderSaveFile));
+        let sentence = IpcBridge::new().register(Box::new(OrderSaveFile));
         let mut ok = HashMap::new();
         ok.insert("ten".into(), "note.txt".to_string());
-        assert!(matches!(cau.invoke("luu_tep", ok), ResultOrder::Ok(_)));
+        assert!(matches!(sentence.invoke("luu_tep", ok), ResultOrder::Ok(_)));
 
         let mut xau = HashMap::new();
         xau.insert("ten".into(), "../../../etc/passwd".to_string());
         // Cầu IPC chặn — webview KHÔNG được ghi ra ngoài thư mục app (bảo mật)
-        assert!(matches!(cau.invoke("luu_tep", xau), ResultOrder::Loi(_)));
+        assert!(matches!(sentence.invoke("luu_tep", xau), ResultOrder::Failed(_)));
     }
 }
 ```
@@ -426,14 +426,14 @@ Cùng lõi trên, đóng gói bằng Tauri với giao diện Svelte:
 // src-tauri/src/lib.rs  (lõi Rust)
 use std::sync::Mutex;
 
-// Lệnh backend: giao diện gọi qua invoke("them_viec", {...})
+// Lệnh backend: deliver diện gọi qua invoke("add_task", {...})
 #[tauri::command]
-fn them_viec(
+fn add_task(
     title: String,
     state: tauri::State<Mutex<OpenImage>>,  // trạng thái chia sẻ (Chương 61)
 ) -> Result<usize, String> {
     let mut m = state.lock().unwrap();
-    *m = m.clone().update(ThongMessage::ThemViec(title));
+    *m = m.clone().update(ThongMessage::AddTask(title));
     Ok(m.pending_count())
 }
 
@@ -441,7 +441,7 @@ fn them_viec(
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(OpenImage::new()))
-        .invoke_handler(tauri::generate_handler![them_viec])
+        .invoke_handler(tauri::generate_handler![add_task])
         .run(tauri::generate_context!())
         .expect("lỗi khởi chạy ứng dụng Tauri");
 }
@@ -471,12 +471,12 @@ Chạy `cargo tauri dev` để phát triển, `cargo tauri build` để đóng g
 ## Mã gpui (giao diện native, như Zed)
 
 ```rust
-// gpui: giao diện vẽ bằng GPU, không dùng webview
+// gpui: deliver diện vẽ bằng GPU, không dùng webview
 use gpui::*;
 
-struct BoDem { so: i64 }
+struct Counter { so: i64 }
 
-impl Render for BoDem {
+impl Render for Counter {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         div()
             .flex().flex_col().gap_2()
@@ -538,13 +538,13 @@ pub struct LichSu {
 impl LichSu {
     pub fn new() -> Self { LichSu { state: vec![OpenImage::new()], pos_value: 0 } }
     pub fn current(&self) -> &OpenImage { &self.state[self.pos_value] }
-    pub fn thuc_hien(&mut self, td: ThongMessage) {
+    pub fn apply(&mut self, td: ThongMessage) {
         let new = self.current().clone().update(td);
         self.state.truncate(self.pos_value + 1); // bỏ nhánh redo cũ
         self.state.push(new);
         self.pos_value += 1;
     }
-    pub fn hoan_tac(&mut self) { if self.pos_value > 0 { self.pos_value -= 1; } }
+    pub fn undo(&mut self) { if self.pos_value > 0 { self.pos_value -= 1; } }
     pub fn lam_lai(&mut self) { if self.pos_value + 1 < self.state.len() { self.pos_value += 1; } }
 }
 
@@ -554,10 +554,10 @@ mod bt1 {
     #[test]
     fn undo_redo_hoat_dong() {
         let mut ls = LichSu::new();
-        ls.thuc_hien(ThongMessage::ThemViec("A".into()));
-        ls.thuc_hien(ThongMessage::ThemViec("B".into()));
+        ls.apply(ThongMessage::AddTask("A".into()));
+        ls.apply(ThongMessage::AddTask("B".into()));
         assert_eq!(ls.current().job.len(), 2);
-        ls.hoan_tac();
+        ls.undo();
         assert_eq!(ls.current().job.len(), 1); // quay về sau khi thêm A
         ls.lam_lai();
         assert_eq!(ls.current().job.len(), 2);
@@ -573,14 +573,14 @@ Thêm lệnh `doc_tep` chỉ cho đọc tệp trong thư mục app (chặn `..` 
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct LenhDocTep;
-impl BackendCommand for LenhDocTep {
+pub struct ReadFileCmd;
+impl BackendCommand for ReadFileCmd {
     fn name(&self) -> &str { "doc_tep" }
     fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
         let name = match param.get("ten") { Some(t) if !t.is_empty() => t,
-            _ => return ResultOrder::Loi("thiếu tên".into()) };
+            _ => return ResultOrder::Failed("thiếu tên".into()) };
         if name.contains("..") || name.starts_with('/') || name.contains('\0') {
-            return ResultOrder::Loi("đường dẫn không an toàn".into());
+            return ResultOrder::Failed("đường dẫn không an toàn".into());
         }
         ResultOrder::Ok(format!("nội dung của {}", name))
     }
@@ -589,12 +589,12 @@ impl BackendCommand for LenhDocTep {
 mod bt2 {
     use super::*;
     #[test]
-    fn doc_tep_chan_duong_dan_xau() {
-        let cau = IpcBridge::new().register(Box::new(LenhDocTep));
+    fn read_file_blocks_bad_path() {
+        let sentence = IpcBridge::new().register(Box::new(ReadFileCmd));
         let mut ok = HashMap::new(); ok.insert("ten".into(), "config.json".to_string());
-        assert!(matches!(cau.invoke("doc_tep", ok), ResultOrder::Ok(_)));
+        assert!(matches!(sentence.invoke("doc_tep", ok), ResultOrder::Ok(_)));
         let mut xau = HashMap::new(); xau.insert("ten".into(), "/etc/shadow".to_string());
-        assert!(matches!(cau.invoke("doc_tep", xau), ResultOrder::Loi(_)));
+        assert!(matches!(sentence.invoke("doc_tep", xau), ResultOrder::Failed(_)));
     }
 }
 ```

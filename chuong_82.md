@@ -187,13 +187,13 @@ impl Candle {
 pub enum Pattern { Doji, BuaTang, SaoBangGiam, NhanChimTang, NhanChimGiam, KhongCo }
 
 /// Doji: giá mở gần bằng giá đóng — hai phe giằng co, không ai thắng.
-pub fn la_doji(n: &Candle, nguong_phan_van: i64) -> bool {
+pub fn la_doji(n: &Candle, threshold_bps: i64) -> bool {
     if n.bien_do() == 0 { return true; }
-    n.than() * 10_000 <= n.bien_do() * nguong_phan_van
+    n.than() * 10_000 <= n.bien_do() * threshold_bps
 }
 
 /// Búa: thân nhỏ ở TRÊN, bóng dưới dài — người bán đẩy giá xuống nhưng bị
-/// người mua kéo lại hết. Chỉ có ý nghĩa khi xuất hiện SAU một đợt giảm.
+/// người bid kéo lại hết. Chỉ có ý nghĩa khi xuất hiện SAU một đợt giảm.
 pub fn la_bua(n: &Candle) -> bool {
     n.bien_do() > 0
         && n.than() > 0
@@ -254,7 +254,7 @@ pub fn sma_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
 }
 
 /// Trung bình động luỹ thừa. Hệ số làm mượt α = 2/(n+1).
-/// EMA phản ứng nhanh hơn SMA vì nó cho dữ liệu mới trọng số cao hơn — nhưng
+/// EMA phản ứng fast hơn SMA vì nó cho dữ liệu mới trọng số high hơn — nhưng
 /// cũng vì thế mà nhiễu hơn.
 pub fn ema_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
     let mut ra = vec![None; price.len()];
@@ -284,9 +284,9 @@ pub fn wma(price: &[f64], period: usize) -> Option<f64> {
 // 4. RSI — CHỈ SỐ SỨC MẠNH TƯƠNG ĐỐI
 // ============================================================================
 // RSI đo tương quan giữa mức tăng và mức giảm gần đây, quy về thang 0–100.
-// Trên 70 thường gọi là "quá mua", dưới 30 là "quá bán" — nhưng trong xu
+// Trên 70 thường gọi là "quá bid", dưới 30 là "quá bán" — nhưng trong xu
 // hướng mạnh, RSI có thể nằm trên 70 hàng tuần liền. Đó là lý do dùng RSI
-// một mình để đoán đảo chiều là cách mất tiền nhanh nhất.
+// một mình để đoán đảo chiều là cách mất tiền fast nhất.
 
 pub fn rsi_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
     let mut ra = vec![None; price.len()];
@@ -326,30 +326,30 @@ fn from_up_down(tang: f64, down: f64) -> f64 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MacdValue { pub macd: f64, pub signal: f64, pub histogram: f64 }
 
-/// MACD = EMA nhanh − EMA chậm. Đường tín hiệu = EMA của chính MACD.
+/// MACD = EMA fast − EMA chậm. Đường tín hiệu = EMA của chính MACD.
 /// Biểu đồ = MACD − tín hiệu, đo đà tăng tốc.
-pub fn macd_series(price: &[f64], nhanh: usize, cham: usize, signal: usize)
+pub fn macd_series(price: &[f64], fast: usize, cham: usize, signal: usize)
     -> Vec<Option<MacdValue>>
 {
     let mut ra = vec![None; price.len()];
     if cham == 0 || price.len() < cham { return ra; }
-    let e_nhanh = ema_series(price, nhanh);
+    let ema_fast = ema_series(price, fast);
     let e_cham = ema_series(price, cham);
 
     // Chuỗi MACD chỉ có giá trị từ khi CẢ HAI đường EMA đã sẵn sàng
-    let mut duong_macd: Vec<f64> = Vec::new();
+    let mut macd_line: Vec<f64> = Vec::new();
     let mut root_indices: Vec<usize> = Vec::new();
     for i in 0..price.len() {
-        if let (Some(a), Some(b)) = (e_nhanh[i], e_cham[i]) {
-            duong_macd.push(a - b);
+        if let (Some(a), Some(b)) = (ema_fast[i], e_cham[i]) {
+            macd_line.push(a - b);
             root_indices.push(i);
         }
     }
-    let e_tin_hieu = ema_series(&duong_macd, signal);
+    let ema_signal = ema_series(&macd_line, signal);
     for (k, &i) in root_indices.iter().enumerate() {
-        if let Some(s) = e_tin_hieu[k] {
-            ra[i] = Some(MacdValue { macd: duong_macd[k], signal: s,
-                                      histogram: duong_macd[k] - s });
+        if let Some(s) = ema_signal[k] {
+            ra[i] = Some(MacdValue { macd: macd_line[k], signal: s,
+                                      histogram: macd_line[k] - s });
         }
     }
     ra
@@ -390,7 +390,7 @@ pub fn bollinger(price: &[f64], period: usize, so_do_lech: f64) -> Option<Bollin
 // điều chỉnh theo trạng thái thị trường.
 
 /// Biên độ thật: lớn nhất trong ba khoảng cách. Nó tính cả KHOẢNG NHẢY giữa
-/// hai phiên — điều mà `cao − thap` bỏ sót hoàn toàn.
+/// hai phiên — điều mà `high − thap` bỏ sót hoàn toàn.
 pub fn bien_do_that(nay: &Candle, prev: Option<&Candle>) -> Price {
     match prev {
         None => nay.high - nay.low,
@@ -416,7 +416,7 @@ pub fn atr_series(candle: &[Candle], period: usize) -> Vec<Option<f64>> {
 }
 
 /// Định cỡ vị thế theo ATR: rủi ro mỗi lệnh cố định bằng tiền, nên mã dao
-/// động mạnh thì mua ít. Đây là công thức nền của mọi hệ thống theo xu hướng.
+/// động mạnh thì bid ít. Đây là công thức nền của mọi hệ thống theo xu hướng.
 pub fn co_theo_atr(von_rui_ro: i64, atr: f64, so_atr_cat_lo: f64) -> i64 {
     let risk_new_don_pos = atr * so_atr_cat_lo;
     if risk_new_don_pos < 1e-9 { return 0; }
@@ -459,7 +459,7 @@ fn main() {
 
     println!("\n1. NẾN OHLCV");
     let n = &candle[100];
-    println!("   Nến #100: mở {} cao {} thấp {} đóng {}", n.mo, n.high, n.low, n.dong);
+    println!("   Nến #100: mở {} high {} thấp {} đóng {}", n.mo, n.high, n.low, n.dong);
     println!("   thân {} · biên độ {} · bóng trên {} · bóng dưới {} · {}",
              n.than(), n.bien_do(), n.upper_wick(), n.lower_wick(),
              if n.tang() { "TĂNG" } else { "GIẢM" });
@@ -481,20 +481,20 @@ fn main() {
         println!("   {:>6} {:>10.0} {:>10.1} {:>10.1}",
                  i, price[i], s20[i].unwrap(), e20[i].unwrap());
     }
-    println!("   → EMA bám giá sát hơn vì nó cho dữ liệu mới trọng số cao hơn.");
+    println!("   → EMA bám giá sát hơn vì nó cho dữ liệu mới trọng số high hơn.");
 
     println!("\n4. RSI");
     let r14 = rsi_series(&price, 14);
     let qua_buy = r14.iter().filter(|x| x.is_some_and(|v| v > 70.0)).count();
     let qua_ban = r14.iter().filter(|x| x.is_some_and(|v| v < 30.0)).count();
     println!("   RSI(14) tại nến 499: {:.1}", r14[499].unwrap());
-    println!("   Số phiên > 70 (quá mua): {} · < 30 (quá bán): {}", qua_buy, qua_ban);
+    println!("   Số phiên > 70 (quá bid): {} · < 30 (quá bán): {}", qua_buy, qua_ban);
     let tang_deu: Vec<f64> = (1..=50).map(|i| i as f64 * 100.0).collect();
-    let giam_deu: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
+    let steady_decline: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
     println!("   Chuỗi tăng đều  → RSI = {:.0}", rsi_series(&tang_deu, 14)[49].unwrap());
-    println!("   Chuỗi giảm đều  → RSI = {:.0}", rsi_series(&giam_deu, 14)[49].unwrap());
+    println!("   Chuỗi giảm đều  → RSI = {:.0}", rsi_series(&steady_decline, 14)[49].unwrap());
     println!("   → Trong xu hướng mạnh, RSI dính sát 100 hoặc 0 rất lâu.");
-    println!("     Dùng RSI một mình để đoán đảo chiều là cách mất tiền nhanh nhất.");
+    println!("     Dùng RSI một mình để đoán đảo chiều là cách mất tiền fast nhất.");
 
     println!("\n5. MACD (12, 26, 9)");
     let m = macd_series(&price, 12, 26, 9);
@@ -510,7 +510,7 @@ fn main() {
     println!("   Số lần biểu đồ đổi dấu trong 500 nến: {}", crossover);
     println!("   → {} tín hiệu trên 500 phiên. Phần lớn là nhiễu, và mỗi tín hiệu",
              crossover);
-    println!("     đều tốn phí giao dịch — xem lại Chương 69.");
+    println!("     đều tốn phí deliver dịch — xem lại Chương 69.");
 
     println!("\n6. DẢI BOLLINGER (20, 2σ)");
     for i in [100usize, 300, 499] {
@@ -530,12 +530,12 @@ fn main() {
     println!("\n7. ATR & ĐỊNH CỠ VỊ THẾ");
     let a14 = atr_series(&candle, 14);
     println!("   ATR(14) tại nến 499: {:.1} tick", a14[499].unwrap());
-    println!("   {:>16} {:>12} {:>16}", "vốn rủi ro", "ATR", "số lượng mua");
+    println!("   {:>16} {:>12} {:>16}", "vốn rủi ro", "ATR", "số lượng bid");
     for atr in [20.0f64, 50.0, 100.0, 200.0] {
         println!("   {:>16} {:>12.0} {:>16}",
                  100_000, atr, co_theo_atr(100_000, atr, 2.0));
     }
-    println!("   → Cùng mức rủi ro bằng tiền. Mã dao động mạnh gấp 10 thì mua ít đi 10 lần.");
+    println!("   → Cùng mức rủi ro bằng tiền. Mã dao động mạnh gấp 10 thì bid ít đi 10 lần.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   CHỈ BÁO KHÔNG DỰ BÁO TƯƠNG LAI — CHÚNG TÓM TẮT QUÁ KHỨ   ");
@@ -564,8 +564,8 @@ mod tests {
     #[test]
     fn detects_an_invalid_candle() {
         assert!(simple_candle(100, 120, 90, 110).is_valid());
-        assert!(!simple_candle(100, 80, 90, 110).is_valid(), "cao < thấp là vô lý");
-        assert!(!simple_candle(100, 105, 90, 110).is_valid(), "đóng > cao là vô lý");
+        assert!(!simple_candle(100, 80, 90, 110).is_valid(), "high < thấp là vô lý");
+        assert!(!simple_candle(100, 105, 90, 110).is_valid(), "đóng > high là vô lý");
         assert!(!simple_candle(100, 120, 105, 110).is_valid(), "thấp > mở là vô lý");
         assert!(!simple_candle(100, 120, 0, 110).is_valid(), "giá không được bằng 0");
     }
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn a_zero_range_candle_counts_as_a_doji() {
-        // Phiên không giao dịch — phải xử lý được, không chia cho 0.
+        // Phiên không deliver dịch — phải xử lý được, không chia cho 0.
         assert!(la_doji(&simple_candle(100, 100, 100, 100), 500));
     }
 
@@ -623,9 +623,9 @@ mod tests {
         // nến trước. Vi phạm điều này là "vẽ lại" (repainting).
         let candle = gen_candle(300, 7);
         for i in 0..candle.len() {
-            let ngan = recv_elec(&candle[..=i]);
+            let short = recv_elec(&candle[..=i]);
             let long = recv_elec(&candle[..=i]); // cùng lát cắt
-            assert_eq!(ngan, long, "phải tất định tại nến {}", i);
+            assert_eq!(short, long, "phải tất định tại nến {}", i);
         }
     }
 
@@ -656,14 +656,14 @@ mod tests {
 
     #[test]
     fn ema_tracks_price_more_closely_than_sma() {
-        // Giá nhảy bậc: EMA phải phản ứng nhanh hơn SMA.
+        // Giá nhảy bậc: EMA phải phản ứng fast hơn SMA.
         let mut price = vec![100.0; 30];
         for x in price.iter_mut().skip(20) { *x = 200.0; }
         let s = sma_series(&price, 10);
         let e = ema_series(&price, 10);
         let i = 24; // 5 phiên sau cú nhảy
         assert!(e[i].unwrap() > s[i].unwrap(),
-                "EMA {:.1} phải cao hơn SMA {:.1}", e[i].unwrap(), s[i].unwrap());
+                "EMA {:.1} phải high hơn SMA {:.1}", e[i].unwrap(), s[i].unwrap());
     }
 
     #[test]
@@ -688,7 +688,7 @@ mod tests {
         let w = wma(&[1.0, 2.0, 3.0], 3).unwrap();
         assert!((w - 14.0 / 6.0).abs() < 1e-9);
         assert!(w > sma(&[1.0, 2.0, 3.0], 3).unwrap(),
-                "chuỗi tăng thì WMA phải cao hơn SMA");
+                "chuỗi tăng thì WMA phải high hơn SMA");
     }
 
     // ---------- RSI ----------
@@ -742,7 +742,7 @@ mod tests {
 
     #[test]
     fn macd_is_positive_in_an_uptrend() {
-        // Giá tăng đều → EMA nhanh phải nằm trên EMA chậm → MACD dương.
+        // Giá tăng đều → EMA fast phải nằm trên EMA chậm → MACD dương.
         let price: Vec<f64> = (1..=200).map(|i| 10_000.0 + i as f64 * 10.0).collect();
         let m = macd_series(&price, 12, 26, 9);
         assert!(m[199].unwrap().macd > 0.0, "xu hướng tăng phải cho MACD dương");
@@ -925,7 +925,7 @@ VWAP tích luỹ trong phiên và **đặt lại vào đầu mỗi phiên**. Đ�
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn vwap_theo_phien(cac_nen: &[Candle], danh_dau_phien: &[bool]) -> Vec<Option<f64>> {
+pub fn session_vwap(cac_nen: &[Candle], danh_dau_phien: &[bool]) -> Vec<Option<f64>> {
     let mut ra = Vec::with_capacity(cac_nen.len());
     let (mut tong_pv, mut tong_v) = (0.0f64, 0.0f64);
 
@@ -946,7 +946,7 @@ pub fn vwap_theo_phien(cac_nen: &[Candle], danh_dau_phien: &[bool]) -> Vec<Optio
 
 /// Chênh lệch thực thi so với VWAP, tính bằng điểm cơ bản.
 /// Dương = thực thi TỐT HƠN chuẩn.
-pub fn do_chat_luong_thuc_thi(gia_thuc_thi: f64, vwap: f64, la_mua: bool) -> f64 {
+pub fn execution_quality_bps(gia_thuc_thi: f64, vwap: f64, la_mua: bool) -> f64 {
     if vwap == 0.0 { return 0.0; }
     let cl = if la_mua { vwap - gia_thuc_thi } else { gia_thuc_thi - vwap };
     cl / vwap * 10_000.0
@@ -969,29 +969,29 @@ Phân kỳ là một trong ít mẫu hình phân tích kỹ thuật có cơ sở
 
 ```rust
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum LoaiPhanKy { TangGia, GiamGia }
+pub enum DivergenceKind { TangGia, GiamGia }
 
 #[derive(Debug)]
-pub struct PhanKy {
-    pub kind: LoaiPhanKy,
-    pub chi_so_dau: usize,
-    pub chi_so_cuoi: usize,
+pub struct Divergence {
+    pub kind: DivergenceKind,
+    pub start_index: usize,
+    pub end_index: usize,
 }
 
 /// Đỉnh cục bộ được XÁC NHẬN sau `nhin_lai` phiên — nên nó chỉ
 /// "tồn tại" từ chỉ số i + nhin_lai trở đi. Đó là điểm chống nhìn trộm.
-fn cac_dinh(price: &[f64], nhin_lai: usize) -> Vec<usize> {
+fn peaks(price: &[f64], nhin_lai: usize) -> Vec<usize> {
     let mut ra = Vec::new();
     if price.len() < 2 * nhin_lai + 1 { return ra; }
     for i in nhin_lai..(price.len() - nhin_lai) {
-        let la_dinh = (1..=nhin_lai).all(|k| price[i] > price[i - k] && price[i] > price[i + k]);
-        if la_dinh { ra.push(i); }
+        let is_peak = (1..=nhin_lai).all(|k| price[i] > price[i - k] && price[i] > price[i + k]);
+        if is_peak { ra.push(i); }
     }
     ra
 }
 
-pub fn tim_phan_ky(price: &[f64], chi_bao: &[Option<f64>], nhin_lai: usize) -> Vec<PhanKy> {
-    let peak = cac_dinh(price, nhin_lai);
+pub fn find_divergence(price: &[f64], chi_bao: &[Option<f64>], nhin_lai: usize) -> Vec<Divergence> {
+    let peak = peaks(price, nhin_lai);
     let mut ra = Vec::new();
     for w in peak.windows(2) {
         let (a, b) = (w[0], w[1]);
@@ -999,13 +999,13 @@ pub fn tim_phan_ky(price: &[f64], chi_bao: &[Option<f64>], nhin_lai: usize) -> V
             (Some(Some(x)), Some(Some(y))) => (*x, *y),
             _ => continue,
         };
-        // Giá đỉnh cao hơn nhưng chỉ báo đỉnh thấp hơn → động lượng yếu đi
+        // Giá đỉnh high hơn nhưng chỉ báo đỉnh thấp hơn → động lượng yếu đi
         if price[b] > price[a] && cb < ca {
-            ra.push(PhanKy { kind: LoaiPhanKy::GiamGia, chi_so_dau: a, chi_so_cuoi: b });
+            ra.push(Divergence { kind: DivergenceKind::GiamGia, start_index: a, end_index: b });
         }
-        // Giá đỉnh thấp hơn nhưng chỉ báo cao hơn → động lượng mạnh lên
+        // Giá đỉnh thấp hơn nhưng chỉ báo high hơn → động lượng mạnh lên
         if price[b] < price[a] && cb > ca {
-            ra.push(PhanKy { kind: LoaiPhanKy::TangGia, chi_so_dau: a, chi_so_cuoi: b });
+            ra.push(Divergence { kind: DivergenceKind::TangGia, start_index: a, end_index: b });
         }
     }
     ra

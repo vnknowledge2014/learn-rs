@@ -96,7 +96,7 @@ Giả sử bạn có một `Vec` chứa 1.000.000 phần tử và muốn lấy p
 ```rust
 // CẢNH BÁO HIỆU NĂNG THẢM HỌA: O(N)
 let mut list = vec![1, 2, 3, 4, 5];
-let phan_tu_dau = list.remove(0); // Buộc CPU phải dời toàn bộ các phần tử phía sau!
+let front_item = list.remove(0); // Buộc CPU phải dời toàn bộ các phần tử phía sau!
 ```
 Điều gì diễn ra bên dưới thanh RAM?
 1. Rust lấy phần tử tại ô nhớ chỉ số 0.
@@ -227,17 +227,17 @@ fn main() {
 
     // 1. Kiểm thử thuật toán kiểm tra dấu ngoặc với Stack
     println!("[1] Kiểm tra tính hợp lệ của biểu thức toán học:");
-    let bieu_thuc_1 = "{ a + [ b * ( c + d ) ] }";
-    let bieu_thuc_2 = "( a + b ]";
-    let bieu_thuc_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
+    let expr_1 = "{ a + [ b * ( c + d ) ] }";
+    let expr_2 = "( a + b ]";
+    let expr_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
-    println!("    - Biểu thức 1 '{}': {}", bieu_thuc_1, is_balanced_brackets(bieu_thuc_1));
-    println!("    - Biểu thức 2 '{}': {}", bieu_thuc_2, is_balanced_brackets(bieu_thuc_2));
-    println!("    - Biểu thức 3 '{}': {}", bieu_thuc_3, is_balanced_brackets(bieu_thuc_3));
+    println!("    - Biểu thức 1 '{}': {}", expr_1, is_balanced_brackets(expr_1));
+    println!("    - Biểu thức 2 '{}': {}", expr_2, is_balanced_brackets(expr_2));
+    println!("    - Biểu thức 3 '{}': {}", expr_3, is_balanced_brackets(expr_3));
 
-    assert!(is_balanced_brackets(bieu_thuc_1));
-    assert!(!is_balanced_brackets(bieu_thuc_2));
-    assert!(!is_balanced_brackets(bieu_thuc_3));
+    assert!(is_balanced_brackets(expr_1));
+    assert!(!is_balanced_brackets(expr_2));
+    assert!(!is_balanced_brackets(expr_3));
 
     // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
     println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
@@ -307,12 +307,12 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thao tác v
 
 ```rust
 // Đoạn mã lỗi minh họa: Quên xử lý trường hợp ngăn xếp bị rỗng
-fn lay_dinh_loi(mut stack: Vec<i32>) {
+fn peek_broken(mut stack: Vec<i32>) {
     // let value: i32 = stack.pop(); // LỖI E0308: pop() trả về Option<i32>, không phải i32!
 }
 
 // Cách sửa chữa đúng chuẩn: Xử lý an toàn với Option
-fn lay_dinh_dung(mut stack: Vec<i32>) {
+fn peek_correct(mut stack: Vec<i32>) {
     match stack.pop() {
         Some(value) => println!("Đã lấy được giá trị: {}", value),
         None => println!("Ngăn xếp đang rỗng, không có gì để lấy!"),

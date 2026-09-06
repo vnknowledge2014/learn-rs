@@ -78,8 +78,8 @@ Bác bưu tá không cần phải đếm xem mình đã bước bao nhiêu bư�
 
 Vì `if` là một biểu thức, bạn có thể gán trực tiếp kết quả của khối `if` vào một biến thông qua từ khóa `let`:
 ```rust
-let dieu_kien = true;
-let con_so = if dieu_kien { 5 } else { 10 };
+let condition = true;
+let con_so = if condition { 5 } else { 10 };
 ```
 
 > **Quy tắc sắt đá của Trình biên dịch**: Vì Rust là ngôn ngữ định kiểu tĩnh, kiểu dữ liệu của biến `con_so` phải được xác định duy nhất ngay tại thời điểm biên dịch. Do đó, **tất cả các nhánh `if` và `else` bắt buộc phải trả về cùng một kiểu dữ liệu**! Bạn không thể để nhánh `if` trả về số `5` còn nhánh `else` lại trả về chữ `"Mười"`.
@@ -135,25 +135,25 @@ fn main() {
     println!("============================================================");
 
     // 1. Sử dụng if như một biểu thức để xác định trạng thái thời tiết
-    let toc_do_gio_kmh = 25;
-    let troi_mua = false;
+    let wind_kmh = 25;
+    let is_raining = false;
 
     // if/else trả về trực tiếp chuỗi trạng thái được gán vào biến
-    let dieu_kien_thoi_tiet = if toc_do_gio_kmh < 40 && !troi_mua {
+    let weather = if wind_kmh < 40 && !is_raining {
         "Hoàn hảo để phóng"
-    } else if toc_do_gio_kmh < 60 {
+    } else if wind_kmh < 60 {
         "Cần theo dõi thêm sức gió"
     } else {
         "Hủy lịch phóng vì thời tiết xấu"
     };
-    println!("Tình trạng khí tượng hiện tại: {}", dieu_kien_thoi_tiet);
+    println!("Tình trạng khí tượng hiện tại: {}", weather);
 
     // 2. Sử dụng vòng lặp 'loop' có 'break' mang giá trị về:
     // Kiểm tra áp suất nhiên liệu buồng đốt đến khi đạt chuẩn an toàn
     let mut current_pressure = 80;
     println!("\nBắt đầu kích áp buồng đốt nhiên liệu...");
 
-    let ap_suat_chot = loop {
+    let threshold_pressure = loop {
         current_pressure += 5;
         println!("- Áp suất đang tăng: {} PSI", current_pressure);
 
@@ -162,7 +162,7 @@ fn main() {
             break current_pressure;
         }
     };
-    println!("==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI", ap_suat_chot);
+    println!("==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI", threshold_pressure);
 
     // 3. Sử dụng vòng lặp 'while' để nạp năng lượng bình ắc-quy phụ
     let mut battery_capacity = 85;

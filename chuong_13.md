@@ -222,13 +222,13 @@ pub fn to_money(queue: &MatQueue) -> f64 {
 }
 
 /// Hàm thuần túy: Áp dụng phiếu giảm giá tỷ lệ phần trăm
-pub fn apply_down_price(tien_goc: f64, phan_tram_giam: f64) -> f64 {
+pub fn apply_down_price(base_price: f64, phan_tram_giam: f64) -> f64 {
     if phan_tram_giam <= 0.0 {
-        tien_goc
+        base_price
     } else if phan_tram_giam >= 100.0 {
         0.0
     } else {
-        tien_goc * (1.0 - (phan_tram_giam / 100.0))
+        base_price * (1.0 - (phan_tram_giam / 100.0))
     }
 }
 
@@ -239,7 +239,7 @@ pub fn apply_down_price(tien_goc: f64, phan_tram_giam: f64) -> f64 {
 /// CÁCH 1: Phong cách Mệnh lệnh (Imperative)
 /// Dùng vòng lặp thủ công, biến cờ mut tạm thời, dễ xảy ra lỗi ngoài ý muốn
 pub fn xu_ly_menh_lenh(list: &[MatQueue]) -> (f64, Vec<String>) {
-    let mut tong_doanh_thu: f64 = 0.0;
+    let mut total_revenue: f64 = 0.0;
     let mut list_name: Vec<String> = Vec::new();
 
     // Vòng lặp thủ công với nhiều bước điều kiện lồng nhau
@@ -249,20 +249,20 @@ pub fn xu_ly_menh_lenh(list: &[MatQueue]) -> (f64, Vec<String>) {
         if queue.is_paid {
             let into_tien = to_money(queue);
             if into_tien >= 50.0 {
-                tong_doanh_thu += into_tien;
+                total_revenue += into_tien;
                 list_name.push(queue.name_queue.clone());
             }
         }
     }
 
-    (tong_doanh_thu, list_name)
+    (total_revenue, list_name)
 }
 
 /// CÁCH 2: Phong cách Lập trình Hàm Khai báo (Declarative Pipeline)
 /// Dữ liệu chảy qua chuỗi lọc và ánh xạ, không dùng biến mut nào trong quá trình xử lý!
 pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
-    // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
-    let tong_doanh_thu: f64 = list
+    // 1. Nhánh tính tổng doanh attempt thông qua đường ống (Pipeline)
+    let total_revenue: f64 = list
         .iter()
         .filter(|queue| queue.is_paid)             // Bước 1: Lọc hàng đã trả tiền
         .map(|queue| to_money(queue))             // Bước 2: Chuyển đổi thành tiền
@@ -276,7 +276,7 @@ pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
         .map(|queue| queue.name_queue.clone())             // Ánh xạ sang chuỗi tên
         .collect();                                    // Gom vào vector mới
 
-    (tong_doanh_thu, list_name)
+    (total_revenue, list_name)
 }
 
 fn main() {
@@ -285,7 +285,7 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo tập dữ liệu ban đầu bất biến
-    let gio_hang: Vec<MatQueue> = vec![
+    let cart: Vec<MatQueue> = vec![
         MatQueue {
             ma_san_pham: String::from("SP-01"),
             name_queue: String::from("Sổ tay Lập trình Rust"),
@@ -316,18 +316,18 @@ fn main() {
         },
     ];
 
-    println!("Tổng số mặt hàng đưa vào xử lý: {}", gio_hang.len());
+    println!("Tổng số mặt hàng đưa vào xử lý: {}", cart.len());
 
     // 1. Chạy theo phong cách mệnh lệnh
-    let (doanh_thu_1, ten_1) = xu_ly_menh_lenh(&gio_hang);
+    let (doanh_thu_1, ten_1) = xu_ly_menh_lenh(&cart);
     println!("\n[Kết quả Mệnh lệnh]:");
-    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_1);
+    println!("- Tổng doanh attempt đạt chuẩn : {:.2} nghìn đồng", doanh_thu_1);
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_1);
 
     // 2. Chạy theo phong cách khai báo đường ống
-    let (doanh_thu_2, ten_2) = handle_declaration(&gio_hang);
+    let (doanh_thu_2, ten_2) = handle_declaration(&cart);
     println!("\n[Kết quả Khai báo Đường ống]:");
-    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
+    println!("- Tổng doanh attempt đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_2);
 
     // Xác thực hai cách tiếp cận cho ra cùng một kết quả nhất quán
@@ -336,7 +336,7 @@ fn main() {
 
     // Minh họa hàm thuần túy tính chiết khấu khuyến mãi độc lập
     let total_next_down = apply_down_price(doanh_thu_2, 10.0); // Giảm giá 10%
-    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
+    println!("\n-> Doanh attempt sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
     println!("============================================================");
 }
 ```
@@ -358,17 +358,17 @@ Dưới đây là các lỗi biên dịch điển hình nhất mà người họ
 
 ```rust
 // Đoạn mã lỗi minh họa: Cố tình gán lại giá trị cho biến bất biến
-fn doan_ma_loi() {
+fn broken_version() {
     let tong_tien = 100;
     // tong_tien = tong_tien + 50; // LỖI E0384: cannot assign twice to immutable variable `tong_tien`
 }
 
 // Cách sửa chữa đúng chuẩn lập trình hàm:
-fn doan_ma_dung() {
-    let tien_goc = 100;
+fn correct_version() {
+    let base_price = 100;
     let phu_phi = 50;
     // Tạo biến mới bằng một biểu thức tính toán rõ ràng
-    let tong_tien = tien_goc + phu_phi; 
+    let tong_tien = base_price + phu_phi; 
     println!("Tổng tiền: {}", tong_tien);
 }
 ```
@@ -441,7 +441,7 @@ Hàm chỉ cần hai lời gọi có sẵn của `str`: `.trim()` và `.to_upper
 
 ```rust
 /// Hàm THUẦN TÚY: chỉ phụ thuộc tham số đầu vào, không tác dụng phụ.
-pub fn chuan_hoa_ten(full_name: &str) -> String {
+pub fn normalize_name(full_name: &str) -> String {
     full_name.trim().to_uppercase()
 }
 
@@ -449,9 +449,9 @@ fn main() {
     let tho = "   nguyễn văn an   ";
 
     // Gọi 3 lần với cùng đầu vào -> luôn cùng kết quả (tính tất định)
-    let a = chuan_hoa_ten(tho);
-    let b = chuan_hoa_ten(tho);
-    let c = chuan_hoa_ten(tho);
+    let a = normalize_name(tho);
+    let b = normalize_name(tho);
+    let c = normalize_name(tho);
     assert_eq!(a, b);
     assert_eq!(b, c);
     assert_eq!(a, "NGUYỄN VĂN AN");

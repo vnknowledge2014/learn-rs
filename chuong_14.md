@@ -83,7 +83,7 @@ tinh_do_dai :: String -> usize
 Đọc là: *"hàm `tinh_do_dai` nhận một `String` và trả về một `usize`"*. Trong Rust ta viết:
 
 ```rust
-fn tinh_do_dai(s: String) -> usize { s.len() }
+fn length_of(s: String) -> usize { s.len() }
 ```
 
 Chữ ký hàm (Function selector) là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
@@ -163,13 +163,13 @@ Trong Rust:
 fn gate(a: i64, b: i64) -> i64 { a + b }
 
 // Dạng đã curry hóa
-fn cong_curry(a: i64) -> impl Fn(i64) -> i64 {
+fn add_curried(a: i64) -> impl Fn(i64) -> i64 {
     move |b| a + b
 }
 
-let cong_them_10 = cong_curry(10); // Chưa tính gì cả! Ta vừa tạo ra một HÀM MỚI.
-assert_eq!(cong_them_10(5), 15);
-assert_eq!(cong_them_10(7), 17);   // Dùng lại được vô số lần
+let add_ten = add_curried(10); // Chưa tính gì cả! Ta vừa tạo ra một HÀM MỚI.
+assert_eq!(add_ten(5), 15);
+assert_eq!(add_ten(7), 17);   // Dùng lại được vô số lần
 ```
 
 *Lưu ý về Rust*: các ngôn ngữ như Haskell hay PureScript **tự động curry hóa** mọi hàm. Rust thì không — bạn phải viết tay như trên. Đó là một đánh đổi có chủ đích: Rust ưu tiên hiệu năng dự đoán được và chữ ký hàm rõ ràng hơn là sự tiện lợi cú pháp.
@@ -182,23 +182,23 @@ assert_eq!(cong_them_10(7), 17);   // Dùng lại được vô số lần
 
 ```rust
 // ❌ Cách làm quen thuộc: hàm tự đi tìm phụ thuộc của mình
-fn gui_email(recipient: &str, content: &str) -> Result<(), String> {
-    let may_chu = doc_cau_hinh_tu_bien_moi_truong(); // Phụ thuộc ẩn, không thấy trong chữ ký!
+fn send_email(recipient: &str, content: &str) -> Result<(), String> {
+    let server = doc_cau_hinh_tu_bien_moi_truong(); // Phụ thuộc ẩn, không thấy trong chữ ký!
     // ... Muốn kiểm thử hàm này thì phải dựng cả biến môi trường.
 }
 
 // ✅ Cách của lập trình hàm: nhận phụ thuộc làm tham số, rồi khóa nó lại
-fn tao_ham_gui_email(may_chu: String) -> impl Fn(&str, &str) -> Result<(), String> {
+fn make_email_sender(server: String) -> impl Fn(&str, &str) -> Result<(), String> {
     move |recipient, content| {
-        // ... dùng biến may_chu đã bị khóa vào closure
+        // ... dùng biến server đã bị khóa vào closure
         Ok(())
     }
 }
 
 // Lúc khởi động chương trình (tầng vỏ):
-let send = tao_ham_gui_email("smtp.congty.vn".to_string());
+let send = make_email_sender("smtp.congty.vn".to_string());
 // Lúc kiểm thử: chỉ cần khóa vào một máy chủ giả!
-let gui_test = tao_ham_gui_email("localhost:1025".to_string());
+let send_test = make_email_sender("localhost:1025".to_string());
 ```
 
 > **Đây chính là Tiêm phụ thuộc (Dependency Injection)** — không cần framework, không cần container, không cần thư viện giả lập. Nó chỉ là *áp dụng từng phần*. Cuốn *Domain Modeling Made Functional* dành hẳn một mục cho kỹ thuật này, và chúng ta sẽ dùng lại nó ở Chương 20.
@@ -291,7 +291,7 @@ pub fn reduce_range(s: String) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
-/// Viết hoa chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
+/// Viết uppercase chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
 pub fn capitalize_first(s: String) -> String {
     let mut all_ky_from = s.chars();
     match all_ky_from.next() {
@@ -305,18 +305,18 @@ pub fn capitalize_first(s: String) -> String {
 // ============================================================================
 
 /// Dạng thông thường: nhận đủ 2 tham số cùng lúc.
-pub fn cat_bot(gioi_han: usize, s: &str) -> String {
-    if s.chars().count() <= gioi_han {
+pub fn cat_bot(limit: usize, s: &str) -> String {
+    if s.chars().count() <= limit {
         s.to_string()
     } else {
-        let header: String = s.chars().take(gioi_han).collect();
+        let header: String = s.chars().take(limit).collect();
         format!("{}…", header)
     }
 }
 
-/// Dạng đã curry hóa: khóa trước `gioi_han`, sinh ra một hàm chuyên dụng.
-pub fn cat_bot_curry(gioi_han: usize) -> impl Fn(&str) -> String {
-    move |s: &str| cat_bot(gioi_han, s)
+/// Dạng đã curry hóa: khóa trước `limit`, sinh ra một hàm chuyên dụng.
+pub fn cat_bot_curry(limit: usize) -> impl Fn(&str) -> String {
+    move |s: &str| cat_bot(limit, s)
 }
 
 /// Nhà máy sinh bộ lọc từ cấm: khóa sẵn danh sách từ, trả về một vị từ (predicate).
@@ -350,11 +350,11 @@ pub struct SellRecordLog {
 
 /// "Phụ thuộc" ở đây là hàm ghi nhật ký. Ta KHÓA nó vào trong bộ kiểm duyệt
 /// bằng áp dụng từng phần, thay vì để bộ kiểm duyệt tự đi tìm.
-/// `ghi_nhat_ky` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
+/// `log_it` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
 pub fn make_validator<L>(
     check_clean: impl Fn(&str) -> bool,
     sanitize: impl Fn(String) -> String,
-    mut ghi_nhat_ky: L,
+    mut log_it: L,
 ) -> impl FnMut(u32, &str) -> String
 where
     L: FnMut(SellRecordLog),
@@ -368,12 +368,12 @@ where
         } else {
             "CHỨA TỪ CẤM — ĐÃ CHE"
         };
-        let da_lam_sach = sanitize(standard);
-        ghi_nhat_ky(SellRecordLog {
+        let cleaned = sanitize(standard);
+        log_it(SellRecordLog {
             ma_binh_luan: id,
             ket_luan: ket_luan.to_string(),
         });
-        da_lam_sach
+        cleaned
     }
 }
 
@@ -399,11 +399,11 @@ fn main() {
     // ------------------------------------------------------------------
     // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
     // ------------------------------------------------------------------
-    let cach_a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-    let cach_b = compose(cut_range_state, compose(reduce_range, capitalize_first));
-    assert_eq!(cach_a(tho), cach_b(tho));
+    let way_a = compose(compose(cut_range_state, reduce_range), capitalize_first);
+    let way_b = compose(cut_range_state, compose(reduce_range, capitalize_first));
+    assert_eq!(way_a(tho), way_b(tho));
     println!("\n2. LUẬT KẾT HỢP");
-    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", cach_a(tho));
+    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", way_a(tho));
 
     // ------------------------------------------------------------------
     // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
@@ -420,10 +420,10 @@ fn main() {
     let truncate = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
     let cut_long = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
 
-    let cau = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
-    println!("   Bản gốc   : {}", cau);
-    println!("   Cắt còn 10: {}", truncate(cau));
-    println!("   Cắt còn 25: {}", cut_long(cau));
+    let sentence = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
+    println!("   Bản gốc   : {}", sentence);
+    println!("   Cắt còn 10: {}", truncate(sentence));
+    println!("   Cắt còn 25: {}", cut_long(sentence));
 
     // ------------------------------------------------------------------
     // 5. NHÀ MÁY SINH HÀM: cùng một danh sách từ cấm, hai công cụ khác nhau
@@ -452,7 +452,7 @@ fn main() {
         println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
     }
 
-    println!("   Nhật ký thu được ({} dòng):", num_log.len());
+    println!("   Nhật ký attempt được ({} dòng):", num_log.len());
     for sell_record in &num_log {
         println!("     - Bình luận #{}: {}", sell_record.ma_binh_luan, sell_record.ket_luan);
     }
@@ -462,9 +462,9 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n7. BỘ KẾT HỢP flip & const");
     let chia = |a: f64, b: f64| a / b;
-    let chia_nguoc = flip_args(chia);
+    let divide_flipped = flip_args(chia);
     println!("   chia(10, 2)       = {}", chia(10.0, 2.0));
-    println!("   flip(chia)(10, 2) = {}", chia_nguoc(10.0, 2.0)); // = chia(2, 10)
+    println!("   flip(chia)(10, 2) = {}", divide_flipped(10.0, 2.0)); // = chia(2, 10)
 
     let always_return_ve_0 = queue_num::<i32, &str>(0);
     println!("   const(0)(\"bất kỳ\") = {}", always_return_ve_0("bất kỳ"));
@@ -490,8 +490,8 @@ fn main() {
     let thong_ke: HashMap<bool, usize> = binh_luan_tho
         .iter()
         .map(|b| normalize(b))
-        .fold(HashMap::new(), |mut bang, cau| {
-            *bang.entry(is_clean(&cau)).or_insert(0) += 1;
+        .fold(HashMap::new(), |mut bang, sentence| {
+            *bang.entry(is_clean(&sentence)).or_insert(0) += 1;
             bang
         });
 
@@ -535,8 +535,8 @@ mod tests {
     #[test]
     fn curried_matches_original() {
         let cat_15 = cat_bot_curry(15);
-        let cau = "Rust là ngôn ngữ tuyệt vời";
-        assert_eq!(cat_15(cau), cat_bot(15, cau));
+        let sentence = "Rust là ngôn ngữ tuyệt vời";
+        assert_eq!(cat_15(sentence), cat_bot(15, sentence));
     }
 
     #[test]
@@ -620,14 +620,14 @@ pub fn ghep4<A, B, C, D, E>(
 }
 
 fn main() {
-    let duong_ong = ghep4(
+    let pipeline = ghep4(
         |s: &str| s.trim().to_string(),
         |s: String| s.to_uppercase(),
         |s: String| format!("SP-{}", s),
         |s: String| s.chars().take(12).collect::<String>(),
     );
-    assert_eq!(duong_ong("  ban phim co  "), "SP-BAN PHIM ");
-    println!("{:?}", duong_ong("  ban phim co  "));
+    assert_eq!(pipeline("  ban phim co  "), "SP-BAN PHIM ");
+    println!("{:?}", pipeline("  ban phim co  "));
 }
 ```
 </details>
@@ -645,7 +645,7 @@ Viết hàm `tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String> {
+pub fn make_range_check(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String> {
     move |so: i64| {
         if (min..=max).contains(&so) {
             Ok(so)
@@ -656,13 +656,13 @@ pub fn tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, St
 }
 
 fn main() {
-    let check_age = tao_kiem_tra_khoang(0, 120);
-    let kiem_tra_diem = tao_kiem_tra_khoang(0, 10);
+    let check_age = make_range_check(0, 120);
+    let check_score = make_range_check(0, 10);
 
     assert_eq!(check_age(35), Ok(35));
     assert!(check_age(500).is_err());
-    assert_eq!(kiem_tra_diem(9), Ok(9));
-    println!("{:?}", kiem_tra_diem(11));
+    assert_eq!(check_score(9), Ok(9));
+    println!("{:?}", check_score(11));
     // Err("Giá trị 11 nằm ngoài khoảng cho phép [0, 10]")
 }
 ```

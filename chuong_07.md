@@ -172,12 +172,12 @@ fn main() {
 
     // --- PHẦN 2: THAM CHIẾU KHẢ BIẾN (&mut T - MƯỢN ĐỂ SỬA) ---
     println!("\n2. Minh họa mượn dữ liệu để sửa đổi trực tiếp:");
-    let mut buc_thu = String::from("Xin chào bạn thân mến");
-    println!("- Bức thư ban đầu: '{}'", buc_thu);
+    let mut letter = String::from("Xin chào bạn thân mến");
+    println!("- Bức thư ban đầu: '{}'", letter);
 
     // Mượn để chỉnh sửa nội dung thông qua &mut
-    add_greeting(&mut buc_thu);
-    println!("- Bức thư sau khi sửa: '{}'", buc_thu);
+    add_greeting(&mut letter);
+    println!("- Bức thư sau khi sửa: '{}'", letter);
 
     // --- PHẦN 3: GIẢI THAM CHIẾU VỚI TOÁN TỬ '*' TRÊN SỐ NGUYÊN ---
     println!("\n3. Thao tác ô nhớ số nguyên với toán tử giải tham chiếu (*):");
@@ -189,13 +189,13 @@ fn main() {
 
     // --- PHẦN 4: LÁT CẮT CHUỖI (STRING SLICES - &str) ---
     println!("\n4. Trích xuất văn bản bằng Lát cắt chuỗi (String Slices):");
-    let cau_noi = String::from("Rust an toàn tuyệt đối");
+    let sentence = String::from("Rust an toàn tuyệt đối");
 
     // Lát cắt trỏ vào một phần ô nhớ của chuỗi mà không tạo dữ liệu mới:
-    let first_from: &str = &cau_noi[0..4];    // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
-    let from_two: &str = &cau_noi[5..13];   // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
+    let first_from: &str = &sentence[0..4];    // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
+    let from_two: &str = &sentence[5..13];   // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
 
-    println!("- Câu nói gốc: '{}'", cau_noi);
+    println!("- Câu nói gốc: '{}'", sentence);
     println!("- Từ thứ nhất : '{}' (chiếm {} bytes trên Stack)", first_from, std::mem::size_of_val(&first_from));
     println!("- Từ thứ hai  : '{}'", from_two);
 

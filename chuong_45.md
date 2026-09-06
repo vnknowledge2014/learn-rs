@@ -150,7 +150,7 @@ impl BankTransactionValidator {
         Ok(())
     }
 
-    // Xác thực toàn bộ yêu cầu giao dịch chuyển khoản
+    // Xác thực toàn bộ yêu cầu deliver dịch chuyển khoản
     pub fn validate_transfer(&self, req: &TransferRequest) -> Result<(), ValidationError> {
         // 1. Kiểm tra tài khoản nguồn
         self.validate_account_format(&req.from_account)?;
@@ -261,7 +261,7 @@ mod tests {
 fn main() {
     println!("=== CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
 
-    // Khởi tạo bộ kiểm định giao dịch với hạn mức 50 triệu xu
+    // Khởi tạo bộ kiểm định deliver dịch với hạn mức 50 triệu xu
     let validator = BankTransactionValidator::new(50_000_000);
 
     // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công

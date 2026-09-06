@@ -390,7 +390,7 @@ fn main() -> io::Result<()> {
         assert_eq!(inventory.get_available_stock(101), 9);
 
         // Khách hàng bị lag mạng và gửi lại chính xác Idempotency Key đó
-        println!("\n    - Thu gui lai chinh xac yeu cau voi Idempotency Key '{}':", idemp_key);
+        println!("\n    - Thu gui lai chinh xac yeu sentence voi Idempotency Key '{}':", idemp_key);
         let duplicate_order = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
         assert_eq!(duplicate_order.order_id, 1001);
         assert_eq!(inventory.get_available_stock(101), 9); // Kho KHÔNG bị trừ lần 2!
@@ -407,7 +407,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may owner total dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
@@ -425,7 +425,7 @@ fn main() -> io::Result<()> {
 
         assert_eq!(restored_order_1.status, OrderStatus::Fulfilled);
         assert_eq!(restored_order_2.status, OrderStatus::Paid);
-        println!("    => Phuc hoi toan ven trang thai may trang thai tu tep WAL thanh cong 100%!");
+        println!("    => Phuc hoi total ven trang thai may trang thai tu tep WAL thanh cong 100%!");
     }
 
     // Dọn dẹp tệp thử nghiệm
@@ -459,19 +459,19 @@ struct DonQueue {
     id: u64,
 }
 
-fn ghi_nhat_ky(dh: DonQueue) {
+fn log_it(dh: DonQueue) {
     println!("Ghi nhật ký: {:?}", dh);
 }
 
 // Đoạn mã lỗi minh họa E0382:
-fn xu_ly_loi(dh: DonQueue) {
-    // ghi_nhat_ky(dh); // Di chuyển quyền sở hữu dh
+fn handle_error(dh: DonQueue) {
+    // log_it(dh); // Di chuyển quyền sở hữu dh
     // println!("Đơn hàng đã xử lý: {:?}", dh); // LỖI E0382: dh đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Truyền tham chiếu mượn hoặc clone
 fn xu_ly_dung(dh: DonQueue) {
-    ghi_nhat_ky(dh.clone()); // Tạo bản sao độc lập
+    log_it(dh.clone()); // Tạo bản sao độc lập
     println!("Đơn hàng an toàn: {:?}", dh); // dh ban đầu vẫn còn nguyên vẹn!
 }
 ```

@@ -79,10 +79,10 @@ Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **Swi
 2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
 3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
    ```rust
-   let mut dem_tu = std::collections::HashMap::new();
+   let mut word_count = std::collections::HashMap::new();
    let tu = "rust";
    // Đếm số lần xuất hiện của từ chỉ với 1 lần tính băm duy nhất!
-   *dem_tu.entry(tu).or_insert(0) += 1;
+   *word_count.entry(tu).or_insert(0) += 1;
    ```
 
 ### 2. Giải mã bí mật: Biểu diễn Đồ thị không sợ Borrow Checker
@@ -177,11 +177,11 @@ impl Graph {
         }
 
         // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
-        let mut da_tham = vec![false; self.adjacency_list.len()];
+        let mut visited = vec![false; self.adjacency_list.len()];
         // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
 
-        da_tham[diem_dau] = true;
+        visited[diem_dau] = true;
         queue.push_back((diem_dau, 0));
 
         while let Some((current, distance)) = queue.pop_front() {
@@ -190,8 +190,8 @@ impl Graph {
             }
 
             for &ke in &self.adjacency_list[current] {
-                if !da_tham[ke] {
-                    da_tham[ke] = true;
+                if !visited[ke] {
+                    visited[ke] = true;
                     queue.push_back((ke, distance + 1));
                 }
             }
@@ -260,7 +260,7 @@ fn main() {
     let binh = array_remote_hoi.add_peak("Bình");   // Đỉnh 1
     let chi = array_remote_hoi.add_peak("Chi");     // Đỉnh 2
     let dung = array_remote_hoi.add_peak("Dũng");   // Đỉnh 3
-    let hoa = array_remote_hoi.add_peak("Hoa");     // Đỉnh 4 (ở xa)
+    let uppercase = array_remote_hoi.add_peak("Hoa");     // Đỉnh 4 (ở xa)
 
     // Thiết lập các mối quan hệ bạn bè (Cạnh)
     // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
@@ -279,13 +279,13 @@ fn main() {
     println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", distance_hidden_use);
     assert_eq!(distance_hidden_use, Some(1));
 
-    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(hoa));
-    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, hoa);
+    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(uppercase));
+    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, uppercase);
     println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
     assert_eq!(distance_to_c, None);
 
-    // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
-    println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
+    // 3. Kiểm thử Thuật toán Sắp xếp fast Quicksort
+    println!("\n[3] Kiểm thử Thuật toán Sắp xếp fast Quicksort tại chỗ:");
     let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
     println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
     quicksort(&mut mang_so);
@@ -316,25 +316,25 @@ Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình 
 
 ```rust
 // Struct chưa thỏa mãn trait Hash và Eq
-struct NguoiDungLoi {
+struct UserBroken {
     id: u32,
 }
 
-fn thu_nghiem_loi_hash() {
+fn broken_hash() {
     let mut bang_hash = std::collections::HashMap::new();
-    // bang_hash.insert(NguoiDungLoi { id: 1 }, "Admin"); // LỖI E0277!
+    // bang_hash.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0277!
 }
 
 // Cách sửa chữa đúng chuẩn: Derive đầy đủ PartialEq, Eq, Hash
 #[derive(Hash, PartialEq, Eq, Debug)]
-struct NguoiDungChuan {
+struct UserIdiomatic {
     id: u32,
 }
 
-fn thu_nghiem_dung_hash() {
+fn correct_hash() {
     let mut bang_hash = std::collections::HashMap::new();
-    bang_hash.insert(NguoiDungChuan { id: 1 }, "Admin");
-    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&NguoiDungChuan { id: 1 }));
+    bang_hash.insert(UserIdiomatic { id: 1 }, "Admin");
+    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&UserIdiomatic { id: 1 }));
 }
 ```
 
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn word_frequency_count() {
-        let bang = thong_ke_from_region("rust rust an toan rust");
+        let bang = thong_ke_from_region("rust rust an total rust");
         assert_eq!(bang.get("rust"), Some(&3));
         assert_eq!(bang.get("an"), Some(&1));
         assert_eq!(bang.get("khong-co"), None);

@@ -205,37 +205,37 @@ fn main() {
     let level_spend: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
-    let bat_dau_o1 = Instant::now();
+    let start_o1 = Instant::now();
     let ket_qua_o1 = index_access_o1(&list, scale - 1);
-    let thoi_gian_o1 = bat_dau_o1.elapsed();
+    let elapsed_o1 = start_o1.elapsed();
     println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
     println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_o1);
+    println!("    - Thời gian thực thi: {:?}", elapsed_o1);
 
     // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
-    let bat_dau_on = Instant::now();
+    let start_on = Instant::now();
     let ket_qua_on = linear_search_on(&list, level_spend);
-    let thoi_gian_on = bat_dau_on.elapsed();
+    let elapsed_on = start_on.elapsed();
     println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_on);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_on);
+    println!("    - Thời gian thực thi: {:?}", elapsed_on);
 
     // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
-    let bat_dau_ologn = Instant::now();
+    let start_ologn = Instant::now();
     let ket_qua_ologn = binary_search_ologn(&list, level_spend);
-    let thoi_gian_ologn = bat_dau_ologn.elapsed();
+    let elapsed_ologn = start_ologn.elapsed();
     println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_ologn);
+    println!("    - Thời gian thực thi: {:?}", elapsed_ologn);
 
     // Xác nhận tính nhất quán của kết quả
     assert_eq!(ket_qua_on, Some(scale - 1));
     assert_eq!(ket_qua_ologn, Some(scale - 1));
 
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
-    if thoi_gian_ologn.as_nanos() > 0 {
-        let ti_le = thoi_gian_on.as_nanos() as f64 / thoi_gian_ologn.as_nanos() as f64;
-        println!("\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
+    if elapsed_ologn.as_nanos() > 0 {
+        let ti_le = elapsed_on.as_nanos() as f64 / elapsed_ologn.as_nanos() as f64;
+        println!("\n=> ĐÁNH GIÁ: O(log N) chạy fast gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
     }
 
     // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian
@@ -265,24 +265,24 @@ Khi lập trình các thuật toán tìm kiếm và đo đạc độ phức tạ
 
 ```rust
 // Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu vector vào hàm đo thời gian
-fn dem_phan_tu_loi(list: Vec<i32>) -> usize {
+fn count_broken(list: Vec<i32>) -> usize {
     list.len() // Hàm đoạt lấy quyền sở hữu và giải phóng bộ nhớ khi kết thúc
 }
 
-fn thu_nghiem_loi() {
+fn broken_example() {
     let data = vec![1, 2, 3, 4, 5];
-    // let n = dem_phan_tu_loi(data); 
+    // let n = count_broken(data); 
     // println!("Dữ liệu có: {}", data.len()); // LỖI E0382: data đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Mượn lát cắt (Slice) tham chiếu &[i32]
-fn dem_phan_tu_chuan(list: &[i32]) -> usize {
+fn count_idiomatic(list: &[i32]) -> usize {
     list.len() // Chỉ mượn tham chiếu, không đoạt quyền sở hữu
 }
 
-fn thu_nghiem_dung() {
+fn correct_example() {
     let data = vec![1, 2, 3, 4, 5];
-    let n = dem_phan_tu_chuan(&data);
+    let n = count_idiomatic(&data);
     println!("Dữ liệu mượn hợp lệ, vẫn còn sử dụng được: độ dài = {}", n);
 }
 ```
@@ -368,7 +368,7 @@ mod tests {
    Đoạn mã sau đây có độ phức tạp thời gian là bao nhiêu? Làm thế nào để cải tiến nó?
    ```rust
    // Đoạn mã kiểm tra xem mảng có chứa hai số trùng nhau hay không
-   fn co_phan_tu_trung(list: &[i32]) -> bool {
+   fn has_duplicate(list: &[i32]) -> bool {
        for i in 0..list.len() {
            for j in (i + 1)..list.len() {
                if list[i] == list[j] {

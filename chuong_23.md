@@ -181,7 +181,7 @@ impl StructAST {
 // PHẦN 2: TRAIT VÀ MÃ ĐƯỢC TỰ ĐỘNG SINH RA BỞI QUOTE!
 // ============================================================================
 
-/// Trait giao ước mà Macro thủ tục sẽ tự động triển khai
+/// Trait deliver ước mà Macro thủ tục sẽ tự động triển khai
 pub trait DetailedDescription {
     fn in_thong_tin_chi_tiet(&self);
     fn field_count() -> usize;

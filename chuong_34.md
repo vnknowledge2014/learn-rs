@@ -213,15 +213,15 @@ fn main() -> io::Result<()> {
     println!("   NHẬT KÝ GHI TRƯỚC WAL & ĐỘNG CƠ LƯU TRỮ HIỆN ĐẠI LSM-TREE ");
     println!("============================================================");
 
-    let duong_dan_wal = "mini_engine.wal";
+    let wal_path = "mini_engine.wal";
 
     // Đảm bảo dọn dẹp tệp cũ trước khi bắt đầu thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
+    let _ = std::fs::remove_file(wal_path);
 
     // GIAI ĐOẠN 1: Khởi động động cơ và ghi chép dữ liệu
     println!("[1] Khởi động động cơ MiniLsmEngine lần đầu:");
     {
-        let mut engine = MiniLsmEngine::open(duong_dan_wal)?;
+        let mut engine = MiniLsmEngine::open(wal_path)?;
         
         println!("    - Ghi khóa 'user:1' -> 'Alice'");
         engine.set("user:1", "Alice")?;
@@ -250,7 +250,7 @@ fn main() -> io::Result<()> {
     // GIAI ĐOẠN 2: Khởi động lại sau sự cố và kiểm tra tính năng phục hồi
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
-        let recovered_engine = MiniLsmEngine::open(duong_dan_wal)?;
+        let recovered_engine = MiniLsmEngine::open(wal_path)?;
         
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
         println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
@@ -267,7 +267,7 @@ fn main() -> io::Result<()> {
     }
 
     // Dọn dẹp tệp thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
+    let _ = std::fs::remove_file(wal_path);
 
     println!("============================================================");
     println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 30               ");
@@ -297,7 +297,7 @@ use std::io::BufReader;
 // Thiếu use std::io::BufRead;
 
 // Đoạn mã lỗi minh họa E0599: Quên import trait BufRead
-fn doc_dong_loi(f: File) {
+fn read_record_broken(f: File) {
     let reader = BufReader::new(f);
     // for line in reader.lines() { ... } // LỖI E0599: no method named `lines`!
 }

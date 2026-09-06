@@ -60,7 +60,7 @@ fn main() {
     let safe_payload = b"MatKhauAnToan"; // 13 bytes (< 16 bytes)
     match manager.safe_write(safe_payload) {
         Ok(bytes_written) => println!("    - Ghi payload hop le thanh cong: {} bytes", bytes_written),
-        Err(err) => println!("    - Loi: {}", err),
+        Err(err) => println!("    - Failed: {}", err),
     }
 
     let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 55 bytes
@@ -96,13 +96,13 @@ fn main() {
     // -------------------------------------------------------------
     // 3. KIỂM THỬ PHÒNG CHỐNG LỖ HỔNG FORMAT STRING
     // -------------------------------------------------------------
-    println!("\n[3] Thu nghiem phong chong Lo hong Chuoi dinh dang (Format String):");
+    println!("\n[3] Thu nghiem phong chong Lo hong Text dinh dang (Format String):");
     // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
     let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
-    println!("    - Chuoi dau vao tu nguoi dung: '{}'", malicious_user_input);
+    println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
 
     // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
-    // Trong Rust: Chuoi nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
+    // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
     println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
     println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
     println!("      khong bao gio phan tich cac ky tu '%' thanh lenh thuc thi!");

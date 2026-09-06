@@ -114,7 +114,7 @@ Chạy bằng `cargo run -p ch73`, kiểm thử bằng `cargo test -p ch73`.
 ```rust
 #![allow(dead_code)]
 //! Chương 73 — Nói chuyện với EVM bằng Rust: Keccak-256, mã hoá ABI, chữ ký hàm,
-//! mã hoá RLP và cấu trúc giao dịch EIP-1559.
+//! mã hoá RLP và cấu trúc deliver dịch EIP-1559.
 //!
 //! Đây là lõi của hệ sinh thái [alloy-rs](https://github.com/alloy-rs) — bộ thư
 //! viện Ethereum bằng Rust. Ta cài lại từ đầu để thấy macro `sol!` thật ra chỉ
@@ -204,7 +204,7 @@ pub fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect(
 ///
 /// Chỉ 4 byte nghĩa là VA CHẠM CÓ THẬT: xác suất hai hàm khác nhau trùng
 /// chữ ký chỉ khoảng 1/2³². Đã có người cố tình tìm hàm trùng để đánh lừa
-/// giao diện ví — đó là lý do ví hiện đại hiển thị cả chữ ký đầy đủ.
+/// deliver diện ví — đó là lý do ví hiện đại hiển thị cả chữ ký đầy đủ.
 pub fn selector(period: &str) -> [u8; 4] {
     let b = keccak256(period.as_bytes());
     [b[0], b[1], b[2], b[3]]
@@ -228,13 +228,13 @@ pub enum AbiValue {
     Bytes32([u8; 32]),
     // --- kiểu ĐỘNG: chỉ ghi con trỏ vào phần đầu, dữ liệu nằm ở đuôi ---
     Bytes(Vec<u8>),
-    Chuoi(String),
+    Text(String),
     MangUint(Vec<u128>),
 }
 
 impl AbiValue {
     pub fn la_dong(&self) -> bool {
-        matches!(self, AbiValue::Bytes(_) | AbiValue::Chuoi(_) | AbiValue::MangUint(_))
+        matches!(self, AbiValue::Bytes(_) | AbiValue::Text(_) | AbiValue::MangUint(_))
     }
 
     fn o_32(v: u128) -> [u8; 32] {
@@ -273,7 +273,7 @@ impl AbiValue {
                 while v.len() % 32 != 0 { v.push(0); }
                 v
             }
-            AbiValue::Chuoi(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
+            AbiValue::Text(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
             AbiValue::MangUint(m) => {
                 let mut v = Self::o_32(m.len() as u128).to_vec();
                 for x in m { v.extend_from_slice(&Self::o_32(*x)); }
@@ -315,7 +315,7 @@ pub fn dung_calldata(period: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
 /// Giải mã ngược một tham số `uint256` ở vị trí `chi_so` (dùng để đọc kết quả).
 pub fn doc_uint(data: &[u8], chi_so: usize) -> Option<u128> {
     let d = data.get(chi_so * 32..chi_so * 32 + 32)?;
-    // 16 byte cao phải bằng 0, nếu không thì giá trị vượt u128
+    // 16 byte high phải bằng 0, nếu không thì giá trị vượt u128
     if d[..16].iter().any(|&b| b != 0) { return None; }
     Some(u128::from_be_bytes(d[16..].try_into().ok()?))
 }
@@ -331,12 +331,12 @@ pub fn read_address(data: &[u8], chi_so: usize) -> Option<Address> {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Rlp { Chuoi(Vec<u8>), DanhSach(Vec<Rlp>) }
+pub enum Rlp { Text(Vec<u8>), DanhSach(Vec<Rlp>) }
 
 impl Rlp {
     pub fn encode(&self) -> Vec<u8> {
         match self {
-            Rlp::Chuoi(b) => {
+            Rlp::Text(b) => {
                 if b.len() == 1 && b[0] < 0x80 {
                     b.clone() // byte đơn nhỏ tự mã hoá chính nó
                 } else {
@@ -371,10 +371,10 @@ impl Rlp {
     /// Số nguyên trong RLP dùng big-endian KHÔNG có số 0 thừa ở đầu.
     /// Số 0 mã hoá thành chuỗi RỖNG, không phải byte 0x00 — điểm hay bị sai.
     pub fn numerator(v: u128) -> Rlp {
-        if v == 0 { return Rlp::Chuoi(vec![]); }
+        if v == 0 { return Rlp::Text(vec![]); }
         let b = v.to_be_bytes();
         let bo_qua = b.iter().position(|&x| x != 0).unwrap();
-        Rlp::Chuoi(b[bo_qua..].to_vec())
+        Rlp::Text(b[bo_qua..].to_vec())
     }
 }
 
@@ -395,7 +395,7 @@ pub struct Tx1559 {
 }
 
 impl Tx1559 {
-    /// Tải trọng để ký: 0x02 || rlp([...]). Byte 0x02 là "loại giao dịch",
+    /// Tải trọng để ký: 0x02 || rlp([...]). Byte 0x02 là "loại deliver dịch",
     /// thêm vào từ EIP-2718 để chuỗi phân biệt được các định dạng khác nhau.
     pub fn load_in_period(&self) -> Vec<u8> {
         let list = Rlp::DanhSach(vec![
@@ -404,9 +404,9 @@ impl Tx1559 {
             Rlp::numerator(self.max_priority_fee),
             Rlp::numerator(self.max_fee),
             Rlp::numerator(self.gas_limit as u128),
-            match self.den { Some(a) => Rlp::Chuoi(a.to_vec()), None => Rlp::Chuoi(vec![]) },
+            match self.den { Some(a) => Rlp::Text(a.to_vec()), None => Rlp::Text(vec![]) },
             Rlp::numerator(self.value),
-            Rlp::Chuoi(self.data.clone()),
+            Rlp::Text(self.data.clone()),
             Rlp::DanhSach(vec![]), // danh sách truy cập (EIP-2930), để trống
         ]);
         let mut v = vec![0x02];
@@ -431,7 +431,7 @@ impl Tx1559 {
 }
 
 // ============================================================================
-// 6. RÀNG BUỘC KIỂU — "macro sol!" thu nhỏ
+// 6. RÀNG BUỘC KIỂU — "macro sol!" attempt nhỏ
 // ============================================================================
 // alloy sinh ra kiểu Rust từ ABI để bạn không tự tay ghép byte. Đây là bản
 // làm tay của cùng ý tưởng: mỗi hàm hợp đồng là một phương thức có kiểu rõ ràng.
@@ -495,7 +495,7 @@ fn main() {
     println!("\n4. KIỂU ĐỘNG — con trỏ ở đầu, dữ liệu ở đuôi");
     let id = abi_encode(&[
         AbiValue::Uint(42),
-        AbiValue::Chuoi("xin chao".into()),
+        AbiValue::Text("xin chao".into()),
         AbiValue::Bool(true),
     ]);
     println!("   (uint 42, string \"xin chao\", bool true) → {} byte", id.len());
@@ -506,13 +506,13 @@ fn main() {
     println!("   ô 4 (dữ liệu)  : {}", hex(&id[128..160]));
 
     println!("\n5. RLP");
-    println!("   RLP(\"dog\")         = {}", hex(&Rlp::Chuoi(b"dog".to_vec()).encode()));
+    println!("   RLP(\"dog\")         = {}", hex(&Rlp::Text(b"dog".to_vec()).encode()));
     println!("   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)", hex(&Rlp::numerator(0).encode()));
     println!("   RLP(15)             = {}", hex(&Rlp::numerator(15).encode()));
     println!("   RLP(1024)           = {}", hex(&Rlp::numerator(1024).encode()));
     println!("   RLP([\"cat\",\"dog\"]) = {}",
-             hex(&Rlp::DanhSach(vec![Rlp::Chuoi(b"cat".to_vec()),
-                                     Rlp::Chuoi(b"dog".to_vec())]).encode()));
+             hex(&Rlp::DanhSach(vec![Rlp::Text(b"cat".to_vec()),
+                                     Rlp::Text(b"dog".to_vec())]).encode()));
 
     println!("\n6. GIAO DỊCH EIP-1559");
     let gd = Tx1559 {
@@ -522,7 +522,7 @@ fn main() {
         gas_limit: 65_000,
         den: Some(token.address), value: 0, data: cd.clone(),
     };
-    println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại giao dịch)",
+    println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại deliver dịch)",
              gd.load_in_period().len(), gd.load_in_period()[0]);
     println!("   Băm để ký   : 0x{}", hex(&gd.id_hash_ky()));
     println!("   Chi phí tối đa bị khoá: {} wei", gd.chi_phi_toi_da());
@@ -652,7 +652,7 @@ mod tests {
     fn kind_close_record_pointer_use_pos_value() {
         let m = abi_encode(&[
             AbiValue::Uint(42),
-            AbiValue::Chuoi("xin chao".into()),
+            AbiValue::Text("xin chao".into()),
             AbiValue::Bool(true),
         ]);
         assert_eq!(doc_uint(&m, 0), Some(42));
@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn dynamic_data_is_padded_to_32_bytes() {
-        let m = abi_encode(&[AbiValue::Chuoi("a".into())]);
+        let m = abi_encode(&[AbiValue::Text("a".into())]);
         assert_eq!(m.len() % 32, 0, "toàn bộ mã hoá ABI luôn là bội của 32");
         assert_eq!(m.len(), 32 + 32 + 32, "con trỏ + độ dài + 1 ô dữ liệu đã đệm");
     }
@@ -672,8 +672,8 @@ mod tests {
     #[test]
     fn multiple_dynamic_types_do_not_overlap() {
         let m = abi_encode(&[
-            AbiValue::Chuoi("mot".into()),
-            AbiValue::Chuoi("hai ba bon nam sau bay".into()),
+            AbiValue::Text("mot".into()),
+            AbiValue::Text("hai ba bon nam sau bay".into()),
         ]);
         let p1 = doc_uint(&m, 0).unwrap() as usize;
         let p2 = doc_uint(&m, 1).unwrap() as usize;
@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn decoding_rejects_uint_beyond_u128() {
         let mut d = [0u8; 32];
-        d[0] = 1; // bit cao của uint256, vượt xa u128
+        d[0] = 1; // bit high của uint256, vượt xa u128
         assert_eq!(doc_uint(&d, 0), None, "phải báo lỗi chứ không cắt cụt âm thầm");
     }
 
@@ -721,13 +721,13 @@ mod tests {
     #[test]
     fn rlp_matches_yellow_paper_examples() {
         // Các ví dụ này lấy thẳng từ Ethereum Yellow Paper.
-        assert_eq!(hex(&Rlp::Chuoi(b"dog".to_vec()).encode()), "83646f67");
-        assert_eq!(hex(&Rlp::Chuoi(vec![]).encode()), "80");
+        assert_eq!(hex(&Rlp::Text(b"dog".to_vec()).encode()), "83646f67");
+        assert_eq!(hex(&Rlp::Text(vec![]).encode()), "80");
         assert_eq!(hex(&Rlp::DanhSach(vec![]).encode()), "c0");
-        assert_eq!(hex(&Rlp::Chuoi(vec![0x0f]).encode()), "0f", "byte nhỏ tự mã hoá");
-        assert_eq!(hex(&Rlp::Chuoi(vec![0x04, 0x00]).encode()), "820400");
+        assert_eq!(hex(&Rlp::Text(vec![0x0f]).encode()), "0f", "byte nhỏ tự mã hoá");
+        assert_eq!(hex(&Rlp::Text(vec![0x04, 0x00]).encode()), "820400");
         assert_eq!(hex(&Rlp::DanhSach(vec![
-            Rlp::Chuoi(b"cat".to_vec()), Rlp::Chuoi(b"dog".to_vec())]).encode()),
+            Rlp::Text(b"cat".to_vec()), Rlp::Text(b"dog".to_vec())]).encode()),
             "c88363617483646f67");
     }
 
@@ -735,20 +735,20 @@ mod tests {
     fn rlp_encodes_zero_as_empty_string() {
         // Bẫy kinh điển: RLP(0) KHÔNG phải 0x00 mà là 0x80 (chuỗi rỗng).
         assert_eq!(hex(&Rlp::numerator(0).encode()), "80");
-        assert_ne!(Rlp::numerator(0), Rlp::Chuoi(vec![0]));
+        assert_ne!(Rlp::numerator(0), Rlp::Text(vec![0]));
     }
 
     #[test]
     fn rlp_integers_have_no_leading_zeros() {
-        assert_eq!(Rlp::numerator(1024), Rlp::Chuoi(vec![0x04, 0x00]));
-        assert_eq!(Rlp::numerator(255), Rlp::Chuoi(vec![0xff]));
-        assert_eq!(Rlp::numerator(256), Rlp::Chuoi(vec![0x01, 0x00]));
+        assert_eq!(Rlp::numerator(1024), Rlp::Text(vec![0x04, 0x00]));
+        assert_eq!(Rlp::numerator(255), Rlp::Text(vec![0xff]));
+        assert_eq!(Rlp::numerator(256), Rlp::Text(vec![0x01, 0x00]));
     }
 
     #[test]
     fn long_strings_use_the_long_length_form() {
         let long = vec![b'a'; 100];
-        let m = Rlp::Chuoi(long).encode();
+        let m = Rlp::Text(long).encode();
         assert_eq!(m[0], 0xB7 + 1, "0xB7 + số byte cần để ghi độ dài");
         assert_eq!(m[1], 100);
         assert_eq!(m.len(), 2 + 100);
@@ -757,8 +757,8 @@ mod tests {
     #[test]
     fn rlp_boundary_at_55_and_56_bytes() {
         // 55 byte dùng định dạng ngắn, 56 byte chuyển sang định dạng dài
-        assert_eq!(Rlp::Chuoi(vec![b'a'; 55]).encode()[0], 0x80 + 55);
-        assert_eq!(Rlp::Chuoi(vec![b'a'; 56]).encode()[0], 0xB7 + 1);
+        assert_eq!(Rlp::Text(vec![b'a'; 55]).encode()[0], 0x80 + 55);
+        assert_eq!(Rlp::Text(vec![b'a'; 56]).encode()[0], 0xB7 + 1);
     }
 
     // ---------- Giao dịch ----------
@@ -780,8 +780,8 @@ mod tests {
     }
 
     #[test]
-    fn swap_enable_ky_truong_which_same_swap_id_hash() {
-        // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung giao dịch.
+    fn changing_any_field_changes_the_hash() {
+        // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung deliver dịch.
         // Nếu một trường lọt ra ngoài, kẻ tấn công sửa được nó mà chữ ký vẫn hợp lệ.
         let root = trade_mau();
         let b0 = root.id_hash_ky();
@@ -810,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn only_max_fee_use_cong_thuc_pos_must_key() {
+    fn max_cost_matches_the_locking_formula() {
         let gd = trade_mau();
         assert_eq!(gd.chi_phi_toi_da(),
                    1_000_000_000_000_000_000 + 100_000_000_000 * 21_000);
@@ -845,7 +845,7 @@ mod tests {
     fn base_fee_above_cap_does_not_overflow() {
         let gd = trade_mau();
         assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
-                   "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");
+                   "deliver dịch này sẽ không được chọn vào khối, nhưng không được panic");
     }
 }
 ```
@@ -889,17 +889,17 @@ Băm chuỗi hex **chữ thường** (không có tiền tố `0x`), rồi với 
 
 ```rust
 pub fn checksum_eip55(dia_chi_20_byte: &[u8; 20]) -> String {
-    let thuong: String = dia_chi_20_byte.iter()
+    let tip: String = dia_chi_20_byte.iter()
         .map(|b| format!("{:02x}", b)).collect();
-    let bam = keccak256(thuong.as_bytes());
+    let bam = keccak256(tip.as_bytes());
 
     let mut ra = String::with_capacity(42);
     ra.push_str("0x");
-    for (i, c) in thuong.chars().enumerate() {
-        // nibble thứ i của băm: byte i/2, nửa cao nếu i chẵn
+    for (i, c) in tip.chars().enumerate() {
+        // nibble thứ i của băm: byte i/2, nửa high nếu i chẵn
         let nibble = if i % 2 == 0 { bam[i / 2] >> 4 } else { bam[i / 2] & 0x0f };
         if c.is_ascii_digit() {
-            ra.push(c);                       // chữ số không có hoa/thường
+            ra.push(c);                       // chữ số không có uppercase/thường
         } else if nibble >= 8 {
             ra.push(c.to_ascii_uppercase());
         } else {
@@ -909,10 +909,10 @@ pub fn checksum_eip55(dia_chi_20_byte: &[u8; 20]) -> String {
     ra
 }
 
-pub fn kiem_checksum(address: &str) -> bool {
+pub fn verify_checksum(address: &str) -> bool {
     let s = address.strip_prefix("0x").unwrap_or(address);
     if s.len() != 40 { return false; }
-    // Địa chỉ toàn thường hoặc toàn hoa: hợp lệ nhưng KHÔNG có checksum
+    // Địa chỉ toàn thường hoặc toàn uppercase: hợp lệ nhưng KHÔNG có checksum
     if s.chars().all(|c| !c.is_ascii_uppercase())
         || s.chars().all(|c| !c.is_ascii_lowercase()) { return true; }
     let mut byte = [0u8; 20];
@@ -940,22 +940,22 @@ Quy tắc của Geth: giao dịch thay thế phải có **cả** `max_fee` **và
 ```rust
 use std::collections::BTreeMap;
 
-pub struct HangCho {
-    /// số thứ tự (nonce) → giao dịch đang chờ; một nonce chỉ một giao dịch
+pub struct PendingPool {
+    /// số thứ tự (nonce) → deliver dịch đang chờ; một nonce chỉ một deliver dịch
     pub dang_cho: BTreeMap<u64, Tx1559>,
     /// phần trăm tối thiểu phải tăng, ví dụ 10
-    pub buoc_tang: u128,
+    pub bump_percent: u128,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum KetQuaThem { DaThem, DaThayThe { cu: u128 }, TuChoiPhiThap }
 
-impl HangCho {
+impl PendingPool {
     pub fn them(&mut self, gd: Tx1559) -> KetQuaThem {
         match self.dang_cho.get(&gd.nonce) {
             None => { self.dang_cho.insert(gd.nonce, gd); KetQuaThem::DaThem }
             Some(cu) => {
-                let can = |x: u128| x * (100 + self.buoc_tang) / 100;
+                let can = |x: u128| x * (100 + self.bump_percent) / 100;
                 // PHẢI tăng cả hai — đây là chỗ bot hay mắc kẹt
                 let du = gd.max_fee >= can(cu.max_fee)
                       && gd.max_priority_fee >= can(cu.max_priority_fee);
@@ -968,7 +968,7 @@ impl HangCho {
     }
 
     /// Nonce nhỏ nhất chưa được xử lý — nếu nó kẹt, MỌI nonce sau đều kẹt.
-    pub fn nonce_chan_duong(&self) -> Option<u64> {
+    pub fn blocking_nonce(&self) -> Option<u64> {
         self.dang_cho.keys().next().copied()
     }
 }

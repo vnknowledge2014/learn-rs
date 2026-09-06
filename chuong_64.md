@@ -167,7 +167,7 @@ pub enum StateProcess {
     SanSang,    // chờ được cấp CPU
     DangChay,   // đang giữ CPU
     Cho,        // chờ I/O
-    KetThuc,
+    Finished,
 }
 
 /// Khối điều khiển tiến trình — thứ mà nhân hệ điều hành lưu cho MỖI tiến trình.
@@ -178,7 +178,7 @@ pub struct Process {
     pub arrives_at: u64,   // arrival time
     pub time_time_can: u64,   // burst time — tổng CPU cần
     pub remaining: u64,
-    pub uu_tien: u8,          // số nhỏ = ưu tiên cao
+    pub uu_tien: u8,          // số nhỏ = ưu tiên high
     pub state: StateProcess,
     pub start: Option<u64>,
     pub end: Option<u64>,
@@ -243,7 +243,7 @@ pub fn lap_lich_fcfs(mut tt: Vec<Process>) -> KetQuaLapLich {
         }
         p.remaining = 0;
         p.end = Some(clock);
-        p.state = StateProcess::KetThuc;
+        p.state = StateProcess::Finished;
     }
     tong_ket(tt, dtg)
 }
@@ -271,7 +271,7 @@ pub fn lap_lich_sjf(mut tt: Vec<Process>) -> KetQuaLapLich {
                 }
                 tt[i].remaining = 0;
                 tt[i].end = Some(clock);
-                tt[i].state = StateProcess::KetThuc;
+                tt[i].state = StateProcess::Finished;
                 da_chay[i] = true;
                 done += 1;
             }
@@ -314,7 +314,7 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
                 tt[i].remaining -= run;
                 if tt[i].remaining == 0 {
                     tt[i].end = Some(clock);
-                    tt[i].state = StateProcess::KetThuc;
+                    tt[i].state = StateProcess::Finished;
                     done += 1;
                 } else {
                     queue.push_back(i); // chưa xong -> quay lại cuối hàng
@@ -427,12 +427,12 @@ impl WaitForGraph {
     /// Phát hiện bế tắc = tìm chu trình bằng DFS 3 màu.
     pub fn has_deadlock(&self) -> Option<Vec<u32>> {
         let mut mau: HashMap<u32, u8> = HashMap::new(); // 0=trắng 1=xám 2=đen
-        let mut duong: Vec<u32> = Vec::new();
+        let mut positive: Vec<u32> = Vec::new();
         let mut peak: Vec<u32> = self.edge.keys().copied().collect();
         peak.sort();
         for d in peak {
             if mau.get(&d).copied().unwrap_or(0) == 0 {
-                if let Some(chu_trinh) = self.dfs(d, &mut mau, &mut duong) {
+                if let Some(chu_trinh) = self.dfs(d, &mut mau, &mut positive) {
                     return Some(chu_trinh);
                 }
             }
@@ -440,9 +440,9 @@ impl WaitForGraph {
         None
     }
 
-    fn dfs(&self, d: u32, mau: &mut HashMap<u32, u8>, duong: &mut Vec<u32>) -> Option<Vec<u32>> {
+    fn dfs(&self, d: u32, mau: &mut HashMap<u32, u8>, positive: &mut Vec<u32>) -> Option<Vec<u32>> {
         mau.insert(d, 1); // xám = đang thăm
-        duong.push(d);
+        positive.push(d);
         if let Some(ke) = self.edge.get(&d) {
             let mut ke = ke.clone();
             ke.sort();
@@ -450,17 +450,17 @@ impl WaitForGraph {
                 match mau.get(&k).copied().unwrap_or(0) {
                     1 => {
                         // gặp lại đỉnh XÁM -> có chu trình
-                        let start = duong.iter().position(|&x| x == k).unwrap();
-                        return Some(duong[start..].to_vec());
+                        let start = positive.iter().position(|&x| x == k).unwrap();
+                        return Some(positive[start..].to_vec());
                     }
                     0 => {
-                        if let Some(c) = self.dfs(k, mau, duong) { return Some(c); }
+                        if let Some(c) = self.dfs(k, mau, positive) { return Some(c); }
                     }
                     _ => {}
                 }
             }
         }
-        duong.pop();
+        positive.pop();
         mau.insert(d, 2); // đen = xong
         None
     }
@@ -696,7 +696,7 @@ pub fn lap_lich_srtf(mut tt: Vec<Process>) -> KetQuaLapLich {
                 clock += 1;
                 if tt[i].remaining == 0 {
                     tt[i].end = Some(clock);
-                    tt[i].state = StateProcess::KetThuc;
+                    tt[i].state = StateProcess::Finished;
                     done += 1;
                 }
             }
@@ -732,7 +732,7 @@ Clock là **xấp xỉ LRU giá rẻ**: nó chỉ cần 1 bit mỗi trang thay v
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn thay_trang_clock(series: &[u64], num_frame: usize) -> StateChange {
+pub fn clock_replacement(series: &[u64], num_frame: usize) -> StateChange {
     let mut frame: Vec<(u64, bool)> = Vec::new(); // (số trang, bit tham chiếu)
     let mut kim = 0usize;
     let mut error = 0;
@@ -780,14 +780,14 @@ Trạng thái an toàn = tồn tại một **thứ tự hoàn thành** cho mọi
 /// `toi_da[i][j]`  = tiến trình i có thể cần tối đa bao nhiêu tài nguyên loại j
 /// `da_cap[i][j]`  = đang giữ bao nhiêu
 /// `kha_dung[j]`   = còn rảnh bao nhiêu
-pub fn trang_thai_an_toan(
+pub fn safe_state(
     toi_da: &[Vec<i32>], da_cap: &[Vec<i32>], kha_dung: &[i32],
 ) -> Option<Vec<usize>> {
     let n = toi_da.len();
     let m = kha_dung.len();
     let mut ranh: Vec<i32> = kha_dung.to_vec();
     let mut done = vec![false; n];
-    let mut thu_tu = Vec::new();
+    let mut order = Vec::new();
 
     for _ in 0..n {
         // tìm một tiến trình có thể hoàn thành với tài nguyên đang rảnh
@@ -799,12 +799,12 @@ pub fn trang_thai_an_toan(
                 // cho nó chạy xong rồi TRẢ LẠI mọi thứ nó giữ
                 for j in 0..m { ranh[j] += da_cap[i][j]; }
                 done[i] = true;
-                thu_tu.push(i);
+                order.push(i);
             }
             None => return None, // kẹt → trạng thái KHÔNG an toàn
         }
     }
-    Some(thu_tu)
+    Some(order)
 }
 ```
 

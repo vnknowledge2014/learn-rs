@@ -148,7 +148,7 @@ static READ_ONLY_STRING: &str = "Ban do bo nho Rust Masterclass";
 
 // Một hàm đơn giản nằm trong phân đoạn mã máy (.text)
 fn sample_target_function() {
-    println!("    [Execute] Ham muc tieu dang chay ben trong phan doan .text!");
+    println!("    [Execute] Ham muc tieu dang chay ben trong phan segment .text!");
 }
 
 // Hàm đệ quy mô phỏng việc đẩy nhiều khung ngăn xếp (Stack Frames) liên tiếp
@@ -189,18 +189,18 @@ fn main() {
 
     // 1. Phân đoạn Mã lệnh (.text)
     let text_addr = sample_target_function as fn() as usize;
-    println!("\n[1] Phan doan Ma may (.text segment):");
+    println!("\n[1] Phan segment Ma may (.text segment):");
     println!("    - Dia chi ham sample_target_function: 0x{:012x}", text_addr);
 
     // 2. Phân đoạn Dữ liệu (.data & .rodata)
     let data_addr = &GLOBAL_DATA_VAR as *const i32 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
-    println!("\n[2] Phan doan Du lieu toan cuc (.data & .rodata segments):");
-    println!("    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
-    println!("    - Chuoi hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
+    println!("\n[2] Phan segment Du lieu total cuc (.data & .rodata segments):");
+    println!("    - Bien total cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
+    println!("    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
-    println!("\n[3] Phan doan Vung nho dong (Heap segment):");
+    println!("\n[3] Phan segment Vung nho dong (Heap segment):");
     let heap_box_1 = Box::new(1000u64);
     let heap_box_2 = Box::new(2000u64);
     let heap_box_3 = Box::new(3000u64);
@@ -221,7 +221,7 @@ fn main() {
     }
 
     // 4. Phân đoạn Ngăn xếp (Stack segment)
-    println!("\n[4] Phan doan Ngan xep cuoc goi (Stack segment):");
+    println!("\n[4] Phan segment Ngan xep cuoc goi (Stack segment):");
     let main_stack_var: u64 = 42;
     println!(
         "    - Bien cuc bo trong ham main(): 0x{:012x}",
@@ -232,7 +232,7 @@ fn main() {
 
     // 5. Tổng kết so sánh khoảng cách địa chỉ ảo
     println!("\n[5] So sanh tuong quan ban do dia chi ao:");
-    println!("    - Dinh cao nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
+    println!("    - Dinh high nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
     println!("    - Vung trung tam (Heap)   : ~0x{:012x}", heap_addr_1);
     println!("    - Vung thap (Data)        : ~0x{:012x}", data_addr);
     println!("    - Vung day co so (Text)   : ~0x{:012x}", text_addr);
@@ -263,7 +263,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất khi lập trình v
 
 ```rust
 // Đoạn mã lỗi minh họa E0716:
-fn vi_du_loi_e0716() {
+fn e0716_broken() {
     // Lỗi: Chuỗi String được tạo ra tạm thời rồi lập tức bị giải phóng
     // let addr = String::from("Rust Security").as_ptr();
     // println!("Địa chỉ: {:p}", addr); // Sử dụng con trỏ trỏ vào vùng nhớ đã chết!

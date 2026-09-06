@@ -157,7 +157,7 @@ impl PaymentGateway for MockBankingGateway {
             });
         }
 
-        // Sinh mã giao dịch thành công duy nhất
+        // Sinh mã deliver dịch thành công duy nhất
         let tx_id = format!("TXN-{}-OK", amount_cents);
         Ok(tx_id)
     }
@@ -181,7 +181,7 @@ impl<'a, G: PaymentGateway> OrderProcessor<'a, G> {
 
         match self.gateway.process_payment(account_id, order.amount_cents) {
             Ok(tx_id) => {
-                println!("[Hệ thống] Thanh toán thành công! Mã giao dịch: {}", tx_id);
+                println!("[Hệ thống] Thanh toán thành công! Mã deliver dịch: {}", tx_id);
                 order.status = OrderStatus::Paid { transaction_id: tx_id };
                 Ok(())
             }

@@ -120,7 +120,7 @@ pub struct ParsedIpv4Header<'a> {
 /// Trình phân tích tiêu đề gói tin mạng IPv4
 pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'static str> {
     if raw_bytes.len() < 20 {
-        return Err("Kich thuoc goi tin qua ngan de chua IPv4 Header hop le!");
+        return Err("Kich thuoc goi tin qua short de chua IPv4 Header hop le!");
     }
 
     // Byte 0: 4-bit Version và 4-bit IHL
@@ -243,7 +243,7 @@ fn main() {
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
             println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
         }
-        Err(err) => println!("    [!] Loi phan tich: {}", err),
+        Err(err) => println!("    [!] Failed phan products: {}", err),
     }
 
     // -------------------------------------------------------------
@@ -273,7 +273,7 @@ fn main() {
             println!("    - Dia chi khoi chay : 0x{:012X}", elf.entry_point_address);
             println!("    => Nhan dang tep nhi phan thanh cong chi voi 64 bytes dau!");
         }
-        Err(err) => println!("    [!] Loi phan tich ELF: {}", err),
+        Err(err) => println!("    [!] Failed phan products ELF: {}", err),
     }
 
     println!("\n==================================================================");
@@ -299,7 +299,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0507:
-fn vi_du_loi_e0507(slice: &[u8]) {
+fn e0507_broken(slice: &[u8]) {
     // let mang_bon_byte: [u8; 4] = slice[0..4]; // LỖI E0507: Không thể move dữ liệu từ slice mượn!
 }
 

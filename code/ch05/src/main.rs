@@ -51,14 +51,14 @@ fn main() {
     println!("     ỨNG DỤNG ĐO CHỈ SỐ SỨC KHỎE THỂ HÌNH CHUẨN QUỐC TẾ     ");
     println!("============================================================");
 
-    // Lấy thông số cân nặng và chiều cao từ người dùng
+    // Lấy thông số cân nặng và chiều high từ người dùng
     // Trong môi trường tự động không có người gõ, hàm sẽ dùng giá trị mặc định an toàn
     let can_heavy = 68.5; // Đơn vị: kg
     let height = 1.72; // Đơn vị: mét
 
     println!("Thông số kiểm tra thể lực mẫu:");
     println!("- Cân nặng : {} kg (lưu trữ trên Stack)", can_heavy);
-    println!("- Chiều cao: {} m  (lưu trữ trên Stack)", height);
+    println!("- Chiều high: {} m  (lưu trữ trên Stack)", height);
 
     // Gọi hàm tính toán BMI
     let bmi = bmi(can_heavy, height);

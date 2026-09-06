@@ -65,7 +65,7 @@ Bộ nhớ Heap giống như một bãi đỗ xe rộng mênh mông ngoài trờ
 
 Trong Rust, hàm được khai báo bằng từ khóa `fn`:
 ```rust
-fn tinh_tong(so_a: i32, so_b: i32) -> i32 {
+fn sum_all(so_a: i32, so_b: i32) -> i32 {
     so_a + so_b // Không có dấu chấm phẩy: Đây là biểu thức trả về giá trị!
 }
 ```
@@ -102,7 +102,7 @@ Mỗi khi một hàm được gọi, hệ thống sẽ cấp phát một vùng n
 
 Một trong những ví dụ điển hình nhất minh họa mối quan hệ giữa Stack và Heap là kiểu chuỗi `String`:
 ```rust
-let loi_chao = String::from("Xin chào");
+let greeting = String::from("Xin chào");
 ```
 Dưới góc nhìn phần cứng, dữ liệu của biến `loi_chao` được tổ chức như sau:
 
@@ -136,9 +136,9 @@ Dưới góc nhìn phần cứng, dữ liệu của biến `loi_chao` được t
 > - Muốn đếm **số chữ cái thật sự**: dùng `chuoi.chars().count()`.
 >
 > ```rust
-> let loi_chao = String::from("Xin chào");
-> assert_eq!(loi_chao.len(), 9);              // 9 byte trên Heap
-> assert_eq!(loi_chao.chars().count(), 8);    // 8 chữ cái
+> let greeting = String::from("Xin chào");
+> assert_eq!(greeting.len(), 9);              // 9 byte trên Heap
+> assert_eq!(greeting.chars().count(), 8);    // 8 chữ cái
 > ```
 > Hãy khắc ghi điều này ngay từ bây giờ — nó là nguyên nhân số 1 khiến chương trình xử lý tiếng Việt bị lỗi ở các chương sau!
 
@@ -201,22 +201,22 @@ fn main() {
     println!("     ỨNG DỤNG ĐO CHỈ SỐ SỨC KHỎE THỂ HÌNH CHUẨN QUỐC TẾ     ");
     println!("============================================================");
 
-    // Lấy thông số cân nặng và chiều cao từ người dùng
+    // Lấy thông số cân nặng và chiều high từ người dùng
     // Trong môi trường tự động không có người gõ, hàm sẽ dùng giá trị mặc định an toàn
     let can_heavy = 68.5; // Đơn vị: kg
     let height = 1.72; // Đơn vị: mét
 
     println!("Thông số kiểm tra thể lực mẫu:");
     println!("- Cân nặng : {} kg (lưu trữ trên Stack)", can_heavy);
-    println!("- Chiều cao: {} m  (lưu trữ trên Stack)", height);
+    println!("- Chiều high: {} m  (lưu trữ trên Stack)", height);
 
     // Gọi hàm tính toán BMI
     let bmi = bmi(can_heavy, height);
-    let loi_khuyen = mark_price_state(bmi);
+    let advice = mark_price_state(bmi);
 
     println!("------------------------------------------------------------");
     println!("Chỉ số BMI của bạn : {:.2}", bmi);
-    println!("Kết luận thể trạng : {}", loi_khuyen);
+    println!("Kết luận thể trạng : {}", advice);
     println!("------------------------------------------------------------");
 
     // Khám phá kích thước của đối tượng String (Stack 24 bytes vs Heap)

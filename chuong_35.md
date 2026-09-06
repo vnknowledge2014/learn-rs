@@ -127,7 +127,7 @@ Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cà
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Bộ đếm giao dịch toàn cục tự tăng an toàn luồng
+/// Bộ đếm deliver dịch toàn cục tự tăng an toàn luồng
 static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Cấu trúc một bản ghi dữ liệu có gắn phiên bản thời gian (Versioned Record)
@@ -150,7 +150,7 @@ impl MvccStore {
         }
     }
 
-    /// Khởi động một giao dịch mới - Nhận một mã định danh thời gian duy nhất
+    /// Khởi động một deliver dịch mới - Nhận một mã định danh thời gian duy nhất
     pub fn start_trade(&self) -> u64 {
         GLOBAL_TX_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
@@ -159,7 +159,7 @@ impl MvccStore {
     pub fn record(&mut self, key: &str, value: &str, tx_id: u64) {
         let list_session_sell = self.data.entry(key.to_string()).or_default();
 
-        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi giao dịch hiện tại
+        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi deliver dịch hiện tại
         for pb in list_session_sell.iter_mut().rev() {
             if pb.deleted_by_tx.is_none() {
                 pb.deleted_by_tx = Some(tx_id);
@@ -181,9 +181,9 @@ impl MvccStore {
         if let Some(list_session_sell) = self.data.get(key) {
             // Duyệt từ phiên bản mới nhất lùi về phiên bản cũ nhất
             for pb in list_session_sell.iter().rev() {
-                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm giao dịch này
+                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm deliver dịch này
                 let hop_le_ve_make = pb.created_by_tx <= current_tx_id;
-                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một giao dịch xảy ra trong tương lai
+                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một deliver dịch xảy ra trong tương lai
                 let hop_le_ve_remove = match pb.deleted_by_tx {
                     None => true,
                     Some(del_tx) => del_tx > current_tx_id,
@@ -197,12 +197,12 @@ impl MvccStore {
         None
     }
 
-    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn giao dịch nào cần đến
+    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn deliver dịch nào cần đến
     pub fn don_dep_rac(&mut self, oldest_active_tx: u64) -> usize {
         let mut num_sell_record_da_remove = 0;
         for list in self.data.values_mut() {
             let first_sell = list.len();
-            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc giao dịch cũ nhất còn sống
+            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc deliver dịch cũ nhất còn sống
             list.retain(|pb| {
                 match pb.deleted_by_tx {
                     None => true,
@@ -226,35 +226,35 @@ fn main() {
     println!("  GIAO DỊCH, ĐẢM BẢO ACID & KIỂM SOÁT ĐỒNG THỜI MVCC TRONG RUST");
     println!("============================================================");
 
-    let mut kho_mvcc = MvccStore::new();
+    let mut mvcc_store = MvccStore::new();
 
     // 1. Dữ liệu ban đầu được nạp bởi Giao dịch số 1 (Giao dịch khởi tạo hệ thống)
     let tx_block_make = 1;
-    kho_mvcc.record("tai_khoan:A", "1000", tx_block_make);
+    mvcc_store.record("tai_khoan:A", "1000", tx_block_make);
     println!("[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000", tx_block_make);
 
-    // 2. Kịch bản chạy đồng thời hai giao dịch:
+    // 2. Kịch bản chạy đồng thời hai deliver dịch:
     // - Giao dịch Đọc (TX_DOC = 2): Bắt đầu kiểm toán báo cáo tài chính
     // - Giao dịch Ghi  (TX_GHI = 3): Khách hàng nạp thêm tiền vào tài khoản
-    let tx_read = kho_mvcc.start_trade(); // tx = 2
-    let tx_record = kho_mvcc.start_trade(); // tx = 3
-    println!("\n[2] Hai giao dịch đồng thời xuất hiện:");
+    let tx_read = mvcc_store.start_trade(); // tx = 2
+    let tx_record = mvcc_store.start_trade(); // tx = 3
+    println!("\n[2] Hai deliver dịch đồng thời xuất hiện:");
     println!("    - Giao dịch Đọc khởi động tại mốc: tx_id = {}", tx_read);
     println!("    - Giao dịch Ghi khởi động tại mốc : tx_id = {}", tx_record);
 
     // Giao dịch Ghi cập nhật số dư lên 1500 (Tạo phiên bản mới)
     println!("\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...", tx_record);
-    kho_mvcc.record("tai_khoan:A", "1500", tx_record);
+    mvcc_store.record("tai_khoan:A", "1500", tx_record);
 
     // 3. Kiểm tra tính cô lập Snapshot Isolation của MVCC:
     // Giao dịch Đọc (tx = 2) đọc lại tài khoản A
     println!("\n[3] Kiểm tra tính cô lập Snapshot Isolation:");
-    let balance_read = kho_mvcc.doc("tai_khoan:A", tx_read);
+    let balance_read = mvcc_store.doc("tai_khoan:A", tx_read);
     println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
 
     // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
-    let future_tx = kho_mvcc.start_trade(); // tx = 4
-    let new_balance = kho_mvcc.doc("tai_khoan:A", future_tx);
+    let future_tx = mvcc_store.start_trade(); // tx = 4
+    let new_balance = mvcc_store.doc("tai_khoan:A", future_tx);
     println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
 
     // Xác nhận tính chính xác tuyệt đối:
@@ -265,8 +265,8 @@ fn main() {
 
     // 4. Kiểm thử tính năng dọn rác Vacuum / Compaction
     println!("\n[4] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Compaction):");
-    // Khi giao dịch cũ tx=2 đã kết thúc, giao dịch cũ nhất hiện tại là tx=4
-    let so_rac_da_don = kho_mvcc.don_dep_rac(4);
+    // Khi deliver dịch cũ tx=2 đã kết thúc, deliver dịch cũ nhất hiện tại là tx=4
+    let so_rac_da_don = mvcc_store.don_dep_rac(4);
     println!("    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!", so_rac_da_don);
     assert_eq!(so_rac_da_don, 1); // Phiên bản v1 đã bị dọn dẹp
 
@@ -293,14 +293,14 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0502: Xung đột mượn đọc và mượn ghi
-fn thu_nghiem_loi_mvcc(store: &mut MvccStore) {
+fn broken_mvcc(store: &mut MvccStore) {
     // let ket_qua = store.doc("key", 2); // Mượn bất biến store
     // store.ghi("key", "val_moi", 3);    // LỖI E0502: Mượn khả biến store khi đang bị mượn đọc!
     // println!("Đã đọc: {:?}", ket_qua);
 }
 
 // Cách sửa chữa đúng chuẩn: Chuyển dữ liệu mượn thành kiểu sở hữu độc lập
-fn thu_nghiem_dung_mvcc(store: &mut MvccStore) {
+fn correct_mvcc(store: &mut MvccStore) {
     // Bước 1: Sao chép kết quả ra biến String độc lập
     let ket_qua = store.doc("key", 2).map(|s| s.to_string());
     

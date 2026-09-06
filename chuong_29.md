@@ -264,7 +264,7 @@ impl<T: Ord> BinarySearchTree<T> {
         }
     }
 
-    /// Tính chiều cao của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
+    /// Tính chiều high của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
     pub fn height(&self) -> usize {
         Self::recursive_height(&self.root)
     }
@@ -318,9 +318,9 @@ fn main() {
     println!("\n    - Tổng số nút trong cây: {}", cay_bst.len());
     assert_eq!(cay_bst.len(), 7);
 
-    // 2. Kiểm tra chiều cao của cây
+    // 2. Kiểm tra chiều high của cây
     let height = cay_bst.height();
-    println!("\n[2] Chiều cao của cây: {}", height);
+    println!("\n[2] Chiều high của cây: {}", height);
     assert_eq!(height, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
 
     // 3. Kiểm tra tính năng tìm kiếm O(log N)
@@ -372,22 +372,22 @@ struct ToaDo {
 }
 
 // Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
-fn thu_nghiem_loi_bst() {
+fn broken_bst() {
     // let mut cay = BinarySearchTree::new();
     // cay.them(ToaDo { x: 1, y: 2 }); // LỖI E0277: ToaDo không thỏa mãn trait Ord!
 }
 
 // Cách sửa chữa đúng chuẩn: Derive các trait so sánh cần thiết
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ToaDoChuan {
+struct CoordIdiomatic {
     x: i32,
     y: i32,
 }
 
-fn thu_nghiem_dung_bst() {
+fn correct_bst() {
     let mut cay = BinarySearchTree::new();
-    cay.them(ToaDoChuan { x: 10, y: 20 });
-    cay.them(ToaDoChuan { x: 5, y: 15 });
+    cay.them(CoordIdiomatic { x: 10, y: 20 });
+    cay.them(CoordIdiomatic { x: 5, y: 15 });
     println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", cay.len());
 }
 ```

@@ -14,14 +14,14 @@ use std::collections::HashMap;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpMemory { ThanhGhi, L1, L2, L3, Ram, SsdNvme, DiaQuay }
+pub enum UpMemory { Register, L1, L2, L3, Ram, SsdNvme, DiaQuay }
 
 impl UpMemory {
     /// Độ trễ tính bằng CHU KỲ CPU. Cách nhìn này quan trọng hơn nano-giây:
     /// nó cho biết CPU phải ngồi chơi bao nhiêu nhịp.
     pub fn period(self) -> u64 {
         match self {
-            UpMemory::ThanhGhi => 1,
+            UpMemory::Register => 1,
             UpMemory::L1 => 4,
             UpMemory::L2 => 12,
             UpMemory::L3 => 40,
@@ -32,14 +32,14 @@ impl UpMemory {
     }
     pub fn name(self) -> &'static str {
         match self {
-            UpMemory::ThanhGhi => "Thanh ghi", UpMemory::L1 => "Cache L1",
+            UpMemory::Register => "Thanh ghi", UpMemory::L1 => "Cache L1",
             UpMemory::L2 => "Cache L2", UpMemory::L3 => "Cache L3",
             UpMemory::Ram => "RAM", UpMemory::SsdNvme => "SSD NVMe",
             UpMemory::DiaQuay => "Đĩa quay",
         }
     }
     pub fn all() -> [UpMemory; 7] {
-        [UpMemory::ThanhGhi, UpMemory::L1, UpMemory::L2, UpMemory::L3,
+        [UpMemory::Register, UpMemory::L1, UpMemory::L2, UpMemory::L3,
          UpMemory::Ram, UpMemory::SsdNvme, UpMemory::DiaQuay]
     }
 }
@@ -415,7 +415,7 @@ fn main() {
     }
     println!("   → CÙNG số phép nhân. Chỉ đổi thứ tự truy cập bộ nhớ.");
 
-    println!("\n4. DỰ ĐOÁN NHÁNH — vì sao sắp xếp trước lại nhanh hơn");
+    println!("\n4. DỰ ĐOÁN NHÁNH — vì sao sắp xếp trước lại fast hơn");
     let lon_xon = gen_data(100_000, 42);
     let mut da_sap = lon_xon.clone();
     da_sap.sort_unstable();
@@ -427,7 +427,7 @@ fn main() {
     }
     println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
              branch_not_taken_count(&da_sap, 128));
-    println!("   → Sắp xếp trước không làm phép đếm nhanh hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
+    println!("   → Sắp xếp trước không làm phép đếm fast hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
 
     println!("\n5. SONG SONG MỨC LỆNH");
     let n = 1_000_000u64;
@@ -472,7 +472,7 @@ mod tests {
         let t = UpMemory::all();
         for w in t.windows(2) {
             assert!(w[0].period() < w[1].period(),
-                    "{} phải nhanh hơn {}", w[0].name(), w[1].name());
+                    "{} phải fast hơn {}", w[0].name(), w[1].name());
         }
     }
 
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn a_whole_cache_line_arrives_at_once() {
         // Chạm byte 0 thì byte 1..63 cũng vào cache theo — đó chính là lý do
-        // duyệt tuần tự nhanh hơn duyệt nhảy cóc.
+        // duyệt tuần tự fast hơn duyệt nhảy cóc.
         let mut mp = CacheSim::new(32 * 1024, 8);
         mp.access_cap(0);
         for b in 1..BYTE_MOI_DONG_CACHE {
@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn sorted_data_mispredicts_far_less() {
         // Câu hỏi phỏng vấn kinh điển: "vì sao sắp xếp mảng trước lại làm
-        // vòng lặp đếm chạy nhanh hơn?" — không phải vì phép đếm nhanh hơn,
+        // vòng lặp đếm chạy fast hơn?" — không phải vì phép đếm fast hơn,
         // mà vì CPU đoán nhánh đúng hơn.
         let lon_xon = gen_data(50_000, 42);
         let mut da_sap = lon_xon.clone();
@@ -688,7 +688,7 @@ mod tests {
         let mut ilp_truoc = 0.0;
         for k in [1u64, 2, 4, 8] {
             let b = analyze_total_many_bien(1_000_000, k, 4);
-            assert!(b.ilp > ilp_truoc, "k={} phải cho ILP cao hơn", k);
+            assert!(b.ilp > ilp_truoc, "k={} phải cho ILP high hơn", k);
             ilp_truoc = b.ilp;
         }
         let b4 = analyze_total_many_bien(1_000_000, 4, 4);
@@ -700,7 +700,7 @@ mod tests {
         // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi chu kỳ.
         let b = analyze_total_many_bien(1_000_000, 64, 4);
         assert!(b.estimated_cycles >= 1_000_000 / 4,
-                "không thể nhanh hơn giới hạn độ rộng CPU");
+                "không thể fast hơn giới hạn độ rộng CPU");
     }
 
     #[test]
@@ -709,9 +709,9 @@ mod tests {
         // (Với f64 thì KHÔNG — đó là lý do trình biên dịch không tự làm việc
         // này cho số thực trừ khi bạn cho phép nới lỏng ngữ nghĩa dấu phẩy động.)
         let d: Vec<i64> = (1..=10_000).collect();
-        let mong_doi = tong_mot_bien(&d);
+        let expected = tong_mot_bien(&d);
         for k in [1usize, 2, 3, 4, 8, 16] {
-            assert_eq!(total_many_bien(&d, k), mong_doi, "k={}", k);
+            assert_eq!(total_many_bien(&d, k), expected, "k={}", k);
         }
     }
 
@@ -762,9 +762,9 @@ mod tests {
     fn batch_add_matches_scalar_add() {
         let a: Vec<f64> = (0..103).map(|i| i as f64).collect();
         let b: Vec<f64> = (0..103).map(|i| (i * 2) as f64).collect();
-        let mong_doi: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
+        let expected: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
         for w in [1usize, 2, 4, 8, 16] {
-            assert_eq!(batch_add_array(&a, &b, w), mong_doi,
+            assert_eq!(batch_add_array(&a, &b, w), expected,
                        "vector hoá bề rộng {} phải cho cùng kết quả", w);
         }
     }

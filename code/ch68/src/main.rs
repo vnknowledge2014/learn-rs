@@ -36,8 +36,8 @@ impl Vec2 {
         self.gate(den.subtract(self).nhan(t))
     }
     /// Phản xạ quanh pháp tuyến — quả bóng nảy khỏi tường.
-    pub fn part_remote(self, phap_tuyen: Vec2) -> Vec2 {
-        let n = phap_tuyen.normalize();
+    pub fn part_remote(self, normal: Vec2) -> Vec2 {
+        let n = normal.normalize();
         self.subtract(n.nhan(2.0 * self.dot(n)))
     }
 }
@@ -47,7 +47,7 @@ impl Vec2 {
 // ============================================================================
 
 /// Nếu để bước vật lý phụ thuộc tốc độ khung hình, cùng một trò chơi sẽ chạy
-/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ cao.
+/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ high.
 /// Giải pháp: tích lũy thời gian rồi chạy vật lý theo bước CỐ ĐỊNH.
 pub struct AccumulatorUnit {
     pub step_has_peak: f32,
@@ -161,8 +161,8 @@ pub fn semi_implicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> Physi
 pub struct HopReport { pub min: Vec2, pub max: Vec2 }
 
 impl HopReport {
-    pub fn self_centered(tam: Vec2, nua_kich_thuoc: Vec2) -> HopReport {
-        HopReport { min: tam.subtract(nua_kich_thuoc), max: tam.gate(nua_kich_thuoc) }
+    pub fn self_centered(tam: Vec2, half_extent: Vec2) -> HopReport {
+        HopReport { min: tam.subtract(half_extent), max: tam.gate(half_extent) }
     }
     /// Định lý trục tách: hai hộp KHÔNG chạm nhau nếu tồn tại MỘT trục mà
     /// hình chiếu của chúng rời nhau. Với AABB chỉ cần thử 2 trục X và Y.

@@ -79,14 +79,14 @@ Khi viết một Derive macro, bạn thường muốn cho phép người dùng t
 struct User {
     pub full_name: String,
     #[bo_qua] // Thuộc tính bổ trợ: không in trường mật khẩu này!
-    pub mat_khau: String,
+    pub password: String,
 }
 ```
 Để trình biên dịch không báo lỗi *"unknown attribute `bo_qua`"*, bạn phải đăng ký tên thuộc tính này trong khai báo macro bằng tham số `attributes(...)`:
 
 ```rust
 #[proc_macro_derive(XuatDuLieu, attributes(bo_qua))]
-pub fn xuat_du_lieu_derive(input: TokenStream) -> TokenStream {
+pub fn export_derive(input: TokenStream) -> TokenStream {
     // rustc sẽ cho phép #[bo_qua] xuất hiện bên trong struct
 }
 ```
@@ -99,11 +99,11 @@ Attribute macro nhận vào hai dòng thẻ bài:
 
 ```rust
 #[proc_macro_attribute]
-pub fn ghi_nhat_ky(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let ham_goc = parse_macro_input!(item as ItemFn);
-    let ten_ham = &ham_goc.sig.ident;
-    let than_ham = &ham_goc.block;
-    let period = &ham_goc.sig;
+pub fn log_it(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let original_fn = parse_macro_input!(item as ItemFn);
+    let ten_ham = &original_fn.sig.ident;
+    let than_ham = &original_fn.block;
+    let period = &original_fn.sig;
 
     let ma_moi = quote! {
         #period {
@@ -123,7 +123,7 @@ pub fn ghi_nhat_ky(attr: TokenStream, item: TokenStream) -> TokenStream {
 Vì Macro thủ tục chạy trực tiếp trong lúc bạn gõ lệnh `cargo build`, bạn có thể dùng lệnh `eprintln!` ngay trong thân hàm proc-macro để in thông tin phân tích AST ra màn hình Terminal:
 ```rust
 #[proc_macro_derive(KiemTra)]
-pub fn kiem_tra_derive(input: TokenStream) -> TokenStream {
+pub fn check_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     eprintln!("DEBUG AST: {:#?}", ast); // In cây cú pháp ra terminal lúc build!
     TokenStream::new()
@@ -191,7 +191,7 @@ pub fn safe_transfer(
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO ĐẦU HÀM]:
     println!("[BẢO VỆ ATTRIBUTE] Đang xác thực quyền hạn của vai trò: '{}'", executor_role);
     if executor_role != "QuanTriVien" && executor_role != "ChuTaiKhoan" {
-        return Err("Từ chối truy cập: Bạn không có quyền thực hiện giao dịch này!");
+        return Err("Từ chối truy cập: Bạn không có quyền thực hiện deliver dịch này!");
     }
 
     // [THÂN HÀM NGUYÊN BẢN CỦA LẬP TRÌNH VIÊN]:
@@ -200,7 +200,7 @@ pub fn safe_transfer(
 
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO CUỐI HÀM]:
     println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", id_trade);
-    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", id_trade))
+    Ok(format!("Chuyển tiền thành công! Mã deliver dịch: {}", id_trade))
 }
 
 // ============================================================================
@@ -278,13 +278,13 @@ fn main() {
     // 3. Ứng dụng Function-like Macro xử lý DSL tùy biến
     // ------------------------------------------------------------------------
     println!("\n3. Ứng dụng Function-like Macro khởi tạo cấu hình bảo mật:");
-    let cau_hinh = phan_tich_cau_hinh! {
+    let config = phan_tich_cau_hinh! {
         TIMEOUT = 30;
         MAX_RETRY = 3;
         PORT = 8443;
     };
 
-    for (k, v) in &cau_hinh {
+    for (k, v) in &config {
         println!("  Tham số hệ thống `{}` được nạp với giá trị: {}", k, v);
     }
 
@@ -319,7 +319,7 @@ Dưới đây là các lỗi thường gặp nhất khi triển khai và sử d�
 // #[derive(InThongTin)]
 // struct User {
 //     #[bo_qua] // LỖI: cannot find attribute `bo_qua` in this scope!
-//     mat_khau: String,
+//     password: String,
 // }
 
 // Cách khắc phục chuẩn xác:

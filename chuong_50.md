@@ -172,7 +172,7 @@ impl BankAccountActor {
                             "    [Actor] Từ chối rút {}đ: Số dư không đủ (Hiện có {}đ)!",
                             amount, self.balance
                         );
-                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
+                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện deliver dịch"));
                     }
                 }
                 AccountMessage::GetBalance { respond_to } => {
@@ -186,7 +186,7 @@ impl BankAccountActor {
     }
 }
 
-/// Giao diện điều khiển thuận tiện cho Client giao tiếp với Actor (Actor Client Handle)
+/// Giao diện điều khiển thuận tiện cho Client deliver tiếp với Actor (Actor Client Handle)
 #[derive(Clone)]
 pub struct BankAccountHandle {
     mailbox_tx: Sender<AccountMessage>,
@@ -241,7 +241,7 @@ fn main() {
     // 3. Tạo tay cầm Handle để các client sử dụng
     let handle = BankAccountHandle::new(mailbox_tx);
 
-    println!("\n[1] Thuc hien cac giao dich nap tien ban dau:");
+    println!("\n[1] Thuc hien cac deliver dich nap tien ban dau:");
     handle.deposit(100_000);
     handle.deposit(250_000);
 
@@ -304,7 +304,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 use std::sync::mpsc::channel;
 
 // Đoạn mã lỗi minh họa E0382:
-fn vi_du_loi_e0382() {
+fn e0382_broken() {
     let (tx, _rx) = channel::<i32>();
     
     // Gửi giá trị và vô tình di chuyển tx

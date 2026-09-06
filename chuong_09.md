@@ -62,8 +62,8 @@ Chiếc thẻ ATM của bạn lưu giữ số dư tiền bạc. Khối `impl` cu
 
 Khi bạn định nghĩa một Struct:
 ```rust
-struct GoiHang {
-    dang_giao: bool, // 1 byte
+struct Parcel {
+    in_transit: bool, // 1 byte
     quantity: f64, // 8 bytes
     ma_so: u8,       // 1 byte
 }
@@ -81,13 +81,13 @@ Trong khối `impl TenStruct`, các hàm có tham số đầu tiên là `self` �
 ```rust
 impl Account {
     // 1. Tham chiếu bất biến: Chỉ đọc dữ liệu (Borrow immutable)
-    fn xem_so_du(&self) -> f64 { self.balance }
+    fn show_balance(&self) -> f64 { self.balance }
 
     // 2. Tham chiếu khả biến: Cho phép chỉnh sửa trạng thái (Borrow mutable)
     fn nap_tien(&mut self, tien: f64) { self.balance += tien; }
 
     // 3. Quyền sở hữu độc quyền: Tiêu thụ và hủy đối tượng (Take ownership & Drop)
-    fn dong_tai_khoan(self) {
+    fn close_account(self) {
         println!("Tài khoản của {} đã chính thức bị đóng vĩnh viễn!", self.name);
         // Khi hàm này kết thúc, self đi ra khỏi scope và bị giải phóng!
     }
@@ -129,7 +129,7 @@ Chương trình hoàn chỉnh dưới đây mô phỏng một hệ thống quả
 // 1. Tuple Struct: Biểu diễn tọa độ GPS của trụ sở ngân hàng (Kinh độ, Vĩ độ)
 struct GpsCoord(f64, f64);
 
-// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
+// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật deliver dịch
 struct LostReport;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
@@ -201,9 +201,9 @@ fn main() {
     println!("============================================================");
 
     // Sử dụng Tuple Struct để lưu tọa độ chi nhánh ngân hàng
-    let chi_nhanh_ha_noi = GpsCoord(21.0285, 105.8542);
-    println!("Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}", 
-             chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
+    let hanoi_branch = GpsCoord(21.0285, 105.8542);
+    println!("Tọa độ chi nhánh deliver dịch: Vĩ độ {}, Kinh độ {}", 
+             hanoi_branch.0, hanoi_branch.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
     let _auth_session = LostReport;
@@ -219,12 +219,12 @@ fn main() {
     // Tra cứu thông tin (gọi phương thức &self)
     account_hidden.tra_cuu_thong_tin();
 
-    // Thực hiện các giao dịch làm biến đổi số dư (gọi phương thức &mut self)
+    // Thực hiện các deliver dịch làm biến đổi số dư (gọi phương thức &mut self)
     account_hidden.nap_tien(500_000.0);
     account_hidden.rut_tien(200_000.0);
     account_hidden.rut_tien(2_000_000.0); // Thử rút vượt số dư
 
-    // Tra cứu lại thông tin sau giao dịch
+    // Tra cứu lại thông tin sau deliver dịch
     account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)

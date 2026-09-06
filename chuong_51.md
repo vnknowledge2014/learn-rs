@@ -109,7 +109,7 @@ pub struct ProductEntity {
     pub in_stock: bool,
 }
 
-/// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
+/// Trạng thái dùng shared toàn dịch vụ (Shared Application State)
 pub struct SharedAppState {
     pub catalog: Mutex<HashMap<u64, ProductEntity>>,
 }
@@ -174,7 +174,7 @@ impl ProtobufWireCodec {
     /// Giải mã nhị phân không sao chép từ chuỗi byte gRPC
     pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, &'static str> {
         if bytes.len() < 20 {
-            return Err("Kich thuoc byte protobuf qua ngan!");
+            return Err("Kich thuoc byte protobuf qua short!");
         }
 
         let mut id = 0u64;
@@ -243,7 +243,7 @@ impl TypeSafeServiceRouter {
                 prod.id, prod.name, prod.price_cents, prod.in_stock
             ))
         } else {
-            Err("404 Not Found: Khong tim thay san pham")
+            Err("404 Not Found: Low tim thay san pham")
         }
     }
 
@@ -264,7 +264,7 @@ fn main() {
     println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
     println!("==================================================================");
 
-    // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
+    // 1. Khởi tạo trạng thái dùng shared được bọc trong con trỏ Arc
     let shared_state = Arc::new(SharedAppState::new());
     let router = TypeSafeServiceRouter::new(shared_state);
 
@@ -321,28 +321,28 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0599:
-struct LoiHeThong {
+struct SystemError {
     greeting: String,
 }
 
-// Hàm handler trả về LoiHeThong nhưng chưa có IntoResponse
-// async fn handler_loi() -> Result<&'static str, LoiHeThong> {
-//     Err(LoiHeThong { greeting: "Lỗi nội bộ".into() }) // LỖI E0599!
+// Hàm handler trả về SystemError nhưng chưa có IntoResponse
+// async fn error_handler() -> Result<&'static str, SystemError> {
+//     Err(SystemError { greeting: "Lỗi nội bộ".into() }) // LỖI E0599!
 // }
 
 // Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển đổi sang HTTP Response
-struct LoiChuan {
+struct StdError {
     chi_tiet: &'static str,
 }
 
-impl LoiChuan {
+impl StdError {
     fn to_http_status(&self) -> (u16, &'static str) {
         (500, self.chi_tiet)
     }
 }
 
-fn kiem_tra_loi() {
-    let err = LoiChuan { chi_tiet: "Lỗi kết nối database" };
+fn check_error() {
+    let err = StdError { chi_tiet: "Lỗi kết nối database" };
     let (code, msg) = err.to_http_status();
     println!("Mã lỗi HTTP: {} - Nội dung: {}", code, msg);
 }

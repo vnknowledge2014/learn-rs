@@ -342,20 +342,20 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết k�
 
 ```rust
 // Đoạn mã lỗi minh họa E0038: Trait không thỏa mãn Object Safety
-trait DichVuLoi {
+trait FailingService {
     // Lỗi: Hàm generic không thể tạo Trait Object động
     fn xu_ly_generic<T>(&self, data: T); 
 }
 
-// fn goi_dich_vu(dv: &dyn DichVuLoi) {} // LỖI E0038!
+// fn goi_dich_vu(dv: &dyn FailingService) {} // LỖI E0038!
 
 // Cách sửa chữa đúng chuẩn: Dùng kiểu cụ thể hoặc lát cắt byte
 trait DichVuDung: Send + Sync {
-    fn xu_ly_chuan(&self, data: &[u8]) -> Result<(), &'static str>;
+    fn handle_idiomatic(&self, data: &[u8]) -> Result<(), &'static str>;
 }
 
 fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
-    let _ = dv.xu_ly_chuan(b"data");
+    let _ = dv.handle_idiomatic(b"data");
 }
 ```
 

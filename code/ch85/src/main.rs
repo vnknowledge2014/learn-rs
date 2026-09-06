@@ -653,7 +653,7 @@ pub struct ChainVenue {
 pub enum SwapError {
     ZeroInput,
     EmptyPool,
-    BelowMinOut { nhan_duoc: u128, yeu_cau: u128 },
+    BelowMinOut { received: u128, required: u128 },
 }
 
 impl ChainVenue {
@@ -691,7 +691,7 @@ impl ChainVenue {
     pub fn swap(&mut self, x_in: bool, amount_in: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
         let ra = self.try_swap(x_in, amount_in)?;
         if ra < toi_thieu_ra {
-            return Err(SwapError::BelowMinOut { nhan_duoc: ra, yeu_cau: toi_thieu_ra });
+            return Err(SwapError::BelowMinOut { received: ra, required: toi_thieu_ra });
         }
         if x_in {
             self.reserve_x += amount_in;
@@ -764,7 +764,7 @@ impl MarketSnapshot {
     }
 
     /// Chênh lệch giá giữa hai sàn, tính bằng điểm cơ bản. Dương nghĩa là
-    /// sàn chuỗi khối đang đắt hơn → mua truyền thống, bán chuỗi khối.
+    /// sàn chuỗi khối đang đắt hơn → bid truyền thống, bán chuỗi khối.
     pub fn cross_venue_bps(&self) -> Option<f64> {
         let tt = self.mid_price_traditional()?;
         if tt <= 0.0 {
@@ -930,7 +930,7 @@ impl RiskGate {
         }
 
         // Kiểm CẢ HAI chiều phơi nhiễm, kể cả chiều mà lệnh này không chạm tới:
-        // một lệnh mua vẫn phải bị chặn nếu chiều bán đã vượt hạn mức.
+        // một lệnh bid vẫn phải bị chặn nếu chiều bán đã vượt hạn mức.
         let (sau_mua, sau_ban) = match side {
             Side::Buy => (position + resting_bid + quantity, position - resting_ask),
             Side::Sell => (position + resting_bid, position - resting_ask - quantity),
@@ -1083,7 +1083,7 @@ impl Strategy for CrossVenueArb {
         // phải chênh lệch giá — đó là cược một chiều đội lốt, và nó sẽ tích luỹ
         // vị thế cho tới khi chạm hạn mức rồi ngồi đó chịu lỗ.
         let (chieu_tt, level) = if cl > 0.0 {
-            // Chuỗi khối đắt hơn → mua chân rẻ (truyền thống), bán chân đắt.
+            // Chuỗi khối đắt hơn → bid chân rẻ (truyền thống), bán chân đắt.
             (Side::Buy, snap.lit_sell)
         } else {
             (Side::Sell, snap.lit_buy)
@@ -1593,8 +1593,8 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
         let step = (hash64(r) % 5) as Price - 2;
         price_show = (price_show + step).max(gia_neo - 40).min(gia_neo + 40);
 
-        let nhanh = r % 100;
-        if nhanh < 8 {
+        let fast = r % 100;
+        if fast < 8 {
             // Hoán đổi trên bể chuỗi khối. Chiều được chọn để KÉO giá bể về
             // phía giá sàn truyền thống, cộng thêm một phần nhiễu từ người
             // giao dịch thường.
@@ -1608,7 +1608,7 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
                 san: Venue::Chain,
                 kind: EventKind::PoolSwap { x_in, quantity: kl },
             });
-        } else if nhanh < 20 && !song.is_empty() {
+        } else if fast < 20 && !song.is_empty() {
             // Giao dịch đã khớp trên sàn truyền thống.
             let kl = 1 + (hash64(r ^ 0xDEF) % 40) as Quantity;
             p.record(SessionEvent {
@@ -1616,7 +1616,7 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
                 san: Venue::Lit,
                 kind: EventKind::Traded { price: price_show, quantity: kl },
             });
-        } else if song.len() >= 120 || (nhanh < 55 && song.len() > 20) {
+        } else if song.len() >= 120 || (fast < 55 && song.len() > 20) {
             // Huỷ lệnh SỐNG CŨ NHẤT — mô phỏng đúng hành vi nhà tạo lập thật.
             if let Some(m) = song.pop_front() {
                 p.record(SessionEvent {
@@ -1888,7 +1888,7 @@ mod tests {
         s.apply(&EventKind::AddOrder { id: 2, side: Side::Sell, price: 102, quantity: 100 });
         let mid = s.mid().unwrap();
         let vi = s.micro_price().unwrap();
-        assert!(vi > mid, "bên mua đông → vi giá phải cao hơn giá giữa");
+        assert!(vi > mid, "bên bid đông → vi giá phải high hơn giá giữa");
         assert!(vi < 102.0);
     }
 
@@ -2058,7 +2058,7 @@ mod tests {
             price: 100,
             quantity: 50,
         };
-        // Vị thế 0 nhưng đã treo mua 60 → thêm 50 nữa là vượt 100.
+        // Vị thế 0 nhưng đã treo bid 60 → thêm 50 nữa là vượt 100.
         assert_eq!(c.check(&y, 0, 60, 0, 0.0, 0), Err(RejectReason::PositionLimit));
         // Không có lệnh treo thì cùng lệnh đó qua được.
         assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
@@ -2145,11 +2145,11 @@ mod tests {
     fn percentiles_catch_tail_that_mean_hides() {
         let mut h = LatencyHistogram::new();
         for i in 0..10_000 {
-            // 99,9% nhanh, 0,1% chậm 50 µs — đúng hình dạng độ trễ thật.
+            // 99,9% fast, 0,1% chậm 50 µs — đúng hình dạng độ trễ thật.
             h.record(if i % 1000 == 0 { 50_000 } else { 300 });
         }
         assert!(h.percentile(0.50) <= 512);
-        assert!(h.percentile(0.99) <= 512, "p99 vẫn nhanh — cái đuôi bị giấu");
+        assert!(h.percentile(0.99) <= 512, "p99 vẫn fast — cái đuôi bị giấu");
         assert_eq!(h.max, 50_000);
         assert!(h.max as f64 > h.mean() * 100.0, "max lớn hơn trung bình >100×");
     }
@@ -2180,7 +2180,7 @@ mod tests {
         };
         let duplicate_loop = lay(0).unwrap();
         let long = lay(80).unwrap();
-        assert!(long < duplicate_loop, "dài vị thế → hạ giá mua để bớt mua thêm");
+        assert!(long < duplicate_loop, "dài vị thế → hạ giá bid để bớt bid thêm");
     }
 
     #[test]
@@ -2201,8 +2201,8 @@ mod tests {
         for y in m.evaluate(&snap, 0) {
             if let Intent::Place { side, price, .. } = y {
                 match side {
-                    Side::Buy => assert!(price < 102, "giá mua {} cắt qua giá bán tốt nhất", price),
-                    Side::Sell => assert!(price > 101, "giá bán {} cắt qua giá mua tốt nhất", price),
+                    Side::Buy => assert!(price < 102, "giá bid {} cắt qua giá bán tốt nhất", price),
+                    Side::Sell => assert!(price > 101, "giá bán {} cắt qua giá bid tốt nhất", price),
                 }
             }
         }
@@ -2240,7 +2240,7 @@ mod tests {
         let y = m.evaluate(&snap, 100);
         assert!(
             y.iter().all(|x| !matches!(x, Intent::Place { side: Side::Buy, .. })),
-            "chạm hạn mức dài thì không báo giá mua nữa"
+            "chạm hạn mức dài thì không báo giá bid nữa"
         );
     }
 
@@ -2267,7 +2267,7 @@ mod tests {
                 // Chân KHÔNG CHẮC (sổ lệnh) chạy trước; chân chắc chắn (AMM)
                 // chỉ phòng vệ đúng phần thực sự khớp.
                 assert_eq!(san, Venue::Lit);
-                assert_eq!(side, Side::Buy, "chuỗi khối đắt hơn → mua chân truyền thống");
+                assert_eq!(side, Side::Buy, "chuỗi khối đắt hơn → bid chân truyền thống");
                 assert_eq!(hedge_on, Venue::Chain);
             }
             _ => panic!("chênh lệch giá phải là lệnh có phòng vệ, không phải lệnh trần"),

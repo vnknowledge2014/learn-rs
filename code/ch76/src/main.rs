@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 //! Chương 76 — Ghi & Phát lại phiên giao dịch: định dạng bản ghi, đồng hồ ảo,
-//! phát lại đúng dòng thời gian hoặc tua nhanh, mô hình độ trễ, và mô phỏng
+//! phát lại đúng dòng thời gian hoặc tua fast, mô hình độ trễ, và mô phỏng
 //! khớp lệnh có xét vị trí hàng đợi.
 //!
 //! Đây là "phòng thí nghiệm" của mọi đội giao dịch nghiêm túc: ghi lại phiên
@@ -45,7 +45,7 @@ pub struct FrameRecord {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ErrorRead { KhungCut, DoDaiVoLy(u32), MaSuKienLa(u8) }
+pub enum ErrorRead { TruncatedFrame, DoDaiVoLy(u32), MaSuKienLa(u8) }
 
 /// Bộ ghi phiên. Trong hệ thống thật, `content` được xả xuống đĩa theo lô;
 /// ở đây giữ trong bộ nhớ để kiểm thử được.
@@ -83,10 +83,10 @@ impl SessionRecorder {
         let b = &self.content;
         let mut i = 0usize;
         while i < b.len() {
-            if i + 4 > b.len() { return Err(ErrorRead::KhungCut); }
+            if i + 4 > b.len() { return Err(ErrorRead::TruncatedFrame); }
             let length = u32::from_be_bytes(b[i..i + 4].try_into().unwrap()) as usize;
             if length < 8 { return Err(ErrorRead::DoDaiVoLy(length as u32)); }
-            if i + 4 + length > b.len() { return Err(ErrorRead::KhungCut); }
+            if i + 4 + length > b.len() { return Err(ErrorRead::TruncatedFrame); }
             let timestamp_nanos = u64::from_be_bytes(b[i + 4..i + 12].try_into().unwrap());
             let event = decode_event(&b[i + 12..i + 4 + length])?;
             ra.push(FrameRecord { timestamp_nanos, event });
@@ -121,12 +121,12 @@ fn encode_event(sk: &EventMarket) -> Vec<u8> {
 }
 
 fn decode_event(b: &[u8]) -> Result<EventMarket, ErrorRead> {
-    if b.is_empty() { return Err(ErrorRead::KhungCut); }
+    if b.is_empty() { return Err(ErrorRead::TruncatedFrame); }
     let can = match b[0] {
         b'A' => 22, b'X' => 9, b'T' => 14,
         x => return Err(ErrorRead::MaSuKienLa(x)),
     };
-    if b.len() < can { return Err(ErrorRead::KhungCut); }
+    if b.len() < can { return Err(ErrorRead::TruncatedFrame); }
     Ok(match b[0] {
         b'A' => EventMarket::AddOrder {
             id: u64::from_be_bytes(b[1..9].try_into().unwrap()),
@@ -150,7 +150,7 @@ fn decode_event(b: &[u8]) -> Result<EventMarket, ErrorRead> {
 // ============================================================================
 // Điều kiện sống còn: chiến lược KHÔNG ĐƯỢC gọi đồng hồ hệ thống. Nó chỉ được
 // hỏi đồng hồ ảo do bộ phát lại điều khiển. Nhờ vậy hai lần chạy trên cùng dữ
-// liệu cho ra kết quả giống hệt nhau, bất kể máy nhanh hay chậm.
+// liệu cho ra kết quả giống hệt nhau, bất kể máy fast hay chậm.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VirtualClock { pub bay_gio_ns: u64 }
@@ -166,10 +166,10 @@ impl VirtualClock {
 pub enum ReplaySpeed {
     /// Đúng nhịp thật: giữ nguyên khoảng cách giữa các sự kiện.
     RealTime,
-    /// Nhân tốc độ: 2.0 = nhanh gấp đôi, 0.5 = chậm một nửa (để quan sát kỹ).
+    /// Nhân tốc độ: 2.0 = fast gấp đôi, 0.5 = chậm một nửa (để quan sát kỹ).
     HeSo(f64),
     /// Bỏ hẳn thời gian chờ — dùng khi quét tham số hàng nghìn lần.
-    NhanhNhatCoThe,
+    AsFastAsPossible,
 }
 
 impl ReplaySpeed {
@@ -186,7 +186,7 @@ impl ReplaySpeed {
 // ============================================================================
 // 3. MÔ HÌNH ĐỘ TRỄ — lệnh của ta KHÔNG tới nơi tức thì
 // ============================================================================
-// Bỏ qua độ trễ là cách nhanh nhất để dựng ra một chiến lược "thắng" trên
+// Bỏ qua độ trễ là cách fast nhất để dựng ra một chiến lược "thắng" trên
 // giấy rồi thua tiền thật. Ở tốc độ HFT, 50 µs là đủ để cơ hội biến mất.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -225,7 +225,7 @@ impl LatencyModel {
 
 #[derive(Debug, Default, Clone)]
 pub struct ReducedBook {
-    buy: BTreeMap<Price, u64>, // khoá ÂM → giá cao nhất trước
+    buy: BTreeMap<Price, u64>, // khoá ÂM → giá high nhất trước
     ban: BTreeMap<Price, u64>,
 }
 
@@ -461,7 +461,7 @@ impl Replayer {
 // 7. CHIẾN LƯỢC MẪU
 // ============================================================================
 
-/// Tạo lập thị trường: đặt lệnh mua dưới và bán trên giá giữa, ăn chênh lệch.
+/// Tạo lập thị trường: đặt lệnh bid dưới và bán trên giá giữa, ăn chênh lệch.
 pub struct NaiveMaker {
     pub tick_offset: Price,
     pub has_order: Quantity,
@@ -485,7 +485,7 @@ impl StrategyReplay for NaiveMaker {
         if b <= m { return vec![]; } // sổ chéo hoặc khoá → đứng ngoài
         let mid = (m + b) / 2;
         let mut ra = Vec::new();
-        // Kiểm soát tồn kho: đã ôm nhiều thì thôi mua thêm
+        // Kiểm soát tồn kho: đã ôm nhiều thì thôi bid thêm
         if vt.quantity < self.max_position {
             ra.push((Side::Buy, mid - self.tick_offset, self.has_order));
         }
@@ -648,16 +648,16 @@ fn main() {
     println!("\n3. TỐC ĐỘ PHÁT LẠI");
     let mut cl = UseOut;
     for (name, td) in [("thời gian thực", ReplaySpeed::RealTime),
-                      ("nhanh 10 lần  ", ReplaySpeed::HeSo(10.0)),
-                      ("nhanh 1000 lần", ReplaySpeed::HeSo(1000.0)),
-                      ("nhanh nhất    ", ReplaySpeed::NhanhNhatCoThe)] {
+                      ("fast 10 lần  ", ReplaySpeed::HeSo(10.0)),
+                      ("fast 1000 lần", ReplaySpeed::HeSo(1000.0)),
+                      ("fast nhất    ", ReplaySpeed::AsFastAsPossible)] {
         let kq = Replayer::new(LatencyModel::no_latency(), td).run(&session, &mut cl);
         println!("   {} → thời gian ảo {:.2}s · phải chờ thật {:.4}s",
                  name, kq.time_time_ao_nanos as f64 / 1e9, kq.real_wait_nanos as f64 / 1e9);
     }
     println!("   → Quét 1000 tổ hợp tham số: chạy đúng nhịp mất ~{:.0} phút,",
              record.time_amount_nanos() as f64 / 1e9 * 1000.0 / 60.0);
-    println!("     chạy ở chế độ nhanh nhất chỉ mất vài giây.");
+    println!("     chạy ở chế độ fast nhất chỉ mất vài giây.");
 
     println!("\n4. ĐỘ TRỄ ĂN MẤT LỢI NHUẬN NHƯ THẾ NÀO");
     for (name, dt) in [("không độ trễ  ", LatencyModel::no_latency()),
@@ -665,7 +665,7 @@ fn main() {
                       ("qua Internet  ", LatencyModel::qua_internet())] {
         let mut cl = NaiveMaker { tick_offset: 2, has_order: 100,
                                      max_position: 500, step: 0, every_n_events: 50 };
-        let kq = Replayer::new(dt, ReplaySpeed::NhanhNhatCoThe).run(&session, &mut cl);
+        let kq = Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&session, &mut cl);
         println!("   {} → khứ hồi {:>9} ns · gửi {:>4} lệnh · khớp {:>3} · lãi {:>8} tick",
                  name, dt.round_trip_ns(0), kq.orders_sent, kq.order_book_fill, kq.last_value);
     }
@@ -675,10 +675,10 @@ fn main() {
     let tran = 300i64;
     let mut ngay_tho = NaiveMaker { tick_offset: 1, has_order: 100,
                                        max_position: tran, step: 0, every_n_events: 5 };
-    let a = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+    let a = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
         .run(&session, &mut ngay_tho);
     let mut chat_che = ManagedMaker::new(1, 100, tran, 5);
-    let b = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+    let b = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
         .run(&session, &mut chat_che);
     println!("   Trần đặt ra: {}", tran);
     println!("   Chỉ nhìn vị thế đã khớp → vị thế cuối {:>6}  ← VƯỢT TRẦN",
@@ -691,7 +691,7 @@ fn main() {
     let run = || {
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 500, step: 0, every_n_events: 50 };
-        Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&session, &mut c)
     };
     println!("   Chạy hai lần cho kết quả giống hệt: {}", run() == run());
@@ -744,7 +744,7 @@ mod tests {
         for cat in 1..12usize {
             let mut h = SessionRecorder::new();
             h.content = g.content[..g.content.len() - cat].to_vec();
-            assert!(matches!(h.doc_lai(), Err(ErrorRead::KhungCut) | Err(ErrorRead::MaSuKienLa(_))),
+            assert!(matches!(h.doc_lai(), Err(ErrorRead::TruncatedFrame) | Err(ErrorRead::MaSuKienLa(_))),
                     "cắt {} byte cuối phải báo lỗi", cat);
         }
     }
@@ -816,17 +816,17 @@ mod tests {
         assert_eq!(ReplaySpeed::HeSo(2.0).wall_delay(1_000_000), 500_000);
         assert_eq!(ReplaySpeed::HeSo(0.5).wall_delay(1_000_000), 2_000_000,
                    "hệ số < 1 để chạy CHẬM lại mà quan sát kỹ");
-        assert_eq!(ReplaySpeed::NhanhNhatCoThe.wall_delay(1_000_000), 0);
+        assert_eq!(ReplaySpeed::AsFastAsPossible.wall_delay(1_000_000), 0);
         assert_eq!(ReplaySpeed::HeSo(0.0).wall_delay(1_000_000), 0,
                    "hệ số 0 không được gây chia cho 0");
     }
 
     #[test]
     fn fast_forward_must_not_change_results() {
-        // Tua nhanh chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
+        // Tua fast chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
         let p = gen_session_record(3_000, 5);
         let mut kq: Vec<ResultReplay> = Vec::new();
-        for td in [ReplaySpeed::RealTime, ReplaySpeed::HeSo(100.0), ReplaySpeed::NhanhNhatCoThe] {
+        for td in [ReplaySpeed::RealTime, ReplaySpeed::HeSo(100.0), ReplaySpeed::AsFastAsPossible] {
             let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                         max_position: 500, step: 0, every_n_events: 25 };
             kq.push(Replayer::new(LatencyModel::set_custom_tax(), td).run(&p, &mut c));
@@ -863,7 +863,7 @@ mod tests {
     fn a_leased_line_beats_the_internet_by_orders_of_magnitude() {
         let a = LatencyModel::set_custom_tax().round_trip_ns(0);
         let b = LatencyModel::qua_internet().round_trip_ns(0);
-        assert!(b > a * 100, "ngồi cạnh sàn nhanh hơn {} lần", b / a.max(1));
+        assert!(b > a * 100, "ngồi cạnh sàn fast hơn {} lần", b / a.max(1));
     }
 
     // ---------- Sổ rút gọn ----------
@@ -907,7 +907,7 @@ mod tests {
         let p = gen_session_record(20_000, 2024);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 500, step: 0, every_n_events: 50 };
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut c);
         // 20 000 sự kiện, cứ 50 sự kiện lại chào giá → phải gửi hàng trăm lệnh
         assert!(kq.orders_sent > 50,
@@ -928,21 +928,21 @@ mod tests {
             FrameRecord { timestamp_nanos: 3_000, event: EventMarket::CancelOrder { id: 1 } },
         ];
         // Dùng một chiến lược chỉ quan sát để đọc trạng thái sổ ở bước cuối
-        struct Soi { mua_cuoi: Option<Price>, ban_cuoi: Option<Price> }
+        struct Soi { last_bid: Option<Price>, last_ask: Option<Price> }
         impl StrategyReplay for Soi {
             fn name(&self) -> &str { "soi sổ" }
             fn on_event(&mut self, _: &VirtualClock, so: &ReducedBook, _: &Position)
                 -> Vec<(Side, Price, Quantity)> {
-                self.mua_cuoi = so.best_bid();
-                self.ban_cuoi = so.best_ask();
+                self.last_bid = so.best_bid();
+                self.last_ask = so.best_ask();
                 vec![]
             }
         }
-        let mut s = Soi { mua_cuoi: None, ban_cuoi: None };
-        Replayer::new(LatencyModel::no_latency(), ReplaySpeed::NhanhNhatCoThe)
+        let mut s = Soi { last_bid: None, last_ask: None };
+        Replayer::new(LatencyModel::no_latency(), ReplaySpeed::AsFastAsPossible)
             .run(&frame, &mut s);
-        assert_eq!(s.mua_cuoi, None, "lệnh mua đã bị huỷ, bên mua phải rỗng");
-        assert_eq!(s.ban_cuoi, Some(8_410), "lệnh bán không bị đụng tới");
+        assert_eq!(s.last_bid, None, "lệnh bid đã bị huỷ, bên bid phải rỗng");
+        assert_eq!(s.last_ask, Some(8_410), "lệnh bán không bị đụng tới");
     }
 
     #[test]
@@ -953,7 +953,7 @@ mod tests {
         let run = || {
             let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                         max_position: 500, step: 0, every_n_events: 30 };
-            Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+            Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
                 .run(&p, &mut c)
         };
         assert_eq!(run(), run());
@@ -963,7 +963,7 @@ mod tests {
     #[test]
     fn standing_aside_means_no_orders_and_no_pnl() {
         let p = gen_session_record(2_000, 7);
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut UseOut);
         assert_eq!(kq.orders_sent, 0);
         assert_eq!(kq.order_book_fill, 0);
@@ -979,7 +979,7 @@ mod tests {
         let mut c = NaiveMaker { tick_offset: 1, has_order: 100,
                                     max_position: 10_000, step: 0, every_n_events: 10 };
         let dt = LatencyModel::qua_internet();
-        let kq = Replayer::new(dt, ReplaySpeed::NhanhNhatCoThe).run(&p, &mut c);
+        let kq = Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
         let first = p.first().unwrap().timestamp_nanos;
         let min = dt.in_nanos + dt.out_nanos;
         for k in &kq.all_fill {
@@ -995,12 +995,12 @@ mod tests {
         let count_fill = |dt: LatencyModel| {
             let mut c = NaiveMaker { tick_offset: 1, has_order: 100,
                                         max_position: 10_000, step: 0, every_n_events: 10 };
-            Replayer::new(dt, ReplaySpeed::NhanhNhatCoThe).run(&p, &mut c).order_book_fill
+            Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&p, &mut c).order_book_fill
         };
-        let nhanh = count_fill(LatencyModel::set_custom_tax());
+        let fast = count_fill(LatencyModel::set_custom_tax());
         let cham = count_fill(LatencyModel::qua_internet());
-        assert!(nhanh >= cham,
-                "gần sàn phải khớp được ít nhất bằng: {} so với {}", nhanh, cham);
+        assert!(fast >= cham,
+                "gần sàn phải khớp được ít nhất bằng: {} so với {}", fast, cham);
     }
 
     #[test]
@@ -1009,7 +1009,7 @@ mod tests {
         let p = gen_session_record(5_000, 17);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 1_000, step: 0, every_n_events: 20 };
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut c);
         let dung_lai = kq.all_fill.iter()
             .fold(Position::default(), |a, k| a.compose(Position::from_fill(k.side, k.price, k.quantity)));
@@ -1023,7 +1023,7 @@ mod tests {
         let p = gen_session_record(5_000, 13);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 1_000, step: 0, every_n_events: 20 };
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut c);
         for k in &kq.all_fill {
             assert!(k.quantity > 0, "không được ghi nhận khớp khối lượng 0");
@@ -1041,7 +1041,7 @@ mod tests {
         let tran = 300i64;
         let mut c = NaiveMaker { tick_offset: 1, has_order: 100,
                                     max_position: tran, step: 0, every_n_events: 5 };
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut c);
         assert!(kq.last_position.quantity.abs() > tran,
                 "chính vì bỏ qua lệnh đang treo mà vị thế {} vượt trần {}",
@@ -1054,7 +1054,7 @@ mod tests {
         let p = gen_session_record(10_000, 23);
         let tran = 300i64;
         let mut c = ManagedMaker::new(1, 100, tran, 5);
-        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+        let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
             .run(&p, &mut c);
         assert!(kq.last_position.quantity.abs() <= tran,
                 "vị thế cuối {} phải nằm trong trần {}", kq.last_position.quantity, tran);
@@ -1067,7 +1067,7 @@ mod tests {
             let p = gen_session_record(8_000, hat);
             let tran = 200i64;
             let mut c = ManagedMaker::new(1, 100, tran, 5);
-            let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
+            let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::AsFastAsPossible)
                 .run(&p, &mut c);
             assert!(kq.last_position.quantity.abs() <= tran,
                     "hạt giống {}: vị thế {} vượt trần {}", hat, kq.last_position.quantity, tran);

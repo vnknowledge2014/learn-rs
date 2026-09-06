@@ -177,7 +177,7 @@ fn main() {
     let security_certificate = String::from("CHUNG_THU_BAO_MAT_2026");
     println!("- Biến 'chung_thu_so' đang là chủ sở hữu hợp pháp duy nhất.");
 
-    // Chuyển giao quyền sở hữu từ security_certificate sang new_owner:
+    // Chuyển deliver quyền sở hữu từ security_certificate sang new_owner:
     let new_owner = security_certificate;
     println!("- Đã sang tên đổi chủ thành công cho: {}", new_owner);
 
@@ -195,7 +195,7 @@ fn main() {
     // println!("Thử in lại thông điệp: {}", greeting);
 
     // --- PHẦN 4: LẤY LẠI QUYỀN SỞ HỮU THÔNG QUA GIÁ TRỊ TRẢ VỀ ---
-    println!("\n4. Chuyển giao đi và nhận lại quyền sở hữu qua return:");
+    println!("\n4. Chuyển deliver đi và nhận lại quyền sở hữu qua return:");
     let profile = String::from("Hồ sơ ứng viên Nguyễn Văn A");
     let decorated_profile = append_suffix(profile);
     // Lúc này 'profile' đã bị move, nhưng 'decorated_profile' là chủ nhân mới nắm giữ kết quả!

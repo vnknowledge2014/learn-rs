@@ -268,12 +268,12 @@ pub fn handle_view_one(yc: &Request, tt: &State) -> Response {
 }
 
 pub fn handle_make(yc: &Request, tt: &State) -> Response {
-    let truong = analyze_than(&yc.than);
-    let name = match truong.get("ten") {
+    let field = analyze_than(&yc.than);
+    let name = match field.get("ten") {
         Some(t) if !t.is_empty() => t.clone(),
         _ => return Response::data_sai("thiếu tên sản phẩm"),
     };
-    let price: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
+    let price: u64 = match field.get("gia").and_then(|g| g.parse().ok()) {
         Some(g) => g,
         None => return Response::data_sai("giá phải là số nguyên"),
     };
@@ -514,15 +514,15 @@ Thêm handler `xu_ly_cap_nhat` cho `PUT /san-pham/:id` cập nhật tên và gi�
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn xu_ly_cap_nhat(yc: &Request, tt: &State) -> Response {
+pub fn handle_update(yc: &Request, tt: &State) -> Response {
     let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
         Some(x) => x, None => return Response::data_sai("id không hợp lệ"),
     };
-    let truong = analyze_than(&yc.than);
-    let price: u64 = match truong.get("gia").and_then(|g| g.parse().ok()) {
+    let field = analyze_than(&yc.than);
+    let price: u64 = match field.get("gia").and_then(|g| g.parse().ok()) {
         Some(g) => g, None => return Response::data_sai("giá phải là số"),
     };
-    let name = match truong.get("ten") { Some(t) if !t.is_empty() => t.clone(),
+    let name = match field.get("ten") { Some(t) if !t.is_empty() => t.clone(),
         _ => return Response::data_sai("thiếu tên") };
     let mut store = tt.store.lock().unwrap();
     match store.get_mut(&id) {
@@ -530,7 +530,7 @@ pub fn xu_ly_cap_nhat(yc: &Request, tt: &State) -> Response {
         None => Response::not_seen(),
     }
 }
-// đăng ký: .them(Method::PUT, "/san-pham/:id", Arc::new(xu_ly_cap_nhat))
+// đăng ký: .them(Method::PUT, "/san-pham/:id", Arc::new(handle_update))
 ```
 </details>
 

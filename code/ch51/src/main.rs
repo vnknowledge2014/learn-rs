@@ -145,7 +145,7 @@ impl TypeSafeServiceRouter {
                 prod.id, prod.name, prod.price_cents, prod.in_stock
             ))
         } else {
-            Err("404 Not Found: Khong tim thay san pham")
+            Err("404 Not Found: Low tim thay san pham")
         }
     }
 

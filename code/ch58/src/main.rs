@@ -6,13 +6,13 @@
 use std::collections::HashMap;
 
 // ============================================================================
-// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao nhanh hơn dạng hàng
+// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao fast hơn dạng hàng
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     So(f64),
-    Chuoi(String),
+    Text(String),
     Rong, // giá trị thiếu (NULL/NaN)
 }
 
@@ -21,12 +21,12 @@ impl Value {
         match self { Value::So(x) => Some(*x), _ => None }
     }
     pub fn series(&self) -> Option<&str> {
-        match self { Value::Chuoi(s) => Some(s), _ => None }
+        match self { Value::Text(s) => Some(s), _ => None }
     }
 }
 
 /// Bảng dữ liệu lưu theo CỘT: mỗi cột là một Vec cùng kiểu, nằm liền nhau
-/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh thu) cực nhanh —
+/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh thu) cực fast —
 /// CPU quét một vùng nhớ liên tục, thân thiện với cache (Chương 25).
 #[derive(Debug, Clone)]
 pub struct Bang {
@@ -93,7 +93,7 @@ pub fn infer_type(o: String) -> Value {
     } else if let Ok(n) = t.parse::<f64>() {
         Value::So(n)
     } else {
-        Value::Chuoi(t.to_string())
+        Value::Text(t.to_string())
     }
 }
 
@@ -152,7 +152,7 @@ impl Bang {
         let mut gom: HashMap<String, (f64, usize, f64, f64)> = HashMap::new();
         for h in 0..self.num_queue() {
             let key = match &self.cot[c_theo][h] {
-                Value::Chuoi(s) => s.clone(),
+                Value::Text(s) => s.clone(),
                 Value::So(n) => n.to_string(),
                 Value::Rong => "(thiếu)".to_string(),
             };
@@ -283,8 +283,8 @@ fn main() {
 
     println!("\n6. JOIN: ghép doanh thu với dân số khu vực");
     let mut list = Bang::new(vec!["khu_vuc", "dan_so_trieu"]);
-    list.add_queue(vec![Value::Chuoi("Hà Nội".into()), Value::So(8.4)]);
-    list.add_queue(vec![Value::Chuoi("TP.HCM".into()), Value::So(9.3)]);
+    list.add_queue(vec![Value::Text("Hà Nội".into()), Value::So(8.4)]);
+    list.add_queue(vec![Value::Text("TP.HCM".into()), Value::So(9.3)]);
     let compose = inner_join(&bang, &list, "khu_vuc");
     println!("   Kết quả join có {} hàng, {} cột (Đà Nẵng bị loại vì không có dân số)",
              compose.num_queue(), compose.ten_cot.len());
@@ -317,7 +317,7 @@ mod tests {
     fn type_inference_is_correct() {
         assert_eq!(infer_type("42".into()), Value::So(42.0));
         assert_eq!(infer_type("3.14".into()), Value::So(3.14));
-        assert_eq!(infer_type("Hà Nội".into()), Value::Chuoi("Hà Nội".into()));
+        assert_eq!(infer_type("Hà Nội".into()), Value::Text("Hà Nội".into()));
         assert_eq!(infer_type("".into()), Value::Rong);
         assert_eq!(infer_type("NA".into()), Value::Rong);
     }
@@ -378,9 +378,9 @@ mod tests {
     #[test]
     fn inner_join_keeps_only_matching_keys() {
         let mut t = Bang::new(vec!["id", "ten"]);
-        t.add_queue(vec![Value::So(1.0), Value::Chuoi("An".into())]);
-        t.add_queue(vec![Value::So(2.0), Value::Chuoi("Bình".into())]);
-        t.add_queue(vec![Value::So(3.0), Value::Chuoi("Chi".into())]);
+        t.add_queue(vec![Value::So(1.0), Value::Text("An".into())]);
+        t.add_queue(vec![Value::So(2.0), Value::Text("Bình".into())]);
+        t.add_queue(vec![Value::So(3.0), Value::Text("Chi".into())]);
         let mut p = Bang::new(vec!["id", "diem"]);
         p.add_queue(vec![Value::So(1.0), Value::So(9.0)]);
         p.add_queue(vec![Value::So(2.0), Value::So(8.0)]);

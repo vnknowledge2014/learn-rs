@@ -5,7 +5,7 @@
 //!
 //! Khác biệt cốt lõi so với thị trường truyền thống (Chương 75–77): ở đây
 //! **mọi giao dịch đều công khai TRƯỚC khi được thực thi**. Ai cũng đọc được
-//! hàng chờ, và ai trả phí cao hơn thì được xếp trước. Đó là mảnh đất của MEV.
+//! hàng chờ, và ai trả phí high hơn thì được xếp trước. Đó là mảnh đất của MEV.
 //!
 //! ⚠️ Đây là tài liệu KỸ THUẬT nhằm giúp người đọc TỰ BẢO VỆ và hiểu rủi ro,
 //! không phải hướng dẫn khai thác người dùng khác.
@@ -31,9 +31,9 @@ pub struct Pool {
 pub enum SwapError {
     ZeroInput,
     EmptyPool,
-    ThanhKhoanKhongDu,
+    InsufficientLiquidity,
     /// Người dùng đặt sàn nhận tối thiểu, mà kết quả thấp hơn → huỷ giao dịch.
-    TruotGiaVuotChoPhep { nhan_duoc: Quantity, min: Quantity },
+    SlippageTooHigh { received: Quantity, min: Quantity },
 }
 
 impl Pool {
@@ -61,7 +61,7 @@ impl Pool {
         let tu = self.reserve_y * next_phi;
         let mau = self.reserve_x * 10_000 + next_phi;
         let ra = tu / mau;
-        if ra == 0 || ra >= self.reserve_y { return Err(SwapError::ThanhKhoanKhongDu); }
+        if ra == 0 || ra >= self.reserve_y { return Err(SwapError::InsufficientLiquidity); }
         Ok(ra)
     }
 
@@ -72,7 +72,7 @@ impl Pool {
     {
         let ra = self.try_swap_x_for_y(x_in)?;
         if ra < min_y {
-            return Err(SwapError::TruotGiaVuotChoPhep { nhan_duoc: ra, min: min_y });
+            return Err(SwapError::SlippageTooHigh { received: ra, min: min_y });
         }
         self.reserve_x += x_in;
         self.reserve_y -= ra;
@@ -90,7 +90,7 @@ impl Pool {
     {
         let ra = self.try_swap_y_for_x(vao_y)?;
         if ra < toi_thieu_x {
-            return Err(SwapError::TruotGiaVuotChoPhep { nhan_duoc: ra, min: toi_thieu_x });
+            return Err(SwapError::SlippageTooHigh { received: ra, min: toi_thieu_x });
         }
         self.reserve_y += vao_y;
         self.reserve_x -= ra;
@@ -131,7 +131,7 @@ pub fn impermanent_loss(ty_le_gia: f64) -> f64 {
 // 3. HÀNG CHỜ CÔNG KHAI & TẤN CÔNG KẸP
 // ============================================================================
 // Trên blockchain, giao dịch nằm trong hàng chờ CÔNG KHAI trước khi vào khối,
-// và người xây khối sắp xếp theo phí ưu tiên. Ai trả cao hơn được xếp trước.
+// và người xây khối sắp xếp theo phí ưu tiên. Ai trả high hơn được xếp trước.
 // Hệ quả: bất kỳ ai cũng thấy trước bạn định làm gì, và chen lên trước được.
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,7 +166,7 @@ pub struct KetQuaKep {
 /// Mô phỏng một cú kẹp để thấy **vì sao phải đặt sàn nhận tối thiểu chặt**.
 ///
 /// Kịch bản: kẻ tấn công thấy giao dịch của nạn nhân trong hàng chờ, trả phí
-/// cao hơn để mua TRƯỚC (đẩy giá lên), để nạn nhân mua ở giá xấu, rồi bán
+/// high hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
 /// NGAY SAU đó ăn chênh lệch.
 pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity)
     -> KetQuaKep
@@ -174,7 +174,7 @@ pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity
     // (a) Nếu không ai chen ngang
     let clean = be.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
 
-    // (b) Có kẻ chen ngang, mua trước để đẩy giá
+    // (b) Có kẻ chen ngang, bid trước để đẩy giá
     let mut b = *be;
     let prev_out = b.swap_x_for_y(von_tan_cong, 0).unwrap_or(0);
 
@@ -185,7 +185,7 @@ pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity
         let _ = b.swap_x_for_y(nan_nhan.x_in, nan_nhan.min_y);
     }
 
-    // (c) Kẻ tấn công bán lại phần vừa mua
+    // (c) Kẻ tấn công bán lại phần vừa bid
     let thu_ve = if is_block { 0 } else { b.try_swap_y_for_x(prev_out).unwrap_or(0) };
     let lai = if is_block { 0 } else { thu_ve as i128 - von_tan_cong as i128 };
 
@@ -226,7 +226,7 @@ pub fn find_arb(be: &Pool, gia_cex: f64, von_toi_da: Quantity) -> ArbOpportunity
     let prev_price = be.price_x();
     let no_has = ArbOpportunity { has_has_hoi: false, quantity_toi_uu: 0, estimated_return: 0,
                               dex_price_before: prev_price, dex_price_after: prev_price };
-    // Chỉ xét chiều: mua X trên DEX (đưa Y vào) khi X trên DEX RẺ hơn CEX
+    // Chỉ xét chiều: bid X trên DEX (đưa Y vào) khi X trên DEX RẺ hơn CEX
     if prev_price >= gia_cex || von_toi_da == 0 { return no_has; }
 
     let lai_when = |vao_y: Quantity| -> i128 {
@@ -429,7 +429,7 @@ mod tests {
         for amount_in in [1_000_000u128, 10_000_000, 1_000_000_000] {
             match b.try_swap_x_for_y(amount_in) {
                 Ok(ra) => assert!(ra < b.reserve_y, "nhận {} mà bể chỉ có {}", ra, b.reserve_y),
-                Err(e) => assert_eq!(e, SwapError::ThanhKhoanKhongDu),
+                Err(e) => assert_eq!(e, SwapError::InsufficientLiquidity),
             }
         }
     }
@@ -467,7 +467,7 @@ mod tests {
         // Đòi nhiều hơn mức có thể → phải bị chặn, và bể KHÔNG được đổi
         let prev = b;
         let e = b.swap_x_for_y(10_000, amount_in + 1).unwrap_err();
-        assert!(matches!(e, SwapError::TruotGiaVuotChoPhep { .. }));
+        assert!(matches!(e, SwapError::SlippageTooHigh { .. }));
         assert_eq!(b, prev, "giao dịch hỏng phải KHÔNG để lại thay đổi nào");
     }
 
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn the_optimal_size_really_is_optimal() {
-        // So với các khối lượng lân cận, khối lượng tìm được phải cho lãi cao nhất.
+        // So với các khối lượng lân cận, khối lượng tìm được phải cho lãi high nhất.
         let b = Pool::new(1_000_000, 1_900_000_000, 30);
         let gia_cex = 2_000.0;
         let ch = find_arb(&b, gia_cex, 500_000_000);

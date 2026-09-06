@@ -187,7 +187,7 @@ fn main() {
     let safe_payload = b"MatKhauAnToan"; // 13 bytes (< 16 bytes)
     match manager.safe_write(safe_payload) {
         Ok(bytes_written) => println!("    - Ghi payload hop le thanh cong: {} bytes", bytes_written),
-        Err(err) => println!("    - Loi: {}", err),
+        Err(err) => println!("    - Failed: {}", err),
     }
 
     let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 55 bytes
@@ -201,7 +201,7 @@ fn main() {
     println!("    - Thu doc ky tu tai chi so index = 99:");
     match manager.safe_read(99) {
         Some(val) => println!("    - Gia tri: {}", val),
-        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an toan!"),
+        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an total!"),
     }
 
     // -------------------------------------------------------------
@@ -214,25 +214,25 @@ fn main() {
         println!("    - Nguoi dung: {}, Admin: {}", session.username, session.is_admin);
 
         // Trong Rust, khi session ra khoi khoi lenh nay, trait Drop se tu dong
-        // giai phong vung nho mot cach sach se. Trinh bien dich Rust tuyet doi
+        // giai phong region nho mot cach sach se. Trinh bien dich Rust tuyet doi
         // CAM moi hanh vi giu lai con tro tham chieu den session sau khi no da chet!
     }
-    println!("    - [UAF ELIMINATED] Vung nho da duoc thu hoi tu dong.");
+    println!("    - [UAF ELIMINATED] Vung nho da duoc attempt hoi tu dong.");
     println!("    - Trinh bien dich dam bao 100% khong con con tro lo lung ton tai!");
 
     // -------------------------------------------------------------
     // 3. KIỂM THỬ PHÒNG CHỐNG LỖ HỔNG FORMAT STRING
     // -------------------------------------------------------------
-    println!("\n[3] Thu nghiem phong chong Lo hong Chuoi dinh dang (Format String):");
+    println!("\n[3] Thu nghiem phong chong Lo hong Text dinh dang (Format String):");
     // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
     let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
-    println!("    - Chuoi dau vao tu nguoi dung: '{}'", malicious_user_input);
+    println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
 
-    // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
-    // Trong Rust: Chuoi nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
+    // Trong C: printf(malicious_user_input) se lam ro ri total bo Stack.
+    // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
     println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
     println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
-    println!("      khong bao gio phan tich cac ky tu '%' thanh lenh thuc thi!");
+    println!("      khong bao gio phan products cac ky tu '%' thanh lenh thuc thi!");
 
     println!("\n==================================================================");
     println!("   KET LUAN: RUST LOAI BO HOAN TOAN 70% NGUON GOC LO HONG CVE!   ");
@@ -257,10 +257,10 @@ Dưới đây là các lỗi biên dịch điển hình mà bạn sẽ gặp khi
 
 ```rust
 // Đoạn mã lỗi minh họa E0382:
-fn vi_du_ngan_chan_uaf() {
+fn uaf_prevented() {
     let data = Box::new(String::from("BiMatDoanhNghiep"));
     
-    // Ham drop() giai phong vung nho tren Heap
+    // Ham drop() giai phong region nho tren Heap
     std::mem::drop(data); 
 
     // LỖI E0382: Trình biên dịch Rust NGĂN CHẶN bạn đọc ô nhớ đã bị giải phóng!
@@ -268,7 +268,7 @@ fn vi_du_ngan_chan_uaf() {
 }
 
 // Cách viết an toàn: Không truy cập biến sau khi đã từ bỏ quyền sở hữu
-fn vi_du_an_toan() {
+fn safe_version() {
     let data = Box::new(String::from("BiMatDoanhNghiep"));
     println!("Dữ liệu an toàn: {}", data);
     // Vùng nhớ sẽ tự động được dọn dẹp sạch sẽ khi hết phạm vi hàm

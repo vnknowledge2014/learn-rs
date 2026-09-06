@@ -196,7 +196,7 @@ impl SecurityGateEngine {
         if current_role >= required_role {
             Ok(())
         } else {
-            Err("Tu choi truy cap: Khong du dac quyen (Elevation of Privilege blocked)!")
+            Err("Tu choi truy cap: Low du dac quyen (Elevation of Privilege blocked)!")
         }
     }
 }
@@ -213,7 +213,7 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM CHỐNG TẤN CÔNG TIMING ATTACK QUA CONSTANT-TIME
     // -------------------------------------------------------------
-    println!("\n[1] Kiem chung so sanh thoi gian bat bien (Constant-Time):");
+    println!("\n[1] Kiem shared so sanh thoi gian bat bien (Constant-Time):");
     let valid_attempt = b"OSCP_RUST_KEY_99";
     let wrong_first_byte = b"XSCP_RUST_KEY_99";
     let wrong_last_byte = b"OSCP_RUST_KEY_00";
@@ -235,11 +235,11 @@ fn main() {
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM LÀM SẠCH ĐẦU VÀO CHỐNG INJECTION & BUFFER FLOOD
     // -------------------------------------------------------------
-    println!("\n[2] Kiem thu lam sach du lieu dau vao (Input Sanitization):");
+    println!("\n[2] Kiem attempt lam sach du lieu dau vao (Input Sanitization):");
 
     let safe_input = "get_system_status";
     match security_gate.sanitize_command_input(safe_input) {
-        Ok(clean) => println!("    - Lenh an toan duoc chap nhan: '{}'", clean),
+        Ok(clean) => println!("    - Lenh an total duoc chap nhan: '{}'", clean),
         Err(err) => println!("    [!] Tu choi: {}", err),
     }
 
@@ -265,11 +265,11 @@ fn main() {
     println!("    - Nguoi dung dang co vai tro: {:?}", user_role);
 
     let audit_access = security_gate.verify_permission(user_role, UserRole::Auditor);
-    println!("    - Yeu cau truy cap vung Auditor: {:?}", audit_access);
+    println!("    - Yeu sentence truy cap region Auditor: {:?}", audit_access);
     assert!(audit_access.is_err());
 
     let member_access = security_gate.verify_permission(user_role, UserRole::Member);
-    println!("    - Yeu cau truy cap vung Member : {:?}", member_access);
+    println!("    - Yeu sentence truy cap region Member : {:?}", member_access);
     assert!(member_access.is_ok());
     println!("    => Ngăn chan triet de nguy co Leo thang dac quyen (Elevation of Privilege)!");
 
@@ -297,13 +297,13 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 ```rust
 // Đoạn mã lỗi minh họa E0277:
 #[derive(Debug, PartialEq)] // Quên thêm PartialOrd
-enum CapBacLoi {
+enum ErrorLevel {
     NhanVien,
     GiamDoc,
 }
 
-fn kiem_tra_quyen_loi(cap: CapBacLoi) {
-    // if cap >= CapBacLoi::GiamDoc { ... } // LỖI E0277: Không thể dùng toán tử >= trên CapBacLoi!
+fn authz_broken(cap: ErrorLevel) {
+    // if cap >= ErrorLevel::GiamDoc { ... } // LỖI E0277: Không thể dùng toán tử >= trên ErrorLevel!
 }
 
 // Cách sửa chữa đúng chuẩn: Triển khai đầy đủ PartialOrd và Ord
@@ -313,7 +313,7 @@ enum CapBacDung {
     GiamDoc = 2,
 }
 
-fn kiem_tra_quyen_dung(cap: CapBacDung) {
+fn authz_correct(cap: CapBacDung) {
     if cap >= CapBacDung::GiamDoc {
         println!("Chào mừng Giám đốc điều hành!");
     }

@@ -98,9 +98,9 @@ pub enum Poll<T> {
 >
 > Chuỗi `async` sau đây chính là một chuỗi `bind` được viết bằng cú pháp thuận mắt:
 > ```rust
-> async fn handle(id: u64) -> Result<Invoice, LoiHeThong> {
->     let nguoi_dung = tim_nguoi_dung(id).await?;   // bind trong CẢ HAI ngữ cảnh cùng lúc
->     let don = tim_don_hang(&nguoi_dung).await?;   // (Future và Result lồng nhau)
+> async fn handle(id: u64) -> Result<Invoice, SystemError> {
+>     let user = tim_nguoi_dung(id).await?;   // bind trong CẢ HAI ngữ cảnh cùng lúc
+>     let don = tim_don_hang(&user).await?;   // (Future và Result lồng nhau)
 >     Ok(invoice_loop(&don))
 > }
 > ```
@@ -235,7 +235,7 @@ fn create_dummy_waker() -> Waker {
     unsafe { Waker::from_raw(raw_waker) }
 }
 
-/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất
+/// Động cơ điều phối attempt nhỏ thực thi một Future cho đến khi hoàn tất
 pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
     let waker = create_dummy_waker();
     let mut context = Context::from_waker(&waker);
@@ -271,16 +271,16 @@ fn main() {
     println!("    - Ket qua Future: {}", outcome);
 
     // 2. Thử nghiệm Composite State Machine
-    println!("\n[2] Thuc thi Composite State Machine gom 2 giai doan I/O:");
+    println!("\n[2] Thuc thi Composite State Machine gom 2 giai segment I/O:");
     let composite_task = CompositeAsyncTask::new();
     let final_report = block_on_mini_runtime(composite_task);
     println!("    - Ket qua chuoi nhiem vu: {}", final_report);
 
     // 3. Phân tích so sánh tài nguyên
-    println!("\n[3] Phan tich so sanh kien truc tai nguyen bo nho:");
+    println!("\n[3] Phan products so sanh kien truc tai nguyen bo nho:");
     println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
     println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
-    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
+    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu attempt RAM it hon ~7,000 LAN!");
     println!("    ==> Cho phep 1 may owner duy tri hang trieu ket noi ma khong bao gio het RAM!");
 
     println!("\n==================================================================");
@@ -308,12 +308,12 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-struct KhongPhaiFuture;
+struct NotAFuture;
 
 // Đoạn mã lỗi minh họa E0277:
-fn chay_thu_loi() {
-    // let k = KhongPhaiFuture;
-    // block_on_mini_runtime(k); // LỖI E0277: KhongPhaiFuture không triển khai trait Future!
+fn run_broken() {
+    // let k = NotAFuture;
+    // block_on_mini_runtime(k); // LỖI E0277: NotAFuture không triển khai trait Future!
 }
 
 // Cách sửa chữa đúng chuẩn: Triển khai trait Future đầy đủ
@@ -326,7 +326,7 @@ impl std::future::Future for LaFuture {
     }
 }
 
-fn chay_thu_dung() {
+fn run_correct() {
     let f = LaFuture;
     println!("Đã sẵn sàng triển khai Future chuẩn mực!");
 }

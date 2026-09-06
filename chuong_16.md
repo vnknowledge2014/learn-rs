@@ -185,7 +185,7 @@ fn main() {
         },
     ];
 
-    println!("Số lượng bản ghi thu thập được: {}", raw_data.len());
+    println!("Số lượng bản ghi attempt thập được: {}", raw_data.len());
 
     // ------------------------------------------------------------------------
     // KỸ THUẬT 1: Dùng .iter_mut() để hiệu chỉnh dữ liệu trực tiếp tại chỗ
@@ -205,14 +205,14 @@ fn main() {
     // Lấy danh sách nhiệt độ của các cảm biến an toàn (nhiệt độ <= 100°C)
     // ------------------------------------------------------------------------
     println!("\n2. Trích xuất danh sách nhiệt độ hoạt động an toàn (<= 100°C):");
-    let nhiet_do_an_toan: Vec<f64> = raw_data
+    let safe_temps: Vec<f64> = raw_data
         .iter()
         .filter(|bg| bg.is_valid)                  // Lọc bỏ cảm biến hỏng
         .filter(|bg| bg.temp_c <= 100.0)     // Lọc cảm biến trong ngưỡng an toàn
         .map(|bg| bg.temp_c)                 // Chỉ trích xuất lấy số đo nhiệt độ
         .collect();                              // Gom tụ thành Vector mới
 
-    println!("-> Các mức nhiệt độ an toàn: {:?}", nhiet_do_an_toan);
+    println!("-> Các mức nhiệt độ an toàn: {:?}", safe_temps);
 
     // ------------------------------------------------------------------------
     // KỸ THUẬT 3: Dùng .fold() để tổng hợp thống kê phức tạp trong một lượt duyệt duy nhất
@@ -262,7 +262,7 @@ fn main() {
         .map(|bg| bg.ma_cam_bien) // Đoạt quyền sở hữu trường String mà không cần clone!
         .collect();
 
-    println!("-> Danh sách mã thiết bị sau khi thu hồi: {:?}", ma_tat_ca_cam_bien);
+    println!("-> Danh sách mã thiết bị sau khi attempt hồi: {:?}", ma_tat_ca_cam_bien);
     // raw_data đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
 
     println!("\n============================================================");
@@ -324,10 +324,10 @@ Phần trên đã dạy bộ khung. Nhưng trong công việc thực tế, phầ
 ```rust
 let so = [10i32, 3, 2];
 
-// Phép CỘNG: giao hoán + kết hợp -> hai chiều cho CÙNG kết quả
+// Phép CỘNG: deliver hoán + kết hợp -> hai chiều cho CÙNG kết quả
 assert_eq!(so.iter().fold(0, |a, b| a + b), so.iter().rfold(0, |a, b| a + b)); // 15 == 15
 
-// NỐI CHUỖI: kết hợp nhưng KHÔNG giao hoán -> hai chiều cho kết quả KHÁC NHAU
+// NỐI CHUỖI: kết hợp nhưng KHÔNG deliver hoán -> hai chiều cho kết quả KHÁC NHAU
 let left: String = so.iter().fold(String::new(), |a, b| a + &b.to_string());   // "1032"
 let must: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
 assert_ne!(left, must);
@@ -379,10 +379,10 @@ fn tong(list: &[i64]) -> i64 {
 
 // Đệ quy ĐUÔI (tail recursion): lời gọi đệ quy là việc CUỐI CÙNG,
 // kết quả tích lũy được mang theo trong tham số `accumulate`.
-fn tong_duoi(list: &[i64], accumulate: i64) -> i64 {
+fn sum_below(list: &[i64], accumulate: i64) -> i64 {
     match list {
         [] => accumulate,
-        [first, remaining @ ..] => tong_duoi(remaining, accumulate + first),  // không còn việc gì sau đó
+        [first, remaining @ ..] => sum_below(remaining, accumulate + first),  // không còn việc gì sau đó
     }
 }
 ```
@@ -502,7 +502,7 @@ impl Cart {
     }
 }
 
-/// Nhờ trait này, `for x in gio_hang` chạy được — đúng như với Vec.
+/// Nhờ trait này, `for x in cart` chạy được — đúng như với Vec.
 impl IntoIterator for Cart {
     type Item = String;
     type IntoIter = std::vec::IntoIter<String>;
@@ -511,7 +511,7 @@ impl IntoIterator for Cart {
     }
 }
 
-/// Và nhờ trait này, `for x in &gio_hang` cũng chạy được (chỉ mượn đọc).
+/// Và nhờ trait này, `for x in &cart` cũng chạy được (chỉ mượn đọc).
 impl<'a> IntoIterator for &'a Cart {
     type Item = &'a String;
     type IntoIter = std::slice::Iter<'a, String>;
@@ -591,10 +591,10 @@ fn main() {
     // 2. any / all / find / position — ĐỀU NGẮN MẠCH
     // ------------------------------------------------------------------
     println!("\n2. any / all / find / position (đều dừng sớm)");
-    println!("   Có giao dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
-    println!("   Mọi giao dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
+    println!("   Có deliver dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
+    println!("   Mọi deliver dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
     println!("   Giao dịch đầu ở Đà Nẵng         : {:?}", gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.id));
-    println!("   Vị trí giao dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
+    println!("   Vị trí deliver dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
 
     // ------------------------------------------------------------------
     // 3. min_by_key / max_by_key
@@ -677,15 +677,15 @@ fn main() {
     // `Vec` thì có, nên ta gom lại trước rồi mới đảo:
     let inverse: Vec<u32> = CountInverse::new(5).collect::<Vec<u32>>().into_iter().rev().collect();
     println!("   rev (cần DoubleEndedIterator): {:?}", inverse);
-    let cach_quang: Vec<i32> = (0..10).step_by(3).collect();
-    println!("   step_by(3)    : {:?}", cach_quang);
+    let stepped: Vec<i32> = (0..10).step_by(3).collect();
+    println!("   step_by(3)    : {:?}", stepped);
 
     // ------------------------------------------------------------------
     // 9. flat_map / flatten
     // ------------------------------------------------------------------
     println!("\n9. flat_map / flatten");
-    let cau = ["Rust rất nhanh", "và an toàn"];
-    let tu: Vec<&str> = cau.iter().flat_map(|c| c.split_whitespace()).collect();
+    let sentence = ["Rust rất fast", "và an toàn"];
+    let tu: Vec<&str> = sentence.iter().flat_map(|c| c.split_whitespace()).collect();
     println!("   flat_map tách từ: {:?}", tu);
 
     let long: Vec<Vec<i32>> = vec![vec![1, 2], vec![], vec![3, 4, 5]];
@@ -719,15 +719,15 @@ fn main() {
     // ------------------------------------------------------------------
     // 11. TỔNG HỢP THEO NHÓM — MẪU DÙNG HẰNG NGÀY
     // ------------------------------------------------------------------
-    println!("\n11. Tổng doanh thu theo khu vực (fold + entry API)");
+    println!("\n11. Tổng doanh attempt theo khu vực (fold + entry API)");
     let theo_kv: HashMap<&str, u64> =
         gd.iter().fold(HashMap::new(), |mut bang, g| {
             *bang.entry(g.khu_vuc.as_str()).or_insert(0) += g.so_tien;
             bang
         });
-    let mut cac_kv: Vec<(&&str, &u64)> = theo_kv.iter().collect();
-    cac_kv.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-    for (k, v) in cac_kv {
+    let mut pairs: Vec<(&&str, &u64)> = theo_kv.iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    for (k, v) in pairs {
         println!("   {:<10} {:>10} đ", k, v);
     }
 
@@ -736,11 +736,11 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n12. fold vs rfold");
     let m = [10i32, 3, 2];
-    println!("   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
+    println!("   Phép CỘNG (deliver hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
              m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
     let folded_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
     let folded_right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
-    println!("   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
+    println!("   NỐI CHUỖI (không deliver hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
              folded_left, folded_right);
     println!("   → Trước khi song song hóa, phải biết phép gộp của mình có tính gì!");
 
@@ -753,7 +753,7 @@ fn main() {
     println!("   Miễn phí luôn map/filter/sum: {}", CountInverse::new(100).filter(|x| x % 7 == 0).sum::<u32>());
 
     let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into(), "Màn hình".into()]);
-    print!("   for x in &gio_hang -> ");
+    print!("   for x in &cart -> ");
     for m in &gio {
         print!("[{}] ", m);
     }
@@ -827,7 +827,7 @@ mod tests {
         let m = [10i32, 3, 2];
         // Phép cộng GIAO HOÁN -> duyệt hai chiều cho cùng kết quả
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
-        // Nối chuỗi KHÔNG giao hoán -> duyệt hai chiều cho kết quả khác nhau
+        // Nối chuỗi KHÔNG deliver hoán -> duyệt hai chiều cho kết quả khác nhau
         let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
         let must: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
         assert_eq!(left, "1032");
@@ -901,14 +901,14 @@ Các lỗi biên dịch phổ biến nhất khi làm việc với Iterator trong
 
 ```rust
 // Đoạn mã lỗi minh họa:
-fn thu_nghiem_loi_collect() {
+fn broken_collect() {
     let mang = vec![1, 2, 3];
     // LỖI E0282: rustc không biết gom thành kiểu gì
     // let ket_qua = mang.iter().map(|x| x * 2).collect(); 
 }
 
 // Cách sửa chữa chuẩn mực:
-fn thu_nghiem_dung() {
+fn correct_example() {
     let mang = vec![1, 2, 3];
     // Cách A: Chú thích kiểu ở phía biến
     let ket_qua_a: Vec<i32> = mang.iter().map(|x| x * 2).collect();
@@ -972,14 +972,14 @@ Ba yêu cầu ứng đúng ba mắt xích `.filter()` → `.map()` → `.collect
 fn main() {
     let so = vec![12, 7, 19, 24, 30, 5, 8];
 
-    let binh_phuong_chan: Vec<i32> = so
+    let even_squares: Vec<i32> = so
         .iter()
         .filter(|&&x| x % 2 == 0)   // 12, 24, 30, 8
         .map(|&x| x * x)            // 144, 576, 900, 64
         .collect();
 
-    assert_eq!(binh_phuong_chan, vec![144, 576, 900, 64]);
-    println!("{:?}", binh_phuong_chan);
+    assert_eq!(even_squares, vec![144, 576, 900, 64]);
+    println!("{:?}", even_squares);
 }
 ```
 </details>
@@ -1023,11 +1023,11 @@ Bạn chỉ phải viết đúng **một** phương thức: `fn next(&mut self) 
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
-pub struct BoDemNguoc {
+pub struct CountDown {
     pub current: u32,
 }
 
-impl Iterator for BoDemNguoc {
+impl Iterator for CountDown {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
@@ -1044,20 +1044,20 @@ impl Iterator for BoDemNguoc {
 fn main() {
     // Dùng với vòng lặp for (nhờ IntoIterator có sẵn cho mọi Iterator)
     print!("Đếm ngược: ");
-    for n in (BoDemNguoc { current: 5 }) {
+    for n in (CountDown { current: 5 }) {
         print!("{} ", n);
     }
     println!("Phóng!");
 
     // PHẦN THƯỞNG: chỉ cài `next()` mà được dùng ngay hàng chục phương thức khác
-    let list: Vec<u32> = BoDemNguoc { current: 5 }.collect();
+    let list: Vec<u32> = CountDown { current: 5 }.collect();
     assert_eq!(list, vec![5, 4, 3, 2, 1]);
 
-    let tong_chan: u32 = BoDemNguoc { current: 10 }.filter(|n| n % 2 == 0).sum();
-    assert_eq!(tong_chan, 30); // 10+8+6+4+2
+    let even_sum: u32 = CountDown { current: 10 }.filter(|n| n % 2 == 0).sum();
+    assert_eq!(even_sum, 30); // 10+8+6+4+2
 
-    let ba_dau: Vec<u32> = BoDemNguoc { current: 100 }.take(3).collect();
-    assert_eq!(ba_dau, vec![100, 99, 98]);
+    let first_three: Vec<u32> = CountDown { current: 100 }.take(3).collect();
+    assert_eq!(first_three, vec![100, 99, 98]);
 }
 ```
 

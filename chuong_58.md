@@ -93,13 +93,13 @@ cargo test -p ch58
 use std::collections::HashMap;
 
 // ============================================================================
-// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao nhanh hơn dạng hàng
+// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao fast hơn dạng hàng
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     So(f64),
-    Chuoi(String),
+    Text(String),
     Rong, // giá trị thiếu (NULL/NaN)
 }
 
@@ -108,12 +108,12 @@ impl Value {
         match self { Value::So(x) => Some(*x), _ => None }
     }
     pub fn series(&self) -> Option<&str> {
-        match self { Value::Chuoi(s) => Some(s), _ => None }
+        match self { Value::Text(s) => Some(s), _ => None }
     }
 }
 
 /// Bảng dữ liệu lưu theo CỘT: mỗi cột là một Vec cùng kiểu, nằm liền nhau
-/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh thu) cực nhanh —
+/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh attempt) cực fast —
 /// CPU quét một vùng nhớ liên tục, thân thiện với cache (Chương 25).
 #[derive(Debug, Clone)]
 pub struct Bang {
@@ -180,7 +180,7 @@ pub fn infer_type(o: String) -> Value {
     } else if let Ok(n) = t.parse::<f64>() {
         Value::So(n)
     } else {
-        Value::Chuoi(t.to_string())
+        Value::Text(t.to_string())
     }
 }
 
@@ -233,17 +233,17 @@ impl Bang {
     /// Đây chính là VỊ NHÓM TÍCH ở Chương 18: gộp (đếm, tổng, min, max) trong 1 lượt.
     pub fn group_and_total_hop(&self, theo: &str, above: &str) -> Vec<ResultGroup> {
         let c_theo = self.chi_so_cot(theo).expect("cột nhóm không tồn tại");
-        let c_tren = self.chi_so_cot(above).expect("cột tính không tồn tại");
+        let c_above = self.chi_so_cot(above).expect("cột tính không tồn tại");
 
         // (tổng, đếm, min, max) cho mỗi khóa
         let mut gom: HashMap<String, (f64, usize, f64, f64)> = HashMap::new();
         for h in 0..self.num_queue() {
             let key = match &self.cot[c_theo][h] {
-                Value::Chuoi(s) => s.clone(),
+                Value::Text(s) => s.clone(),
                 Value::So(n) => n.to_string(),
                 Value::Rong => "(thiếu)".to_string(),
             };
-            if let Value::So(v) = self.cot[c_tren][h] {
+            if let Value::So(v) = self.cot[c_above][h] {
                 let e = gom.entry(key).or_insert((0.0, 0, f64::INFINITY, f64::NEG_INFINITY));
                 e.0 += v;
                 e.1 += 1;
@@ -293,7 +293,7 @@ pub fn emit_normal(data: &[f64], threshold: f64) -> Vec<usize> {
 }
 
 // ============================================================================
-// 6. JOIN — ghép hai bảng theo khóa chung
+// 6. JOIN — ghép hai bảng theo khóa shared
 // ============================================================================
 
 /// Inner join: chỉ giữ hàng có khóa khớp ở CẢ HAI bảng.
@@ -358,7 +358,7 @@ fn main() {
                  r.key, r.count, r.tong, r.mean, r.min, r.max);
     }
 
-    println!("\n4. LỌC: chỉ giữ doanh thu > 1000");
+    println!("\n4. LỌC: chỉ giữ doanh attempt > 1000");
     let large = bang.filter(|h| h["doanh_thu"].so().map(|x| x > 1000.0).unwrap_or(false));
     println!("   Còn {} hàng", large.num_queue());
 
@@ -368,10 +368,10 @@ fn main() {
              moving_average(&series, 3).iter().map(|x| (x * 10.0).round() / 10.0).collect::<Vec<_>>());
     println!("   Vị trí bất thường (>2σ): {:?}", emit_normal(&series, 2.0));
 
-    println!("\n6. JOIN: ghép doanh thu với dân số khu vực");
+    println!("\n6. JOIN: ghép doanh attempt với dân số khu vực");
     let mut list = Bang::new(vec!["khu_vuc", "dan_so_trieu"]);
-    list.add_queue(vec![Value::Chuoi("Hà Nội".into()), Value::So(8.4)]);
-    list.add_queue(vec![Value::Chuoi("TP.HCM".into()), Value::So(9.3)]);
+    list.add_queue(vec![Value::Text("Hà Nội".into()), Value::So(8.4)]);
+    list.add_queue(vec![Value::Text("TP.HCM".into()), Value::So(9.3)]);
     let compose = inner_join(&bang, &list, "khu_vuc");
     println!("   Kết quả join có {} hàng, {} cột (Đà Nẵng bị loại vì không có dân số)",
              compose.num_queue(), compose.ten_cot.len());
@@ -387,7 +387,7 @@ mod tests {
 
     fn bang_mau() -> Bang {
         let csv = vec![
-            "khu,thu",
+            "khu,attempt",
             "A,100", "B,200", "A,50", "C,NA", "A,30", "B,80",
         ];
         extract_csv(&csv).unwrap()
@@ -404,7 +404,7 @@ mod tests {
     fn type_inference_is_correct() {
         assert_eq!(infer_type("42".into()), Value::So(42.0));
         assert_eq!(infer_type("3.14".into()), Value::So(3.14));
-        assert_eq!(infer_type("Hà Nội".into()), Value::Chuoi("Hà Nội".into()));
+        assert_eq!(infer_type("Hà Nội".into()), Value::Text("Hà Nội".into()));
         assert_eq!(infer_type("".into()), Value::Rong);
         assert_eq!(infer_type("NA".into()), Value::Rong);
     }
@@ -412,16 +412,16 @@ mod tests {
     #[test]
     fn fills_missing_values() {
         let mut b = bang_mau();
-        b.missing_signal("thu", 0.0);
-        // Sau khi điền, cột 'thu' không còn Rong nào
-        let c = b.chi_so_cot("thu").unwrap();
+        b.missing_signal("attempt", 0.0);
+        // Sau khi điền, cột 'attempt' không còn Rong nào
+        let c = b.chi_so_cot("attempt").unwrap();
         assert!(!b.cot[c].contains(&Value::Rong));
     }
 
     #[test]
     fn group_by_tong_hop_dung() {
         let b = bang_mau();
-        let r = b.group_and_total_hop("khu", "thu");
+        let r = b.group_and_total_hop("khu", "attempt");
         // Sắp theo tổng giảm dần: A(180) > B(280)? -> B=280, A=180. Kiểm cụ thể.
         let a = r.iter().find(|x| x.key == "A").unwrap();
         assert_eq!(a.count, 3);
@@ -429,8 +429,8 @@ mod tests {
         assert_eq!(a.mean, 60.0);
         assert_eq!(a.min, 30.0);
         assert_eq!(a.max, 100.0);
-        let b_nhom = r.iter().find(|x| x.key == "B").unwrap();
-        assert_eq!(b_nhom.tong, 280.0);
+        let b_group = r.iter().find(|x| x.key == "B").unwrap();
+        assert_eq!(b_group.tong, 280.0);
         // C chỉ có NA nên không xuất hiện (không có giá trị số nào)
         assert!(r.iter().find(|x| x.key == "C").is_none());
     }
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn filters_by_predicate() {
         let b = bang_mau();
-        let l = b.filter(|h| h["thu"].so().map(|x| x >= 100.0).unwrap_or(false));
+        let l = b.filter(|h| h["attempt"].so().map(|x| x >= 100.0).unwrap_or(false));
         assert_eq!(l.num_queue(), 2); // A=100, B=200
     }
 
@@ -465,9 +465,9 @@ mod tests {
     #[test]
     fn inner_join_keeps_only_matching_keys() {
         let mut t = Bang::new(vec!["id", "ten"]);
-        t.add_queue(vec![Value::So(1.0), Value::Chuoi("An".into())]);
-        t.add_queue(vec![Value::So(2.0), Value::Chuoi("Bình".into())]);
-        t.add_queue(vec![Value::So(3.0), Value::Chuoi("Chi".into())]);
+        t.add_queue(vec![Value::So(1.0), Value::Text("An".into())]);
+        t.add_queue(vec![Value::So(2.0), Value::Text("Bình".into())]);
+        t.add_queue(vec![Value::So(3.0), Value::Text("Chi".into())]);
         let mut p = Bang::new(vec!["id", "diem"]);
         p.add_queue(vec![Value::So(1.0), Value::So(9.0)]);
         p.add_queue(vec![Value::So(2.0), Value::So(8.0)]);
@@ -524,7 +524,7 @@ mod tests {
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn trung_vi(so: &[f64]) -> f64 {
+pub fn median(so: &[f64]) -> f64 {
     if so.is_empty() { return 0.0; }
     let mut v = so.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -536,10 +536,10 @@ pub fn trung_vi(so: &[f64]) -> f64 {
 mod bt1 {
     use super::*;
     #[test]
-    fn trung_vi_khong_bi_diem_la_keo_lech() {
+    fn median_resists_outliers() {
         // Trung bình bị điểm 1000 kéo lên; trung vị thì không.
         let data = [1.0, 2.0, 3.0, 4.0, 1000.0];
-        assert_eq!(trung_vi(&data), 3.0);       // ổn định
+        assert_eq!(median(&data), 3.0);       // ổn định
         let tb = data.iter().sum::<f64>() / 5.0;
         assert_eq!(tb, 202.0);                     // bị bóp méo
     }

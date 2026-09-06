@@ -62,10 +62,10 @@ Trong công viên có một phiến đá hoa cương ngàn năm tuổi khắc d�
 Hãy xem xét đoạn mã bị cấm sau đây để hiểu vì sao Rust lại cần cơ chế Lifetime:
 ```rust
 // RUST CHẶN ĐỨNG HÀM NÀY NGAY TỪ BƯỚC KIỂM TRA KIỂU VỚI LỖI E0106:
-fn tao_loi_chao_nguy_hiem() -> &String {
+fn make_greeting_unsafe() -> &String {
     let s = String::from("Chào bạn"); // s sinh ra trên Stack Frame của hàm này
     &s // Cố tình trả về địa chỉ của biến cục bộ s
-} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị thu hồi!
+} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị attempt hồi!
 ```
 Trong các ngôn ngữ như C/C++, trình biên dịch vẫn để bạn chạy đoạn mã trên, dẫn đến con trỏ trỏ vào vùng nhớ rác (Dangling Pointer) gây sập chương trình ngẫu nhiên.
 Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
@@ -80,7 +80,7 @@ Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
 
 Khi một hàm nhận vào **từ hai tham chiếu trở lên** và trả về một tham chiếu, trình biên dịch sẽ bối rối:
 ```rust
-fn tim_chuoi_dai_hon(x: &str, y: &str) -> &str {
+fn longer_of(x: &str, y: &str) -> &str {
     if x.len() > y.len() { x } else { y }
 }
 ```
@@ -88,7 +88,7 @@ Trình biên dịch không thể biết trước lúc chạy xem hàm sẽ trả
 
 Chúng ta giải quyết bằng cách thêm chú thích vòng đời `'a`:
 ```rust
-fn tim_chuoi_dai_hon<'a>(x: &'a str, y: &'a str) -> &'a str {
+fn longer_of<'a>(x: &'a str, y: &'a str) -> &'a str {
     if x.len() > y.len() { x } else { y }
 }
 ```
@@ -110,7 +110,7 @@ Chỉ khi nào hàm có **nhiều tham chiếu đầu vào** và **trả về m�
 
 Nếu bạn muốn tạo một `struct` không tự sở hữu dữ liệu mà chỉ mượn một phần dữ liệu từ nơi khác, bạn bắt buộc phải khai báo vòng đời cho struct đó:
 ```rust
-struct TrinhPhanTich<'a> {
+struct Parser<'a> {
     du_lieu_nguon: &'a str, // Struct này cam kết không sống lâu hơn du_lieu_nguon
 }
 ```
@@ -126,7 +126,7 @@ Chương trình dưới đây là một "Bộ phân tích cấu hình hệ thố
 // Ứng dụng thực chiến làm chủ Vòng đời (Lifetimes) trong Rust
 
 // 1. Hàm so sánh hai chuỗi và trả về chuỗi dài hơn
-// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng giao nhau giữa x và y
+// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng deliver nhau giữa x và y
 fn pick_longer_message<'a>(x: &'a str, y: &'a str) -> &'a str {
     if x.len() > y.len() {
         x
@@ -174,10 +174,10 @@ fn main() {
 
     // --- PHẦN 2: CHỨNG MINH TÍNH AN TOÀN TRƯỚC VÒNG ĐỜI NGẮN HƠN ---
     println!("\n2. Kiểm soát phạm vi sống lồng nhau an toàn:");
-    let chuoi_me = String::from("Dữ liệu bền vững của công ty");
+    let parent_string = String::from("Dữ liệu bền vững của công ty");
     {
         let series_con = String::from("Dữ liệu tạm");
-        let ket_qua_tam = pick_longer_message(chuoi_me.as_str(), series_con.as_str());
+        let ket_qua_tam = pick_longer_message(parent_string.as_str(), series_con.as_str());
         println!("- [Bên trong phạm vi con]: Kết quả chọn là: '{}'", ket_qua_tam);
         // ket_qua_tam chỉ được phép dùng bên trong dấu ngoặc nhọn này!
         // Nếu cố tình mang ket_qua_tam ra ngoài phạm vi con, compiler sẽ chặn đứng ngay!
@@ -185,18 +185,18 @@ fn main() {
 
     // --- PHẦN 3: STRUCT CHỨA THAM CHIẾU (ZERO-COPY) ---
     println!("\n3. Khởi tạo Struct chứa tham chiếu mượn không tốn RAM:");
-    let tap_tin_cau_hinh = String::from("TenUngDung: RustCloudServer, Phi: 49.99");
+    let config_file = String::from("TenUngDung: RustCloudServer, Phi: 49.99");
 
     // Lát cắt trích xuất tên ứng dụng trực tiếp từ chuỗi nguồn:
-    let name_cut_can = &tap_tin_cau_hinh[12..27];
+    let name_cut_can = &config_file[12..27];
 
-    let cau_hinh = SystemConfig {
+    let config = SystemConfig {
         name_resp_use: name_cut_can,
         phi_dich_vu: 49.99,
     };
 
-    cau_hinh.print_info();
-    println!("- Tên ứng dụng trích xuất qua getter: '{}'", cau_hinh.lay_ten());
+    config.print_info();
+    println!("- Tên ứng dụng trích xuất qua getter: '{}'", config.lay_ten());
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");
@@ -235,7 +235,7 @@ Dưới đây là các thông báo lỗi kinh điển về Lifetimes và cách k
 2. **Bài tập thực hành 2**: Viết một hàm mang tên `chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str` nhận vào hai tham chiếu lát cắt chuỗi (`&str`) và trả về tham chiếu của chuỗi có độ dài ngắn hơn (sử dụng phương thức `.len()`). Trong hàm `main`: tạo hai biến `String` có độ dài khác nhau, gọi hàm và in chuỗi ngắn hơn ra màn hình. Thử giải thích tại sao tham số vòng đời `<'a>` là bắt buộc trong chữ ký hàm này.
 3. **Bài tập sửa lỗi (Compiler fix)**: Đoạn mã sau bị lỗi biên dịch:
    ```rust
-   fn tao_chuoi() -> &str {
+   fn make_string() -> &str {
        let s = "Rustacean".to_string();
        &s
    }

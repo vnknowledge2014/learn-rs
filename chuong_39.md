@@ -257,7 +257,7 @@ fn main() {
         strlen(raw_c_ptr)
     };
 
-    println!("    - Chuoi gui sang C : {:?}", c_greeting);
+    println!("    - Text gui sang C : {:?}", c_greeting);
     println!("    - Do dai do boi C strlen: {} bytes", length_from_c);
     assert_eq!(length_from_c, 26);
 
@@ -293,20 +293,20 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi làm việc
 
 ```rust
 // Giả lập hàm cấp thấp nguy hiểm
-unsafe fn xoa_o_dia_cap_thap() {
+unsafe fn raw_disk_wipe() {
     println!("Thao tác cấp thấp nguy hiểm đã chạy!");
 }
 
 // Đoạn mã lỗi minh họa E0133:
-fn vi_du_loi_e0133() {
-    // xoa_o_dia_cap_thap(); // LỖI E0133: Trình biên dịch cấm gọi hàm unsafe trực tiếp!
+fn e0133_broken() {
+    // raw_disk_wipe(); // LỖI E0133: Trình biên dịch cấm gọi hàm unsafe trực tiếp!
 }
 
 // Cách sửa chữa đúng chuẩn:
 fn vi_du_dung_e0133() {
     // Phải có khối lệnh unsafe thể hiện trách nhiệm của lập trình viên
     unsafe {
-        xoa_o_dia_cap_thap();
+        raw_disk_wipe();
     }
 }
 ```
