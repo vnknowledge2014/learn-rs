@@ -321,3 +321,178 @@ fn vi_du_dung_e0382() {
    Thay vì tạo số luồng bằng với số cổng (có thể gây quá tải CPU nếu quét 10,000 cổng), hãy thiết lập một hàng đợi công việc cố định gồm đúng 20 luồng công nhân (Worker Threads), liên tục rút việc từ một kênh chung cho đến khi hết cổng cần quét.
 3. **Bài tập 3 (Suy ngẫm OSCP: Sự khác biệt giữa SYN Stealth Scan và Connect Scan)**:  
    Tại sao trong các bài thi kiểm thử thâm nhập OSCP thực tế, các chuyên gia lại thích sử dụng kiểu quét `SYN Stealth Scan` (chỉ gửi SYN, nhận SYN-ACK rồi gửi RST hủy ngay thay vì gửi ACK hoàn tất)? Ưu điểm về mặt tàng hình (evasion) của kỹ thuật này đối với các hệ thống ghi nhật ký (Firewall / IDS Log) là gì?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Sau khi `TcpStream::connect` thành công, bạn có một luồng hai chiều: `write_all` gửi yêu cầu, rồi `read` đọc phản hồi. Đặt thời gian chờ đọc để một cổng mở nhưng câm lặng không treo mãi.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::time::Duration;
+
+/// Kết nối tới `ip:port`, gửi một yêu cầu HEAD và đọc tối đa 128 byte đầu.
+/// Trả về `None` nếu không kết nối được hoặc máy chủ không nói gì.
+pub fn grab_banner(ip: &str, port: u16, timeout: Duration) -> Option<String> {
+    let addr = format!("{ip}:{port}");
+    let mut stream = TcpStream::connect(&addr).ok()?;
+
+    // BẮT BUỘC đặt thời gian chờ ĐỌC. Một cổng có thể mở nhưng dịch vụ
+    // im lặng chờ ta nói trước; không có timeout thì `read` treo vô hạn.
+    stream.set_read_timeout(Some(timeout)).ok()?;
+
+    // Gửi yêu cầu tối thiểu để khều máy chủ trả lời.
+    stream.write_all(b"HEAD / HTTP/1.0
+
+").ok()?;
+
+    // Đọc tối đa 128 byte đầu — đủ để lộ dòng "Server:" mà không đọc cả trang.
+    let mut buf = [0u8; 128];
+    let n = stream.read(&mut buf).ok()?;
+    if n == 0 {
+        return None; // Kết nối được nhưng máy chủ đóng ngay, không có banner.
+    }
+
+    // Phản hồi có thể chứa byte không phải UTF-8 -> dùng bản mất mát cho an toàn.
+    Some(String::from_utf8_lossy(&buf[..n]).into_owned())
+}
+
+#[test]
+fn banner_none_khi_khong_ket_noi_duoc() {
+    // Cổng 1 trên địa chỉ loopback gần như chắc chắn đóng -> None, không treo.
+    let r = grab_banner("127.0.0.1", 1, Duration::from_millis(200));
+    assert!(r.is_none());
+}
+```
+
+**Vì sao phải `set_read_timeout` chứ không chỉ `connect_timeout`:** hai thời gian chờ này canh hai giai đoạn khác nhau. `connect_timeout` giới hạn *bắt tay TCP* — "cổng này có mở không". `set_read_timeout` giới hạn *chờ dữ liệu* — "máy chủ có nói gì không". Một cổng mở của dịch vụ chờ-khách-nói-trước (nhiều giao thức nhị phân là vậy) sẽ qua được `connect` rồi treo mãi ở `read`. Bỏ sót timeout thứ hai là lý do phổ biến khiến trình quét tự viết bị đơ.
+
+**Đây chính là bước biến "cổng mở" thành thông tin tình báo.** Biết cổng 22 mở chỉ cho biết *có* SSH; đọc banner `SSH-2.0-OpenSSH_7.4` cho biết *phiên bản nào* — và phiên bản là thứ tra thẳng ra danh sách lỗ hổng đã biết (CVE). Đó là toàn bộ giá trị của giai đoạn banner grabbing trong trinh sát.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Điểm mấu chốt: 20 luồng chia nhau **một** hàng đợi, không phải một luồng mỗi cổng. Bọc phía nhận của kênh trong `Arc<Mutex<...>>` để mọi luồng cùng rút việc từ đó cho tới khi cạn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+/// Quét dải cổng bằng ĐÚNG 20 luồng công nhân dùng chung một hàng đợi việc,
+/// bất kể phải quét 100 hay 10.000 cổng. Trả về các cổng mở, đã sắp xếp.
+pub fn scan_with_worker_pool(ip: &str, ports: Vec<u16>, timeout: Duration) -> Vec<u16> {
+    const WORKERS: usize = 20;
+
+    // Hàng đợi việc: nạp mọi cổng vào kênh rồi ĐÓNG phía gửi.
+    // Khi kênh cạn và đã đóng, `recv()` trả Err -> tín hiệu cho công nhân dừng.
+    let (job_tx, job_rx) = channel::<u16>();
+    for p in ports {
+        job_tx.send(p).unwrap();
+    }
+    drop(job_tx); // Đóng: không còn việc mới. Thiếu dòng này -> công nhân chờ mãi.
+
+    // Nhiều luồng cùng rút từ MỘT Receiver -> phải bọc trong Arc<Mutex<...>>.
+    let job_rx = Arc::new(Mutex::new(job_rx));
+    let (result_tx, result_rx) = channel::<u16>();
+    let ip = ip.to_string();
+
+    let mut handles = Vec::new();
+    for _ in 0..WORKERS {
+        let job_rx: Arc<Mutex<Receiver<u16>>> = Arc::clone(&job_rx);
+        let result_tx = result_tx.clone();
+        let ip = ip.clone();
+        handles.push(thread::spawn(move || loop {
+            // Giữ khoá CHỈ đủ lâu để lấy một việc, rồi thả ngay
+            // để công nhân khác rút việc song song. Đây là mấu chốt hiệu năng.
+            let port = {
+                let guard = job_rx.lock().unwrap();
+                guard.recv()
+            };
+            match port {
+                Ok(p) => {
+                    if check_single_port(&ip, p, timeout) {
+                        result_tx.send(p).unwrap();
+                    }
+                }
+                Err(_) => break, // Hàng đợi cạn và đã đóng -> xong việc.
+            }
+        }));
+    }
+    drop(result_tx); // Thả bản sao của luồng chính, nếu không `result_rx` treo.
+
+    for h in handles {
+        h.join().unwrap();
+    }
+    let mut open: Vec<u16> = result_rx.iter().collect();
+    open.sort_unstable();
+    open
+}
+```
+
+**Vì sao 20 luồng cố định thắng "một luồng mỗi cổng":** một luồng chiếm khoảng 8 MB ngăn xếp và tốn công cho hệ điều hành lập lịch. Quét 10.000 cổng theo kiểu một-luồng-một-cổng đòi 80 GB bộ nhớ ảo và làm bộ lập lịch nghẹt thở. Việc quét lại **bị chặn bởi I/O** (chờ mạng), không phải bởi CPU — nên 20 luồng, mỗi luồng lần lượt xử lý nhiều cổng, đã đủ giữ đường truyền luôn bận mà chi phí không đổi dù dải cổng lớn đến đâu.
+
+**Hai chi tiết quyết định đúng/sai:**
+1. **`drop(job_tx)` trước khi công nhân chạy.** `recv()` chỉ trả `Err` khi kênh vừa cạn *vừa* đã đóng mọi phía gửi. Quên `drop` thì công nhân cuối rút hết việc rồi vẫn ngồi chờ việc không bao giờ tới — treo vĩnh viễn.
+2. **Thả khoá ngay sau `recv()`.** Nếu giữ khoá suốt cả lần `check_single_port` (kéo dài bằng cả timeout), thì tại mỗi thời điểm chỉ một công nhân làm việc — 20 luồng hoá ra chạy tuần tự. Phải rút việc dưới khoá, nhưng làm việc *ngoài* khoá.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Câu hỏi không đòi code — nó đòi bạn hiểu điều gì để lại dấu vết trong nhật ký. Hãy so sánh: một lần bắt tay TCP hoàn tất khác gì với một lần bắt tay bị bỏ dở giữa chừng?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Bắt tay TCP đầy đủ (ba bước):**
+
+```text
+Máy quét  --SYN-->      Mục tiêu
+Máy quét  <--SYN/ACK--  Mục tiêu
+Máy quét  --ACK-->      Mục tiêu     [kết nối HOÀN TẤT]
+```
+
+Đây là điều `TcpStream::connect` (và `check_single_port` trong chương này) làm — một kết nối trọn vẹn. Vấn đề: **một kết nối hoàn tất là một sự kiện mà ứng dụng nhìn thấy được.** Máy chủ web `accept()` được kết nối, ghi một dòng "đã nhận kết nối từ IP X" vào nhật ký, rồi mới thấy ta ngắt ngay mà chẳng gửi yêu cầu gì. Quét 1.000 cổng kiểu này để lại 1.000 dòng nhật ký đáng ngờ.
+
+**Quét SYN Stealth (bắt tay nửa vời):**
+
+```text
+Máy quét  --SYN-->      Mục tiêu
+Máy quét  <--SYN/ACK--  Mục tiêu     [cổng MỞ — đã biết đủ]
+Máy quét  --RST-->      Mục tiêu     [huỷ bỏ, KHÔNG hoàn tất]
+```
+
+Máy quét cố tình không gửi `ACK` cuối. Nhận được `SYN/ACK` là đã đủ trả lời câu hỏi "cổng có mở không"; gửi `RST` để xé bỏ kết nối dở dang.
+
+**Ưu điểm tàng hình, và vì sao nó hiệu quả:**
+
+| | Connect Scan | SYN Stealth |
+|---|---|---|
+| Bắt tay | hoàn tất cả ba bước | dừng ở bước hai |
+| Tầng OS thấy kết nối? | có | có |
+| **Tầng ứng dụng thấy?** | **có — ghi nhật ký** | **không — chưa từng `accept`** |
+| Chi phí mỗi cổng | dựng rồi phá cả socket | nhẹ hơn, không có socket đầy đủ |
+
+Mấu chốt nằm ở **ranh giới giữa nhân hệ điều hành và ứng dụng**. Một kết nối chỉ "hiện ra" cho ứng dụng (máy chủ web, SSH…) sau khi bắt tay xong *và* nhân trao nó qua `accept()`. Dừng ở bước hai nghĩa là kết nối chưa bao giờ hoàn tất, nên `accept()` không bao giờ trả về nó, nên **phần mềm ghi nhật ký của ứng dụng không có gì để ghi**. Dấu vết chỉ còn ở tầng gói tin — nơi cần công cụ chuyên dụng (IDS) mới thấy, chứ không nằm trong nhật ký ứng dụng thường ngày.
+
+**Hai điều cần nói thẳng cho đúng thực tế:**
+- SYN scan **không vô hình**. Một IDS như Snort/Suricata theo dõi ở tầng gói tin vẫn phát hiện được cơn mưa SYN-rồi-RST — đó là dấu hiệu kinh điển của quét cổng. "Stealth" ở đây nghĩa là *né được nhật ký tầng ứng dụng*, không phải né được mọi con mắt.
+- Gửi gói SYN thô đòi tạo gói tin thủ công, nên cần **quyền root** (raw socket). Đây là lý do `nmap -sS` phải chạy với `sudo`, còn quét Connect thường (`-sT`) thì không. Bản thân `TcpStream` của Rust không làm SYN scan được — nó luôn hoàn tất bắt tay; muốn stealth phải xuống tầng tạo gói thô bằng crate như `pnet`.
+</details>

@@ -246,3 +246,89 @@ fn main() {
    Hãy giải thích tại sao biến `c` in được mà biến `a` lại báo lỗi.
 2. **Bài tập thực hành 2**: Viết một hàm `tinh_do_dai(s: String) -> (String, usize)` nhận vào một chuỗi, đo độ dài của chuỗi đó, sau đó trả về một bộ đôi Tuple chứa lại chính chuỗi đó và độ dài vừa đo được, để người gọi hàm không bị mất quyền sở hữu chuỗi.
 3. **Bài tập tư duy 3**: Tại sao Rust không tự động thực hiện `.clone()` ngầm định cho chúng ta mỗi khi gán biến `String` giống như cách nó làm với số nguyên `i32`? Lợi ích về mặt hiệu năng hệ thống của quyết định thiết kế này là gì?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`String` bị **di chuyển** (move) khi gán, còn `i32` được **sao chép** (copy). Câu hỏi là: kiểu nào cài `Copy`, kiểu nào không, và vì sao.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**Dòng lỗi: `println!` cố dùng lại `a`.** Biến `c` in được, còn `a` báo lỗi `borrow of moved value: `a``.
+
+Giải thích qua đúng bốn dòng:
+```text
+let a = String::from("Học Rust");  // a SỞ HỮU chuỗi trên heap
+let b = a;                         // DI CHUYỂN: quyền sở hữu sang b, a hết hiệu lực
+let c = 50;                        // c là i32
+let d = c;                         // SAO CHÉP: i32 cài Copy, c vẫn dùng được
+```
+
+Vì sao **`c` in được mà `a` thì không:**
+- `i32` là kiểu **`Copy`**: nó nhỏ, nằm gọn trên Stack, sao chép chỉ là nhân đôi 4 byte — rẻ và vô hại. Nên `let d = c;` *sao chép*, `c` vẫn còn nguyên.
+- `String` **không** `Copy`: nó sở hữu một vùng nhớ trên Heap. Nếu `let b = a;` chỉ nhân đôi phần con trỏ thì **hai biến cùng trỏ một vùng heap**, và khi cả hai bị dọn sẽ giải phóng hai lần — hỏng bộ nhớ. Rust chặn nguy cơ đó bằng cách **di chuyển**: sau `let b = a;`, chỉ `b` còn hiệu lực, `a` bị vô hiệu.
+
+Vậy lỗi không phải sự phiền toái ngẫu nhiên — nó chính là Rust ngăn lỗi giải phóng hai lần **ngay lúc biên dịch**. Muốn cả `a` lẫn `b` cùng dùng, bạn phải nói rõ ý định bằng `let b = a.clone();`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Trả lại quyền sở hữu cho người gọi bằng cách **gói chuỗi vào tuple trả về** cùng với độ dài. Đây là cách vụng về mà bài học cố ý cho thấy — để sau này bạn trân trọng phép mượn `&`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+// Nhận String theo sở hữu, rồi TRẢ LẠI nó (kèm độ dài) để người gọi không mất chuỗi.
+fn tinh_do_dai(s: String) -> (String, usize) {
+    let dai = s.len();   // đo trước khi trả đi
+    (s, dai)             // trả cả chuỗi lẫn độ dài -> người gọi lấy lại quyền sở hữu
+}
+
+fn main() {
+    let s = String::from("Rustacean");
+    let (s, dai) = tinh_do_dai(s);   // nhận lại s, giờ vẫn dùng được
+    println!("Chuỗi \"{s}\" dài {dai} ký tự");
+}
+
+#[test]
+fn tra_lai_ca_chuoi_va_do_dai() {
+    let (s, dai) = tinh_do_dai(String::from("Rustacean"));
+    assert_eq!(dai, 9);
+    assert_eq!(s, "Rustacean");   // chuỗi vẫn nguyên, không bị nuốt mất
+}
+```
+
+Cách này **chạy đúng nhưng vụng**: mỗi lần muốn dùng chuỗi sau khi gọi hàm, bạn phải nhận lại nó rồi gán đè — phiền và dễ quên. Bài học cố tình cho bạn nếm sự vụng này để **dẫn tới chương phép mượn**: thay vì chuyển sở hữu đi rồi đòi về, bạn chỉ cần *cho hàm mượn* chuỗi bằng `&String`. Khi đó chữ ký thành `fn tinh_do_dai(s: &String) -> usize` — gọn hơn hẳn, và người gọi không bao giờ mất quyền sở hữu ngay từ đầu. Hãy nhớ cảm giác vụng ở đây; nó là lý do phép mượn tồn tại.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Câu hỏi thiết kế: nếu Rust tự `.clone()` ngầm cho `String` mỗi lần gán, thì cái giá vô hình nào sẽ xuất hiện trong chương trình lớn?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Rust **không** tự clone ngầm cho `String` vì làm vậy sẽ giấu đi một chi phí đắt đỏ ngay dưới một phép gán trông có vẻ vô hại.
+
+So sánh hai bên:
+- `let y = x;` với `x: i32` — sao chép **4 byte trên Stack**. Rẻ tới mức không đáng bận tâm, nên Rust làm ngầm (đó là ý nghĩa của trait `Copy`).
+- `let y = x;` với `x: String` — nếu clone ngầm thì phải **cấp phát vùng heap mới và chép từng byte** của cả chuỗi. Với chuỗi dài megabyte, một phép gán tưởng chừng miễn phí lại âm thầm cấp phát và sao chép cả megabyte.
+
+**Lợi ích của quyết định "không clone ngầm":**
+1. **Chi phí luôn hiện rõ.** Trong Rust, mọi cấp phát heap đắt đỏ đều *phải* được bạn viết ra: `.clone()`. Đọc code là thấy ngay chỗ nào tốn kém — không có chi phí ẩn dưới dấu `=`. Đây gọi là nguyên tắc **"không trừu tượng nào đắt sau lưng bạn"** (zero-cost abstractions).
+2. **Mặc định là con đường nhanh.** Di chuyển (move) chỉ chuyển phần con trỏ 24 byte trên Stack — nhanh như sao chép số. Bạn chỉ trả giá clone khi *chủ động* yêu cầu.
+3. **Ép người viết cân nhắc.** Phải gõ `.clone()` buộc bạn dừng lại nghĩ "mình có thật sự cần bản sao thứ hai không, hay chỉ cần *mượn* là đủ?". Rất thường xuyên, câu trả lời là mượn — và code trở nên nhanh hơn nhờ chính sự cân nhắc đó.
+
+Nói ngắn: các ngôn ngữ khác chọn tiện lợi (clone ngầm) và trả giá bằng chậm-âm-thầm; Rust chọn minh bạch, đổi vài ký tự `.clone()` lấy việc **bạn luôn nhìn thấy đúng cái giá mình đang trả**.
+</details>

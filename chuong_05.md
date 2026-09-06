@@ -259,3 +259,107 @@ Dưới đây là các lỗi kinh điển khi làm việc với hàm và các ki
    - `let b: bool = false;`
    - `let c: String = String::from("Rustacean");` (Phân tích rõ phần con trỏ nằm ở đâu, phần chữ cái nằm ở đâu).
 3. **Bài tập mở rộng 3**: Viết chương trình yêu cầu người dùng nhập vào nhiệt độ tính theo độ C (`Celsius`), sau đó gọi một hàm chuyển đổi nhiệt độ này sang độ F (`Fahrenheit`) theo công thức: $F = C \times 1.8 + 32$. In kết quả định dạng 1 chữ số thập phân ra màn hình.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Trả về nhiều giá trị bằng cách gói vào một tuple `(chu_vi, dien_tich)`. Người gọi tách ra bằng `let (cv, dt) = ...`.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+// Trả về nhiều giá trị cùng lúc bằng cách gói vào một tuple.
+fn tinh_chu_vi_dien_tich_hcn(chieu_dai: f32, chieu_rong: f32) -> (f32, f32) {
+    let chu_vi = 2.0 * (chieu_dai + chieu_rong);
+    let dien_tich = chieu_dai * chieu_rong;
+    (chu_vi, dien_tich)   // dòng cuối không dấu ; -> đây là giá trị trả về
+}
+
+fn main() {
+    // Tách tuple ngay khi nhận: cv lấy phần tử 0, dt lấy phần tử 1.
+    let (cv, dt) = tinh_chu_vi_dien_tich_hcn(5.0, 3.0);
+    println!("Chu vi = {cv}, Diện tích = {dt}");
+}
+
+#[test]
+fn hcn_5x3() {
+    let (cv, dt) = tinh_chu_vi_dien_tich_hcn(5.0, 3.0);
+    assert_eq!(cv, 16.0);   // 2*(5+3)
+    assert_eq!(dt, 15.0);   // 5*3
+}
+```
+
+Tuple là cách nhẹ nhất để một hàm trả về **nhiều mảnh dữ liệu** mà không cần định nghĩa struct riêng. Nó hợp khi các mảnh đi liền nhau một cách hiển nhiên (chu vi và diện tích của *cùng* một hình). Khi số mảnh nhiều lên hoặc ý nghĩa dễ lẫn (dễ nhầm phần tử 0 với 1), bạn sẽ nâng cấp lên struct có tên trường — nhưng ở quy mô hai giá trị thế này, tuple là lựa chọn đúng.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Nguyên tắc: dữ liệu **kích thước cố định, biết lúc biên dịch** nằm trên Stack; dữ liệu **kích thước thay đổi lúc chạy** đặt phần thân trên Heap, để lại con trỏ trên Stack.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Phân tích từng biến:
+
+**`let a: i64 = 1000;` → hoàn toàn trên Stack.**
+`i64` luôn đúng 8 byte, biết chắc lúc biên dịch. Cấp phát trên Stack cực nhanh (chỉ dời con trỏ ngăn xếp).
+
+**`let b: bool = false;` → hoàn toàn trên Stack.**
+`bool` đúng 1 byte, cố định. Cùng lý do như `a`.
+
+**`let c: String = String::from("Rustacean");` → chia làm hai nơi:**
+
+```text
+   STACK (biết trước, cố định)          HEAP (thay đổi lúc chạy)
+   ┌─────────────────────────┐          ┌───────────────────────┐
+c: │ con trỏ  ───────────────┼─────────▶│ R u s t a c e a n     │
+   │ độ dài  = 9             │          └───────────────────────┘
+   │ sức chứa = 9            │              (9 byte chữ cái)
+   └─────────────────────────┘
+```
+
+- **Phần con trỏ** (con trỏ + độ dài + sức chứa, 24 byte) nằm trên **Stack** — kích thước cố định, luôn biết trước.
+- **Phần chữ cái** thật sự (`Rustacean`) nằm trên **Heap** — vì chuỗi *có thể dài ra lúc chạy* (bạn `.push_str()` thêm), nên không thể đặt cố định trên Stack.
+
+Đây là hình mẫu chung của mọi kiểu "sở hữu dữ liệu co giãn" trong Rust (`String`, `Vec`, `HashMap`): **một mẩu cố định trên Stack trỏ tới phần thân co giãn trên Heap**. Hiểu hình vẽ này là hiểu được một nửa hệ thống sở hữu của Rust.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Công thức thẳng: `F = C * 1.8 + 32`. Định dạng 1 chữ số thập phân bằng `{:.1}`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+// Đổi độ C sang độ F. Dùng f64 cho đủ chính xác.
+fn c_sang_f(c: f64) -> f64 {
+    c * 1.8 + 32.0
+}
+
+fn main() {
+    let c = 37.0;
+    // {:.1} = định dạng đúng 1 chữ số sau dấu phẩy.
+    println!("{c:.1}°C = {:.1}°F", c_sang_f(c));
+}
+
+#[test]
+fn cac_moc_quen_thuoc() {
+    assert_eq!(c_sang_f(0.0), 32.0);      // nước đá tan
+    assert_eq!(c_sang_f(100.0), 212.0);   // nước sôi
+    assert_eq!(c_sang_f(37.0), 98.6);     // thân nhiệt người
+}
+```
+
+Ba mốc trong test là cách **tự kiểm công thức** không cần máy tính: nước đá tan (0°C = 32°F) và nước sôi (100°C = 212°F) là hai điểm ai cũng nhớ, nếu hàm cho đúng cả hai thì công thức tuyến tính chắc chắn đúng ở mọi điểm giữa. Đây là thói quen tốt: chọn vài đầu vào mà bạn *đã biết* đáp án để chốt rằng code đúng, thay vì tin suông.
+</details>

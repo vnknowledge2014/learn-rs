@@ -279,3 +279,121 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
    - Phương thức `co_phai_hinh_vuong(&self) -> bool`.
 2. **Bài tập tư duy 2**: Tại sao Rust lại hỗ trợ phương thức tiêu thụ `self` (chuyển giao quyền sở hữu)? Hãy nêu một tình huống thực tế (ví dụ: gửi một bức thư điện tử hoặc đốt một que diêm) mà phương thức `self` giúp ngăn chặn người dùng sử dụng lại đối tượng đã hết giá trị.
 3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `DonQueue(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`impl` gom các phương thức của struct. Hàm liên kết `tao_moi` không có `self` (gọi qua `HinhChuNhat::tao_moi`), các phương thức còn lại nhận `&self` để đọc dữ liệu.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+struct HinhChuNhat {
+    chieu_dai: f64,
+    chieu_rong: f64,
+}
+
+impl HinhChuNhat {
+    // Hàm LIÊN KẾT: không có self, đóng vai trò "nhà xây dựng".
+    fn tao_moi(dai: f64, rong: f64) -> Self {
+        Self { chieu_dai: dai, chieu_rong: rong }
+    }
+    // Các PHƯƠNG THỨC: nhận &self để đọc dữ liệu mà không lấy quyền sở hữu.
+    fn tinh_dien_tich(&self) -> f64 {
+        self.chieu_dai * self.chieu_rong
+    }
+    fn tinh_chu_vi(&self) -> f64 {
+        2.0 * (self.chieu_dai + self.chieu_rong)
+    }
+    fn co_phai_hinh_vuong(&self) -> bool {
+        self.chieu_dai == self.chieu_rong
+    }
+}
+
+fn main() {
+    let hcn = HinhChuNhat::tao_moi(5.0, 3.0);
+    println!("Diện tích {}, chu vi {}", hcn.tinh_dien_tich(), hcn.tinh_chu_vi());
+    println!("Là hình vuông? {}", hcn.co_phai_hinh_vuong());
+}
+
+#[test]
+fn tinh_toan_hinh_chu_nhat() {
+    let hcn = HinhChuNhat::tao_moi(5.0, 3.0);
+    assert_eq!(hcn.tinh_dien_tich(), 15.0);
+    assert_eq!(hcn.tinh_chu_vi(), 16.0);
+    assert!(!hcn.co_phai_hinh_vuong());
+    assert!(HinhChuNhat::tao_moi(4.0, 4.0).co_phai_hinh_vuong());
+}
+```
+
+Điểm phân biệt cốt lõi: **hàm liên kết** (`tao_moi`, không có `self`) gọi qua `TênKiểu::ham()` và thường dùng làm nhà xây dựng; **phương thức** (có `&self`) gọi qua `bien.phuong_thuc()`. Cả bốn dùng `&self` (mượn đọc) là đúng — chúng chỉ cần *đọc* kích thước để tính, không cần sửa và cũng không nên nuốt mất đối tượng.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Phương thức nhận `self` (không phải `&self`) **nuốt** đối tượng — sau khi gọi, biến cũ không dùng lại được. Nghĩ tới hành động **chỉ làm được một lần** rồi vật thể không còn nguyên vẹn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Rust hỗ trợ phương thức tiêu thụ `self` để mô hình hóa những hành động **dùng một lần rồi hết** — biến quy tắc nghiệp vụ thành thứ trình biên dịch ép được.
+
+**Ví dụ que diêm:**
+```rust
+struct QueDiem { con_dau: bool }
+impl QueDiem {
+    fn dot(self) -> String {   // self, KHÔNG phải &self -> nuốt luôn que diêm
+        String::from("Bùng cháy!")
+    }
+}
+let que = QueDiem { con_dau: true };
+let lua = que.dot();
+// que.dot();   // <- LỖI BIÊN DỊCH: que đã bị nuốt ở lần đốt trước
+```
+
+Sau `que.dot()`, biến `que` bị **di chuyển vào hàm và hủy** — dòng đốt lần hai *không biên dịch được*. Đây đúng bản chất thực tế: một que diêm cháy rồi thì không đốt lại được. Cũng vậy với **gửi thư điện tử**: `fn gui(self)` nuốt đối tượng thư, nên bạn không thể vô tình `gui()` hai lần cùng một bức thư — tránh gửi trùng.
+
+Giá trị nằm ở chỗ: quy tắc "đối tượng này chỉ dùng được một lần" thường chỉ nằm trong tài liệu hoặc đầu người lập trình. Phương thức `self` **nâng nó thành ràng buộc kiểu**: mọi lần dùng lại đều bị chặn ngay lúc biên dịch, không đợi tới lúc chạy mới phát hiện.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Tuple struct đặt tên cho một bộ giá trị nhưng truy xuất qua chỉ số `.0`, `.1`, `.2` thay vì tên trường.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+// Tuple struct: có tên kiểu (DonQueue) nhưng trường truy xuất bằng chỉ số.
+struct DonQueue(u64, u64, u64); // (tiền hàng, phí giao, phụ phí đóng gói)
+
+impl DonQueue {
+    fn tinh_tong_thanh_toan(&self) -> u64 {
+        self.0 + self.1 + self.2   // truy xuất qua .0 .1 .2, không có tên trường
+    }
+}
+
+fn main() {
+    let don = DonQueue(250_000, 30_000, 10_000);
+    println!("Tổng thanh toán: {}đ", don.tinh_tong_thanh_toan());
+}
+
+#[test]
+fn tong_ba_khoan_chi_phi() {
+    let don = DonQueue(250_000, 30_000, 10_000);
+    assert_eq!(don.tinh_tong_thanh_toan(), 290_000);
+}
+```
+
+Tuple struct hợp khi bạn muốn một **kiểu riêng có tên** (để trình biên dịch phân biệt `DonQueue` với một `(u64,u64,u64)` bất kỳ) nhưng bản thân các trường đã rõ nghĩa theo thứ tự, không cần đặt tên. Đánh đổi: gọn hơn struct thường, nhưng `.0/.1/.2` kém tự mô tả — nhầm thứ tự tiền hàng và phí ship là lỗi âm thầm. Quy tắc thực dụng: ít trường và thứ tự hiển nhiên thì dùng tuple struct; nhiều trường hoặc dễ lẫn thì đặt tên trường.
+</details>

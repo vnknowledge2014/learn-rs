@@ -241,3 +241,90 @@ Dưới đây là các thông báo lỗi kinh điển về Lifetimes và cách k
    }
    ```
    Hãy giải thích tại sao đoạn mã trên bị lỗi và đưa ra cách sửa tối ưu nhất.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Quy tắc rút gọn vòng đời (lifetime elision) tự lo được khi **chỉ có một tham chiếu đầu vào**. Rắc rối xuất hiện khi có **nhiều tham chiếu đầu vào mà lại trả về tham chiếu** — Rust không đoán được trả về mượn từ cái nào.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Xét từng hàm:
+
+**`fn in_loi_chao(ten: &str);` — Rust tự lo, KHÔNG cần viết `'a`.**
+Chỉ nhận một tham chiếu và *không trả về* tham chiếu nào. Không có gì để gắn vòng đời đầu ra vào, nên chẳng có mơ hồ.
+
+**`fn lay_ky_tu_dau(van_ban: &str) -> &str;` — Rust tự lo, KHÔNG cần viết `'a`.**
+Đúng một tham chiếu vào, một tham chiếu ra. Quy tắc rút gọn nói: đầu ra *phải* mượn từ đầu vào duy nhất đó. Không mơ hồ, Rust tự điền `'a` ngầm.
+
+**`fn ghep_ten(ho: &str, ten: &str) -> &str;` — BẮT BUỘC tự viết `'a`.**
+Hai tham chiếu vào, một tham chiếu ra. Rust không biết kết quả mượn từ `ho` hay từ `ten`, nên **từ chối đoán** và báo lỗi. Bạn phải nói rõ, ví dụ `fn ghep_ten<'a>(ho: &'a str, ten: &'a str) -> &'a str` — buộc cả hai đầu vào và đầu ra sống cùng một vòng đời.
+
+Nguyên tắc gọn: **rút gọn vòng đời chỉ hoạt động khi không có mơ hồ.** Một tham chiếu vào thì đầu ra chỉ có thể mượn từ nó; nhiều tham chiếu vào thì bạn phải tự chỉ định.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Vì trả về tham chiếu mượn từ *một trong hai* đầu vào, Rust cần bạn hứa cả hai đầu vào và đầu ra sống đủ lâu như nhau — đó là việc của `<'a>`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+// <'a> hứa: kết quả sống không lâu hơn ĐẦU VÀO NGẮN TUỔI NHẤT trong s1, s2.
+// Bắt buộc phải có, vì Rust không tự biết kết quả mượn từ s1 hay s2.
+fn chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str {
+    if s1.len() <= s2.len() { s1 } else { s2 }
+}
+
+fn main() {
+    let a = String::from("Rust");
+    let b = String::from("Ngôn ngữ lập trình");
+    println!("Ngắn hơn: {}", chon_chuoi_ngan_hon(&a, &b));
+}
+
+#[test]
+fn chon_dung_chuoi_ngan() {
+    assert_eq!(chon_chuoi_ngan_hon("Rust", "Programming"), "Rust");
+    assert_eq!(chon_chuoi_ngan_hon("abcdef", "xy"), "xy");
+}
+```
+
+**Vì sao `<'a>` bắt buộc ở đây:** hàm trả về một tham chiếu, nhưng nó có thể là `s1` *hoặc* `s2` — quyết định lúc chạy, tùy độ dài. Trình biên dịch cần một lời hứa ở *biên dịch* rằng tham chiếu trả về không sống lâu hơn dữ liệu nó trỏ tới. `<'a>` buộc cả hai đầu vào và đầu ra chung một vòng đời, nên kết quả bị ràng buộc sống không quá cái đầu vào chết sớm hơn. Không có nó, bạn có thể trả về tham chiếu tới một chuỗi đã bị hủy — đúng loại lỗi mà chương này dạy cách chặn.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Lỗi kinh điển: trả về tham chiếu tới một biến **cục bộ** sẽ bị hủy ngay khi hàm kết thúc. Sửa bằng cách **trả về giá trị sở hữu** (`String`) thay vì tham chiếu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao lỗi:** `s` là biến cục bộ, bị **hủy khi hàm kết thúc**. Trả về `&s` là trả về tham chiếu tới vùng nhớ vừa bị giải phóng — một con trỏ treo (dangling reference). Rust chặn ngay với lỗi `cannot return reference to local variable `s``.
+
+```text
+fn make_string() -> &str {        // trả về &str, nhưng mượn từ đâu?
+    let s = "Rustacean".to_string();  // s sinh ra trong hàm...
+    &s                                 // ...và CHẾT ở dấu } cuối hàm -> treo
+}
+```
+
+**Cách sửa tối ưu — trả về `String` sở hữu, không phải tham chiếu:**
+```rust
+fn make_string() -> String {
+    "Rustacean".to_string()   // chuyển quyền sở hữu RA NGOÀI cho người gọi
+}
+```
+
+Giờ chuỗi không chết cùng hàm — **quyền sở hữu của nó được chuyển ra** cho người gọi, và nó sống tiếp bao lâu người gọi cần. Đây là hướng giải quyết đúng: khi dữ liệu được *tạo ra bên trong hàm*, hàm nên **trả nó đi** (sở hữu), chứ không cho mượn thứ mình sắp hủy. Chỉ trả về tham chiếu khi dữ liệu *đã tồn tại từ trước* ở một trong các đầu vào.
+</details>

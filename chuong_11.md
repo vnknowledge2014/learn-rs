@@ -295,3 +295,118 @@ Dưới đây là các lỗi kinh điển khi sử dụng cơ chế xử lý l�
 3. **Bài tập tư duy 3**: Trong Rust, hàm `main` không chỉ trả về kiểu rỗng `()` mà còn có thể trả về một `Result`, ví dụ: `fn main() -> Result<(), std::io::Error>` hoặc `fn main() -> Result<(), String>`. Hãy trả lời hai câu hỏi sau:
    a) Lợi ích của việc cho phép hàm `main` trả về một `Result` là gì? (Gợi ý: điều này giúp chúng ta dùng toán tử `?` ngay trong `main` như thế nào thay vì phải gọi `.expect()` hay `match` liên tục?).
    b) Khi hàm `main` trả về một biến thể `Err(...)`, chương trình Rust sẽ xử lý và hiển thị thông báo lỗi ra màn hình như thế nào so với khi xảy ra `panic!`?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`Result<i32, String>`: `Ok` cho giá trị đúng, `Err` cho thông báo lỗi. Cần bắt được hai ca hỏng: không phải số, và số âm.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+// Ok(số) nếu là số nguyên KHÔNG âm; Err(thông báo) nếu không parse được hoặc âm.
+fn doc_so_tu_chuoi(s: &str) -> Result<i32, String> {
+    match s.trim().parse::<i32>() {
+        Ok(n) if n >= 0 => Ok(n),
+        Ok(_) => Err(String::from("Số không hợp lệ")),   // parse được nhưng âm
+        Err(_) => Err(String::from("Số không hợp lệ")),  // không phải chữ số
+    }
+}
+
+fn main() {
+    println!("{:?}", doc_so_tu_chuoi("42"));    // Ok(42)
+    println!("{:?}", doc_so_tu_chuoi("-5"));    // Err("Số không hợp lệ")
+    println!("{:?}", doc_so_tu_chuoi("abc"));   // Err("Số không hợp lệ")
+}
+
+#[test]
+fn phan_biet_hop_le_va_loi() {
+    assert_eq!(doc_so_tu_chuoi("42"), Ok(42));
+    assert_eq!(doc_so_tu_chuoi("0"), Ok(0));
+    assert!(doc_so_tu_chuoi("-5").is_err());     // số âm -> lỗi
+    assert!(doc_so_tu_chuoi("abc").is_err());    // không phải số -> lỗi
+    assert!(doc_so_tu_chuoi("3.14").is_err());   // không phải số nguyên -> lỗi
+}
+```
+
+Điểm hay của `Result` so với `Option`: nó không chỉ nói "hỏng", mà **mang theo lý do hỏng** trong nhánh `Err`. Ở đây ta gộp hai lý do (âm / không phải số) vào cùng một thông báo cho đơn giản, nhưng trong dự án thật bạn thường tách chúng ra (ví dụ một `enum` lỗi) để người gọi phản ứng khác nhau. `match` trên kết quả `parse` với guard `if n >= 0` là cách gọn để lọc cả hai điều kiện trong một chỗ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`.unwrap()` **sập chương trình** khi gặp `Err`. Hai cách an toàn: `unwrap_or` cấp giá trị dự phòng; `match` cho phép in thông báo thân thiện.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Cách 1 — `unwrap_or` cấp giá trị mặc định khi hỏng:**
+```rust
+let s = "42";
+// Nếu parse hỏng thì dùng 0 thay vì sập. Gọn khi có sẵn giá trị dự phòng hợp lý.
+let so: i32 = s.parse().unwrap_or(0);
+println!("Số nhận được: {so}");
+```
+
+**Cách 2 — `match` để in thông báo thân thiện:**
+```rust
+let s = "42";
+match s.parse::<i32>() {
+    Ok(n) => println!("Bạn đã nhập số: {n}"),
+    Err(_) => println!("Xin lỗi, '{s}' không phải là một con số hợp lệ. Vui lòng thử lại."),
+}
+```
+
+```rust
+# fn kiem() {
+let a: i32 = "42".parse().unwrap_or(0);
+assert_eq!(a, 42);
+let b: i32 = "xyz".parse().unwrap_or(0);
+assert_eq!(b, 0);   // hỏng -> rơi về mặc định, KHÔNG sập
+# }
+```
+
+**Vì sao `.unwrap()` nguy hiểm:** nó nói "chắc chắn là `Ok`, sai thì cho sập luôn". Với dữ liệu *người dùng nhập* — thứ bạn không kiểm soát — điều này biến một lỗi gõ nhầm thành một cú sập toàn chương trình (`panic`). Chọn giữa hai cách sửa tùy tình huống: **`unwrap_or`** khi có một giá trị dự phòng hợp lý và bạn muốn chạy tiếp im lặng; **`match`** khi cần *phản hồi* cho người dùng biết họ sai ở đâu. `.unwrap()` chỉ nên dành cho mã nháp, test, hoặc chỗ mà bạn đã *chứng minh* được không thể hỏng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`main` trả `Result` cho phép dùng toán tử `?` ngay trong `main`, và mã thoát của tiến trình phản ánh Ok/Err.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**a) Lợi ích của `fn main() -> Result<(), E>`:**
+
+Nó cho phép dùng toán tử **`?` ngay trong `main`**. So sánh:
+```text
+// KHÔNG cho main trả Result -> phải .expect() hoặc match lồng nhau, rối rắm:
+fn main() {
+    let noi_dung = std::fs::read_to_string("data.txt").expect("đọc lỗi");
+    let so: i32 = noi_dung.trim().parse().expect("parse lỗi");
+    ...
+}
+
+// Cho main trả Result -> dùng ? gọn gàng, lỗi tự lan ra ngoài:
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let noi_dung = std::fs::read_to_string("data.txt")?;  // hỏng -> trả Err ra main
+    let so: i32 = noi_dung.trim().parse()?;               // hỏng -> trả Err ra main
+    println!("{so}");
+    Ok(())
+}
+```
+Toán tử `?` nói: "nếu `Ok` thì lấy giá trị ra đi tiếp; nếu `Err` thì *trả nó ra ngay* khỏi hàm hiện tại". Nhưng `?` chỉ dùng được trong hàm *trả về* `Result` (hay `Option`). Cho `main` trả `Result` mở khóa `?` ở tầng cao nhất — nhờ đó cả chuỗi thao tác dễ hỏng viết phẳng, sạch, không lồng `match` hay rải `.expect()`.
+
+**b) Khi `main` trả về `Err(...)`:**
+
+Rust in nội dung lỗi (qua `Debug`) ra luồng lỗi chuẩn (stderr), rồi tiến trình **thoát với mã khác 0** (thường là `1`). Đây là điều quan trọng với kịch bản shell và công cụ tự động hóa: mã thoát khác 0 là quy ước phổ quát báo "chương trình thất bại". Nhờ vậy `./chuong_trinh && echo OK` sẽ *không* in OK khi `main` trả `Err` — hệ sinh thái Unix hiểu ngay chương trình đã hỏng, mà bạn không phải tự gọi `std::process::exit`.
+</details>

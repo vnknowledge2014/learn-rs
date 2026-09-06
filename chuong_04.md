@@ -239,3 +239,125 @@ Khi viết các cấu trúc điều khiển dòng chảy trong Rust, bạn sẽ 
    - *Yêu cầu*: Sử dụng `if / else` như một biểu thức để gán danh hiệu trực tiếp vào biến `danh_hieu`.
 2. **Bài tập thực hành 2**: Sử dụng vòng lặp `for` và khoảng số `1..=100` để tính tổng tất cả các số chẵn từ 1 đến 100. In kết quả cuối cùng ra màn hình (gợi ý: dùng toán tử chia lấy dư `% 2 == 0`).
 3. **Bài tập tư duy 3**: Trong tình huống nào bạn nên dùng vòng lặp `while`, và trong tình huống nào bạn bắt buộc phải dùng `loop` kết hợp với `break`? Hãy giải thích qua ví dụ thực tế về việc người dùng nhập mật khẩu đăng nhập.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Dùng `if/else if/else` như một **biểu thức**: cả chuỗi trả về một giá trị, gán thẳng vào `danh_hieu`. Không cần `mut`.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+fn xep_loai(diem: f64) -> &'static str {
+    // if/else là BIỂU THỨC: cả khối trả về một giá trị -> gán thẳng, không cần mut.
+    // Xét từ mốc cao xuống thấp: nhánh đầu khớp là dừng.
+    if diem >= 9.0 {
+        "Xuất sắc"
+    } else if diem >= 8.0 {
+        "Giỏi"
+    } else if diem >= 6.5 {
+        "Khá"
+    } else {
+        "Cần nỗ lực hơn"
+    }
+}
+
+fn main() {
+    let diem = 8.5;
+    let danh_hieu = xep_loai(diem);   // gán trực tiếp kết quả biểu thức if
+    println!("Điểm {diem} -> {danh_hieu}");
+}
+
+#[test]
+fn xep_loai_dung_cac_moc() {
+    assert_eq!(xep_loai(9.0), "Xuất sắc");   // đúng mốc 9.0 -> tính là Xuất sắc
+    assert_eq!(xep_loai(8.9), "Giỏi");        // sát dưới 9.0
+    assert_eq!(xep_loai(6.5), "Khá");         // đúng mốc 6.5
+    assert_eq!(xep_loai(6.4), "Cần nỗ lực hơn");
+}
+```
+
+Hai điều đáng học:
+1. **Thứ tự xét phải từ cao xuống thấp.** Vì mỗi nhánh chỉ kiểm `>=` một mốc, nhánh đầu tiên khớp sẽ thắng. Đảo ngược (xét 6.5 trước) thì điểm 9.0 cũng rơi vào "Khá" — sai.
+2. **`if` là biểu thức, không phải câu lệnh.** Trong nhiều ngôn ngữ bạn phải khai báo `danh_hieu` rỗng rồi gán trong từng nhánh. Ở Rust cả khối `if/else` *là* một giá trị, nên gán một phát — sạch hơn và không có nguy cơ quên gán một nhánh.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`1..=100` là khoảng bao gồm cả 100. Lọc số chẵn bằng `% 2 == 0` rồi cộng dồn. Có thể làm tay bằng `for` hoặc gọn bằng iterator.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+fn tong_so_chan() -> u32 {
+    let mut tong = 0;
+    // 1..=100 BAO GỒM cả 100 (khác 1..100 là dừng ở 99).
+    for i in 1..=100 {
+        if i % 2 == 0 {   // chia 2 dư 0 -> số chẵn
+            tong += i;
+        }
+    }
+    tong
+}
+
+fn main() {
+    println!("Tổng số chẵn 1..=100 = {}", tong_so_chan());
+
+    // Cách gọn hơn bằng iterator — cùng kết quả:
+    let tong: u32 = (1..=100).filter(|n| n % 2 == 0).sum();
+    println!("Kiểm tra lại = {tong}");
+}
+
+#[test]
+fn tong_dung_bang_2550() {
+    // 2+4+...+100 = 2·(1+2+...+50) = 2·1275 = 2550
+    assert_eq!(tong_so_chan(), 2550);
+    assert_eq!((1..=100).filter(|n| n % 2 == 0).sum::<u32>(), 2550);
+}
+```
+
+Kết quả **2550** kiểm chứng được bằng tay: các số chẵn là 2+4+…+100 = 2·(1+2+…+50) = 2·1275. Bài này cũng cho thấy hai phong cách Rust song song tồn tại: vòng `for` tường minh (dễ đọc từng bước) và chuỗi iterator `filter().sum()` (ngắn, nói thẳng *ý định*). Cùng một bài toán, bạn sẽ dần nghiêng về kiểu iterator khi quen tay.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+So sánh: khi nào bạn **biết trước điều kiện dừng** so với khi bạn **phải chạy ít nhất một lần rồi mới biết có dừng không**.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Phân biệt qua chính ví dụ nhập mật khẩu:
+
+**Dùng `loop` + `break`** khi bạn **phải làm ít nhất một lần** rồi mới kiểm được điều kiện dừng. Nhập mật khẩu đúng kiểu này: bạn *bắt buộc* phải hỏi người dùng một lần trước, rồi mới biết họ gõ đúng hay sai.
+```text
+loop {
+    let nhap = doc_mat_khau();       // luôn chạy ít nhất một lần
+    if nhap == mat_khau_dung {
+        break;                        // đúng -> thoát
+    }
+    println!("Sai rồi, thử lại.");
+}
+```
+
+**Dùng `while`** khi điều kiện dừng **kiểm được ngay từ đầu**, và có khả năng thân vòng lặp *không chạy lần nào*. Ví dụ: "trừ dần số lần thử còn lại cho tới khi hết lượt".
+```text
+let mut so_lan_con_lai = 3;
+while so_lan_con_lai > 0 {   // nếu vào vòng đã là 0 thì bỏ qua luôn
+    thu_dang_nhap();
+    so_lan_con_lai -= 1;
+}
+```
+
+Nguyên tắc gọn: **`while` kiểm điều kiện *trước* mỗi vòng** (có thể chạy 0 lần); **`loop` chạy rồi mới kiểm và `break` ở *giữa* hoặc *cuối*** (chạy ít nhất 1 lần). Chọn sai dẫn tới hoặc hỏi mật khẩu thừa một lần, hoặc bỏ sót không hỏi lần nào. Ngoài ra `loop` còn có sức mạnh riêng: nó là biểu thức, `break x` trả được giá trị ra ngoài — thứ `while` không làm được.
+</details>

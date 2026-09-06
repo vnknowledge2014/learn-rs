@@ -360,3 +360,131 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
    Viết hàm `tinh_toan(pt: PhepTinh) -> Option<f64>` sử dụng cấu trúc `match`. Lưu ý nhánh `Chia` nếu mẫu số bằng `0.0` thì phải trả về `None`, ngược lại trả về `Some(kết_quả)`.
 2. **Bài tập tư duy 2**: Tại sao nói kiểu `Option<T>` giúp loại bỏ lỗi sập hệ thống tốt hơn việc hàm trả về một con số quy ước đặc biệt (ví dụ trả về số `-1` để báo lỗi)?
 3. **Bài tập `if let` 3**: Cho biến `let diem_danh: Option<&str> = Some("Có mặt");`. Hãy dùng cú pháp `if let` để in ra dòng chữ `"Học viên: Có mặt"`, và thử đổi giá trị thành `None` để kiểm tra xem chương trình chạy êm đẹp ra sao.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`enum` gom các biến thể có mang dữ liệu; `match` bắt buộc xử lý đủ mọi nhánh. Nhánh `Chia` cho mẫu 0 trả `None` để báo phép tính vô nghĩa mà không sập.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+enum PhepTinh {
+    Cong(f64, f64),
+    Tru(f64, f64),
+    Nhan(f64, f64),
+    Chia(f64, f64),
+}
+
+// Trả Option: Some(kết quả) khi hợp lệ, None khi chia cho 0.
+fn tinh_toan(pt: PhepTinh) -> Option<f64> {
+    match pt {
+        PhepTinh::Cong(a, b) => Some(a + b),
+        PhepTinh::Tru(a, b) => Some(a - b),
+        PhepTinh::Nhan(a, b) => Some(a * b),
+        // Chia cho 0.0 là vô nghĩa -> None thay vì để sinh ra vô cực/NaN.
+        PhepTinh::Chia(_, b) if b == 0.0 => None,
+        PhepTinh::Chia(a, b) => Some(a / b),
+    }
+}
+
+fn main() {
+    println!("{:?}", tinh_toan(PhepTinh::Cong(2.0, 3.0)));   // Some(5.0)
+    println!("{:?}", tinh_toan(PhepTinh::Chia(1.0, 0.0)));   // None
+}
+
+#[test]
+fn phep_tinh_co_ban() {
+    assert_eq!(tinh_toan(PhepTinh::Cong(2.0, 3.0)), Some(5.0));
+    assert_eq!(tinh_toan(PhepTinh::Nhan(4.0, 5.0)), Some(20.0));
+    assert_eq!(tinh_toan(PhepTinh::Chia(10.0, 2.0)), Some(5.0));
+    assert_eq!(tinh_toan(PhepTinh::Chia(1.0, 0.0)), None);   // không sập, trả None
+}
+```
+
+Hai điều đáng học: **`enum` mang dữ liệu** cho phép mỗi biến thể ôm theo toán hạng của nó — gọn hơn nhiều struct rời. Và **guard `if b == 0.0`** trong `match` tách nhánh chia-cho-0 ra xử lý riêng *trước* nhánh chia thường, biến một lỗi tiềm tàng thành một giá trị `None` tường minh mà người gọi buộc phải xử lý.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+So sánh hai cách báo lỗi: trả `-1` (một con số trông như dữ liệu thật) so với trả `None` (một giá trị mà trình biên dịch *bắt* bạn kiểm tra).
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+`Option<T>` thắng "quy ước trả -1" vì nó biến việc xử-lý-lỗi từ *kỷ luật tự giác* thành *ràng buộc trình biên dịch ép*.
+
+**Vấn đề của quy ước `-1`:**
+```text
+fn tim_vi_tri(...) -> i32 { ... }   // trả -1 nếu không thấy
+let vt = tim_vi_tri(...);
+let ket_qua = mang[vt as usize];    // QUÊN kiểm tra -1 -> đọc mang[-1] -> sập/rác
+```
+Con số `-1` **trông y hệt một kết quả hợp lệ**. Không gì ngăn bạn quên kiểm tra; trình biên dịch cũng chẳng nhắc, vì `-1` vẫn là một `i32` đúng kiểu. Lỗi chỉ lộ ra lúc chạy, trên máy người dùng.
+
+Tệ hơn, `-1` chỉ dùng được khi nó *không* phải giá trị hợp lệ. Nếu hàm có thể trả về số âm thật (ví dụ nhiệt độ, số dư tài khoản), thì `-1` vừa là "lỗi" vừa là dữ liệu thật — không cách nào phân biệt.
+
+**Vì sao `Option<T>` chặn được lỗi sập:**
+```text
+fn tim_vi_tri(...) -> Option<usize> { ... }
+let vt = tim_vi_tri(...);
+// let x = mang[vt];   // KHÔNG biên dịch: vt là Option<usize>, không phải usize
+match vt {
+    Some(i) => mang[i],   // buộc phải mở hộp -> buộc phải nghĩ tới ca "không thấy"
+    None => { /* xử lý đàng hoàng */ }
+}
+```
+`Option` gói kết quả vào một **kiểu khác** với giá trị bên trong. Bạn *không thể* dùng nó như một số cho tới khi mở hộp, và mở hộp thì *buộc* phải viết nhánh `None`. Khả năng "quên kiểm tra" bị loại bỏ ngay từ hệ thống kiểu — lỗi vắng-giá-trị chuyển từ lúc-chạy sang lúc-biên-dịch. Đó là toàn bộ triết lý của Rust: **làm cho trạng thái sai không biểu diễn được**, thay vì trông cậy lập trình viên nhớ kiểm tra.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`if let` mở một biến thể cụ thể mà không cần `match` đầy đủ. Với `None`, thân `if let` đơn giản không chạy — chương trình đi tiếp êm đẹp.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    let diem_danh: Option<&str> = Some("Có mặt");
+    // if let: chỉ quan tâm ca Some, bỏ qua None gọn gàng.
+    if let Some(trang_thai) = diem_danh {
+        println!("Học viên: {trang_thai}");   // in "Học viên: Có mặt"
+    }
+
+    let vang: Option<&str> = None;
+    if let Some(trang_thai) = vang {
+        println!("Học viên: {trang_thai}");   // KHÔNG chạy vì là None
+    }
+    println!("Chương trình vẫn chạy tiếp bình thường.");
+}
+
+#[test]
+fn if_let_bat_dung_some() {
+    let mut ket_qua = String::new();
+    let diem_danh: Option<&str> = Some("Có mặt");
+    if let Some(t) = diem_danh {
+        ket_qua = format!("Học viên: {t}");
+    }
+    assert_eq!(ket_qua, "Học viên: Có mặt");
+
+    // Với None, thân if let không chạy -> ket_qua giữ nguyên, không sập.
+    let mut kq2 = String::from("chưa gán");
+    let vang: Option<&str> = None;
+    if let Some(t) = vang { kq2 = t.to_string(); }
+    assert_eq!(kq2, "chưa gán");
+}
+```
+
+`if let` là **`match` rút gọn cho đúng một biến thể bạn quan tâm**. Khi chỉ cần xử lý ca `Some` và mặc kệ `None`, viết `if let` gọn hơn hẳn `match` hai nhánh. Điểm an toàn: kể cả khi giá trị là `None`, thân lệnh đơn giản *không chạy* — không có ngoại lệ, không sập, chương trình chảy tiếp. Đây là kiểu xử lý vắng-giá-trị nhẹ nhàng mà bạn dùng liên tục.
+</details>

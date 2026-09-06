@@ -215,3 +215,94 @@ Dưới đây là những lỗi phổ biến nhất mà bạn sẽ gặp phải 
    - Viết chương trình in ra: Họ tên của bạn, năm sinh, và mục tiêu muốn đạt được sau khi học xong ngôn ngữ Rust.
 2. **Bài tập thực hành 2**: Thử nghiệm chế độ in bảng biểu: Hãy sử dụng cú pháp căn lề `{:<20}` và `{:>10}` của `println!` để in ra một hóa đơn mua sắm gồm 3 món hàng (Tên món, Số lượng, Đơn giá) thật thẳng hàng và đẹp mắt.
 3. **Bài tập thử sai (Error exploration)**: Hãy thử xóa bỏ một biến ở cuối hàm `println!` nhưng vẫn giữ nguyên cặp ngoặc nhọn `{}` trong chuỗi. Chạy lệnh `cargo check` và đọc kỹ thông báo mà trình biên dịch hiển thị. Quan sát cách `rustc` vẽ mũi tên hướng dẫn bạn sửa lỗi.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Nội dung `main.rs` mới cần đúng ba dòng `println!`. Điều quan trọng là hiểu quy trình: `cargo new` dựng khung, bạn chỉ sửa `src/main.rs`, rồi `cargo run`.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Sau khi chạy `cargo new so_yeu_ly_lich` và `cd so_yeu_ly_lich`, thay nội dung `src/main.rs` bằng:
+
+```rust
+fn main() {
+    println!("Họ tên: Nguyễn Văn A");
+    println!("Năm sinh: 2001");
+    println!("Mục tiêu: Thành thạo Rust để viết phần mềm hệ thống an toàn và nhanh.");
+}
+```
+
+Chạy bằng `cargo run` (từ trong thư mục dự án). Ba điều quy trình này dạy:
+1. `cargo new` **dựng sẵn khung**: `Cargo.toml`, thư mục `src/`, một `main.rs` in "Hello, world!", và một kho git. Bạn không bao giờ phải tạo tay những thứ này.
+2. Bạn **chỉ sửa `src/main.rs`** — đó là điểm khởi đầu chương trình.
+3. `cargo run` gộp hai việc: biên dịch rồi chạy. Đây là vòng lặp bạn sẽ lặp lại hàng nghìn lần.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`{:<20}` căn **trái** trong 20 ô, `{:>10}` căn **phải** trong 10 ô. Cột chữ căn trái, cột số căn phải thì bảng mới thẳng.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    // {:<20} = căn trái, rộng 20 ô -> tên hàng dài ngắn khác nhau vẫn thẳng cột.
+    // {:>10} = căn phải, rộng 10 ô -> số thẳng hàng đơn vị, dễ đọc.
+    println!("{:<20}{:>8}{:>12}", "Tên món", "SL", "Đơn giá");
+    println!("{:<20}{:>8}{:>12}", "Bàn phím cơ", 2, 850_000);
+    println!("{:<20}{:>8}{:>12}", "Chuột không dây", 1, 320_000);
+    println!("{:<20}{:>8}{:>12}", "Tai nghe", 3, 1_200_000);
+}
+
+#[test]
+fn can_le_dung_be_rong() {
+    // Mỗi dòng phải đúng 20+8+12 = 40 ký tự nhờ căn lề cố định.
+    let dong = format!("{:<20}{:>8}{:>12}", "Tai nghe", 3, 1_200_000);
+    assert_eq!(dong.chars().count(), 40);
+}
+```
+
+Mấu chốt của bảng đẹp là **mọi dòng có cùng bề rộng cột**. Căn trái (`<`) hợp với chữ vì mắt đọc chữ từ trái sang; căn phải (`>`) hợp với số vì ta so sánh số theo hàng đơn vị — hàng nghìn phải thẳng hàng nghìn. Trộn đúng hai kiểu căn này là toàn bộ bí quyết in bảng trong terminal.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Đây là bài thử sai: cố ý để thừa `{}` rồi đọc thông báo lỗi. Bạn cần *đọc* được lỗi, không phải tránh nó.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Đoạn mã lỗi cố ý:
+
+```text
+fn main() {
+    let ten = "An";
+    println!("Xin chào {} và {}", ten);   // hai {} nhưng chỉ một biến
+}
+```
+
+`cargo check` báo lỗi đại ý:
+
+```text
+error: 2 positional arguments in format string, but there is 1 argument
+ --> src/main.rs:3:14
+```
+
+Điều bài này dạy — và là lý do Rust được yêu thích:
+- Lỗi bị bắt **lúc biên dịch, trước khi chạy**. Trong nhiều ngôn ngữ khác, `{}` thừa chỉ in ra rác hoặc nổ lúc chạy trên máy người dùng. Rust chặn ngay tại bàn của bạn.
+- Thông báo **chỉ đúng chỗ**: "2 chỗ trống nhưng chỉ có 1 biến", kèm số dòng và mũi tên. `rustc` được thiết kế để *dạy* bạn sửa, không chỉ để phàn nàn.
+
+Cách sửa: hoặc thêm biến thứ hai, hoặc bỏ bớt một `{}`. Nhưng bài tập không nằm ở việc sửa — nó nằm ở việc **tập đọc lỗi**, kỹ năng bạn dùng mỗi ngày về sau.
+</details>
