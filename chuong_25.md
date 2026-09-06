@@ -381,3 +381,118 @@ mod tests {
    ```
 3. **Bài tập 3 (Thực hành đo đạc)**:  
    Hãy viết một chương trình Rust sử dụng `std::time::Instant` để so sánh thời gian cộng dồn 1 triệu số nguyên từ 1 đến 1.000.000 bằng vòng lặp `for` (mất $O(N)$ bước) so với việc áp dụng công thức tính nhanh của nhà toán học Gauss: $S = \frac{N(N + 1)}{2}$ (chỉ mất $O(1)$ phép tính). Quan sát và in ra sự chênh lệch thời gian giữa hai phương pháp.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Hỏi một câu duy nhất cho mỗi tình huống: *khi số lượng tăng gấp đôi, công việc tăng bao nhiêu lần?*
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+| | Tình huống | Độ phức tạp | Vì sao |
+|---|---|---|---|
+| a | Tìm chìa trong chùm N chiếc không đánh dấu | **O(N)** | Tệ nhất phải thử hết N chiếc. Gấp đôi số chìa thì gấp đôi số lần thử |
+| b | Tra số phòng in sẵn trên thẻ | **O(1)** | Đọc một chỗ cố định. Khách sạn 10 phòng hay 10.000 phòng cũng vậy |
+| c | So từng ảnh với mọi ảnh còn lại | **O(N²)** | Mỗi ảnh so với N−1 ảnh khác → N(N−1)/2 phép so. Gấp đôi số ảnh thì công việc gấp **bốn** |
+
+Điều đáng nhớ ở (c): với 1.000 ảnh là ~500.000 phép so — máy tính làm trong nháy mắt. Với 100.000 ảnh là ~5 tỷ phép so — hàng giờ. Đó là lý do O(N²) không phải "hơi chậm" mà là **không dùng được** khi dữ liệu lớn lên.
+
+Và (c) có cách hạ xuống O(N): băm từng ảnh rồi bỏ vào `HashSet`. Đổi thời gian lấy bộ nhớ — đúng cái đánh đổi mà chương này nói tới.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Hai vòng lặp lồng nhau, vòng trong chạy tới `list.len()` → O(N²). Muốn hạ xuống O(N) thì cần một cấu trúc tra cứu O(1).
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Đoạn mã đã cho là **O(N²)**: với mỗi `i`, vòng trong chạy tới N lần, tổng cộng N(N−1)/2 phép so.
+
+```rust
+use std::collections::HashSet;
+
+/// Bản O(N²) — trong đề bài. Không cấp phát thêm bộ nhớ.
+pub fn has_duplicate_on2(list: &[i32]) -> bool {
+    for i in 0..list.len() {
+        for j in (i + 1)..list.len() {
+            if list[i] == list[j] { return true; }
+        }
+    }
+    false
+}
+
+/// Bản O(N) — đổi thời gian lấy BỘ NHỚ.
+/// `insert` trả false nếu phần tử đã có -> phát hiện trùng ngay.
+pub fn has_duplicate_on(list: &[i32]) -> bool {
+    let mut da_thay = HashSet::with_capacity(list.len());
+    !list.iter().all(|x| da_thay.insert(*x))
+}
+
+#[test]
+fn hai_ban_cho_cung_ket_qua() {
+    for mau in [vec![], vec![1], vec![1, 2, 3], vec![1, 2, 1], vec![5, 5]] {
+        assert_eq!(has_duplicate_on2(&mau), has_duplicate_on(&mau), "{mau:?}");
+    }
+}
+```
+
+**Đánh đổi thật sự:** bản O(N) nhanh hơn rất nhiều với dữ liệu lớn, nhưng tốn O(N) bộ nhớ và đòi `T: Hash + Eq`. Bản O(N²) chạy được với mọi kiểu chỉ cần `PartialEq`, và **không cấp phát gì** — với mảng 10 phần tử nó còn nhanh hơn, vì chi phí dựng `HashSet` lớn hơn cả việc so 45 cặp.
+
+Đó là lý do `slice::contains` của thư viện chuẩn vẫn là tuyến tính: với dữ liệu nhỏ, đơn giản thắng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Dùng `std::time::Instant::now()` rồi `.elapsed()`. Nhớ `std::hint::black_box` để trình tối ưu không xoá mất vòng lặp mà bạn muốn đo.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+use std::time::Instant;
+use std::hint::black_box;
+
+fn main() {
+    const N: u64 = 1_000_000;
+
+    // O(N): cộng dồn từng số
+    let t0 = Instant::now();
+    let mut tong_lap: u64 = 0;
+    for i in 1..=N { tong_lap += i; }
+    let tg_lap = t0.elapsed();
+    black_box(tong_lap);   // ngăn trình tối ưu xoá cả vòng lặp
+
+    // O(1): công thức Gauss
+    let t1 = Instant::now();
+    let tong_gauss = N * (N + 1) / 2;
+    let tg_gauss = t1.elapsed();
+    black_box(tong_gauss);
+
+    assert_eq!(tong_lap, tong_gauss, "hai cách phải ra cùng con số");
+
+    println!("Vòng lặp O(N) : {:?}", tg_lap);
+    println!("Gauss    O(1) : {:?}", tg_gauss);
+    println!("Nhanh hơn     : {:.0} lần",
+             tg_lap.as_nanos() as f64 / tg_gauss.as_nanos().max(1) as f64);
+}
+```
+
+**Ba cái bẫy khi đo, cả ba đều thật:**
+
+1. **Không có `black_box`, trình tối ưu xoá sạch vòng lặp.** Nó thấy `tong_lap` không được dùng và bỏ luôn — bạn đo được 0 nano giây và tưởng mình vừa phát minh ra thuật toán thần kỳ.
+2. **Bản `-O` và bản gỡ lỗi khác nhau hàng chục lần.** Luôn đo bằng `cargo run --release`.
+3. **Gauss có thể ra ~0 ns** vì trình biên dịch tính sẵn lúc biên dịch (`N` là hằng số). Muốn đo trung thực thì đọc `N` từ đầu vào lúc chạy.
+
+Con số bạn nhìn thấy thường vào khoảng vài trăm micro giây so với vài nano giây — chênh khoảng **năm bậc**. Nhưng bài học quan trọng hơn con số: cả hai đều cho *cùng một kết quả*, chỉ khác cách đi tới nó.
+</details>

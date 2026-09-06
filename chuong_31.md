@@ -346,6 +346,127 @@ fn write_file_correct(mut f: File) -> std::io::Result<()> {
    - a) Ghi chép nhật ký mọi giao dịch chuyển tiền ngân hàng vào cuối tệp nhật ký WAL (Write-Ahead Log).
    - b) Cập nhật số dư tài khoản của một khách hàng vào trang dữ liệu số 4096 nằm rải rác trên đĩa cứng.
 2. **Bài tập 2 (Xây dựng bộ tuần tự hóa Sản phẩm)**:  
-   Định nghĩa struct `SanPham { ma_sp: u64, gia_tien: f64, con_hang: bool }`. Hãy tự viết hai hàm `serialize(&self) -> Vec<u8>` và `deserialize(bytes: &[u8]) -> Option<Self>` sử dụng `to_le_bytes()` và `from_le_bytes()`. Tính xem một bản ghi sản phẩm tốn chính xác bao nhiêu bytes trên đĩa cứng.
+   Định nghĩa struct `Product { id: u64, price: f64, in_stock: bool }`. Hãy tự viết hai hàm `serialize(&self) -> Vec<u8>` và `deserialize(bytes: &[u8]) -> Option<Self>` sử dụng `to_le_bytes()` và `from_le_bytes()`. Tính xem một bản ghi sản phẩm tốn chính xác bao nhiêu bytes trên đĩa cứng.
 3. **Bài tập 3 (Thao tác Seek)**:  
    Viết một chương trình tạo tệp `so_nguyen.bin`, ghi 10 số nguyên `u32` từ 10 đến 100 vào tệp. Sử dụng `SeekFrom::Start` để nhảy thẳng tới vị trí số thứ 5 và đọc giá trị của nó lên màn hình mà không được đọc 4 số đầu tiên.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Câu hỏi phân biệt: đầu đọc đĩa có phải **nhảy** đi chỗ khác không? Ghi nối vào cuối tệp thì không; sửa một trang nằm giữa thì có.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+| | Tác vụ | Loại | Vì sao |
+|---|---|---|---|
+| a | Nối bản ghi vào cuối WAL | **Ghi tuần tự** | Luôn ghi vào cuối tệp. Đầu đọc ở nguyên chỗ, cứ thế đi tới |
+| b | Sửa số dư ở trang 4096 | **Ghi ngẫu nhiên** | Phải *nhảy* tới đúng vị trí đó, ghi vài chục byte, rồi lần sau lại nhảy chỗ khác |
+
+**Con số làm nên khác biệt.** Trên ổ cứng cơ, ghi tuần tự nhanh hơn ghi ngẫu nhiên **khoảng 100 lần** — vì mỗi lần nhảy tốn ~10 ms chờ đầu từ di chuyển và đĩa quay tới. Trên SSD khoảng cách hẹp lại nhưng vẫn còn, do ghi ngẫu nhiên gây khuếch đại ghi ở tầng flash.
+
+**Đây chính là lý do WAL tồn tại.** Thay vì sửa trang dữ liệu ngay (ngẫu nhiên, chậm, và nguy hiểm nếu mất điện giữa chừng), cơ sở dữ liệu **ghi ý định vào cuối WAL** (tuần tự, nhanh) rồi mới thong thả áp dụng lên trang sau. Nó biến một phép ghi ngẫu nhiên bắt buộc-phải-xong thành một phép ghi tuần tự cộng một việc dọn dẹp có thể trì hoãn. Chương 34 nói kỹ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`to_le_bytes()` cho mảng byte có kích thước cố định. Cộng lại: `u64` là 8, `f64` là 8, `bool` là 1 — nhưng hãy tự đếm bằng `assert_eq!` thay vì tin phép cộng nhẩm.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Product { pub id: u64, pub price: f64, pub in_stock: bool }
+
+impl Product {
+    /// Bố cục cố định: 8 + 8 + 1 = 17 byte, không có phần đệm.
+    pub const SIZE: usize = 8 + 8 + 1;
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut ra = Vec::with_capacity(Self::SIZE);
+        ra.extend_from_slice(&self.id.to_le_bytes());       // 8
+        ra.extend_from_slice(&self.price.to_le_bytes());    // 8
+        ra.push(self.in_stock as u8);                       // 1
+        ra
+    }
+
+    pub fn deserialize(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < Self::SIZE { return None; }        // thiếu byte -> None, không panic
+        Some(Product {
+            id:    u64::from_le_bytes(bytes[0..8].try_into().ok()?),
+            price: f64::from_le_bytes(bytes[8..16].try_into().ok()?),
+            in_stock: match bytes[16] { 0 => false, 1 => true, _ => return None },
+        })
+    }
+}
+
+#[test]
+fn ghi_roi_doc_lai_ra_dung_ban_goc() {
+    let p = Product { id: 42, price: 199.5, in_stock: true };
+    let b = p.serialize();
+    assert_eq!(b.len(), Product::SIZE);
+    assert_eq!(Product::deserialize(&b), Some(p));
+
+    assert_eq!(Product::deserialize(&b[..10]), None, "thiếu byte phải báo None");
+    let mut xau = b.clone();
+    xau[16] = 7;                       // giá trị bool không hợp lệ
+    assert_eq!(Product::deserialize(&xau), None);
+}
+```
+
+**Một bản ghi tốn đúng 17 byte** — không phải 24 như `std::mem::size_of::<Product>()` báo. Chênh lệch là **phần đệm căn chỉnh** mà Rust chèn vào bố cục trong bộ nhớ để `f64` nằm ở địa chỉ chia hết cho 8. Trên đĩa ta không cần đệm, nên tự viết bố cục tiết kiệm được 30% dung lượng.
+
+Chi tiết đáng khen: `match bytes[16] { 0 => false, 1 => true, _ => return None }` từ chối byte rác. Viết `bytes[16] != 0` thì byte `7` cũng thành `true` — và một tệp hỏng sẽ lặng lẽ trở thành dữ liệu sai thay vì báo lỗi.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`SeekFrom::Start(n)` nhảy thẳng tới byte thứ `n`. Số thứ 5 (đếm từ 1) nằm ở byte thứ `4 * 4 = 16`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
+
+fn main() -> std::io::Result<()> {
+    let duong_dan = std::env::temp_dir().join("so_nguyen.bin");
+
+    // Ghi 10 số u32: 10, 20, ..., 100
+    {
+        let mut f = File::create(&duong_dan)?;
+        for i in 1..=10u32 { f.write_all(&(i * 10).to_le_bytes())?; }
+    }
+
+    // Đọc số thứ 5 mà KHÔNG đọc 4 số đầu.
+    let mut f = File::open(&duong_dan)?;
+    let vi_tri = 4 * std::mem::size_of::<u32>() as u64;   // bỏ qua 4 số = 16 byte
+    f.seek(SeekFrom::Start(vi_tri))?;
+
+    let mut dem = [0u8; 4];
+    f.read_exact(&mut dem)?;
+    let gia_tri = u32::from_le_bytes(dem);
+
+    assert_eq!(gia_tri, 50);
+    println!("Số thứ 5 = {gia_tri} (đọc tại byte {vi_tri}, không chạm 4 số đầu)");
+
+    std::fs::remove_file(&duong_dan)?;
+    Ok(())
+}
+```
+
+**Vì sao truy cập ngẫu nhiên được:** vì mọi bản ghi **cùng kích thước**. Địa chỉ của bản ghi thứ `i` là `i * size`, tính bằng một phép nhân. Đây chính là lý do các định dạng tệp cơ sở dữ liệu cố gắng dùng bản ghi cố định — hoặc, khi không thể, thì thêm một **bảng chỉ mục khe** để tra vị trí, đúng như Slotted-Page ở Chương 32.
+
+Nếu bản ghi dài ngắn khác nhau và không có chỉ mục, muốn tới bản ghi thứ 5 bạn *buộc* phải đọc và bỏ qua 4 bản ghi trước — O(N) thay vì O(1).
+</details>
