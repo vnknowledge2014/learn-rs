@@ -671,6 +671,18 @@ Toàn bộ phần còn lại — bộ khung, vòng lặp, đồ thị, và **t�
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0038: the trait cannot be made into an object` | `Box<dyn LegacyTool>` nhưng trait có phương thức generic hoặc trả `Self` | Giữ trait "object-safe": bỏ generic khỏi phương thức, trả `Box<dyn ...>` thay vì `Self` |
+| `E0277: Sized is not satisfied` | Chứa `dyn LegacyTool` trực tiếp trong `Vec` | `Vec<Box<dyn LegacyTool>>` — trait object không có kích thước biết trước |
+| `E0502: cannot borrow as mutable` | Vừa duyệt danh mục công cụ vừa muốn thêm kết quả vào nó | Thu kết quả vào `Vec` cục bộ, gộp lại sau vòng lặp |
+| `E0716: temporary value dropped while borrowed` | Mượn kết quả của một biểu thức tạm khi dựng ngữ cảnh | Gán vào biến `let` trước rồi mới mượn |
+| Ngân sách ngữ cảnh vượt hạn mà không báo | Cộng token sau khi đã thêm vào danh sách | Kiểm ngân sách **trước** khi thêm, không phải sau |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

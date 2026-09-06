@@ -496,6 +496,18 @@ impl Render for BoDem {
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0308: expected Model, found ()` | Hàm `update` quên trả về mô hình mới | Kiến trúc Elm đòi `update` là hàm **thuần tuý** trả về trạng thái mới, không sửa tại chỗ |
+| `E0382: use of moved value` | Dùng lại mô hình sau khi đã chuyển vào `update` | Nhận `Model` và trả `Model`, hoặc nhận `&Model` rồi `clone()` |
+| `E0277: Box<dyn Error> is not Send` | Đưa lỗi qua ranh giới luồng của tiến trình nền | `Box<dyn Error + Send + Sync>` |
+| `E0596: cannot borrow as mutable` | Sửa danh sách việc khi đang lọc để hiển thị | Lọc ra `Vec<&Task>` để hiển thị, thao tác ghi làm trên bản gốc |
+| IPC nhận đường dẫn ra ngoài thư mục cho phép | Chỉ kiểm chuỗi mà không chuẩn hoá | Chuẩn hoá đường dẫn rồi mới so tiền tố — xem `ipc_blocks_path_traversal` |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

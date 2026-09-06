@@ -495,6 +495,18 @@ mod tests {
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0507: cannot move out of index` | Lấy `Value` ra khỏi cột bằng phép gán | `.clone()`, hoặc thao tác qua tham chiếu `&self.o[i]` |
+| `E0502: cannot borrow as mutable` | Duyệt cột này để ghi vào cột khác của cùng `Bang` | Tính ra `Vec` mới rồi mới gán vào bảng |
+| `E0277: f64 does not implement Ord` | `sort()` trên cột số thực | `sort_by(\|a, b\| a.partial_cmp(b).unwrap())` — `f64` chỉ có thứ tự bộ phận vì `NaN` |
+| `E0599: no method named iter found for Value` | Nhầm `Value` (một ô) với cột | Lấy cột qua `chi_so_cot` rồi mới `iter()` |
+| Gộp nhóm ra kết quả khác nhau mỗi lần chạy | Duyệt `HashMap` khi gom nhóm | `BTreeMap` cho thứ tự tất định — điều kiện để so sánh kết quả |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

@@ -479,6 +479,18 @@ fn tinh_tong(a: i64, b: i64) -> i64 { a + b }
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0502: already borrowed: BorrowMutError` (lúc chạy) | Gọi `borrow_mut()` khi còn một `borrow()` đang sống | Gói mỗi lần mượn trong khối `{ ... }` riêng — `RefCell` kiểm tra lúc **chạy**, không phải lúc biên dịch |
+| `E0277: Rc<RefCell<T>> cannot be sent between threads` | Định đưa tín hiệu sang luồng khác | `Rc`/`RefCell` chỉ dùng một luồng; muốn đa luồng thì `Arc<Mutex<T>>` |
+| `E0038: the trait cannot be made into an object` | `Box<dyn Fn>` cho bộ đăng ký nhưng chữ ký không đồng nhất | Chuẩn hoá chữ ký closure, hoặc bọc bằng enum |
+| `E0499: two mutable borrows` | Cập nhật tín hiệu nguồn ngay trong lúc tính tín hiệu dẫn xuất | Tính giá trị mới ra biến, thoát khỏi vùng mượn, rồi mới ghi |
+| Giao diện không cập nhật | Đặt lại đúng giá trị cũ nên bị bỏ qua | Đúng như thiết kế — xem bài kiểm thử "signal_skips_redundant_updates" |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

@@ -451,6 +451,18 @@ mod tests {
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0308: expected &str, found String` | Trộn `String` và `&str` khi ghép câu truy vấn | Nhận `&str` ở tham số, gọi `.as_str()` hoặc `&s` khi truyền |
+| `E0502: cannot borrow as mutable` | Vừa đọc vừa ghi cùng một bộ đệm khi thoát ký tự | Dựng chuỗi kết quả **mới** thay vì sửa tại chỗ |
+| `E0716: temporary value dropped while borrowed` | `&format!(...)` truyền thẳng vào hàm giữ tham chiếu | Gán ra biến trước: `let s = format!(...); f(&s);` |
+| Escape XSS vẫn lọt | Thoát `<` `>` mà quên `&`, `"`, `'` | Thoát `&` **đầu tiên**, nếu không sẽ thoát chồng lên chính dấu vừa sinh |
+| So sánh bí mật vẫn rò thời gian | Dùng `==` trên `String` | So sánh từng byte, không thoát sớm — thấy ở `constant_time_compare` |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

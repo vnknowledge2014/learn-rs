@@ -485,6 +485,18 @@ So sánh mã Axum với mini-router: **cùng một kiến trúc** — định tu
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0308: expected Response, found ()` | Nhánh xử lý quên trả về giá trị | Mọi nhánh `match` định tuyến phải trả `Response`; bỏ dấu `;` ở biểu thức cuối |
+| `E0596: cannot borrow data in an Arc as mutable` | Sửa trạng thái dùng chung qua `Arc` | `Arc<Mutex<T>>`, rồi `.lock().unwrap()` trước khi ghi |
+| `E0597: borrowed value does not live long enough` | Trả tham chiếu tới dữ liệu bên trong khoá | Sao chép ra khỏi vùng khoá rồi mới trả; đừng để `MutexGuard` thoát ra ngoài |
+| `E0382: use of moved value` | Dùng lại `Request` sau khi đã chuyển vào bộ xử lý | Truyền `&Request`, hoặc `clone()` nếu thật cần sở hữu |
+| Định tuyến trả 404 cho đường dẫn đúng | So khớp trước khi tách tham số động | Tách đoạn đường dẫn rồi mới so; xem `RouteMatcher` |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

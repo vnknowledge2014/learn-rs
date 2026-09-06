@@ -444,6 +444,18 @@ mod tests {
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `attempt to multiply with overflow` | Fibonacci hoặc luỹ thừa vượt `u64` | Dùng `u128`, hoặc `checked_mul` để phát hiện thay vì tràn âm thầm |
+| `attempt to subtract with overflow` | `i - 1` khi `i == 0` trong quy hoạch động | Duyệt từ `1..n`, hoặc `checked_sub`; đây là lỗi biên kinh điển của bảng QHĐ |
+| `E0502: cannot borrow as mutable` | Vừa đọc `bang[i-1]` vừa ghi `bang[i]` | Tách hai dòng bằng `split_at_mut`, hoặc đọc ra biến trước |
+| `E0384: cannot assign twice to immutable variable` | Quên `mut` trên biến tích luỹ của thuật toán tham lam | Thêm `mut` khi khai báo |
+| Quay lui trả kết quả trùng lặp | Không đánh dấu đã dùng, hoặc quên bỏ đánh dấu khi lùi | Đặt cờ trước khi đệ quy và **gỡ cờ ngay sau** — quên gỡ là lỗi phổ biến nhất |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:

@@ -472,6 +472,18 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0038: the trait cannot be made into an object` | `Box<dyn StrategyCanTable>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
+| `E0106: missing lifetime specifier` | Trả `Option<&Server>` từ lát cắt truyền vào | Ràng buộc vòng đời tường minh: `fn pick<'a>(&mut self, s: &'a [Server]) -> Option<&'a Server>` |
+| `E0502: cannot borrow as mutable` | `self.pos` đổi trong khi còn mượn `&self.servers` | Đọc chỉ số ra biến trước, tăng `self.pos` sau |
+| `attempt to subtract with overflow` | Trừ dấu thời gian `u64` khi cửa sổ chưa đầy | `saturating_sub` — thời gian có thể chưa trôi đủ |
+| Băm nhất quán phân bố lệch nặng | Quá ít điểm ảo, hoặc hàm băm trộn bit kém | Tăng số điểm ảo lên hàng trăm và dùng bộ trộn có hiệu ứng tuyết lở |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
