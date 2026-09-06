@@ -461,7 +461,7 @@ fn thu_nghiem_dung_closure(dieu_kien: bool) {
    - `impl Fn`: Dành cho phân phối tĩnh, siêu tốc độ, không cấp phát bộ nhớ động trên Heap.
    - `Box<dyn Fn>`: Dành cho phân phối động, cho phép trả về nhiều closure khác nhau tùy điều kiện lúc chạy.
 3. **Bộ kết hợp Combinators**: Thay thế triệt để các khối `match` lồng nhau sâu dòng bằng chuỗi đường ống (`.map()`, `.and_then()`, `.filter()`, `.or_else()`).
-4. **Lan truyền lỗi phẳng phiu**: Kết hợp toán tử `?` với `.ok_or()` để chuyển đổi tự nhiên giữa `Option` và `Result`, giữ cho luồng nghiệp vụ luôn trong sáng và gọn gàng.
+4. **Lan truyền lỗi (Error propagation) phẳng phiu**: Kết hợp toán tử `?` với `.ok_or()` để chuyển đổi tự nhiên giữa `Option` và `Result`, giữ cho luồng nghiệp vụ luôn trong sáng và gọn gàng.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Hàm bậc cao lọc mảng)**:  

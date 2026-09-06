@@ -150,7 +150,7 @@ Ngược lại, những thứ sau **phá vỡ** tính chất này: đọc đồn
 - **Hàm toàn phần (total function)**: với **mọi** giá trị đầu vào hợp lệ về kiểu, hàm đều trả về một kết quả. Không sập, không treo.
 - **Hàm bộ phận (partial function)**: có những đầu vào mà hàm **không có câu trả lời** — nó sập, panic, hoặc trả về giá trị vô nghĩa.
 
-Chữ ký hàm thường **nói dối** về điều này:
+Chữ ký hàm (Function selector) thường **nói dối** về điều này:
 
 ```rust
 fn chia(a: i32, b: i32) -> i32 { a / b }

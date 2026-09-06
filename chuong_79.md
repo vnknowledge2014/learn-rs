@@ -32,7 +32,7 @@ Jane Street nổi tiếng với **Hardcaml** — thư viện OCaml để mô t�
 │  SONG SONG THẬT SỰ = TÁCH 8 TRƯỜNG TRONG 1 CHU KỲ                          │
 │                                                                              │
 │   CPU:  đọc trường 1, rồi 2, rồi 3... → 8 thao tác tuần tự                  │
-│   FPGA: 8 bộ dây riêng, tất cả có kết quả CÙNG LÚC → 1 owner kỳ              │
+│   FPGA: 8 bộ dây riêng, tất cả có kết quả CÙNG LÚC → 1 chu kỳ              │
 │                                                                              │
 │  CÂY XOR = GIẢM ĐỘ SÂU TỪ n XUỐNG log₂(n)                                  │
 │                                                                              │
@@ -140,7 +140,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
 // tới, người ổn định thắng người nhanh-nhưng-thất-thường.
 
-/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi owner kỳ.
+/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
 
 pub fn cycles_to_ns(period: u32) -> f64 { period as f64 * NS_MOI_CHU_KY }
@@ -150,7 +150,7 @@ pub fn cycles_to_ns(period: u32) -> f64 { period as f64 * NS_MOI_CHU_KY }
 // ============================================================================
 // Phần mềm đọc từng trường một: đọc offset 0, rồi 8, rồi 16… Mỗi lần là một
 // lệnh CPU. Phần cứng nối THẲNG dây từ mọi vị trí byte tới mọi thanh ghi đích,
-// nên TẤT CẢ trường được tách trong CÙNG MỘT owner kỳ.
+// nên TẤT CẢ trường được tách trong CÙNG MỘT chu kỳ.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PacketField {
@@ -172,7 +172,7 @@ pub struct FieldExtractor {
 }
 
 impl FieldExtractor {
-    /// Tách toàn bộ trường trong ĐÚNG MỘT owner kỳ. Trong Rust ta viết tuần tự,
+    /// Tách toàn bộ trường trong ĐÚNG MỘT chu kỳ. Trong Rust ta viết tuần tự,
     /// nhưng khi tổng hợp ra mạch thì các phép gán này là dây nối song song —
     /// không có "trước" và "sau", tất cả xảy ra cùng lúc.
     pub fn tach(&mut self, goi: &[u8]) -> Option<PacketField> {
@@ -199,7 +199,7 @@ impl FieldExtractor {
         Some(t)
     }
 
-    /// Số owner kỳ để tách một gói. Phần cứng: LUÔN LUÔN 1.
+    /// Số chu kỳ để tách một gói. Phần cứng: LUÔN LUÔN 1.
     pub fn period_split(&self) -> u32 { 1 }
 }
 
@@ -232,7 +232,7 @@ pub fn xor_tuan_tu(data: &[u8]) -> u32 {
 // ============================================================================
 // Phần mềm dùng BTreeMap: O(log n) nhưng có nhảy con trỏ và trượt cache.
 // Phần cứng giữ N mức giá tốt nhất trong THANH GHI và so sánh TẤT CẢ cùng lúc
-// bằng một mạng so sánh. Tìm giá tốt nhất tốn đúng 1 owner kỳ, bất kể N.
+// bằng một mạng so sánh. Tìm giá tốt nhất tốn đúng 1 chu kỳ, bất kể N.
 
 pub const SO_MUC_PHAN_CUNG: usize = 8;
 
@@ -256,7 +256,7 @@ impl Default for OrderBookHardware {
 
 impl OrderBookHardware {
     /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
-    /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT owner kỳ.
+    /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
         self.buy.iter().filter(|m| m.quantity > 0).max_by_key(|m| m.price).copied()
@@ -269,7 +269,7 @@ impl OrderBookHardware {
     }
 
     /// Cập nhật một mức giá. Mọi ô so sánh SONG SONG với giá đầu vào, nên
-    /// dù có 8 hay 64 mức thì vẫn tốn đúng một owner kỳ.
+    /// dù có 8 hay 64 mức thì vẫn tốn đúng một chu kỳ.
     pub fn update(&mut self, la_mua: bool, price: i64, quantity: u32) {
         let o = if la_mua { &mut self.buy } else { &mut self.ban };
         // Đã có mức giá này chưa?
@@ -304,7 +304,7 @@ impl OrderBookHardware {
 }
 
 // ============================================================================
-// 4. MẠCH KIỂM TRA RỦI RO — tổ hợp thuần tuý, 1 owner kỳ
+// 4. MẠCH KIỂM TRA RỦI RO — tổ hợp thuần tuý, 1 chu kỳ
 // ============================================================================
 // Toàn bộ cổng rủi ro của Chương 77 nén thành logic tổ hợp: mọi điều kiện
 // được tính SONG SONG rồi OR lại. Không có `if` tuần tự, không có nhánh dự
@@ -342,7 +342,7 @@ pub struct RiskCircuit {
 
 impl RiskCircuit {
     /// TẤT CẢ điều kiện tính song song. Đây là điểm khác biệt cốt lõi so với
-    /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một owner kỳ.
+    /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một chu kỳ.
     /// Không có "đường nhanh" và "đường chậm" → độ trễ không dao động, và
     /// thời gian phản hồi không tiết lộ điều gì về nội dung lệnh.
     pub fn check(&self, la_mua: bool, price: i64, quantity: i64) -> HasReject {
@@ -385,12 +385,12 @@ impl HwPipeline {
         }
     }
 
-    /// ĐỘ TRỄ: một gói tin đi hết đường ống mất bao nhiêu owner kỳ.
+    /// ĐỘ TRỄ: một gói tin đi hết đường ống mất bao nhiêu chu kỳ.
     pub fn latency_period(&self) -> u32 { self.tang.iter().map(|t| t.period).sum() }
     pub fn latency_nanos(&self) -> f64 { cycles_to_ns(self.latency_period()) }
 
     /// THÔNG LƯỢNG: sau khi ống đầy, cứ mỗi `first_period_block` là một gói xong.
-    /// Bằng owner kỳ của tầng CHẬM NHẤT — không phải tổng các tầng.
+    /// Bằng chu kỳ của tầng CHẬM NHẤT — không phải tổng các tầng.
     pub fn first_period_block(&self) -> u32 {
         self.tang.iter().map(|t| t.period).max().unwrap_or(1)
     }
@@ -398,7 +398,7 @@ impl HwPipeline {
         1e9 / cycles_to_ns(self.first_period_block())
     }
 
-    /// Xử lý `n` gói mất bao nhiêu owner kỳ (có đường ống).
+    /// Xử lý `n` gói mất bao nhiêu chu kỳ (có đường ống).
     pub fn total_period_wait(&self, n: u32) -> u32 {
         if n == 0 { return 0; }
         self.latency_period() + (n - 1) * self.first_period_block()
@@ -455,7 +455,7 @@ fn main() {
     let t = bt.tach(&goi).unwrap();
     println!("   Gói {} byte → loại {:?} · mã ck {} · giá {} · số lượng {} · hợp lệ {}",
              goi.len(), t.kind as char, t.id_chain, t.price, t.quantity, t.is_valid);
-    println!("   Phần cứng tách TẤT CẢ trường trong {} owner kỳ = {} ns",
+    println!("   Phần cứng tách TẤT CẢ trường trong {} chu kỳ = {} ns",
              bt.period_split(), cycles_to_ns(bt.period_split()));
 
     println!("\n2. CÂY XOR — rút gọn song song");
@@ -474,7 +474,7 @@ fn main() {
     for (g, kl) in [(8_410i64, 400u32), (8_420, 250)] { so.update(false, g, kl); }
     println!("   Mua tốt nhất {:?} · bán tốt nhất {:?}",
              so.best_bid().unwrap(), so.best_ask().unwrap());
-    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 owner kỳ",
+    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 chu kỳ",
              so.spread().unwrap(), OrderBookHardware::comparator_depth());
 
     println!("\n4. MẠCH KIỂM TRA RỦI RO — thời gian KHÔNG đổi");
@@ -485,27 +485,27 @@ fn main() {
                              ("giá trị quá to", 8_400, 1_000),
                              ("cả hai lỗi    ", 0, -1)] {
         let c = m.check(true, price, sl);
-        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} owner kỳ",
+        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} chu kỳ",
                  description, c.is_block(), c.num_has_enable(), m.period_check());
     }
-    println!("   → Hợp lệ hay không cũng tốn đúng một owner kỳ: độ trễ không dao động,");
+    println!("   → Hợp lệ hay không cũng tốn đúng một chu kỳ: độ trễ không dao động,");
     println!("     và thời gian phản hồi không tiết lộ gì về nội dung lệnh.");
 
     println!("\n5. ĐƯỜNG ỐNG TICK-TO-TRADE");
     let ong = HwPipeline::typical();
     for t in &ong.tang {
-        println!("   {:<26} {} owner kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
+        println!("   {:<26} {} chu kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
     }
     println!("   ─────────────────────────────────────────");
-    println!("   Độ trễ     : {} owner kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
-    println!("   Thông lượng: 1 gói mỗi {} owner kỳ = {:.0} triệu gói/giây",
+    println!("   Độ trễ     : {} chu kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
+    println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
              ong.first_period_block(), ong.packets_per_second() / 1e6);
     println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
              software_latency_ns(), software_latency_ns() / ong.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
-    println!("   Có ống   : {:>7} owner kỳ", ong.total_period_wait(1_000));
-    println!("   Không ống: {:>7} owner kỳ", ong.total_cycles_no_pipeline(1_000));
+    println!("   Có ống   : {:>7} chu kỳ", ong.total_period_wait(1_000));
+    println!("   Không ống: {:>7} chu kỳ", ong.total_cycles_no_pipeline(1_000));
     println!("   → Nhanh gấp {:.1} lần về THÔNG LƯỢNG, nhưng ĐỘ TRỄ vẫn y nguyên {} ns.",
              ong.total_cycles_no_pipeline(1_000) as f64 / ong.total_period_wait(1_000) as f64,
              ong.latency_nanos());
@@ -773,7 +773,7 @@ mod tests {
         assert_eq!(m.period_check(), 1);
         for (g, sl) in [(8_400i64, 100i64), (0, 0), (-1, -1), (i64::MAX, i64::MAX)] {
             let _ = m.check(true, g, sl);
-            assert_eq!(m.period_check(), 1, "mọi đầu vào đều tốn đúng 1 owner kỳ");
+            assert_eq!(m.period_check(), 1, "mọi đầu vào đều tốn đúng 1 chu kỳ");
         }
     }
 
@@ -789,7 +789,7 @@ mod tests {
     fn throughput_is_set_by_the_slowest_stage_not_the_sum() {
         // Nhầm hai đại lượng này là hiểu sai toàn bộ kiến trúc đường ống.
         let o = HwPipeline::typical();
-        assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 owner kỳ");
+        assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 chu kỳ");
         assert!(o.first_period_block() < o.latency_period());
     }
 
@@ -855,7 +855,7 @@ mod tests {
     #[test]
     fn cycles_convert_to_nanoseconds_correctly() {
         assert!((cycles_to_ns(1) - 4.0).abs() < 1e-9);
-        assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 owner kỳ ở 250 MHz = 1 µs");
+        assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 chu kỳ ở 250 MHz = 1 µs");
         assert_eq!(cycles_to_ns(0), 0.0);
     }
 }
@@ -911,7 +911,7 @@ impl<const N: usize> BoLocTuongQuan<N> {
         Self { he_so, count: [0; N], pos_value: 0 }
     }
 
-    /// Một owner kỳ: đẩy mẫu mới vào và cho ra kết quả tương quan.
+    /// Một chu kỳ: đẩy mẫu mới vào và cho ra kết quả tương quan.
     /// Trên FPGA: N khối DSP song song + cây cộng độ sâu log₂(N).
     pub fn step(&mut self, mau: i32) -> i64 {
         self.count[self.pos_value] = mau;
@@ -953,7 +953,7 @@ Với N=16 ở 250 MHz, bộ lọc này xử lý một mẫu mỗi 4 ns với đ
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Thời gian hằng số quan trọng vì hai lý do khác nhau: trong HFT vì độ trễ phải dự đoán được, và trong mật mã vì thời gian biến thiên làm rò rỉ thông tin. Kỹ thuật giống nhau: tính **mọi** điều kiện, rồi kết hợp bằng phép AND/OR bit thay vì rẽ nhánh.
+Thời gian hằng số (Constant-time) quan trọng vì hai lý do khác nhau: trong HFT vì độ trễ phải dự đoán được, và trong mật mã vì thời gian biến thiên làm rò rỉ thông tin. Kỹ thuật giống nhau: tính **mọi** điều kiện, rồi kết hợp bằng phép AND/OR bit thay vì rẽ nhánh.
 </details>
 
 <details>

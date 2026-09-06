@@ -424,7 +424,7 @@ impl WaitForGraph {
         self.edge.entry(ai_cho).or_default().push(cho_ai);
     }
 
-    /// Phát hiện bế tắc = tìm owner trình bằng DFS 3 màu.
+    /// Phát hiện bế tắc = tìm chu trình bằng DFS 3 màu.
     pub fn has_deadlock(&self) -> Option<Vec<u32>> {
         let mut mau: HashMap<u32, u8> = HashMap::new(); // 0=trắng 1=xám 2=đen
         let mut duong: Vec<u32> = Vec::new();
@@ -449,7 +449,7 @@ impl WaitForGraph {
             for k in ke {
                 match mau.get(&k).copied().unwrap_or(0) {
                     1 => {
-                        // gặp lại đỉnh XÁM -> có owner trình
+                        // gặp lại đỉnh XÁM -> có chu trình
                         let start = duong.iter().position(|&x| x == k).unwrap();
                         return Some(duong[start..].to_vec());
                     }
@@ -624,7 +624,7 @@ mod tests {
         let mut g = WaitForGraph::new();
         g.them_cho(1, 2);
         g.them_cho(2, 3);
-        g.them_cho(1, 3); // vẫn không có owner trình
+        g.them_cho(1, 3); // vẫn không có chu trình
         assert_eq!(g.has_deadlock(), None);
     }
 
@@ -659,7 +659,7 @@ mod tests {
 
 1. **Hệ điều hành là trọng tài phân phối tài nguyên có hạn.** Mọi thuật toán trong chương đều trả lời một câu hỏi: *ai được dùng trước?*
 2. **Không có thuật toán lập lịch tốt nhất.** SJF tối ưu thời gian chờ nhưng gây đói; Round-Robin công bằng nhưng tốn chuyển ngữ cảnh. Chọn theo mục tiêu, không theo "cái nào hay hơn".
-3. **Nghịch lý Bélády là bằng chứng trực giác có thể sai.** Thêm tài nguyên không đảm bảo tốt hơn — phải đo, đừng đoán.
+3. **Nghịch lý Bélády (Bélády's anomaly) là bằng chứng trực giác có thể sai.** Thêm tài nguyên không đảm bảo tốt hơn — phải đo, đừng đoán.
 4. **Một lỗi trang đắt gấp 100 000 lần một lần truy cập RAM.** Đó là lý do "nguyên lý cục bộ" thống trị mọi thiết kế bộ nhớ đệm, từ CPU cache tới CDN.
 5. **Bế tắc = chu trình trong đồ thị chờ.** Cách phòng đơn giản nhất trong Rust: luôn khóa mutex theo một thứ tự toàn cục cố định.
 

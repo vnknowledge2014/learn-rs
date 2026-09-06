@@ -382,7 +382,7 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. PHÂN CẤP BỘ NHỚ — những con số cần thuộc");
-    println!("   {:<12} {:>14} {:>16}", "tầng", "owner kỳ", "so với L1");
+    println!("   {:<12} {:>14} {:>16}", "tầng", "chu kỳ", "so với L1");
     for t in UpMemory::all() {
         println!("   {:<12} {:>14} {:>15.0}x",
                  t.name(), t.period(), t.period() as f64 / UpMemory::L1.period() as f64);
@@ -397,8 +397,8 @@ fn main() {
     let theo_cot = col_major_scan(&mut mp, n, 8);
     let chain_col = mp.account.total_period();
     println!("   Ma trận {}x{} f64 ({} KB):", n, n, n * n * 8 / 1024);
-    println!("   Theo hàng: {:>8} lần trượt · {:>10} owner kỳ", theo_queue, chain_queue);
-    println!("   Theo cột : {:>8} lần trượt · {:>10} owner kỳ", theo_cot, chain_col);
+    println!("   Theo hàng: {:>8} lần trượt · {:>10} chu kỳ", theo_queue, chain_queue);
+    println!("   Theo cột : {:>8} lần trượt · {:>10} chu kỳ", theo_cot, chain_col);
     println!("   → Cùng {} phép truy cập, chỉ khác thứ tự, chậm gấp {:.1} lần.",
              n * n, chain_col as f64 / chain_queue as f64);
 
@@ -422,17 +422,17 @@ fn main() {
     for (name, d) in [("lộn xộn ", &lon_xon), ("đã sắp  ", &da_sap)] {
         let mut dd = BranchPredictor::new();
         let (count, sai) = branch_taken_count(d, 128, &mut dd);
-        println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} owner kỳ",
+        println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} chu kỳ",
                  name, count, sai, dd.ratio_sai() * 100.0, dd.period_phi());
     }
-    println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 owner kỳ phí",
+    println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
              branch_not_taken_count(&da_sap, 128));
     println!("   → Sắp xếp trước không làm phép đếm nhanh hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
 
     println!("\n5. SONG SONG MỨC LỆNH");
     let n = 1_000_000u64;
     println!("   {:<22} {:>14} {:>8} {:>16}",
-             "cách viết", "đường tới hạn", "ILP", "owner kỳ ước tính");
+             "cách viết", "đường tới hạn", "ILP", "chu kỳ ước tính");
     let a = analyze_total_one_bien(n, 4);
     println!("   {:<22} {:>14} {:>8.1} {:>16}",
              "1 bộ tích luỹ", a.critical_path, a.ilp, a.estimated_cycles);
@@ -680,7 +680,7 @@ mod tests {
         let a = analyze_total_one_bien(1_000_000, 4);
         assert_eq!(a.ilp, 1.0, "chuỗi phụ thuộc thuần → không song song được gì");
         assert_eq!(a.estimated_cycles, 1_000_000,
-                   "CPU rộng 4 lệnh/owner kỳ cũng không giúp được gì");
+                   "CPU rộng 4 lệnh/chu kỳ cũng không giúp được gì");
     }
 
     #[test]

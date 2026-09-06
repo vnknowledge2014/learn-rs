@@ -1117,7 +1117,7 @@ mod tests {
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Black-Scholes chỉ định giá quyền chọn châu Âu. Với quyền chọn Mỹ, phải kiểm ở **mỗi nút** xem thực thi ngay có tốt hơn giữ tiếp không. Cây nhị thức Cox–Ross–Rubinstein làm được điều đó, và khi số bước tăng thì giá quyền chọn châu Âu hội tụ về Black-Scholes — một cách kiểm chứng chéo rất tốt.
+Black-Scholes chỉ định giá quyền chọn châu Âu. Với quyền chọn Mỹ, phải kiểm ở **mỗi nút** xem thực thi ngay có tốt hơn giữ tiếp không. Cây nhị thức (Binomial tree) Cox–Ross–Rubinstein làm được điều đó, và khi số bước tăng thì giá quyền chọn châu Âu hội tụ về Black-Scholes — một cách kiểm chứng chéo rất tốt.
 </details>
 
 <details>
@@ -1171,7 +1171,7 @@ Với quyền **mua** trên cổ phiếu không trả cổ tức, `gia_tri_thuc_
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Trung tính delta nghĩa là danh mục không nhạy với biến động **nhỏ** của giá cổ phiếu. Nhưng gamma làm delta trôi, nên bạn phải phòng vệ lại liên tục — và mỗi lần phòng vệ lại đều tốn phí. Đây là cốt lõi của giao dịch biến động: bạn kiếm tiền từ chênh lệch giữa biến động ngụ ý (bán ra) và biến động thực (chi phí phòng vệ).
+Trung tính delta (Delta-neutral) nghĩa là danh mục không nhạy với biến động **nhỏ** của giá cổ phiếu. Nhưng gamma làm delta trôi, nên bạn phải phòng vệ lại liên tục — và mỗi lần phòng vệ lại đều tốn phí. Đây là cốt lõi của giao dịch biến động: bạn kiếm tiền từ chênh lệch giữa biến động ngụ ý (bán ra) và biến động thực (chi phí phòng vệ).
 </details>
 
 <details>

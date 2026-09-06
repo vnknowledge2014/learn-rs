@@ -97,13 +97,13 @@ với `r` là tỉ lệ thay đổi giá. Vài giá trị đáng nhớ:
 
 ### 3. Kẹp lệnh và phòng vệ thật sự
 
-Kẹp lệnh không phải "hack". Nó tuân thủ mọi luật của giao thức — kẻ tấn công chỉ trả phí ưu tiên cao hơn để được xếp trước và sau bạn.
+Kẹp lệnh (Sandwich attack) không phải "hack". Nó tuân thủ mọi luật của giao thức — kẻ tấn công chỉ trả phí ưu tiên cao hơn để được xếp trước và sau bạn.
 
 Phòng vệ **duy nhất có hiệu lực** là đặt số nhận tối thiểu (`amountOutMin`) chặt. Nếu bạn đặt dung sai trượt giá 0,5%, kẻ tấn công chỉ moi được tối đa 0,5%. Nếu bạn đặt 50% (hoặc, tệ hơn, đặt 0 — tức là "chấp nhận mọi giá"), bạn đang mời họ lấy sạch.
 
 Các phòng vệ khác đều là giảm nhẹ, không phải chặn đứng:
 - **Mempool riêng tư** (Flashbots Protect): giao dịch không hiện công khai, nhưng bạn phải tin nhà cung cấp.
-- **Đấu giá theo lô** (CoW Swap): mọi lệnh trong một lô nhận cùng giá, nên không có gì để moi từ thứ tự.
+- **Đấu giá theo lô (Batch auction)** (CoW Swap): mọi lệnh trong một lô nhận cùng giá, nên không có gì để moi từ thứ tự.
 - **Commit–reveal**: cam kết trước, tiết lộ sau — tốn hai giao dịch.
 
 ### 4. Chênh lệch CEX–DEX: bài toán tối ưu, không phải tín hiệu
@@ -836,7 +836,7 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **x·y = k thắng nhờ đơn giản**: không bao giờ cạn thanh khoản, không cần trạng thái, tự cân bằng.
-2. **Tổn thất tạm thời là cái giá của việc làm máy bán hàng tự động** — và nó chỉ "tạm thời" nếu giá quay lại.
+2. **Tổn thất tạm thời (Impermanent loss) là cái giá của việc làm máy bán hàng tự động** — và nó chỉ "tạm thời" nếu giá quay lại.
 3. **Mempool công khai nghĩa là ý định của bạn là thông tin công khai.** MEV là hệ quả tất yếu, không phải lỗi.
 4. **Phòng vệ kẹp lệnh duy nhất có hiệu lực là số nhận tối thiểu chặt.** Dung sai trượt giá chính là mức lỗ tối đa bạn cho phép.
 5. **Chênh lệch giá là bài toán tối ưu.** Câu hỏi không phải "có cơ hội không" mà là "bao nhiêu thì tối ưu sau phí".

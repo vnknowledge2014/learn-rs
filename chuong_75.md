@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Sổ lệnh là **cấu trúc dữ liệu quan trọng nhất trong tài chính**. Mọi giá bạn từng thấy — cổ phiếu, tiền mã hoá, hợp đồng tương lai — đều là kết quả của một sổ lệnh khớp lệnh mua với lệnh bán.
+Sổ lệnh (Order book) là **cấu trúc dữ liệu quan trọng nhất trong tài chính**. Mọi giá bạn từng thấy — cổ phiếu, tiền mã hoá, hợp đồng tương lai — đều là kết quả của một sổ lệnh khớp lệnh mua với lệnh bán.
 
 Chương này dựng đường dẫn dữ liệu thị trường đầy đủ:
 
@@ -12,7 +12,7 @@ gói UDP → phân tích nhị phân → phát hiện khe → cập nhật sổ 
 
 Ba bài học cốt lõi:
 
-1. **Giao thức nhị phân, không JSON.** ITCH của Nasdaq nhồi một cập nhật vào 36 byte. Cùng nội dung ở JSON tốn khoảng 200 byte và mất hàng microsecond để phân tích.
+1. **Giao thức nhị phân (Binary protocol), không JSON.** ITCH của Nasdaq nhồi một cập nhật vào 36 byte. Cùng nội dung ở JSON tốn khoảng 200 byte và mất hàng microsecond để phân tích.
 2. **Multicast UDP mất gói.** Không có TCP để sửa hộ. Bạn phải tự phát hiện khe và tự yêu cầu phát lại — **đúng một lần**, không lặp.
 3. **L2 hay L3 là quyết định kiến trúc.** L2 (gộp theo mức giá) đủ cho hầu hết chiến lược. L3 (từng lệnh) cho biết **vị trí xếp hàng** — thứ quyết định lãi lỗ của nhà tạo lập.
 
@@ -1126,7 +1126,7 @@ Nguyên tắc vận hành: **phát hiện lệch → xây lại → ghi nhật k
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Vị trí xếp hàng giảm khi lệnh đứng trước bị khớp **hoặc bị huỷ**. Nó không đổi khi có lệnh mới xếp sau bạn. Theo dõi số này cho phép ước lượng xác suất được khớp — và quyết định có nên đặt lại lệnh hay không.
+Vị trí xếp hàng (Queue position) giảm khi lệnh đứng trước bị khớp **hoặc bị huỷ**. Nó không đổi khi có lệnh mới xếp sau bạn. Theo dõi số này cho phép ước lượng xác suất được khớp — và quyết định có nên đặt lại lệnh hay không.
 </details>
 
 <details>

@@ -515,7 +515,7 @@ mod tests {
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 5), Some(3.0));
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 3), Some(4.0), "chỉ lấy 3 giá cuối");
         assert_eq!(sma(&[1.0, 2.0], 5), None, "chưa đủ dữ liệu");
-        assert_eq!(sma(&[1.0], 0), None, "owner kỳ 0 vô nghĩa");
+        assert_eq!(sma(&[1.0], 0), None, "chu kỳ 0 vô nghĩa");
     }
 
     #[test]

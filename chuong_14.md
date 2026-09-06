@@ -86,7 +86,7 @@ tinh_do_dai :: String -> usize
 fn tinh_do_dai(s: String) -> usize { s.len() }
 ```
 
-Chữ ký hàm là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
+Chữ ký hàm (Function selector) là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
 
 | Chữ ký | Hàm này có thể làm được gì? |
 |---|---|
@@ -122,7 +122,7 @@ Hãy đọc kỹ chữ ký này — nó chính là định nghĩa toán học vi
 
 1. **Luật kết hợp (Associativity)**: `h ∘ (g ∘ f) = (h ∘ g) ∘ f`.
    Nghĩa là bạn ghép ống theo thứ tự nào cũng cho kết quả y hệt — miễn là **thứ tự các ống trên đường ống không đổi**. Nhờ luật này, ta viết `ghep(ghep(f, g), h)` hay `ghep(f, ghep(g, h))` tùy thích.
-2. **Phần tử đơn vị (Identity)**: hàm `identity(x) = x` đóng vai trò "đoạn ống thẳng không làm gì". Ghép nó vào đầu hay cuối đều không đổi kết quả: `f ∘ id = id ∘ f = f`.
+2. **Phần tử đơn vị (Identity element)**: hàm `identity(x) = x` đóng vai trò "đoạn ống thẳng không làm gì". Ghép nó vào đầu hay cuối đều không đổi kết quả: `f ∘ id = id ∘ f = f`.
 3. **Phép ghép KHÔNG giao hoán**: `g ∘ f` khác `f ∘ g`. "Rửa rau rồi thái" khác hẳn "thái rau rồi rửa"!
 
 > Hai tính chất 1 và 2 nghe có vẻ hiển nhiên, nhưng chúng chính là định nghĩa của một cấu trúc toán học tên là **Phạm trù (Category)** — nền móng của toàn bộ lý thuyết ta sẽ gặp lại ở Chương 18 và Chương 19. Hãy nhớ tên hai luật này.

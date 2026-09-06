@@ -339,9 +339,9 @@ fn main() {
     for v in [true, false, true, true] {
         print!("{:?} ", tg.suon_len(Signal::from_bool(v)));
     }
-    println!("\n   Nội dung sau 4 owner kỳ: {:?}", tg.doc());
+    println!("\n   Nội dung sau 4 chu kỳ: {:?}", tg.doc());
 
-    println!("\n4. MÁY TRẠNG THÁI ĐÈN GIAO THÔNG (mỗi ký tự = 1 owner kỳ nhịp)");
+    println!("\n4. MÁY TRẠNG THÁI ĐÈN GIAO THÔNG (mỗi ký tự = 1 chu kỳ nhịp)");
     let mut den = LedController::new();
     let series: String = (0..24).map(|_| match den.suon_len() {
         TrafficLight::Do => 'Đ', TrafficLight::DoVang => 'v',
@@ -354,8 +354,8 @@ fn main() {
     let input: Vec<u32> = (0..100).collect();
     let no = handle_without_pipeline(&input, 5, |x| x * x);
     let co = handle_with_pipeline(&input, 5, |x| x * x);
-    println!("   Không ống: {} owner kỳ (độ trễ {})", no.num_period, no.latency);
-    println!("   Có ống   : {} owner kỳ (độ trễ {}) → nhanh gấp {:.1}×",
+    println!("   Không ống: {} chu kỳ (độ trễ {})", no.num_period, no.latency);
+    println!("   Có ống   : {} chu kỳ (độ trễ {}) → nhanh gấp {:.1}×",
              co.num_period, co.latency, no.num_period as f64 / co.num_period as f64);
     println!("   → Độ trễ KHÔNG giảm; chỉ THÔNG LƯỢNG tăng. Hai đại lượng khác nhau.");
 
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(tg.suon_len(Cao), Thap);
         assert_eq!(tg.suon_len(Thap), Thap);
         assert_eq!(tg.suon_len(Thap), Thap);
-        assert_eq!(tg.suon_len(Thap), Cao, "bit '1' xuất hiện đúng ở owner kỳ thứ 4");
+        assert_eq!(tg.suon_len(Thap), Cao, "bit '1' xuất hiện đúng ở chu kỳ thứ 4");
         assert_eq!(tg.suon_len(Thap), Thap, "sau đó ống rỗng trở lại");
     }
 
@@ -519,7 +519,7 @@ mod tests {
         let tong: u32 = d.time_amount.iter().map(|&x| x as u32).sum();
         let one_round: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
         let round_two: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
-        assert_eq!(one_round, round_two, "máy trạng thái phải tuần hoàn đúng owner kỳ");
+        assert_eq!(one_round, round_two, "máy trạng thái phải tuần hoàn đúng chu kỳ");
         // và ghé qua đủ cả 4 trạng thái
         for tt in [TrafficLight::Do, TrafficLight::DoVang, TrafficLight::Xanh, TrafficLight::Vang] {
             assert!(one_round.contains(&tt), "thiếu trạng thái {:?}", tt);
@@ -542,7 +542,7 @@ mod tests {
         let co = handle_with_pipeline(&input, 5, |x| x + 1);
         // 100 phần tử + 5 chu kỳ đổ đầy ống ≈ 105, chứ không phải 500
         assert!(co.num_period <= input.len() + 5,
-                "sau khi đầy ống phải ra 1 kết quả/owner kỳ, thực tế {} owner kỳ", co.num_period);
+                "sau khi đầy ống phải ra 1 kết quả/chu kỳ, thực tế {} chu kỳ", co.num_period);
     }
 
     #[test]

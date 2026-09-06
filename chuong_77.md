@@ -102,7 +102,7 @@ Về mặt thực nghiệm, vi giá là **dự báo tốt hơn** giá giữa cho
 
 ### 4. Kelly và vì sao không ai dùng Kelly toàn phần
 
-Công thức Kelly `f* = (p·b − q)/b` tối đa hoá tốc độ tăng trưởng logarit dài hạn. Về mặt toán học nó tối ưu. Về mặt thực hành nó nguy hiểm, vì hai lý do:
+Công thức Kelly (Kelly criterion) `f* = (p·b − q)/b` tối đa hoá tốc độ tăng trưởng logarit dài hạn. Về mặt toán học nó tối ưu. Về mặt thực hành nó nguy hiểm, vì hai lý do:
 
 - **Dao động khủng khiếp.** Với Kelly toàn phần, sụt giảm 50% từ đỉnh là chuyện bình thường, không phải bất thường.
 - **Bạn không biết `p`.** Nếu ước lượng xác suất thắng cao hơn thật chỉ vài phần trăm, Kelly toàn phần trở thành cược vượt mức, và cược vượt mức dẫn tới tăng trưởng **âm** — dù mỗi cược đều có kỳ vọng dương.
@@ -113,7 +113,7 @@ Công thức Kelly `f* = (p·b − q)/b` tối đa hoá tốc độ tăng trư�
 
 Một chiến lược lãi 20%/năm với sụt giảm tối đa 5% thì đầu tư được. Cùng chiến lược đó với sụt giảm 40% thì không — không phải vì toán học, mà vì **không ai chịu được**: nhà đầu tư rút vốn, ban lãnh đạo cắt hạn mức, và người vận hành mất niềm tin đúng lúc đáy.
 
-Tỉ số Sharpe đo lợi nhuận trên đơn vị biến động. Nhưng nó phạt biến động **tăng** giống hệt biến động **giảm** — điều mà không nhà đầu tư nào đồng ý. Đó là lý do phải nhìn cả sụt giảm tối đa, và vì sao chương này tính cả hai.
+Tỉ số Sharpe (Sharpe ratio) đo lợi nhuận trên đơn vị biến động. Nhưng nó phạt biến động **tăng** giống hệt biến động **giảm** — điều mà không nhà đầu tư nào đồng ý. Đó là lý do phải nhìn cả sụt giảm tối đa, và vì sao chương này tính cả hai.
 
 Một lưu ý kỹ thuật nhỏ nhưng thú vị: một đường vốn **tăng tuyệt đối đều đặn** có độ lệch chuẩn bằng 0, nên Sharpe bằng 0 (hoặc vô định). Đó là lý do bài kiểm thử "chiến lược mượt" trong chương này phải thêm nhiễu nhỏ — đường vốn hoàn hảo không tồn tại, và công thức giả định điều đó.
 

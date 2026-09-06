@@ -17,7 +17,7 @@ Chương này cũng trả lời câu hỏi mà mọi người học Rust nghiêm
 Mục tiêu học tập của chương này:
 - Hiểu **Hàm tử (Functor)** là gì, hai **luật Functor**, và bản đồ của nó sang `Option`, `Result`, `Vec`, `Iterator`.
 - Biết **Hàm tử hai ngôi (Bifunctor)** và vì sao `Result::map_err` là "chân còn lại" của `Result::map`.
-- Nắm **Hàm tử áp dụng (Applicative)** và ứng dụng đắt giá nhất của nó: **xác thực tích lũy lỗi** — báo *tất cả* lỗi của biểu mẫu thay vì chỉ lỗi đầu tiên.
+- Nắm **Hàm tử áp dụng (Applicative functor)** và ứng dụng đắt giá nhất của nó: **xác thực tích lũy lỗi** — báo *tất cả* lỗi của biểu mẫu thay vì chỉ lỗi đầu tiên.
 - Làm chủ **Traversable**: `collect::<Result<Vec<_>, E>>()` và `Option::transpose()` — biến `Vec<Result<T,E>>` thành `Result<Vec<T>,E>`.
 - Hiểu **Đơn nguyên (Monad)**: `and_then` chính là `bind`, `flatten` chính là `join`, toán tử `?` chính là do-notation; kèm **ba luật Monad**.
 - Trả lời được câu hỏi **"Vì sao Rust chưa có Monad tổng quát?"** — khái niệm **Kiểu bậc cao (Higher-Kinded Type)** và cách thư viện `fp-core.rs` mô phỏng nó.

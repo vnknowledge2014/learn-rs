@@ -7,7 +7,7 @@ Trong lịch sử hơn 50 năm của ngành khoa học máy tính, có một s�
 Những lỗi này không bắt nguồn từ thuật toán nghiệp vụ sai hay thiếu sót tính năng, mà phát sinh từ sự lỏng lẻo trong việc quản lý bộ đệm và con trỏ của các ngôn ngữ lập trình truyền thống như C và C++. Trong chương này, chúng ta sẽ mổ xẻ "Tam đại hiểm họa" kinh điển nhất trong thế giới nhị phân:
 1. **Tràn bộ đệm (Buffer Overflow)**: Kẻ tấn công ghi đè dữ liệu vượt ngoài biên vùng nhớ được cấp phát để cướp quyền điều khiển thanh ghi con trỏ lệnh `RIP`.
 2. **Sử dụng vùng nhớ sau giải phóng (Use-After-Free - UAF)**: Đọc hoặc ghi vào ô nhớ trên Heap sau khi đã bị thu hồi, dẫn tới nguy cơ thực thi mã từ xa (RCE).
-3. **Lỗ hổng chuỗi định dạng (Format String)**: Lợi dụng hàm in ấn dữ liệu thiếu kiểm tra kiểu để đọc trộm hoặc ghi đè tùy ý lên ngăn xếp.
+3. **Lỗ hổng chuỗi định dạng (Format string vulnerability)**: Lợi dụng hàm in ấn dữ liệu thiếu kiểm tra kiểu để đọc trộm hoặc ghi đè tùy ý lên ngăn xếp.
 
 Mục tiêu học tập của bạn:
 - Nắm vững cơ chế giải phẫu của từng loại lỗ hổng ở cấp độ thanh ghi và ô nhớ mà không cần tính toán số học phức tạp.

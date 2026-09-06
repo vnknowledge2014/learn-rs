@@ -79,7 +79,7 @@ Mục tiêu học tập:
 
 ### 1. Vì sao `BTreeMap` là cấu trúc đúng cho sổ lệnh
 
-Sổ lệnh cần bốn thao tác, và `BTreeMap` làm tốt cả bốn:
+Sổ lệnh (Order book) cần bốn thao tác, và `BTreeMap` làm tốt cả bốn:
 
 | Thao tác | Tần suất | `BTreeMap` | `HashMap` | `Vec` đã sắp |
 |---|---|---|---|---|

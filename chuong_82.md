@@ -110,7 +110,7 @@ ATR là chỉ báo hữu dụng nhất cho **định cỡ vị thế**: đặt l
 
 ### 5. Dải Bollinger: cái bẫy phân phối chuẩn
 
-Dải Bollinger đặt tại `SMA ± k·độ_lệch_chuẩn`, thường `k = 2`. Nếu lợi suất tuân theo phân phối chuẩn, khoảng 95% giá sẽ nằm trong dải.
+Dải Bollinger (Bollinger Bands) đặt tại `SMA ± k·độ_lệch_chuẩn`, thường `k = 2`. Nếu lợi suất tuân theo phân phối chuẩn, khoảng 95% giá sẽ nằm trong dải.
 
 Nhưng lợi suất **không** phân phối chuẩn. Chúng có đuôi béo — các sự kiện cực đoan xảy ra thường xuyên hơn nhiều so với dự đoán của phân phối chuẩn. Trong thực tế, giá ra ngoài dải 2σ thường xuyên hơn 5%, và các cú ra ngoài lớn thì lớn hơn nhiều so với mô hình.
 
@@ -640,7 +640,7 @@ mod tests {
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 5), Some(3.0));
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 3), Some(4.0), "chỉ lấy 3 giá cuối");
         assert_eq!(sma(&[1.0, 2.0], 5), None, "chưa đủ dữ liệu");
-        assert_eq!(sma(&[1.0], 0), None, "owner kỳ 0 vô nghĩa");
+        assert_eq!(sma(&[1.0], 0), None, "chu kỳ 0 vô nghĩa");
     }
 
     #[test]
@@ -909,7 +909,7 @@ mod tests {
 2. **Kiểm tra vàng**: cắt dữ liệu tại t, giá trị chỉ báo tại t có đổi không? Đổi là có nhìn trộm.
 3. **Cách khởi tạo EMA thay đổi kết quả.** Biết mình dùng cách nào, và ghi lại.
 4. **ATR có ba vế vì khoảng nhảy giá.** Đây là chỉ báo tốt nhất để định cỡ dừng lỗ.
-5. **Dải Bollinger giả định phân phối chuẩn mà lợi suất thì không.** Đuôi béo khiến "cực đoan" xảy ra thường hơn nhiều.
+5. **Dải Bollinger giả định phân phối chuẩn mà lợi suất thì không.** Đuôi béo (Fat tail) khiến "cực đoan" xảy ra thường hơn nhiều.
 
 ### Bài tập rèn luyện
 

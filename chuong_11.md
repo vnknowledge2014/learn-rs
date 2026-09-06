@@ -94,7 +94,7 @@ Phương thức `.unwrap()` hoạt động theo nguyên tắc:
 Việc lạm dụng `.unwrap()` giống như bạn đang chơi trò cò quay Nga với ứng dụng của mình. Một ứng dụng thương mại chuyên nghiệp không bao giờ được phép dùng bừa bãi `.unwrap()`. Thay vào đó, hãy dùng:
 - **`.expect("Mô tả ngữ cảnh vì sao mong đợi có dữ liệu")`**: Nếu có sập thì cũng in ra lý do rõ ràng.
 - **`.unwrap_or(giá_trị_mặc_định)`**: Nếu lỗi thì tự động lấy giá trị thay thế an toàn.
-- **Toán tử `?`**: Lan truyền lỗi ngược lên cho hàm cha cấp cao hơn xử lý.
+- **Toán tử `?`**: Lan truyền lỗi (Error propagation) ngược lên cho hàm cha cấp cao hơn xử lý.
 
 ### 4. Cơ chế hoạt động của Toán tử Lan truyền Lỗi `?`
 

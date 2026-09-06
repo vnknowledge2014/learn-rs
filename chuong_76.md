@@ -83,7 +83,7 @@ Trong thực tế có ba khoảng trễ:
 
 Tổng khoảng 65 µs. Trong 65 µs đó, thị trường có thể đã dịch chuyển — và lệnh của bạn khớp ở giá khác với giá bạn thấy. Backtest bỏ qua điều này thường cho ra chiến lược "lãi ổn định" mà thực chất chỉ đang thu hoạch thông tin từ tương lai.
 
-Mô hình độ trễ cũng cần **jitter** (dao động), không chỉ giá trị cố định. Độ trễ thật có đuôi dài — và đuôi đó xuất hiện đúng lúc thị trường biến động mạnh, tức là lúc nó gây thiệt hại nhất.
+Mô hình độ trễ (Latency model) cũng cần **jitter** (dao động), không chỉ giá trị cố định. Độ trễ thật có đuôi dài — và đuôi đó xuất hiện đúng lúc thị trường biến động mạnh, tức là lúc nó gây thiệt hại nhất.
 
 ### 3. Đẩy tốc độ: cái gì đổi và cái gì không
 
@@ -1256,7 +1256,7 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **Backtest trên nến là nói dối.** Phục dựng theo thông điệp là cách duy nhất biết mình có được khớp hay không.
-2. **Đồng hồ ảo phải là nguồn thời gian duy nhất.** Một lời gọi `Instant::now()` lạc lõng là đủ phá cả hệ thống.
+2. **Đồng hồ ảo (Virtual clock) phải là nguồn thời gian duy nhất.** Một lời gọi `Instant::now()` lạc lõng là đủ phá cả hệ thống.
 3. **Bỏ qua độ trễ là nhìn trộm tương lai.** Và nó là dạng tinh vi nhất, vì không ai gọi tên nó như vậy.
 4. **`HashMap` phá tính tất định.** Đây là lỗi có thật đã xảy ra ngay trong chương này.
 5. **Hạn mức tồn kho phải tính cả lệnh đang treo.** Đếm thiếu thì vị thế vượt hạn mức gấp ba lần.

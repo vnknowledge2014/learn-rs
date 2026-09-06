@@ -27,11 +27,11 @@ Nghĩa là **bố cục bộ nhớ quan trọng hơn số phép tính**. Một t
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  PHÂN CẤP BỘ NHỚ = TỦ SÁCH, GIÁ SÁCH, THƯ VIỆN, KHO LƯU TRỮ                │
 │                                                                              │
-│    Thanh ghi   1 owner kỳ    ~1 KB     trong tầm tay                          │
-│    L1          4 owner kỳ    32 KB     trên bàn                               │
-│    L2         12 owner kỳ   256 KB     kệ sau lưng                            │
-│    L3         40 owner kỳ    16 MB     phòng bên cạnh                         │
-│    RAM       300 owner kỳ    32 GB     ĐI THƯ VIỆN THÀNH PHỐ                  │
+│    Thanh ghi   1 chu kỳ    ~1 KB     trong tầm tay                          │
+│    L1          4 chu kỳ    32 KB     trên bàn                               │
+│    L2         12 chu kỳ   256 KB     kệ sau lưng                            │
+│    L3         40 chu kỳ    16 MB     phòng bên cạnh                         │
+│    RAM       300 chu kỳ    32 GB     ĐI THƯ VIỆN THÀNH PHỐ                  │
 │                                                                              │
 │   Tỉ lệ L1 : RAM = 1 : 75.                                                  │
 │   Nếu L1 là "với tay lấy" (1 giây) thì RAM là "đi bộ 75 giây".              │
@@ -51,18 +51,18 @@ Nghĩa là **bố cục bộ nhớ quan trọng hơn số phép tính**. Một t
 │    Mảng ĐÃ SẮP XẾP:  0 0 0 0 0 1 1 1 1 1  → đoán đúng ~99%                │
 │    Mảng NGẪU NHIÊN:  0 1 1 0 1 0 0 1 0 1  → đoán đúng ~50%                │
 │                                                                              │
-│    Mỗi lần đoán sai = xả toàn bộ đường ống = ~15 owner kỳ mất trắng.          │
+│    Mỗi lần đoán sai = xả toàn bộ đường ống = ~15 chu kỳ mất trắng.          │
 │    → Sắp xếp mảng trước rồi lọc có thể NHANH HƠN lọc trực tiếp,            │
 │      dù sắp xếp tốn O(n log n).                                            │
 │                                                                              │
 │  ILP = CHUỖI PHỤ THUỘC LÀ KẺ THÙ                                            │
 │                                                                              │
 │    1 biến tích luỹ:  s += a[0]; s += a[1]; ...  ← mỗi phép PHẢI chờ phép   │
-│                                                    trước → 4 owner kỳ/phần tử │
+│                                                    trước → 4 chu kỳ/phần tử │
 │                                                                              │
 │    4 biến tích luỹ:  s0 += a[0]; s1 += a[1];   ← 4 chuỗi ĐỘC LẬP           │
 │                      s2 += a[2]; s3 += a[3];      chạy song song            │
-│                                                → ~1 owner kỳ/phần tử         │
+│                                                → ~1 chu kỳ/phần tử         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -233,7 +233,7 @@ impl CacheStats {
     pub fn ratio_duplicate(&self) -> f64 {
         if self.num_access_cap == 0 { 0.0 } else { self.num_duplicate as f64 / self.num_access_cap as f64 }
     }
-    /// Tổng owner kỳ phải trả — thước đo thật sự, không phải số lần trượt.
+    /// Tổng chu kỳ phải trả — thước đo thật sự, không phải số lần trượt.
     pub fn total_period(&self) -> u64 {
         self.num_duplicate * UpMemory::L1.period() + self.slip_count * UpMemory::Ram.period()
     }
@@ -378,7 +378,7 @@ pub fn blocked_matmul(mp: &mut CacheSim, n: usize, khoi: usize,
 // 4. DỰ ĐOÁN NHÁNH
 // ============================================================================
 // CPU hiện đại có đường ống 15–20 tầng. Gặp một `if`, nó ĐOÁN kết quả và chạy
-// tiếp. Đoán đúng: không mất gì. Đoán sai: xả sạch đường ống, mất 15–20 owner kỳ.
+// tiếp. Đoán đúng: không mất gì. Đoán sai: xả sạch đường ống, mất 15–20 chu kỳ.
 
 pub const PHAT_DU_DOAN_SAI: u64 = 18;
 
@@ -411,7 +411,7 @@ impl BranchPredictor {
     pub fn ratio_sai(&self) -> f64 {
         if self.branch_count == 0 { 0.0 } else { self.wrong_guess_balance as f64 / self.branch_count as f64 }
     }
-    /// Số owner kỳ mất trắng vì đoán sai.
+    /// Số chu kỳ mất trắng vì đoán sai.
     pub fn period_phi(&self) -> u64 { self.wrong_guess_balance * PHAT_DU_DOAN_SAI }
 }
 
@@ -437,16 +437,16 @@ pub fn branch_not_taken_count(data: &[i32], threshold: i32) -> usize {
 // ============================================================================
 // 5. SONG SONG MỨC LỆNH
 // ============================================================================
-// CPU hiện đại chạy 4–6 lệnh mỗi owner kỳ — NẾU chúng độc lập. Một chuỗi phụ
+// CPU hiện đại chạy 4–6 lệnh mỗi chu kỳ — NẾU chúng độc lập. Một chuỗi phụ
 // thuộc (mỗi lệnh cần kết quả lệnh trước) làm mọi cổng thực thi khác ngồi chơi.
 
 #[derive(Debug, PartialEq)]
 pub struct IlpAnalysis {
     pub compute_op_count: u64,
-    /// Chuỗi phụ thuộc dài nhất — cận dưới của số owner kỳ, bất kể CPU rộng bao nhiêu.
+    /// Chuỗi phụ thuộc dài nhất — cận dưới của số chu kỳ, bất kể CPU rộng bao nhiêu.
     pub critical_path: u64,
     pub ilp: f64,
-    /// Số owner kỳ ước tính trên CPU rộng `do_rong` lệnh/owner kỳ.
+    /// Số chu kỳ ước tính trên CPU rộng `do_rong` lệnh/chu kỳ.
     pub estimated_cycles: u64,
 }
 
@@ -548,7 +548,7 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. PHÂN CẤP BỘ NHỚ — những con số cần thuộc");
-    println!("   {:<12} {:>14} {:>16}", "tầng", "owner kỳ", "so với L1");
+    println!("   {:<12} {:>14} {:>16}", "tầng", "chu kỳ", "so với L1");
     for t in UpMemory::all() {
         println!("   {:<12} {:>14} {:>15.0}x",
                  t.name(), t.period(), t.period() as f64 / UpMemory::L1.period() as f64);
@@ -563,8 +563,8 @@ fn main() {
     let theo_cot = col_major_scan(&mut mp, n, 8);
     let chain_col = mp.account.total_period();
     println!("   Ma trận {}x{} f64 ({} KB):", n, n, n * n * 8 / 1024);
-    println!("   Theo hàng: {:>8} lần trượt · {:>10} owner kỳ", theo_queue, chain_queue);
-    println!("   Theo cột : {:>8} lần trượt · {:>10} owner kỳ", theo_cot, chain_col);
+    println!("   Theo hàng: {:>8} lần trượt · {:>10} chu kỳ", theo_queue, chain_queue);
+    println!("   Theo cột : {:>8} lần trượt · {:>10} chu kỳ", theo_cot, chain_col);
     println!("   → Cùng {} phép truy cập, chỉ khác thứ tự, chậm gấp {:.1} lần.",
              n * n, chain_col as f64 / chain_queue as f64);
 
@@ -588,17 +588,17 @@ fn main() {
     for (name, d) in [("lộn xộn ", &lon_xon), ("đã sắp  ", &da_sap)] {
         let mut dd = BranchPredictor::new();
         let (count, sai) = branch_taken_count(d, 128, &mut dd);
-        println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} owner kỳ",
+        println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} chu kỳ",
                  name, count, sai, dd.ratio_sai() * 100.0, dd.period_phi());
     }
-    println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 owner kỳ phí",
+    println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
              branch_not_taken_count(&da_sap, 128));
     println!("   → Sắp xếp trước không làm phép đếm nhanh hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
 
     println!("\n5. SONG SONG MỨC LỆNH");
     let n = 1_000_000u64;
     println!("   {:<22} {:>14} {:>8} {:>16}",
-             "cách viết", "đường tới hạn", "ILP", "owner kỳ ước tính");
+             "cách viết", "đường tới hạn", "ILP", "chu kỳ ước tính");
     let a = analyze_total_one_bien(n, 4);
     println!("   {:<22} {:>14} {:>8.1} {:>16}",
              "1 bộ tích luỹ", a.critical_path, a.ilp, a.estimated_cycles);
@@ -846,7 +846,7 @@ mod tests {
         let a = analyze_total_one_bien(1_000_000, 4);
         assert_eq!(a.ilp, 1.0, "chuỗi phụ thuộc thuần → không song song được gì");
         assert_eq!(a.estimated_cycles, 1_000_000,
-                   "CPU rộng 4 lệnh/owner kỳ cũng không giúp được gì");
+                   "CPU rộng 4 lệnh/chu kỳ cũng không giúp được gì");
     }
 
     #[test]
@@ -863,7 +863,7 @@ mod tests {
 
     #[test]
     fn cpu_width_caps_the_speedup() {
-        // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi owner kỳ.
+        // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi chu kỳ.
         let b = analyze_total_many_bien(1_000_000, 64, 4);
         assert!(b.estimated_cycles >= 1_000_000 / 4,
                 "không thể nhanh hơn giới hạn độ rộng CPU");
@@ -978,10 +978,10 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **RAM chậm hơn L1 khoảng 75 lần.** Bố cục bộ nhớ thường quan trọng hơn số phép tính.
-2. **Dòng cache 64 byte là đơn vị thật.** Duyệt theo hàng dùng hết; duyệt theo cột vứt đi 87,5%.
+2. **Dòng cache (Cache line) 64 byte là đơn vị thật.** Duyệt theo hàng dùng hết; duyệt theo cột vứt đi 87,5%.
 3. **Chia khối giữ nguyên số phép tính nhưng giảm trượt cache một bậc.**
-4. **Mã không rẽ nhánh thắng với dữ liệu ngẫu nhiên, thua với dữ liệu đã sắp xếp.** Phải biết dữ liệu.
-5. **Chuỗi phụ thuộc chặn ILP.** Nhiều biến tích luỹ phá chuỗi và tăng thông lượng gần tuyến tính.
+4. **Mã không rẽ nhánh (Branchless code) thắng với dữ liệu ngẫu nhiên, thua với dữ liệu đã sắp xếp.** Phải biết dữ liệu.
+5. **Chuỗi phụ thuộc (Dependency chain) chặn ILP.** Nhiều biến tích luỹ phá chuỗi và tăng thông lượng gần tuyến tính.
 
 ### Bài tập rèn luyện
 

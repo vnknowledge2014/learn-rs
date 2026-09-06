@@ -331,7 +331,7 @@ fn main() {
     let t = bt.tach(&goi).unwrap();
     println!("   Gói {} byte → loại {:?} · mã ck {} · giá {} · số lượng {} · hợp lệ {}",
              goi.len(), t.kind as char, t.id_chain, t.price, t.quantity, t.is_valid);
-    println!("   Phần cứng tách TẤT CẢ trường trong {} owner kỳ = {} ns",
+    println!("   Phần cứng tách TẤT CẢ trường trong {} chu kỳ = {} ns",
              bt.period_split(), cycles_to_ns(bt.period_split()));
 
     println!("\n2. CÂY XOR — rút gọn song song");
@@ -350,7 +350,7 @@ fn main() {
     for (g, kl) in [(8_410i64, 400u32), (8_420, 250)] { so.update(false, g, kl); }
     println!("   Mua tốt nhất {:?} · bán tốt nhất {:?}",
              so.best_bid().unwrap(), so.best_ask().unwrap());
-    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 owner kỳ",
+    println!("   Chênh lệch {} tick · tìm giá tốt nhất tốn {} tầng so sánh = 1 chu kỳ",
              so.spread().unwrap(), OrderBookHardware::comparator_depth());
 
     println!("\n4. MẠCH KIỂM TRA RỦI RO — thời gian KHÔNG đổi");
@@ -361,27 +361,27 @@ fn main() {
                              ("giá trị quá to", 8_400, 1_000),
                              ("cả hai lỗi    ", 0, -1)] {
         let c = m.check(true, price, sl);
-        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} owner kỳ",
+        println!("   {} → chặn {:<5} ({} cờ bật) · luôn {} chu kỳ",
                  description, c.is_block(), c.num_has_enable(), m.period_check());
     }
-    println!("   → Hợp lệ hay không cũng tốn đúng một owner kỳ: độ trễ không dao động,");
+    println!("   → Hợp lệ hay không cũng tốn đúng một chu kỳ: độ trễ không dao động,");
     println!("     và thời gian phản hồi không tiết lộ gì về nội dung lệnh.");
 
     println!("\n5. ĐƯỜNG ỐNG TICK-TO-TRADE");
     let ong = HwPipeline::typical();
     for t in &ong.tang {
-        println!("   {:<26} {} owner kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
+        println!("   {:<26} {} chu kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
     }
     println!("   ─────────────────────────────────────────");
-    println!("   Độ trễ     : {} owner kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
-    println!("   Thông lượng: 1 gói mỗi {} owner kỳ = {:.0} triệu gói/giây",
+    println!("   Độ trễ     : {} chu kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
+    println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
              ong.first_period_block(), ong.packets_per_second() / 1e6);
     println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
              software_latency_ns(), software_latency_ns() / ong.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
-    println!("   Có ống   : {:>7} owner kỳ", ong.total_period_wait(1_000));
-    println!("   Không ống: {:>7} owner kỳ", ong.total_cycles_no_pipeline(1_000));
+    println!("   Có ống   : {:>7} chu kỳ", ong.total_period_wait(1_000));
+    println!("   Không ống: {:>7} chu kỳ", ong.total_cycles_no_pipeline(1_000));
     println!("   → Nhanh gấp {:.1} lần về THÔNG LƯỢNG, nhưng ĐỘ TRỄ vẫn y nguyên {} ns.",
              ong.total_cycles_no_pipeline(1_000) as f64 / ong.total_period_wait(1_000) as f64,
              ong.latency_nanos());
@@ -649,7 +649,7 @@ mod tests {
         assert_eq!(m.period_check(), 1);
         for (g, sl) in [(8_400i64, 100i64), (0, 0), (-1, -1), (i64::MAX, i64::MAX)] {
             let _ = m.check(true, g, sl);
-            assert_eq!(m.period_check(), 1, "mọi đầu vào đều tốn đúng 1 owner kỳ");
+            assert_eq!(m.period_check(), 1, "mọi đầu vào đều tốn đúng 1 chu kỳ");
         }
     }
 
@@ -665,7 +665,7 @@ mod tests {
     fn throughput_is_set_by_the_slowest_stage_not_the_sum() {
         // Nhầm hai đại lượng này là hiểu sai toàn bộ kiến trúc đường ống.
         let o = HwPipeline::typical();
-        assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 owner kỳ");
+        assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 chu kỳ");
         assert!(o.first_period_block() < o.latency_period());
     }
 
@@ -731,7 +731,7 @@ mod tests {
     #[test]
     fn cycles_convert_to_nanoseconds_correctly() {
         assert!((cycles_to_ns(1) - 4.0).abs() < 1e-9);
-        assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 owner kỳ ở 250 MHz = 1 µs");
+        assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 chu kỳ ở 250 MHz = 1 µs");
         assert_eq!(cycles_to_ns(0), 0.0);
     }
 }

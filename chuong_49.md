@@ -9,7 +9,7 @@ Mô hình đa luồng truyền thống "1 luồng hệ điều hành = 1 kết n
 Trong chương này, chúng ta sẽ mở nắp ca-pô cỗ máy Tokio để khám phá:
 - Tại sao luồng hệ điều hành (OS Thread) lại tốn kém và nguyên nhân gây ra sự chậm trễ từ việc hoán đổi ngữ cảnh (Context Switching).
 - Cơ chế đa dồn kênh I/O tầng nhân hệ điều hành: `epoll` (trên Linux), `kqueue` (trên macOS), và `IOCP` (trên Windows).
-- Cốt lõi của Rust Async: Trait `Future`, Máy trạng thái hữu hạn (State Machine) được sinh tự động, `Poll::Ready` vs `Poll::Pending`, và cơ chế đánh thức `Waker`.
+- Cốt lõi của Rust Async: Trait `Future`, Máy trạng thái hữu hạn (Finite State Machine) được sinh tự động, `Poll::Ready` vs `Poll::Pending`, và cơ chế đánh thức `Waker`.
 - Kiến trúc điều phối cắp việc (Work-Stealing Scheduler) của Tokio: Làm thế nào hàng chục ngàn Task siêu nhẹ (Green Threads chỉ tốn vài trăm byte RAM) có thể chạy mượt mà trên một số ít nhân CPU thực tế.
 - Kỹ thuật lập trình bất đồng bộ thực chiến: Tự tay dựng một Động cơ Mini-Runtime và hiểu thấu đáo cách vận hành của vòng lặp sự kiện (Event Loop).
 

@@ -629,7 +629,7 @@ mod tests {
         let mut g = RealValueGraph::new();
         g.add_entity("A", "a"); g.add_entity("B", "b");
         g.add_relation("A", "r", "B");
-        g.add_relation("B", "r", "A"); // owner trình
+        g.add_relation("B", "r", "A"); // chu trình
         let kq = g.broadcast_access("A", 10);
         assert!(kq.len() < 10, "phải dừng nhờ tập đã thăm, không lặp vô hạn");
     }

@@ -2,7 +2,21 @@
 
 Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 85 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
-**Quy ước dùng trong sách**: lần đầu một thuật ngữ xuất hiện, chúng tôi luôn viết dạng *tiếng Việt (tiếng Anh)*, ví dụ: "quyền sở hữu (ownership)". Những lần sau chỉ dùng bản tiếng Việt.
+## Quy ước xử lý thuật ngữ kỹ thuật
+
+Giáo trình dùng **ba tầng**, chọn theo mức độ mà bản dịch tiếng Việt có giúp hiểu hay không.
+
+| Tầng | Khi nào dùng | Cách viết | Ví dụ |
+|---|---|---|---|
+| **1. Dịch, kèm tiếng Anh** | Bản dịch tự nó đã gợi đúng nghĩa | *tiếng Việt (English)* ở **lần đầu mỗi chương**, sau đó chỉ dùng tiếng Việt | quyền sở hữu (ownership) · vị nhóm (Monoid) · nghịch lý Bélády (Bélády's anomaly) |
+| **2. Giữ tiếng Anh, chú nghĩa** | Dịch ra sẽ xa lạ hơn bản gốc, hoặc cộng đồng Việt đã dùng quen từ tiếng Anh | `English` + một câu cắt nghĩa ngay cạnh | `trait` · `closure` · `borrow checker` · `crate` · `panic` |
+| **3. Đưa vào bảng tra** | Thuật ngữ hiếm gặp, hoặc chỉ xuất hiện một lần | chỉ dùng tiếng Việt trong bài, tra nghĩa ở bảng dưới | các mục ở phần 1–18 của tài liệu này |
+
+Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượng (Abstract Syntax Tree — AST)*.
+
+**Vì sao không dịch hết sang tiếng Việt.** Mục đích cuối là bạn đọc được tài liệu Rust thật, mà tài liệu đó bằng tiếng Anh. Một thuật ngữ chỉ tồn tại trong sách này thì không bắc được cầu sang đó — nên tầng 1 luôn kèm bản tiếng Anh ở lần đầu, và tầng 2 giữ nguyên từ gốc.
+
+**Vì sao không giữ hết tiếng Anh.** Người mới học phải xử lý đồng thời khái niệm mới *và* ngoại ngữ thì gấp đôi tải nhận thức. Bản dịch tiếng Việt gánh phần khái niệm, từ tiếng Anh gánh phần tra cứu.
 
 ---
 
@@ -11,7 +25,7 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Tiếng Việt | English | Ghi chú |
 |---|---|---|
 | Bóng bán dẫn | Transistor | |
-| Nhịp xung nhịp | Clock cycle | Khác với *owner trình lệnh* (instruction cycle) |
+| Nhịp xung nhịp | Clock cycle | Khác với *chu trình lệnh* (instruction cycle) |
 | Chu trình Tìm nạp – Giải mã – Thực thi | Fetch–Decode–Execute cycle | |
 | Địa chỉ ô nhớ | Memory address | |
 | Bộ nhớ ngăn xếp | Stack | Cấp phát tự động, LIFO |
@@ -299,7 +313,7 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Thuật toán ngăn xếp | Stack algorithm | Lớp thuật toán miễn nhiễm nghịch lý Bélády, gồm LRU |
 | Nguyên lý cục bộ | Principle of locality | Nền tảng của mọi bộ nhớ đệm |
 | Bế tắc | Deadlock | Bốn điều kiện Coffman phải cùng đúng |
-| Đồ thị chờ đợi | Wait-for graph | Có owner trình = có bế tắc |
+| Đồ thị chờ đợi | Wait-for graph | Có chu trình = có bế tắc |
 | Vùng găng | Critical section | Đoạn mã không được để ngắt xen vào |
 | Đóng gói (theo tầng) | Encapsulation | Mỗi tầng bọc dữ liệu tầng trên bằng phần đầu của mình |
 | Phần đầu | Header | Phần siêu dữ liệu đứng trước tải trọng |
@@ -501,14 +515,14 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Đường ống | Pipeline | Đánh đổi độ trễ ↔ thông lượng |
 | Thời gian hằng số | Constant-time | Không dự đoán sai, không xả ống |
 | Tổng hợp | Synthesis | Mất hàng giờ — đừng đặt logic hay sửa lên FPGA |
-| Phân cấp bộ nhớ | Memory hierarchy | L1 ~4, RAM ~300 owner kỳ |
+| Phân cấp bộ nhớ | Memory hierarchy | L1 ~4, RAM ~300 chu kỳ |
 | Trượt cache | Cache miss | |
 | Tính cục bộ | Locality | Không gian và thời gian |
 | Cache tập hợp liên kết | Set-associative cache | Nguồn của **trượt do xung đột** |
 | Trượt do xung đột | Conflict miss | Chữa bằng đệm một phần tử |
 | Chia khối | Blocking / Tiling | Cùng phép tính, ít trượt hơn một bậc |
 | Dự đoán rẽ nhánh | Branch prediction | 2-bit bão hoà |
-| Dự đoán sai | Branch misprediction | ~15 owner kỳ |
+| Dự đoán sai | Branch misprediction | ~15 chu kỳ |
 | Mã không rẽ nhánh | Branchless code | Thắng với dữ liệu ngẫu nhiên |
 | Song song mức lệnh | ILP — Instruction-Level Parallelism | |
 | Chuỗi phụ thuộc | Dependency chain | Kẻ thù của ILP |
@@ -569,7 +583,7 @@ Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán
 | Đồng liên kết | Cointegration | Điều kiện đúng — chênh lệch kéo về |
 | Tính dừng | Stationarity | |
 | Kéo về trung bình | Mean reversion | |
-| Nửa owner kỳ | Half-life | `ln(2)/|λ|` — vốn bị kẹt bao lâu |
+| Nửa chu kỳ | Half-life | `ln(2)/|λ|` — vốn bị kẹt bao lâu |
 | Tỉ lệ phòng vệ | Hedge ratio | |
 | Điểm z | Z-score | Ngưỡng vào/ra lệnh |
 | Bộ lọc Kalman | Kalman filter | Tỉ lệ phòng vệ thích ứng có nguyên tắc |

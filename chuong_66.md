@@ -327,13 +327,15 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 /// ngắt UART: ISR đẩy byte vào, vòng lặp chính lấy ra.
 pub struct CountRound<const N: usize> {
     o: [u8; N],
-    first: usize,
-    below: usize,
+    /// Vị trí ĐỌC kế tiếp.
+    head: usize,
+    /// Vị trí GHI kế tiếp.
+    tail: usize,
     quantity: usize,
 }
 
 impl<const N: usize> CountRound<N> {
-    pub const fn new() -> Self { CountRound { o: [0; N], first: 0, below: 0, quantity: 0 } }
+    pub const fn new() -> Self { CountRound { o: [0; N], head: 0, tail: 0, quantity: 0 } }
     pub fn capacity(&self) -> usize { N }
     pub fn quantity(&self) -> usize { self.quantity }
     pub fn rong(&self) -> bool { self.quantity == 0 }
@@ -342,15 +344,15 @@ impl<const N: usize> CountRound<N> {
     /// Trả `Err` thay vì cấp phát thêm — hệ nhúng KHÔNG được phép "cứ lớn dần".
     pub fn push(&mut self, b: u8) -> Result<(), u8> {
         if self.day() { return Err(b); }
-        self.o[self.below] = b;
-        self.below = (self.below + 1) % N;
+        self.o[self.tail] = b;
+        self.tail = (self.tail + 1) % N;
         self.quantity += 1;
         Ok(())
     }
     pub fn take(&mut self) -> Option<u8> {
         if self.rong() { return None; }
-        let b = self.o[self.first];
-        self.first = (self.first + 1) % N;
+        let b = self.o[self.head];
+        self.head = (self.head + 1) % N;
         self.quantity -= 1;
         Some(b)
     }
@@ -699,7 +701,7 @@ Bộ công cụ: `cargo install probe-rs-tools`, rồi `cargo embed` để nạp
 2. **`volatile` không phải tùy chọn.** Thiếu nó, trình tối ưu hóa sẽ xóa mất chính những lệnh điều khiển phần cứng của bạn.
 3. **Typestate biến lỗi phần cứng thành lỗi biên dịch, với chi phí lúc chạy bằng không.** Đây là ứng dụng thực tế nhất của Chương 20 trong cả giáo trình.
 4. **Không heap là một lựa chọn thiết kế, không phải hạn chế.** Bộ nhớ tĩnh cho thời gian thực thi đoán trước được — điều bắt buộc với hệ thống thời gian thực.
-5. **Số dấu phẩy tĩnh là bạn của vi điều khiển.** Q16.16 cho sai số dưới 0,00002 mà chỉ dùng phép toán số nguyên.
+5. **Số dấu phẩy tĩnh (Fixed-point arithmetic) là bạn của vi điều khiển.** Q16.16 cho sai số dưới 0,00002 mà chỉ dùng phép toán số nguyên.
 
 ### Bài tập rèn luyện tự giải
 
@@ -793,10 +795,10 @@ impl Block<DauVaoVoi<ThaNoi>> {
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Đây là bài toán kinh điển: ngắt UART đẩy byte vào, vòng lặp chính lấy ra. Vì chỉ có **một** bên ghi `duoi` và **một** bên ghi `dau`, ta không cần khóa — chỉ cần hai `AtomicUsize` với thứ tự bộ nhớ đúng.
+Đây là bài toán kinh điển: ngắt UART đẩy byte vào, vòng lặp chính lấy ra. Vì chỉ có **một** bên ghi `tail` và **một** bên ghi `head`, ta không cần khóa — chỉ cần hai `AtomicUsize` với thứ tự bộ nhớ đúng.
 
-Người sản xuất: đọc `dau` (Acquire), ghi dữ liệu, rồi ghi `duoi` (Release).
-Người tiêu thụ: đọc `duoi` (Acquire), đọc dữ liệu, rồi ghi `dau` (Release).
+Người sản xuất: đọc `head` (Acquire), ghi dữ liệu, rồi ghi `tail` (Release).
+Người tiêu thụ: đọc `tail` (Acquire), đọc dữ liệu, rồi ghi `head` (Release).
 
 Cặp Release/Acquire bảo đảm: khi bên kia *thấy* con trỏ mới, nó cũng thấy dữ liệu đã ghi xong.
 </details>
@@ -810,8 +812,8 @@ use core::sync::atomic::AtomicUsize;   // `Ordering` chương đã nhập ở tr
 
 pub struct HangSpsc<const N: usize> {
     o: UnsafeCell<[u8; N]>,
-    first: AtomicUsize,   // CHỈ người tiêu thụ ghi
-    below: AtomicUsize,  // CHỈ người sản xuất ghi
+    head: AtomicUsize,   // CHỈ người tiêu thụ ghi — vị trí ĐỌC
+    tail: AtomicUsize,  // CHỈ người sản xuất ghi — vị trí GHI
 }
 
 // An toàn: mỗi con trỏ chỉ có ĐÚNG MỘT bên ghi, nên không có cuộc đua ghi-ghi.
@@ -821,33 +823,33 @@ impl<const N: usize> HangSpsc<N> {
     pub const fn new() -> Self {
         HangSpsc {
             o: UnsafeCell::new([0; N]),
-            first: AtomicUsize::new(0),
-            below: AtomicUsize::new(0),
+            head: AtomicUsize::new(0),
+            tail: AtomicUsize::new(0),
         }
     }
 
     /// Gọi TỪ NGẮT. Trả `Err` nếu đầy — không bao giờ chặn.
     pub fn push(&self, b: u8) -> Result<(), u8> {
-        let below = self.below.load(Ordering::Relaxed);   // ta là bên duy nhất ghi nó
-        let duoi_moi = (below + 1) % N;
-        if duoi_moi == self.first.load(Ordering::Acquire) {
+        let tail = self.tail.load(Ordering::Relaxed);   // ta là bên duy nhất ghi nó
+        let tail_next = (tail + 1) % N;
+        if tail_next == self.head.load(Ordering::Acquire) {
             return Err(b); // đầy — hy sinh byte còn hơn chặn ngắt
         }
-        unsafe { (*self.o.get())[below] = b; }
+        unsafe { (*self.o.get())[tail] = b; }
         // Release: bảo đảm lệnh ghi dữ liệu ở trên HOÀN TẤT trước khi
         // người tiêu thụ nhìn thấy con trỏ mới.
-        self.below.store(duoi_moi, Ordering::Release);
+        self.tail.store(tail_next, Ordering::Release);
         Ok(())
     }
 
     /// Gọi từ VÒNG LẶP CHÍNH.
     pub fn take(&self) -> Option<u8> {
-        let first = self.first.load(Ordering::Relaxed);
-        if first == self.below.load(Ordering::Acquire) {
+        let head = self.head.load(Ordering::Relaxed);
+        if head == self.tail.load(Ordering::Acquire) {
             return None; // rỗng
         }
-        let b = unsafe { (*self.o.get())[first] };
-        self.first.store((first + 1) % N, Ordering::Release);
+        let b = unsafe { (*self.o.get())[head] };
+        self.head.store((head + 1) % N, Ordering::Release);
         Some(b)
     }
 }

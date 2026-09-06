@@ -793,7 +793,7 @@ Trong chương ta đã có `FirstTien` (giữ giá trị đầu tiên khác `Non
 <details>
 <summary><b>Gợi ý</b></summary>
 
-`FirstTien` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `khac` nếu `khac` có giá trị. Phần tử đơn vị vẫn là `None`.
+`FirstTien` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `other` nếu `other` có giá trị. Phần tử đơn vị (Identity element) vẫn là `None`.
 </details>
 
 <details>

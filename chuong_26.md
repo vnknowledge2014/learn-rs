@@ -171,7 +171,7 @@ fn main() {
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
-    // 2. Khảo sát Vector động Vec<T> và owner kỳ co giãn dung lượng
+    // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
     let mut vec_dong: Vec<i32> = Vec::new();
     println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());

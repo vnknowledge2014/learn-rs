@@ -167,13 +167,15 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 /// ngắt UART: ISR đẩy byte vào, vòng lặp chính lấy ra.
 pub struct CountRound<const N: usize> {
     o: [u8; N],
-    first: usize,
-    below: usize,
+    /// Vị trí ĐỌC kế tiếp.
+    head: usize,
+    /// Vị trí GHI kế tiếp.
+    tail: usize,
     quantity: usize,
 }
 
 impl<const N: usize> CountRound<N> {
-    pub const fn new() -> Self { CountRound { o: [0; N], first: 0, below: 0, quantity: 0 } }
+    pub const fn new() -> Self { CountRound { o: [0; N], head: 0, tail: 0, quantity: 0 } }
     pub fn capacity(&self) -> usize { N }
     pub fn quantity(&self) -> usize { self.quantity }
     pub fn rong(&self) -> bool { self.quantity == 0 }
@@ -182,15 +184,15 @@ impl<const N: usize> CountRound<N> {
     /// Trả `Err` thay vì cấp phát thêm — hệ nhúng KHÔNG được phép "cứ lớn dần".
     pub fn push(&mut self, b: u8) -> Result<(), u8> {
         if self.day() { return Err(b); }
-        self.o[self.below] = b;
-        self.below = (self.below + 1) % N;
+        self.o[self.tail] = b;
+        self.tail = (self.tail + 1) % N;
         self.quantity += 1;
         Ok(())
     }
     pub fn take(&mut self) -> Option<u8> {
         if self.rong() { return None; }
-        let b = self.o[self.first];
-        self.first = (self.first + 1) % N;
+        let b = self.o[self.head];
+        self.head = (self.head + 1) % N;
         self.quantity -= 1;
         Some(b)
     }

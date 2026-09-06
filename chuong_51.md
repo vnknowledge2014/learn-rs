@@ -9,7 +9,7 @@ Trong kỷ nguyên của các ứng dụng quy mô toàn cầu, một hệ thố
 2. **Tonic**: Hiện thực hóa chuẩn mực giao thức **gRPC** (Google Remote Procedure Call) trên nền HTTP/2 và định dạng nhị phân Protocol Buffers (Protobuf). gRPC với Tonic là "huyết mạch" kết nối siêu tốc giữa các microservice nội bộ, giúp tăng thông lượng truyền tải từ 7 đến 10 lần so với chuẩn REST/JSON truyền thống.
 
 Mục tiêu học tập của bạn:
-- Nắm vững kiến trúc cốt lõi của Axum: Bộ định tuyến Router, các Bộ trích xuất dữ liệu an toàn (Extractors: `Json`, `Path`, `State`), và tầng Middleware với Tower.
+- Nắm vững kiến trúc cốt lõi của Axum: Bộ định tuyến Router, các Bộ trích xuất (Extractor) dữ liệu an toàn (Extractors: `Json`, `Path`, `State`), và tầng Middleware với Tower.
 - Hiểu thấu cơ chế hoạt động của gRPC và Protocol Buffers: Đa dồn kênh nhiều luồng (Multiplexing) trên 1 kết nối TCP duy nhất của HTTP/2, và sự vượt trội của định dạng nhị phân so với văn bản JSON.
 - Xây dựng mô hình kiến trúc lai (Hybrid Architecture): Cổng ngoài đón khách (API Gateway) dùng Axum REST/JSON, trong khi mạng nội bộ giao tiếp bằng gRPC Tonic siêu tốc.
 

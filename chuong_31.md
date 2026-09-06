@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn bước sang **Chủ đề 6: Kiến trúc & Thiết kế Cơ sở Dữ liệu trong Rust (Database Internals & Design)**! Trong 5 chủ đề trước, mọi cấu trúc dữ liệu mà bạn đã học — từ Mảng, Vector, Danh sách liên kết, Cây nhị phân đến Bảng băm — đều tồn tại trên bộ nhớ truy cập ngẫu nhiên RAM. RAM có tốc độ xử lý nhanh như tia chớp (tính bằng nano-giây), nhưng nó có một điểm yếu chí mạng: **Dữ liệu sẽ bốc hơi hoàn toàn ngay khi máy tính bị ngắt nguồn điện (Volatile Memory)**.
+Chào mừng bạn bước sang **Chủ đề 6: Kiến trúc & Thiết kế Cơ sở Dữ liệu trong Rust (Database Internals & Design)**! Trong 5 chủ đề trước, mọi cấu trúc dữ liệu mà bạn đã học — từ Mảng, Vector, Danh sách liên kết (Linked list), Cây nhị phân đến Bảng băm — đều tồn tại trên bộ nhớ truy cập ngẫu nhiên RAM. RAM có tốc độ xử lý nhanh như tia chớp (tính bằng nano-giây), nhưng nó có một điểm yếu chí mạng: **Dữ liệu sẽ bốc hơi hoàn toàn ngay khi máy tính bị ngắt nguồn điện (Volatile Memory)**.
 
 Để xây dựng các hệ thống lưu trữ bền vững (Persistent Systems) như PostgreSQL, MySQL, SQLite, hay Redis, các kỹ sư phần mềm phải đối mặt với bài toán cốt lõi: **"Làm thế nào để đưa dữ liệu từ RAM xuống đĩa cứng (SSD/HDD) một cách an toàn, tin cậy, và đạt tốc độ cao nhất?"**
 

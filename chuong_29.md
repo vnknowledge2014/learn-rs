@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Sau khi đã làm quen với các cấu trúc dữ liệu dạng tuyến tính (Linear Data Structures) như Mảng, Danh sách liên kết, Ngăn xếp và Hàng đợi, chúng ta chính thức bước vào thế giới của các cấu trúc dữ liệu dạng phân cấp (Hierarchical Data Structures): **Cấu trúc Cây (Trees)** và đỉnh cao ứng dụng là **Cây nhị phân tìm kiếm (Binary Search Tree - BST)**.
+Sau khi đã làm quen với các cấu trúc dữ liệu dạng tuyến tính (Linear Data Structures) như Mảng, Danh sách liên kết (Linked list), Ngăn xếp và Hàng đợi, chúng ta chính thức bước vào thế giới của các cấu trúc dữ liệu dạng phân cấp (Hierarchical Data Structures): **Cấu trúc Cây (Trees)** và đỉnh cao ứng dụng là **Cây nhị phân tìm kiếm (Binary Search Tree - BST)**.
 
 Trong thực tế công nghiệp phần mềm, cấu trúc Cây hiện diện ở khắp mọi nơi:
 - Hệ thống tệp tin và thư mục trên ổ đĩa máy tính (thư mục gốc `root`, thư mục con, tệp tin lá).

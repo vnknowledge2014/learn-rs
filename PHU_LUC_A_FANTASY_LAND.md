@@ -960,4 +960,4 @@ Chính vì vậy `Semigroup::ghep` trong mã trên nhận `self` theo giá trị
 
 ---
 
-*Quay lại [Mục lục](./SUMMARY.md) · Xem [Bảng thuật ngữ](./THUAT_NGU.md) · Ôn lại [Chương 18](./chuong_18.md), [Chương 19](./chuong_19.md), [Chương 20](./chuong_20.md)*
+*Quay lại [Mục lục](./SUMMARY.md) · Xem [Bảng thuật ngữ](./GLOSSARY.md) · Ôn lại [Chương 18](./chuong_18.md), [Chương 19](./chuong_19.md), [Chương 20](./chuong_20.md)*

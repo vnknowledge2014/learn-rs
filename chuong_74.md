@@ -87,7 +87,7 @@ Bài kiểm thử của chương này minh hoạ chính xác cái bẫy: một p
 
 Một mutex có ba vấn đề trên đường nóng:
 - **Đảo ngược ưu tiên**: luồng giữ khoá bị hệ điều hành cho ra rìa, luồng quan trọng phải chờ.
-- **Chuyển ngữ cảnh**: khi tranh chấp, chi phí là hàng microsecond — gấp hàng nghìn lần công việc thật.
+- **Chuyển ngữ cảnh (Context switch)**: khi tranh chấp, chi phí là hàng microsecond — gấp hàng nghìn lần công việc thật.
 - **Bất định**: bạn không biết trước lần này có tranh chấp hay không.
 
 Disruptor thay bằng hai con trỏ nguyên tử **đơn điệu tăng**. Người ghi chỉ chờ khi vòng đầy; người đọc chỉ chờ khi vòng rỗng. Không có khoá nào cả.
@@ -100,7 +100,7 @@ Hai chi tiết cài đặt đáng nhớ:
 
 Chiến lược của HFT là: **cấp phát toàn bộ lúc khởi động, không cấp phát gì nữa khi chạy**. Một `Vec::push` có thể tái cấp phát và sao chép — chi phí đó không dự đoán được.
 
-Bể đối tượng giữ một danh sách chỉ số rỗi. `lay()` là pop, `tra()` là push. Cả hai đều O(1) và không chạm tới bộ cấp phát của hệ thống. Khi bể cạn, `lay()` trả `None` — và đó là **hành vi đúng**: hệ thống từ chối tải mới thay vì tự làm chậm mình một cách bất định.
+Bể đối tượng (Object pool) giữ một danh sách chỉ số rỗi. `lay()` là pop, `tra()` là push. Cả hai đều O(1) và không chạm tới bộ cấp phát của hệ thống. Khi bể cạn, `lay()` trả `None` — và đó là **hành vi đúng**: hệ thống từ chối tải mới thay vì tự làm chậm mình một cách bất định.
 
 ### 4. Ngân sách độ trễ: nơi thời gian thực sự đi
 
@@ -234,7 +234,7 @@ pub struct BufferSplitClose { pub a: CountHasCount, pub b: CountHasCount }
 /// Một-ghi-một-đọc, không khoá, không cấp phát, sức chứa là luỹ thừa của 2.
 ///
 /// Ba quyết định thiết kế đáng chú ý:
-/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 owner kỳ) bằng `&` (1 owner kỳ).
+/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 chu kỳ) bằng `&` (1 chu kỳ).
 /// 2. Con trỏ đọc/ghi nằm ở hai dòng cache RIÊNG → không chia sẻ giả.
 /// 3. Con trỏ TĂNG MÃI, không quấn vòng → phân biệt được "rỗng" và "đầy"
 ///    mà không phải hy sinh một ô như hàng đợi vòng thông thường.
@@ -864,9 +864,9 @@ mod tests {
 
 1. **Đo phân vị, không đo trung bình.** Cái đuôi mới là thứ giết chiến lược, và nó xuất hiện đúng lúc thị trường biến động.
 2. **Không cấp phát trên đường nóng.** Cấp phát trước, tái dùng, và từ chối tải khi bể cạn.
-3. **Chia sẻ giả gây chậm 5–10 lần mà không có tranh chấp logic nào.** Đệm theo dòng cache.
+3. **Chia sẻ giả gây chậm 5–10 lần mà không có tranh chấp logic nào.** Đệm theo dòng cache (Cache-line padding).
 4. **Disruptor thắng nhờ ba thứ**: bộ nhớ cấp phát sẵn, chỉ mục bằng phép AND, con trỏ đơn điệu.
-5. **Ngân sách độ trễ chỉ ra nên tối ưu ở đâu.** Nếu hơn nửa thời gian ở card mạng, tối ưu code là công cốc — Amdahl đã nói vậy.
+5. **Ngân sách độ trễ (Latency budget) chỉ ra nên tối ưu ở đâu.** Nếu hơn nửa thời gian ở card mạng, tối ưu code là công cốc — Amdahl đã nói vậy.
 
 ### Bài tập rèn luyện
 

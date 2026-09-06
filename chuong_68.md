@@ -106,8 +106,8 @@ pos_value += velocity * dt;
 Sách vở thường nói "nửa ẩn chính xác hơn". Khi viết bài kiểm thử cho chương này, kết quả cho thấy điều đó **không đúng** với gia tốc hằng: với vật rơi tự do 1 giây, tường minh cho 95,177 và nửa ẩn cho 95,013, trong khi đáp số đúng là 95,095. Hai bên lệch **bằng nhau** về hai phía — sai số đều là `0,5·g·dt²`.
 
 Ưu thế thật của nửa ẩn nằm ở hệ **dao động**. Với vật chuyển động tròn dưới lực hướng tâm:
-- Euler tường minh **bơm năng lượng** vào hệ, bán kính phình dần, vật văng ra ngoài.
-- Euler nửa ẩn giữ năng lượng **dao động quanh giá trị đúng**, bán kính bị chặn.
+- Euler tường minh (Explicit) **bơm năng lượng** vào hệ, bán kính phình dần, vật văng ra ngoài.
+- Euler nửa ẩn (Semi-implicit) giữ năng lượng **dao động quanh giá trị đúng**, bán kính bị chặn.
 
 Đây là tính chất "bảo toàn cấu trúc symplectic", và nó là lý do **mọi** game engine dùng nửa ẩn: lò xo, con lắc, dây thừng, vải — tất cả đều là hệ dao động, và tất cả sẽ nổ tung với Euler tường minh.
 
@@ -120,13 +120,13 @@ self.min.x <= k.max.x && self.max.x >= k.min.x &&
 self.min.y <= k.max.y && self.max.y >= k.min.y
 ```
 
-**Vector đẩy tối thiểu** trả lời câu hỏi tiếp theo: đã chạm rồi thì đẩy ra hướng nào? Đáp án: theo trục có độ chồng lấn **nhỏ nhất**. Trực giác: nếu nhân vật chồng 2 pixel theo chiều dọc và 50 pixel theo chiều ngang, rõ ràng anh ta vừa rơi xuống sàn chứ không đâm ngang vào tường.
+**Vector đẩy tối thiểu (Minimum Translation Vector)** trả lời câu hỏi tiếp theo: đã chạm rồi thì đẩy ra hướng nào? Đáp án: theo trục có độ chồng lấn **nhỏ nhất**. Trực giác: nếu nhân vật chồng 2 pixel theo chiều dọc và 50 pixel theo chiều ngang, rõ ràng anh ta vừa rơi xuống sàn chứ không đâm ngang vào tường.
 
 ### 4. Băm không gian: từ O(n²) xuống gần O(n)
 
 Kiểm tra mọi cặp với 1 000 vật thể = 499 500 phép thử **mỗi khung hình**. Ở 60 fps, đó là 30 triệu phép thử mỗi giây chỉ để phát hiện va chạm.
 
-Băm không gian chia thế giới thành lưới ô vuông. Mỗi vật thể ghi tên vào các ô nó chạm; chỉ những vật **cùng ô** mới cần so. Với vật thể phân bố đều, số phép thử giảm còn gần tuyến tính.
+Băm không gian (Spatial hashing) chia thế giới thành lưới ô vuông. Mỗi vật thể ghi tên vào các ô nó chạm; chỉ những vật **cùng ô** mới cần so. Với vật thể phân bố đều, số phép thử giảm còn gần tuyến tính.
 
 Ba cạm bẫy phải tránh, và chương này có bài kiểm thử cho từng cái:
 

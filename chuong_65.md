@@ -8,7 +8,7 @@ Ba câu hỏi chương này trả lời dứt điểm:
 
 - Vì sao gửi 5 byte dữ liệu lại tốn 77 byte trên dây? (Đóng gói theo tầng.)
 - Vì sao kết nối vừa đóng mà cổng vẫn "bận" cả phút? (Trạng thái `TIME_WAIT`.)
-- Vì sao tải một tệp lớn lúc đầu chậm rồi mới nhanh dần? (Khởi động chậm của TCP.)
+- Vì sao tải một tệp lớn lúc đầu chậm rồi mới nhanh dần? (Khởi động chậm (Slow start) của TCP.)
 
 Mục tiêu học tập:
 - Hiểu **mô hình phân tầng** và sự **đóng gói** — vì sao mỗi tầng chỉ nói chuyện với tầng ngang hàng của nó.
@@ -734,7 +734,7 @@ mod tests {
 ### 5 điểm cốt lõi cần ghi nhớ
 
 1. **Phân tầng đổi hiệu suất lấy khả năng thay thế.** 93% bao bì là cái giá để bạn đổi Wi-Fi sang cáp quang mà không phải sửa một dòng mã ứng dụng nào.
-2. **Bắt tay ba bước không thừa một bước nào.** Ba lượt là số ít nhất để *cả hai* bên cùng chắc chắn kênh hai chiều thông suốt.
+2. **Bắt tay ba bước (Three-way handshake) không thừa một bước nào.** Ba lượt là số ít nhất để *cả hai* bên cùng chắc chắn kênh hai chiều thông suốt.
 3. **`TIME_WAIT` là tính năng, không phải lỗi.** Nó bảo vệ bạn khỏi gói tin lạc đường của kết nối cũ.
 4. **AIMD tạo ra công bằng từ sự bất đối xứng.** Tăng thì cộng, giảm thì nhân — không có quy tắc nào đơn giản hơn mà vẫn hội tụ.
 5. **Tổng kiểm tra Internet là bộ lọc nhanh, không phải bảo chứng.** Nó bắt lỗi ngẫu nhiên, không bắt lỗi cố ý và không bắt hoán vị.

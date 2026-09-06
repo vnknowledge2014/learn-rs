@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chào mừng bạn đến với chương kết thúc của **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust**! Đến thời điểm này, bạn đã nắm vững từ các cấu trúc tuyến tính (Mảng, Vector, Danh sách liên kết, Ngăn xếp, Hàng đợi) đến các cấu trúc phân cấp cây nhị phân. Trong chương này, chúng ta sẽ làm chủ hai cấu trúc dữ liệu và giải thuật tối thượng của ngành khoa học máy tính: **Bảng băm (Hash Table)** và **Đồ thị (Graph)**, cùng hai thuật toán kinh điển đi kèm là **Tìm kiếm theo chiều rộng (BFS)** và **Sắp xếp nhanh (Quicksort)**.
+Chào mừng bạn đến với chương kết thúc của **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust**! Đến thời điểm này, bạn đã nắm vững từ các cấu trúc tuyến tính (Mảng, Vector, Danh sách liên kết (Linked list), Ngăn xếp, Hàng đợi) đến các cấu trúc phân cấp cây nhị phân. Trong chương này, chúng ta sẽ làm chủ hai cấu trúc dữ liệu và giải thuật tối thượng của ngành khoa học máy tính: **Bảng băm (Hash Table)** và **Đồ thị (Graph)**, cùng hai thuật toán kinh điển đi kèm là **Tìm kiếm theo chiều rộng (BFS)** và **Sắp xếp nhanh (Quicksort)**.
 
 Nếu như Mảng cho phép truy cập $O(1)$ nhưng phải thông qua số thứ tự, thì Bảng băm (`HashMap`) mang lại phép màu: **Tra cứu dữ liệu bất kỳ bằng từ khóa (Key) bằng chữ trong thời gian tức thì $O(1)$**! Bảng băm là trái tim của mọi hệ thống bộ nhớ đệm (buffer cache), hệ thống từ điển, và cơ sở dữ liệu khóa-giá trị (Key-Value Store).
 
@@ -176,7 +176,7 @@ impl Graph {
             return None;
         }
 
-        // Mảng đánh dấu các đỉnh đã thăm để tránh owner trình lặp vô tận
+        // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
         let mut da_tham = vec![false; self.adjacency_list.len()];
         // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new();

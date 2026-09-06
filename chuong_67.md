@@ -299,14 +299,14 @@ impl<const N: usize> IntoRecordDich<N> {
     pub fn new() -> Self { IntoRecordDich { o: [FlipFlopD::new(); N] } }
     pub fn set_lai(&mut self) { for f in self.o.iter_mut() { f.set_lai(); } }
     /// Đẩy 1 bit vào đầu, bit ở cuối rơi ra. Toàn bộ N flip-flop cập nhật
-    /// ĐỒNG THỜI trong một owner kỳ — không có vòng lặp nào chạy trên chip.
+    /// ĐỒNG THỜI trong một chu kỳ — không có vòng lặp nào chạy trên chip.
     ///
     /// Chú ý vòng lặp chạy NGƯỢC (`(1..N).rev()`): phải chép từ cuối về đầu,
     /// nếu không giá trị mới của o[i-1] sẽ đè lên giá trị cũ mà o[i] cần đọc.
     /// Lỗi này khiến cả thanh ghi biến thành một flip-flop duy nhất.
     ///
     /// Đầu ra được lấy SAU sườn xung — đúng như Q của flip-flop cuối đổi
-    /// giá trị ngay tại sườn. Đọc trước sườn sẽ trễ một owner kỳ; đây là lỗi
+    /// giá trị ngay tại sườn. Đọc trước sườn sẽ trễ một chu kỳ; đây là lỗi
     /// lệch-một kinh điển khi viết mô phỏng HDL.
     pub fn suon_len(&mut self, input: Signal) -> Signal {
         for i in (1..N).rev() {
@@ -371,19 +371,19 @@ impl LedController {
 pub struct PipelineResult {
     pub output: Vec<u32>,
     pub num_period: usize,
-    /// Độ trễ: bao nhiêu owner kỳ từ lúc nạp đến lúc có kết quả ĐẦU TIÊN.
+    /// Độ trễ: bao nhiêu chu kỳ từ lúc nạp đến lúc có kết quả ĐẦU TIÊN.
     pub latency: usize,
 }
 
 /// Không đường ống: mỗi phần tử phải đi hết `so_tang` giai đoạn rồi mới
-/// nạp phần tử kế. Thông lượng = 1 kết quả / `so_tang` owner kỳ.
+/// nạp phần tử kế. Thông lượng = 1 kết quả / `so_tang` chu kỳ.
 pub fn handle_without_pipeline(input: &[u32], so_tang: usize, f: impl Fn(u32) -> u32) -> PipelineResult {
     let output: Vec<u32> = input.iter().map(|&x| f(x)).collect();
     PipelineResult { num_period: input.len() * so_tang, latency: so_tang, output }
 }
 
 /// Có đường ống: mỗi tầng có thanh ghi riêng, nên `so_tang` phần tử được xử lý
-/// ĐỒNG THỜI ở các giai đoạn khác nhau. Sau khi ống đầy: 1 kết quả MỖI owner kỳ.
+/// ĐỒNG THỜI ở các giai đoạn khác nhau. Sau khi ống đầy: 1 kết quả MỖI chu kỳ.
 pub fn handle_with_pipeline(input: &[u32], so_tang: usize, f: impl Fn(u32) -> u32) -> PipelineResult {
     let mut tang: Vec<Option<u32>> = vec![None; so_tang];
     let mut output = Vec::new();
@@ -426,7 +426,7 @@ impl Circuit {
     pub fn new() -> Self { Circuit { nut: Vec::new() } }
     pub fn them(&mut self, n: Nut) -> usize { self.nut.push(n); self.nut.len() - 1 }
 
-    /// Mô phỏng: vì netlist là đồ thị không owner trình, tính lần lượt theo
+    /// Mô phỏng: vì netlist là đồ thị không chu trình, tính lần lượt theo
     /// thứ tự thêm vào là đủ — đó chính là "sắp xếp tô-pô" miễn phí.
     pub fn open_bucket(&self, input: &HashMap<String, Signal>) -> Vec<Signal> {
         let mut gt = vec![Signal::KhongXacDinh; self.nut.len()];
@@ -487,9 +487,9 @@ fn main() {
     for v in [true, false, true, true] {
         print!("{:?} ", tg.suon_len(Signal::from_bool(v)));
     }
-    println!("\n   Nội dung sau 4 owner kỳ: {:?}", tg.doc());
+    println!("\n   Nội dung sau 4 chu kỳ: {:?}", tg.doc());
 
-    println!("\n4. MÁY TRẠNG THÁI ĐÈN GIAO THÔNG (mỗi ký tự = 1 owner kỳ nhịp)");
+    println!("\n4. MÁY TRẠNG THÁI ĐÈN GIAO THÔNG (mỗi ký tự = 1 chu kỳ nhịp)");
     let mut den = LedController::new();
     let series: String = (0..24).map(|_| match den.suon_len() {
         TrafficLight::Do => 'Đ', TrafficLight::DoVang => 'v',
@@ -502,8 +502,8 @@ fn main() {
     let input: Vec<u32> = (0..100).collect();
     let no = handle_without_pipeline(&input, 5, |x| x * x);
     let co = handle_with_pipeline(&input, 5, |x| x * x);
-    println!("   Không ống: {} owner kỳ (độ trễ {})", no.num_period, no.latency);
-    println!("   Có ống   : {} owner kỳ (độ trễ {}) → nhanh gấp {:.1}×",
+    println!("   Không ống: {} chu kỳ (độ trễ {})", no.num_period, no.latency);
+    println!("   Có ống   : {} chu kỳ (độ trễ {}) → nhanh gấp {:.1}×",
              co.num_period, co.latency, no.num_period as f64 / co.num_period as f64);
     println!("   → Độ trễ KHÔNG giảm; chỉ THÔNG LƯỢNG tăng. Hai đại lượng khác nhau.");
 
@@ -640,12 +640,12 @@ mod tests {
     fn shift_register_delays_by_n_cycles() {
         let mut tg: IntoRecordDich<4> = IntoRecordDich::new();
         tg.set_lai();
-        // Bit đầu tiên phải mất ĐÚNG N = 4 owner kỳ mới ra tới đầu kia.
+        // Bit đầu tiên phải mất ĐÚNG N = 4 chu kỳ mới ra tới đầu kia.
         // Đây chính là độ trễ của thanh ghi dịch — nền của SPI và UART.
         assert_eq!(tg.suon_len(Cao), Thap);
         assert_eq!(tg.suon_len(Thap), Thap);
         assert_eq!(tg.suon_len(Thap), Thap);
-        assert_eq!(tg.suon_len(Thap), Cao, "bit '1' xuất hiện đúng ở owner kỳ thứ 4");
+        assert_eq!(tg.suon_len(Thap), Cao, "bit '1' xuất hiện đúng ở chu kỳ thứ 4");
         assert_eq!(tg.suon_len(Thap), Thap, "sau đó ống rỗng trở lại");
     }
 
@@ -667,7 +667,7 @@ mod tests {
         let tong: u32 = d.time_amount.iter().map(|&x| x as u32).sum();
         let one_round: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
         let round_two: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
-        assert_eq!(one_round, round_two, "máy trạng thái phải tuần hoàn đúng owner kỳ");
+        assert_eq!(one_round, round_two, "máy trạng thái phải tuần hoàn đúng chu kỳ");
         // và ghé qua đủ cả 4 trạng thái
         for tt in [TrafficLight::Do, TrafficLight::DoVang, TrafficLight::Xanh, TrafficLight::Vang] {
             assert!(one_round.contains(&tt), "thiếu trạng thái {:?}", tt);
@@ -688,9 +688,9 @@ mod tests {
     fn pipeline_reaches_one_result_per_cycle() {
         let input: Vec<u32> = (0..100).collect();
         let co = handle_with_pipeline(&input, 5, |x| x + 1);
-        // 100 phần tử + 5 owner kỳ đổ đầy ống ≈ 105, chứ không phải 500
+        // 100 phần tử + 5 chu kỳ đổ đầy ống ≈ 105, chứ không phải 500
         assert!(co.num_period <= input.len() + 5,
-                "sau khi đầy ống phải ra 1 kết quả/owner kỳ, thực tế {} owner kỳ", co.num_period);
+                "sau khi đầy ống phải ra 1 kết quả/chu kỳ, thực tế {} chu kỳ", co.num_period);
     }
 
     #[test]
@@ -797,7 +797,7 @@ Hệ sinh thái Rust cho phần cứng số hiện nay:
 1. **Phần mềm song song theo thời gian; phần cứng song song theo không gian.** `for i in 0..8` trong HDL nghĩa là *dựng 8 bản sao mạch*, không phải *lặp 8 lần*.
 2. **Độ trễ và thông lượng là hai đại lượng khác nhau.** Đường ống tăng thông lượng mà **không** giảm độ trễ. Nhầm hai thứ này là hiểu sai mọi kiến trúc CPU hiện đại.
 3. **Cùng chức năng, vô số kiến trúc.** Bộ cộng nối tiếp và nhìn trước cho cùng đáp số; khác nhau ở diện tích và tốc độ. Kỹ sư phần cứng làm việc trên đường cong đánh đổi đó.
-4. **Đường tới hạn quyết định tần số tối đa.** Muốn chip chạy nhanh hơn: rút ngắn chuỗi cổng dài nhất, thường bằng cách chèn thêm tầng thanh ghi.
+4. **Đường tới hạn (Critical path) quyết định tần số tối đa.** Muốn chip chạy nhanh hơn: rút ngắn chuỗi cổng dài nhất, thường bằng cách chèn thêm tầng thanh ghi.
 5. **Mọi flip-flop cập nhật đồng thời.** Mô phỏng phải chép ngược từ cuối về đầu, nếu không cả thanh ghi dịch thành một flip-flop.
 
 ### Bài tập rèn luyện tự giải

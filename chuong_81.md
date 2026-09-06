@@ -117,7 +117,7 @@ Nhân ma trận ngây thơ trên GPU bị chặn bởi **băng thông bộ nhớ
 
 Chia lát (tiling) sửa điều đó: nạp một lát `T×T` vào bộ nhớ chia sẻ, rồi mỗi giá trị được dùng `T` lần.
 
-**Cường độ số học** tăng từ khoảng 1 phép/8 byte lên `T/2` phép/8 byte. Với T = 32, đó là gấp 16 lần — đủ để chuyển từ "bị chặn bởi bộ nhớ" sang "bị chặn bởi sức tính", tức là dùng hết khả năng của GPU.
+**Cường độ số học (Arithmetic intensity)** tăng từ khoảng 1 phép/8 byte lên `T/2` phép/8 byte. Với T = 32, đó là gấp 16 lần — đủ để chuyển từ "bị chặn bởi bộ nhớ" sang "bị chặn bởi sức tính", tức là dùng hết khả năng của GPU.
 
 ### 5. Mức chiếm dụng: nhiều warp để che giấu độ trễ
 
@@ -125,7 +125,7 @@ GPU giấu độ trễ bộ nhớ bằng cách **chuyển sang warp khác** khi 
 
 Mức chiếm dụng bị giới hạn bởi ba tài nguyên:
 - **Thanh ghi**: mỗi SM có ngân sách thanh ghi cố định. Nhân dùng nhiều thanh ghi → ít warp hơn.
-- **Bộ nhớ chia sẻ**: cùng logic.
+- **Bộ nhớ chia sẻ (Shared memory)**: cùng logic.
 - **Số warp tối đa** của phần cứng.
 
 Một điểm phản trực giác: **mức chiếm dụng cao không phải lúc nào cũng tốt**. Một nhân dùng nhiều thanh ghi (mức chiếm dụng thấp) nhưng có nhiều ILP có thể nhanh hơn một nhân mức chiếm dụng 100% mà chuỗi phụ thuộc dài. Đây là kết luận nổi tiếng từ nghiên cứu của Volkov về "hiệu năng thấp ở mức chiếm dụng thấp là một huyền thoại".
@@ -879,7 +879,7 @@ mod tests {
 
 1. **GPU là SIMT, không phải nhiều CPU nhỏ.** 32 luồng trong warp chạy cùng một lệnh, không có ngoại lệ.
 2. **Phân kỳ warp chậm theo số nhánh.** Viết điều kiện sao cho đồng nhất trong warp.
-3. **Gộp truy cập là yếu tố hiệu năng số một.** Không gộp là chậm 32 lần, và đó thường là lỗi duy nhất.
+3. **Gộp truy cập (Memory coalescing) là yếu tố hiệu năng số một.** Không gộp là chậm 32 lần, và đó thường là lỗi duy nhất.
 4. **Mẹo đệm +1 xoá xung đột ngân hàng** — một phần tử thừa đổi lấy 32 lần tốc độ.
 5. **Chia lát tăng cường độ số học** từ "bị chặn bởi bộ nhớ" lên "bị chặn bởi sức tính" — đó là toàn bộ mục tiêu.
 

@@ -7,7 +7,7 @@ Chương cuối của bộ ba OpenAlgo, và cũng là chương cuối của toà
 Kết quả nổi bật của chương này là một thí nghiệm số cho thấy vì sao **tương quan cao không đủ để giao dịch cặp**:
 
 ```
-cặp                       tương quan     hệ số kéo về     nửa owner kỳ
+cặp                       tương quan     hệ số kéo về     nửa chu kỳ
 đồng liên kết thật            0,9893          −0,1907           3,6
 chỉ tương quan cao            0,9772          −0,0198          35,0
 ```
@@ -40,12 +40,12 @@ Hai cặp có tương quan gần như bằng nhau (0,989 so với 0,977). Nhưng
 │                                                                              │
 │    chênh lệch                                                                │
 │       │╲                                                                     │
-│       │ ╲___                nửa owner kỳ 3,6 phiên → giao dịch được           │
+│       │ ╲___                nửa chu kỳ 3,6 phiên → giao dịch được           │
 │       │     ╲______                                                          │
 │    0  ├───────────────────                                                  │
 │                                                                              │
 │       │╲                                                                     │
-│       │ ╲                   nửa owner kỳ 35 phiên → vốn bị kẹt quá lâu        │
+│       │ ╲                   nửa chu kỳ 35 phiên → vốn bị kẹt quá lâu        │
 │       │  ╲╲                                                                  │
 │    0  ├────╲╲╲╲╲___________                                                 │
 │                                                                              │
@@ -80,7 +80,7 @@ Giao dịch cặp đặt cược rằng chênh lệch giữa hai tài sản sẽ
 
 Tương quan đo **đồng chuyển động của lợi suất**: hai chuỗi có xu hướng cùng tăng cùng giảm. Nhưng hai chuỗi ngẫu nhiên đều có xu hướng đi lên vẫn cho tương quan cao mà chênh lệch của chúng đi lang thang không giới hạn.
 
-Đồng liên kết đo **tính dừng của phần dư**. Đó mới là điều kiện cần cho giao dịch cặp.
+Đồng liên kết (Cointegration) đo **tính dừng của phần dư**. Đó mới là điều kiện cần cho giao dịch cặp.
 
 Kiểm định thực hiện bằng hai bước:
 1. Hồi quy `y` theo `x` để tìm tỉ lệ phòng vệ.
@@ -90,9 +90,9 @@ Từ hệ số đó suy ra **nửa chu kỳ**: `ln(2) / |λ|`. Đây là con s�
 
 ### 2. Kalman: tỉ lệ phòng vệ thay đổi theo thời gian
 
-Hồi quy tuyến tính cho một tỉ lệ phòng vệ **cố định**. Nhưng quan hệ giữa hai tài sản thay đổi theo thời gian — thay đổi cơ cấu ngành, thay đổi thanh khoản, thay đổi vốn hoá.
+Hồi quy tuyến tính (Linear regression) cho một tỉ lệ phòng vệ **cố định**. Nhưng quan hệ giữa hai tài sản thay đổi theo thời gian — thay đổi cơ cấu ngành, thay đổi thanh khoản, thay đổi vốn hoá.
 
-Cửa sổ trượt là cách chữa thô: chọn cửa sổ ngắn thì nhiễu, chọn dài thì chậm phản ứng.
+Cửa sổ trượt (Sliding window) là cách chữa thô: chọn cửa sổ ngắn thì nhiễu, chọn dài thì chậm phản ứng.
 
 Kalman làm điều đó một cách có nguyên tắc. Nó duy trì cả **ước lượng** lẫn **độ bất định** của ước lượng, và cập nhật cả hai theo quy tắc Bayes. Khi phép đo mâu thuẫn với dự đoán, độ bất định tăng, và bộ lọc tự động tin phép đo hơn.
 
@@ -104,7 +104,7 @@ Hai tham số cần chọn: nhiễu quá trình `Q` (tham số thay đổi nhanh
 
 Nhưng nó **không nói** 5% đó tệ đến đâu. Hai danh mục có cùng VaR có thể có mức lỗ thảm hoạ khác nhau hàng chục lần.
 
-**Thiếu hụt kỳ vọng** (còn gọi là VaR có điều kiện) trả lời câu hỏi đúng: "trong 5% ngày tệ nhất, trung bình lỗ bao nhiêu?"
+**Thiếu hụt kỳ vọng (Expected Shortfall)** (còn gọi là VaR có điều kiện) trả lời câu hỏi đúng: "trong 5% ngày tệ nhất, trung bình lỗ bao nhiêu?"
 
 Có một lý do toán học sâu hơn để ưa ES: nó là **thước đo rủi ro nhất quán**, còn VaR thì không. Cụ thể, VaR vi phạm **tính dưới cộng tính** — VaR của danh mục gộp có thể lớn hơn tổng VaR của các phần. Điều đó vô lý về mặt kinh tế (đa dạng hoá không thể làm tăng rủi ro), và nó là lý do Basel III chuyển từ VaR sang ES.
 
@@ -117,7 +117,7 @@ Chương này chứng minh điều đó bằng thí nghiệm: sinh nhiễu tất
 *(Ghi chú kỹ thuật: bản đầu của thí nghiệm này dùng số học modulo để sinh nhiễu, và các giá trị bị co cụm khiến việc chọn max không thể hiện được hiện tượng quá khớp. Đã thay bằng hàm băm splitmix64 để phân phối đều thật sự.)*
 
 Ba phòng vệ, theo thứ tự sức mạnh:
-- **Kiểm định tiến**: kiểm trên dữ liệu chưa từng dùng để chọn tham số.
+- **Kiểm định tiến (Walk-forward validation)**: kiểm trên dữ liệu chưa từng dùng để chọn tham số.
 - **Ít tham số hơn**: mỗi tham số thêm vào là một bậc tự do để quá khớp.
 - **Có giả thuyết kinh tế trước**: nếu bạn không giải thích được **vì sao** chiến lược nên hoạt động, có lẽ nó không hoạt động.
 
@@ -239,7 +239,7 @@ pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
 pub struct KetQuaDongLienKet {
     /// Hệ số kéo về. Càng âm càng quay về trung bình nhanh.
     pub reversion_coef: f64,
-    /// Nửa owner kỳ: bao nhiêu bước để chênh lệch co lại một nửa.
+    /// Nửa chu kỳ: bao nhiêu bước để chênh lệch co lại một nửa.
     pub half_life: f64,
     pub has_cointegration: bool,
 }
@@ -252,7 +252,7 @@ pub fn cointegration_test(spread: &[f64], threshold: f64)
     let de: Vec<f64> = spread.windows(2).map(|w| w[1] - w[0]).collect();
     let hq = regression(&e, &de)?;
     let lambda = hq.beta;
-    // Chênh lệch co lại theo e^(λt); nửa owner kỳ là khi e^(λt) = 1/2
+    // Chênh lệch co lại theo e^(λt); nửa chu kỳ là khi e^(λt) = 1/2
     let half = if lambda < -1e-12 { (0.5f64).ln() / lambda } else { f64::INFINITY };
     Some(KetQuaDongLienKet {
         reversion_coef: lambda,
@@ -513,7 +513,7 @@ fn main() {
     println!("\n2. TƯƠNG QUAN CAO KHÔNG BẰNG ĐỒNG LIÊN KẾT");
     let (c, d) = gen_cap_price_cointegration(1_000, 7);
     println!("   {:<24} {:>12} {:>16} {:>14}",
-             "cặp", "tương quan", "hệ số kéo về", "nửa owner kỳ");
+             "cặp", "tương quan", "hệ số kéo về", "nửa chu kỳ");
     for (name, x, y) in [("đồng liên kết thật", &a, &b),
                         ("chỉ tương quan cao", &c, &d)] {
         let h = regression(x, y).unwrap();
@@ -691,7 +691,7 @@ mod tests {
         assert!(k.has_cointegration, "hệ số kéo về {:.4} phải đủ âm", k.reversion_coef);
         assert!(k.reversion_coef < 0.0);
         assert!(k.half_life.is_finite() && k.half_life > 0.0,
-                "nửa owner kỳ {:.2} phải hữu hạn và dương", k.half_life);
+                "nửa chu kỳ {:.2} phải hữu hạn và dương", k.half_life);
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod tests {
         let a = cointegration_test(&gen_spread(0.5), -0.05).unwrap();
         let b = cointegration_test(&gen_spread(0.95), -0.05).unwrap();
         assert!(a.half_life < b.half_life,
-                "kéo mạnh nửa owner kỳ {:.2} phải ngắn hơn kéo yếu {:.2}",
+                "kéo mạnh nửa chu kỳ {:.2} phải ngắn hơn kéo yếu {:.2}",
                 a.half_life, b.half_life);
     }
 
@@ -949,10 +949,10 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **Tương quan không đủ; đồng liên kết mới là điều kiện đúng** cho giao dịch cặp — và thí nghiệm trong chương chứng minh khác biệt gấp 10 lần về nửa chu kỳ.
-2. **Nửa chu kỳ là con số quan trọng nhất**: nó cho biết vốn bị kẹt bao lâu.
+2. **Nửa chu kỳ (Half-life) là con số quan trọng nhất**: nó cho biết vốn bị kẹt bao lâu.
 3. **Kalman thay tham số cố định bằng tham số thích ứng có nguyên tắc** — trọng số tự điều chỉnh theo độ tin cậy tương đối.
 4. **Thiếu hụt kỳ vọng trả lời câu hỏi đúng; VaR thì không** — và VaR còn vi phạm tính dưới cộng tính.
-5. **Quá khớp là toán học, không phải xui xẻo.** Kiểm định tiến là phòng vệ mạnh nhất, và giả thuyết kinh tế trước là phòng vệ tốt thứ hai.
+5. **Quá khớp (Overfitting) là toán học, không phải xui xẻo.** Kiểm định tiến là phòng vệ mạnh nhất, và giả thuyết kinh tế trước là phòng vệ tốt thứ hai.
 
 ### Bài tập rèn luyện
 
@@ -1023,7 +1023,7 @@ Cảnh báo quan trọng: quét thô trên nhiều tham số **chính là** côn
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Danh mục 60/40 truyền thống trông cân bằng theo **vốn**, nhưng cổ phiếu biến động gấp khoảng ba lần trái phiếu, nên thực chất hơn 90% **rủi ro** đến từ cổ phiếu. Ngang bằng rủi ro cân bằng theo đóng góp rủi ro thay vì theo vốn — và đó là cơ sở của các quỹ như Bridgewater All Weather.
+Danh mục 60/40 truyền thống trông cân bằng theo **vốn**, nhưng cổ phiếu biến động gấp khoảng ba lần trái phiếu, nên thực chất hơn 90% **rủi ro** đến từ cổ phiếu. Ngang bằng rủi ro (Risk parity) cân bằng theo đóng góp rủi ro thay vì theo vốn — và đó là cơ sở của các quỹ như Bridgewater All Weather.
 </details>
 
 <details>

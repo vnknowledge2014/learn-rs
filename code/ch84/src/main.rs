@@ -375,7 +375,7 @@ fn main() {
     println!("\n2. TƯƠNG QUAN CAO KHÔNG BẰNG ĐỒNG LIÊN KẾT");
     let (c, d) = gen_cap_price_cointegration(1_000, 7);
     println!("   {:<24} {:>12} {:>16} {:>14}",
-             "cặp", "tương quan", "hệ số kéo về", "nửa owner kỳ");
+             "cặp", "tương quan", "hệ số kéo về", "nửa chu kỳ");
     for (name, x, y) in [("đồng liên kết thật", &a, &b),
                         ("chỉ tương quan cao", &c, &d)] {
         let h = regression(x, y).unwrap();
@@ -553,7 +553,7 @@ mod tests {
         assert!(k.has_cointegration, "hệ số kéo về {:.4} phải đủ âm", k.reversion_coef);
         assert!(k.reversion_coef < 0.0);
         assert!(k.half_life.is_finite() && k.half_life > 0.0,
-                "nửa owner kỳ {:.2} phải hữu hạn và dương", k.half_life);
+                "nửa chu kỳ {:.2} phải hữu hạn và dương", k.half_life);
     }
 
     #[test]
@@ -586,7 +586,7 @@ mod tests {
         let a = cointegration_test(&gen_spread(0.5), -0.05).unwrap();
         let b = cointegration_test(&gen_spread(0.95), -0.05).unwrap();
         assert!(a.half_life < b.half_life,
-                "kéo mạnh nửa owner kỳ {:.2} phải ngắn hơn kéo yếu {:.2}",
+                "kéo mạnh nửa chu kỳ {:.2} phải ngắn hơn kéo yếu {:.2}",
                 a.half_life, b.half_life);
     }
 

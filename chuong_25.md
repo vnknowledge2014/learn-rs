@@ -257,7 +257,7 @@ Khi lập trình các thuật toán tìm kiếm và đo đạc độ phức tạ
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0382** | `use of moved value: '...'` | Bạn truyền một `Vec` lớn vào hàm giải thuật bằng giá trị (by value) thay vì mượn tham chiếu `&[T]`. Quyền sở hữu đã bị chuyển đi, khiến biến gốc không dùng lại được. | Đổi chữ ký hàm nhận lát cắt tham chiếu `&[T]` thay vì sở hữu `Vec<T>`. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`trai`, `phai`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut trai = 0;`. |
+| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`left`, `right`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut left = 0;`. |
 | **E0308** | `mismatched types: expected 'usize', found 'i32'` | Chỉ số mảng trong Rust luôn mang kiểu số nguyên không dấu `usize`. Việc dùng kiểu `i32` làm chỉ số truy cập sẽ bị trình biên dịch từ chối ngay lập tức. | Chuyển đổi kiểu tường minh bằng từ khóa `as usize` hoặc khai báo biến chỉ số ngay từ đầu là `usize`. |
 | **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến `&list` để lặp, vừa gọi phương thức làm biến đổi danh sách (như `.push()`) trong cùng một phạm vi. | Tách rời thao tác đọc và thao tác ghi thành hai bước độc lập để tôn trọng quy tắc mượn của Rust. |
 

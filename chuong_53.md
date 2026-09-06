@@ -76,7 +76,7 @@ Trong chương này, chúng ta sẽ chinh phục:
            /        \
           /__________\
 Tính Sẵn sàng       Tính Chịu Phân Rã
-(Availability)      (Partition Tolerance)
+(Partition Tolerance)
 ```
 
 - **Tính Nhất quán (Consistency - C)**: Mọi thao tác đọc đều nhận được dữ liệu của lần ghi mới nhất hoặc trả về lỗi. Tuyệt đối không bao giờ trả về dữ liệu cũ đã lỗi thời.

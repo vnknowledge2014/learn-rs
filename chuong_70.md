@@ -1000,7 +1000,7 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **Blockchain không có công nghệ mới.** Nó ghép bốn ý tưởng có sẵn từ thập niên 1970–90; đóng góp thật nằm ở động cơ khuyến khích.
-2. **Bằng chứng công việc dựa trên bất đối xứng**: tìm tốn hàng triệu lần thử, kiểm tra tốn một phép băm.
+2. **Bằng chứng công việc (Proof of Work) dựa trên bất đối xứng**: tìm tốn hàng triệu lần thử, kiểm tra tốn một phép băm.
 3. **Bằng chứng Merkle chỉ cần log₂(n) giá trị băm.** Đó là lý do ví nhẹ tồn tại được.
 4. **UTXO làm việc kiểm tra tiêu hai lần trở nên tầm thường** — chỉ cần tra một tập hợp.
 5. **Chọn nhánh theo tổng công việc, không theo chiều dài.** Và giao dịch trên nhánh thua sẽ biến mất — đó là lý do phải chờ xác nhận.
@@ -1040,7 +1040,7 @@ impl Chain {
         let mong_muon = period * giay_moi_khoi_mong_muon;
 
         // Chặn ở ×4 và ÷4 — nếu không, kẻ tấn công khai gian dấu thời gian
-        // có thể kéo độ khó xuống đất chỉ trong một owner kỳ.
+        // có thể kéo độ khó xuống đất chỉ trong một chu kỳ.
         let ratio = (actual as f64 / mong_muon as f64).clamp(0.25, 4.0);
         // Nhanh gấp đôi → cần thêm 1 bit độ khó
         let dieu_chinh = -(ratio.log2()).round() as i64;
@@ -1057,7 +1057,7 @@ Chú ý phép `clamp(0.25, 4.0)`: không có nó, một thợ đào khai dấu t
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Ví nhẹ chỉ tải **phần đầu khối** (80 byte mỗi khối) và kiểm hai điều: (a) phần đầu đạt độ khó, (b) bằng chứng Merkle dẫn từ giao dịch lên đúng gốc trong phần đầu đó.
+Ví nhẹ (Light client) chỉ tải **phần đầu khối** (80 byte mỗi khối) và kiểm hai điều: (a) phần đầu đạt độ khó, (b) bằng chứng Merkle dẫn từ giao dịch lên đúng gốc trong phần đầu đó.
 
 Điểm yếu cần nêu rõ: ví nhẹ tin rằng chuỗi nhiều công việc nhất là chuỗi trung thực. Nó **không** tự kiểm chứng được luật giao dịch — ví dụ nó không biết một khối có tự thưởng quá mức hay không.
 </details>

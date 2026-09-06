@@ -86,7 +86,7 @@ Solana giao toàn bộ việc kiểm tra cho lập trình viên. Bốn lỗi kin
 1. **Thiếu kiểm `is_signer`.** Không có nó, bất kỳ ai cũng đưa tài khoản của người khác vào giao dịch và rút tiền. Đây là lỗ hổng phổ biến nhất.
 2. **Thiếu kiểm `owner`.** Kẻ gian tạo một tài khoản có cùng bố cục dữ liệu nhưng do chương trình của họ sở hữu, rồi đưa vào — chương trình của bạn đọc dữ liệu giả mà tưởng thật.
 3. **Thiếu kiểm `is_writable`.** Ghi vào tài khoản chỉ-đọc sẽ thất bại ở tầng runtime, nhưng phát hiện sớm cho thông báo lỗi rõ hơn.
-4. **Nhầm lẫn kiểu tài khoản.** Hai kiểu tài khoản khác nhau cùng kích thước → cần một byte định danh (discriminator) ở đầu dữ liệu. Anchor tự thêm 8 byte cho việc này.
+4. **Nhầm lẫn kiểu tài khoản (Account type confusion).** Hai kiểu tài khoản khác nhau cùng kích thước → cần một byte định danh (discriminator) ở đầu dữ liệu. Anchor tự thêm 8 byte cho việc này.
 
 ### 3. PDA — địa chỉ không có khoá riêng
 
@@ -962,7 +962,7 @@ Cần một map `(chủ, người được uỷ quyền) → hạn mức`. Chú 
 <summary><b>Lời giải</b></summary>
 
 ```rust
-// `key_allowance(owner, duoc)` đã có sẵn trong `TokenCw20` — ta chỉ thêm
+// `key_allowance(chu, duoc)` đã có sẵn trong `TokenCw20` — ta chỉ thêm
 // ba thao tác mới lên cùng lược đồ khoá đó.
 impl TokenCw20 {
     pub fn tang_han_muc(store: &mut Store, owner: &str, can: &str, them: Money)

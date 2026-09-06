@@ -471,7 +471,7 @@ mod tests {
         let mut g = WaitForGraph::new();
         g.them_cho(1, 2);
         g.them_cho(2, 3);
-        g.them_cho(1, 3); // vẫn không có owner trình
+        g.them_cho(1, 3); // vẫn không có chu trình
         assert_eq!(g.has_deadlock(), None);
     }
 

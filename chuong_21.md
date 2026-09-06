@@ -110,7 +110,7 @@ macro_rules! ten_macro {
 
 ### 3. Bảng tra cứu các Bộ khớp cú pháp (Syntax Designators)
 
-Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Designator)**:
+Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu đô la `$`, theo sau là tên định danh và **Bộ chỉ định cú pháp (Syntax designator)**:
 
 | Bộ chỉ định | Tên tiếng Anh | Ý nghĩa trong cú pháp Rust | Ví dụ thực tế |
 |---|---|---|---|

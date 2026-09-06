@@ -869,7 +869,7 @@ mod tests {
 ### 5 điểm cốt lõi
 
 1. **Keccak ≠ SHA-3, khác đúng một byte đệm.** Và sai thì không nhìn ra được — phải đối chiếu với giá trị chuẩn bên ngoài.
-2. **Chữ ký hàm chỉ 4 byte nên có thể va chạm.** Không dùng selector làm ranh giới bảo mật.
+2. **Chữ ký hàm (Function selector) chỉ 4 byte nên có thể va chạm.** Không dùng selector làm ranh giới bảo mật.
 3. **ABI chia đầu/đuôi**; offset tính từ đầu vùng tham số, sau selector.
 4. **RLP đòi mã hoá tối giản** để bảo đảm băm giao dịch là duy nhất.
 5. **EIP-1559 biến đấu giá mù thành giá công khai** — phí cơ sở bị đốt, chỉ tiền bo về tay người xác thực.
