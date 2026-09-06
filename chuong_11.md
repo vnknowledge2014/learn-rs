@@ -118,22 +118,22 @@ Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu
 >
 > ```rust
 > #[derive(Debug)]
-> enum LoiUngDung {
+> enum AppError {
 >     DocTep(std::io::Error),
 >     PhanTichSo(std::num::ParseIntError),
 > }
 >
 > // Hai cây cầu cho `?` đi qua:
-> impl From<std::io::Error> for LoiUngDung {
->     fn from(e: std::io::Error) -> Self { LoiUngDung::DocTep(e) }
+> impl From<std::io::Error> for AppError {
+>     fn from(e: std::io::Error) -> Self { AppError::DocTep(e) }
 > }
-> impl From<std::num::ParseIntError> for LoiUngDung {
->     fn from(e: std::num::ParseIntError) -> Self { LoiUngDung::PhanTichSo(e) }
+> impl From<std::num::ParseIntError> for AppError {
+>     fn from(e: std::num::ParseIntError) -> Self { AppError::PhanTichSo(e) }
 > }
 >
-> fn doc_cau_hinh(path: &str) -> Result<u16, LoiUngDung> {
->     let content = std::fs::read_to_string(path)?;  // io::Error  -> LoiUngDung
->     let gate: u16 = content.trim().parse()?;            // ParseIntError -> LoiUngDung
+> fn read_config(path: &str) -> Result<u16, AppError> {
+>     let content = std::fs::read_to_string(path)?;  // io::Error  -> AppError
+>     let gate: u16 = content.trim().parse()?;            // ParseIntError -> AppError
 >     Ok(gate)
 > }
 > ```
@@ -141,7 +141,7 @@ Toán tử `?` chỉ được phép sử dụng bên trong một hàm có kiểu
 > Nếu chưa có `impl From<...>`, trình biên dịch sẽ báo lỗi *"`?` couldn't convert the error"*. Khi đó bạn có hai lựa chọn: cài `From`, hoặc chuyển thủ công ngay tại chỗ bằng **`.map_err(...)`** trước dấu `?`:
 >
 > ```rust
-> let gate: u16 = content.trim().parse().map_err(LoiUngDung::PhanTichSo)?;
+> let gate: u16 = content.trim().parse().map_err(AppError::PhanTichSo)?;
 > ```
 >
 > Chúng ta sẽ gặp lại `map_err` ở **Chương 17** dưới cái tên "bẻ ghi sang đường ray thất bại", và ở **Chương 19** với tên chính thức của nó: *Bifunctor*.
@@ -159,18 +159,18 @@ Chương trình dưới đây mô phỏng một hệ thống đọc tệp cấu 
 // 1. Tự định nghĩa kiểu Lỗi Nghiệp Vụ Tùy Biến (Custom Error Type) bằng Enum
 #[derive(Debug)]
 enum MathError {
-    SoTienKhongHopLe(String),
-    TaiKhoanBiKhoa,
-    SoDuKhongDu { balance: f64, can_rut: f64 },
+    InvalidAmount(String),
+    AccountLocked,
+    InsufficientBalance { balance: f64, can_rut: f64 },
 }
 
 // Cài đặt khả năng in ấn đẹp mắt cho kiểu lỗi của chúng ta
 impl std::fmt::Display for MathError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            MathError::SoTienKhongHopLe(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
-            MathError::TaiKhoanBiKhoa => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
-            MathError::SoDuKhongDu { balance, can_rut } => {
+            MathError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
+            MathError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
+            MathError::InsufficientBalance { balance, can_rut } => {
                 write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
             }
         }
@@ -180,17 +180,17 @@ impl std::fmt::Display for MathError {
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
 fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
     let so_tien: f64 = input_buffer.trim().parse().map_err(|_| {
-        MathError::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
+        MathError::InvalidAmount(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
     if so_tien <= 0.0 {
-        return Err(MathError::SoTienKhongHopLe(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(MathError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
     }
 
     Ok(so_tien)
 }
 
-// 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
+// 3. Hàm thực hiện deliver dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
 fn display_trade(
     input_buffer: &str, 
     mut so_du_hien_tai: f64, 
@@ -198,7 +198,7 @@ fn display_trade(
 ) -> Result<f64, MathError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
     if !is_account_active {
-        return Err(MathError::TaiKhoanBiKhoa);
+        return Err(MathError::AccountLocked);
     }
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
@@ -207,7 +207,7 @@ fn display_trade(
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
-        return Err(MathError::SoDuKhongDu {
+        return Err(MathError::InsufficientBalance {
             balance: so_du_hien_tai,
             can_rut: so_tien_can_rut,
         });
@@ -257,7 +257,7 @@ fn main() {
     println!("\n[Kịch bản 5] Sử dụng unwrap_or để lấy giá trị mặc định an toàn:");
     let result_error: Result<f64, &str> = Err("Mất kết nối máy chủ");
     let num_tien_last_same = result_error.unwrap_or(0.0);
-    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
+    println!("- Giá trị an toàn attempt được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
 }
 ```
 
@@ -295,3 +295,118 @@ Dưới đây là các lỗi kinh điển khi sử dụng cơ chế xử lý l�
 3. **Bài tập tư duy 3**: Trong Rust, hàm `main` không chỉ trả về kiểu rỗng `()` mà còn có thể trả về một `Result`, ví dụ: `fn main() -> Result<(), std::io::Error>` hoặc `fn main() -> Result<(), String>`. Hãy trả lời hai câu hỏi sau:
    a) Lợi ích của việc cho phép hàm `main` trả về một `Result` là gì? (Gợi ý: điều này giúp chúng ta dùng toán tử `?` ngay trong `main` như thế nào thay vì phải gọi `.expect()` hay `match` liên tục?).
    b) Khi hàm `main` trả về một biến thể `Err(...)`, chương trình Rust sẽ xử lý và hiển thị thông báo lỗi ra màn hình như thế nào so với khi xảy ra `panic!`?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`Result<i32, String>`: `Ok` cho giá trị đúng, `Err` cho thông báo lỗi. Cần bắt được hai ca hỏng: không phải số, và số âm.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+// Ok(số) nếu là số nguyên KHÔNG âm; Err(thông báo) nếu không parse được hoặc âm.
+fn doc_so_tu_chuoi(s: &str) -> Result<i32, String> {
+    match s.trim().parse::<i32>() {
+        Ok(n) if n >= 0 => Ok(n),
+        Ok(_) => Err(String::from("Số không hợp lệ")),   // parse được nhưng âm
+        Err(_) => Err(String::from("Số không hợp lệ")),  // không phải chữ số
+    }
+}
+
+fn main() {
+    println!("{:?}", doc_so_tu_chuoi("42"));    // Ok(42)
+    println!("{:?}", doc_so_tu_chuoi("-5"));    // Err("Số không hợp lệ")
+    println!("{:?}", doc_so_tu_chuoi("abc"));   // Err("Số không hợp lệ")
+}
+
+#[test]
+fn phan_biet_hop_le_va_loi() {
+    assert_eq!(doc_so_tu_chuoi("42"), Ok(42));
+    assert_eq!(doc_so_tu_chuoi("0"), Ok(0));
+    assert!(doc_so_tu_chuoi("-5").is_err());     // số âm -> lỗi
+    assert!(doc_so_tu_chuoi("abc").is_err());    // không phải số -> lỗi
+    assert!(doc_so_tu_chuoi("3.14").is_err());   // không phải số nguyên -> lỗi
+}
+```
+
+Điểm hay của `Result` so với `Option`: nó không chỉ nói "hỏng", mà **mang theo lý do hỏng** trong nhánh `Err`. Ở đây ta gộp hai lý do (âm / không phải số) vào cùng một thông báo cho đơn giản, nhưng trong dự án thật bạn thường tách chúng ra (ví dụ một `enum` lỗi) để người gọi phản ứng khác nhau. `match` trên kết quả `parse` với guard `if n >= 0` là cách gọn để lọc cả hai điều kiện trong một chỗ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`.unwrap()` **sập chương trình** khi gặp `Err`. Hai cách an toàn: `unwrap_or` cấp giá trị dự phòng; `match` cho phép in thông báo thân thiện.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Cách 1 — `unwrap_or` cấp giá trị mặc định khi hỏng:**
+```text
+let s = "42";
+// Nếu parse hỏng thì dùng 0 thay vì sập. Gọn khi có sẵn giá trị dự phòng hợp lý.
+let so: i32 = s.parse().unwrap_or(0);
+println!("Số nhận được: {so}");
+```
+
+**Cách 2 — `match` để in thông báo thân thiện:**
+```text
+let s = "42";
+match s.parse::<i32>() {
+    Ok(n) => println!("Bạn đã nhập số: {n}"),
+    Err(_) => println!("Xin lỗi, '{s}' không phải là một con số hợp lệ. Vui lòng thử lại."),
+}
+```
+
+```rust
+fn kiem() {
+    let a: i32 = "42".parse().unwrap_or(0);
+    assert_eq!(a, 42);
+    let b: i32 = "xyz".parse().unwrap_or(0);
+    assert_eq!(b, 0);   // hỏng -> rơi về mặc định, KHÔNG sập
+}
+```
+
+**Vì sao `.unwrap()` nguy hiểm:** nó nói "chắc chắn là `Ok`, sai thì cho sập luôn". Với dữ liệu *người dùng nhập* — thứ bạn không kiểm soát — điều này biến một lỗi gõ nhầm thành một cú sập toàn chương trình (`panic`). Chọn giữa hai cách sửa tùy tình huống: **`unwrap_or`** khi có một giá trị dự phòng hợp lý và bạn muốn chạy tiếp im lặng; **`match`** khi cần *phản hồi* cho người dùng biết họ sai ở đâu. `.unwrap()` chỉ nên dành cho mã nháp, test, hoặc chỗ mà bạn đã *chứng minh* được không thể hỏng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`main` trả `Result` cho phép dùng toán tử `?` ngay trong `main`, và mã thoát của tiến trình phản ánh Ok/Err.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**a) Lợi ích của `fn main() -> Result<(), E>`:**
+
+Nó cho phép dùng toán tử **`?` ngay trong `main`**. So sánh:
+```text
+// KHÔNG cho main trả Result -> phải .expect() hoặc match lồng nhau, rối rắm:
+fn main() {
+    let noi_dung = std::fs::read_to_string("data.txt").expect("đọc lỗi");
+    let so: i32 = noi_dung.trim().parse().expect("parse lỗi");
+    ...
+}
+
+// Cho main trả Result -> dùng ? gọn gàng, lỗi tự lan ra ngoài:
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let noi_dung = std::fs::read_to_string("data.txt")?;  // hỏng -> trả Err ra main
+    let so: i32 = noi_dung.trim().parse()?;               // hỏng -> trả Err ra main
+    println!("{so}");
+    Ok(())
+}
+```
+Toán tử `?` nói: "nếu `Ok` thì lấy giá trị ra đi tiếp; nếu `Err` thì *trả nó ra ngay* khỏi hàm hiện tại". Nhưng `?` chỉ dùng được trong hàm *trả về* `Result` (hay `Option`). Cho `main` trả `Result` mở khóa `?` ở tầng cao nhất — nhờ đó cả chuỗi thao tác dễ hỏng viết phẳng, sạch, không lồng `match` hay rải `.expect()`.
+
+**b) Khi `main` trả về `Err(...)`:**
+
+Rust in nội dung lỗi (qua `Debug`) ra luồng lỗi chuẩn (stderr), rồi tiến trình **thoát với mã khác 0** (thường là `1`). Đây là điều quan trọng với kịch bản shell và công cụ tự động hóa: mã thoát khác 0 là quy ước phổ quát báo "chương trình thất bại". Nhờ vậy `./chuong_trinh && echo OK` sẽ *không* in OK khi `main` trả `Err` — hệ sinh thái Unix hiểu ngay chương trình đã hỏng, mà bạn không phải tự gọi `std::process::exit`.
+</details>

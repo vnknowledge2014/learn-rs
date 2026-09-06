@@ -123,7 +123,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 
 ```rust
 #![allow(dead_code)]
-//! Chương 79 — FPGA cho giao dịch: bộ xử lý luồng dữ liệu bằng phần cứng, sổ
+//! Chương 79 — FPGA cho deliver dịch: bộ xử lý luồng dữ liệu bằng phần cứng, sổ
 //! lệnh trên thanh ghi, đường ống kiểm tra rủi ro, và ngân sách tick-to-trade
 //! tính bằng CHU KỲ thay vì micro-giây.
 //!
@@ -140,7 +140,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
 // tới, người ổn định thắng người nhanh-nhưng-thất-thường.
 
-/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
+/// Chu kỳ xung nhịp của FPGA deliver dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
 
 pub fn cycles_to_ns(period: u32) -> f64 { period as f64 * NS_MOI_CHU_KY }
@@ -190,8 +190,8 @@ impl FieldExtractor {
         // Tổng kiểm tra cũng tính SONG SONG bằng cây XOR — độ sâu log(n)
         // thay vì n bước cộng dồn như phần mềm.
         let account = xor_tree(&goi[..17]) & 0x00FF_FFFF;
-        let mong_doi = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
-        if account != mong_doi {
+        let expected = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
+        if account != expected {
             self.so_goi_hong += 1;
             return Some(PacketField { is_valid: false, ..t });
         }
@@ -255,7 +255,7 @@ impl Default for OrderBookHardware {
 }
 
 impl OrderBookHardware {
-    /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
+    /// Bộ mã hoá ưu tiên: tìm mức bid có giá CAO nhất. Trên phần cứng đây là
     /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
@@ -285,13 +285,13 @@ impl OrderBookHardware {
             return;
         }
         // Đầy: thay mức TỆ NHẤT nếu mức mới tốt hơn
-        let te_nhat = if la_mua {
+        let worst = if la_mua {
             o.iter_mut().min_by_key(|m| m.price).unwrap()
         } else {
             o.iter_mut().max_by_key(|m| m.price).unwrap()
         };
-        let tot_hon = if la_mua { price > te_nhat.price } else { price < te_nhat.price };
-        if tot_hon { *te_nhat = HwPriceLevel { price, quantity }; }
+        let tot_hon = if la_mua { price > worst.price } else { price < worst.price };
+        if tot_hon { *worst = HwPriceLevel { price, quantity }; }
     }
 
     /// Độ sâu cây so sánh — quyết định tần số tối đa của mạch.
@@ -370,7 +370,7 @@ pub struct PipelineStage { pub name: String, pub period: u32 }
 pub struct HwPipeline { pub tang: Vec<PipelineStage> }
 
 impl HwPipeline {
-    /// Đường ống điển hình của một hệ thống giao dịch trên FPGA.
+    /// Đường ống điển hình của một hệ thống deliver dịch trên FPGA.
     pub fn typical() -> Self {
         HwPipeline {
             tang: vec![
@@ -419,7 +419,7 @@ pub fn software_latency_ns() -> f64 { 3_400.0 }
 // logic hay đổi thì nằm trên CPU.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExecutionUnit { PhanCung, PhanMem }
+pub enum ExecutionUnit { Hardware, PhanMem }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeavyStage {
@@ -433,7 +433,7 @@ pub struct HeavyStage {
 /// hàng chục phút, và một chiến lược không thử nghiệm được là chiến lược chết.
 pub fn partial_sum(c: &HeavyStage) -> ExecutionUnit {
     if c.on_hot_path && c.rate_swap <= 4 {
-        ExecutionUnit::PhanCung
+        ExecutionUnit::Hardware
     } else {
         ExecutionUnit::PhanMem
     }
@@ -492,23 +492,23 @@ fn main() {
     println!("     và thời gian phản hồi không tiết lộ gì về nội dung lệnh.");
 
     println!("\n5. ĐƯỜNG ỐNG TICK-TO-TRADE");
-    let ong = HwPipeline::typical();
-    for t in &ong.tang {
+    let pipeline = HwPipeline::typical();
+    for t in &pipeline.tang {
         println!("   {:<26} {} chu kỳ = {:>4.0} ns", t.name, t.period, cycles_to_ns(t.period));
     }
     println!("   ─────────────────────────────────────────");
-    println!("   Độ trễ     : {} chu kỳ = {:.0} ns", ong.latency_period(), ong.latency_nanos());
+    println!("   Độ trễ     : {} chu kỳ = {:.0} ns", pipeline.latency_period(), pipeline.latency_nanos());
     println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
-             ong.first_period_block(), ong.packets_per_second() / 1e6);
+             pipeline.first_period_block(), pipeline.packets_per_second() / 1e6);
     println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
-             software_latency_ns(), software_latency_ns() / ong.latency_nanos());
+             software_latency_ns(), software_latency_ns() / pipeline.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
-    println!("   Có ống   : {:>7} chu kỳ", ong.total_period_wait(1_000));
-    println!("   Không ống: {:>7} chu kỳ", ong.total_cycles_no_pipeline(1_000));
+    println!("   Có ống   : {:>7} chu kỳ", pipeline.total_period_wait(1_000));
+    println!("   Không ống: {:>7} chu kỳ", pipeline.total_cycles_no_pipeline(1_000));
     println!("   → Nhanh gấp {:.1} lần về THÔNG LƯỢNG, nhưng ĐỘ TRỄ vẫn y nguyên {} ns.",
-             ong.total_cycles_no_pipeline(1_000) as f64 / ong.total_period_wait(1_000) as f64,
-             ong.latency_nanos());
+             pipeline.total_cycles_no_pipeline(1_000) as f64 / pipeline.total_period_wait(1_000) as f64,
+             pipeline.latency_nanos());
 
     println!("\n7. CHIA VIỆC GIỮA PHẦN CỨNG VÀ PHẦN MỀM");
     let cn = vec![
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn the_xor_tree_matches_sequential_xor() {
         // Bất biến: song song hoá KHÔNG được đổi kết quả. XOR có tính kết hợp
-        // và giao hoán nên gộp theo cây hay theo chuỗi đều như nhau.
+        // và deliver hoán nên gộp theo cây hay theo chuỗi đều như nhau.
         for n in [0usize, 1, 2, 3, 4, 7, 16, 17, 64, 255, 256] {
             let d: Vec<u8> = (0..n).map(|i| (i * 37 % 251) as u8).collect();
             assert_eq!(xor_tree(&d), xor_tuan_tu(&d), "n={}", n);
@@ -646,7 +646,7 @@ mod tests {
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
             s.update(false, g, kl);
         }
-        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên bid lấy giá CAO nhất");
         assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
         assert_eq!(s.spread(), Some(10));
     }
@@ -831,7 +831,7 @@ mod tests {
     #[test]
     fn hot_and_stable_work_belongs_in_hardware() {
         let c = HeavyStage { name: "tách gói".into(), rate_swap: 1, on_hot_path: true };
-        assert_eq!(partial_sum(&c), ExecutionUnit::PhanCung);
+        assert_eq!(partial_sum(&c), ExecutionUnit::Hardware);
     }
 
     #[test]
@@ -899,14 +899,14 @@ mod tests {
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct BoLocTuongQuan<const N: usize> {
+pub struct CorrelationFilter<const N: usize> {
     pub he_so: [i32; N],
     /// Thanh ghi dịch giữ N mẫu gần nhất.
     count: [i32; N],
     pos_value: usize,
 }
 
-impl<const N: usize> BoLocTuongQuan<N> {
+impl<const N: usize> CorrelationFilter<N> {
     pub fn new(he_so: [i32; N]) -> Self {
         Self { he_so, count: [0; N], pos_value: 0 }
     }
@@ -918,22 +918,22 @@ impl<const N: usize> BoLocTuongQuan<N> {
         self.pos_value = (self.pos_value + 1) % N;
 
         // Tất cả N tích được tính CÙNG LÚC trên phần cứng
-        let mut tich = [0i64; N];
+        let mut products = [0i64; N];
         for i in 0..N {
             let j = (self.pos_value + i) % N;
-            tich[i] = self.count[j] as i64 * self.he_so[i] as i64;
+            products[i] = self.count[j] as i64 * self.he_so[i] as i64;
         }
-        cong_theo_cay(&tich)
+        tree_sum(&products)
     }
 
     /// N khối DSP + cây cộng. Với N=16: 16 DSP, độ sâu 4 tầng.
     pub fn tai_nguyen(&self) -> (usize, usize, usize) {
-        let do_sau = (N as f64).log2().ceil() as usize;
-        (N, N.saturating_sub(1) * 48, do_sau)   // (DSP, LUT cho cây cộng, độ sâu)
+        let depth = (N as f64).log2().ceil() as usize;
+        (N, N.saturating_sub(1) * 48, depth)   // (DSP, LUT cho cây cộng, độ sâu)
     }
 }
 
-fn cong_theo_cay(v: &[i64]) -> i64 {
+fn tree_sum(v: &[i64]) -> i64 {
     if v.len() == 1 { return v[0]; }
     let mut tang: Vec<i64> = v.chunks(2)
         .map(|c| c[0] + c.get(1).copied().unwrap_or(0)).collect();
@@ -961,29 +961,29 @@ Thời gian hằng số (Constant-time) quan trọng vì hai lý do khác nhau: 
 
 ```rust
 #[derive(Debug, Clone, Copy)]
-pub struct MachRuiRoHang {
+pub struct ConstTimeRiskCircuit {
     pub min_price: u32,
     pub max_price: u32,
     pub max_quantity: u32,
     pub max_position: i32,
 }
 
-impl MachRuiRoHang {
+impl ConstTimeRiskCircuit {
     /// KHÔNG có `if`. Mọi điều kiện tính song song rồi AND lại.
     /// Trên FPGA: 4 bộ so sánh + 1 cổng AND = ~130 LUT, độ trễ ~2 ns cố định.
     pub fn check(&self, price: u32, quantity: u32, vi_the_sau: i32) -> (bool, u8) {
         // Mỗi biến là 0 hoặc 1 — trên phần cứng là một dây
-        let g_thap = (price >= self.min_price) as u8;
-        let g_cao  = (price <= self.max_price) as u8;
+        let g_low = (price >= self.min_price) as u8;
+        let g_high  = (price <= self.max_price) as u8;
         let kl_ok  = (quantity <= self.max_quantity) as u8;
         let vt_ok  = (vi_the_sau.unsigned_abs() <= self.max_position.unsigned_abs()) as u8;
 
-        let cho_qua = g_thap & g_cao & kl_ok & vt_ok;
+        let cho_qua = g_low & g_high & kl_ok & vt_ok;
 
         // Mã lý do: bit vector, KHÔNG phải chuỗi if-else.
         // Trên phần cứng mọi bit được tính cùng lúc.
-        let ly_do = ((1 - g_thap))
-                  | ((1 - g_cao)  << 1)
+        let ly_do = ((1 - g_low))
+                  | ((1 - g_high)  << 1)
                   | ((1 - kl_ok)  << 2)
                   | ((1 - vt_ok)  << 3);
 

@@ -144,11 +144,11 @@ pub fn reverse_inverse_tai_wait(data: &mut [i32]) {
         return;
     }
     let mut left = 0;
-    let mut must = data.len() - 1;
-    while left < must {
-        data.swap(left, must);
+    let mut right = data.len() - 1;
+    while left < right {
+        data.swap(left, right);
         left += 1;
-        must -= 1;
+        right -= 1;
     }
 }
 
@@ -203,14 +203,14 @@ fn main() {
     // 3. Tối ưu hóa trước với with_capacity
     println!("\n[3] Tối ưu hóa Vector với with_capacity(100):");
     let mut vec_toi_uu: Vec<i32> = Vec::with_capacity(100);
-    let ptr_goc = vec_toi_uu.as_ptr() as usize;
+    let ptr_before = vec_toi_uu.as_ptr() as usize;
     for i in 0..100 {
         vec_toi_uu.push(i);
     }
-    let ptr_sau = vec_toi_uu.as_ptr() as usize;
+    let ptr_after = vec_toi_uu.as_ptr() as usize;
     println!("    - Sau khi nạp 100 phần tử: len = {}, cap = {}", vec_toi_uu.len(), vec_toi_uu.capacity());
-    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_goc == ptr_sau { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
-    assert_eq!(ptr_goc, ptr_sau);
+    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_before == ptr_after { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
+    assert_eq!(ptr_before, ptr_after);
 
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
@@ -260,7 +260,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 
 ```rust
 // Đoạn mã lỗi minh họa: Vi phạm an toàn bộ nhớ do vector tái cấp phát
-fn minh_hoa_loi_e0502() {
+fn e0502_broken() {
     let mut list = vec![1, 2, 3];
     // Lát cắt giu_cho đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
     // let giu_cho = &list[0]; 
@@ -273,16 +273,16 @@ fn minh_hoa_loi_e0502() {
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng xong lát cắt trước khi biến đổi
-fn minh_hoa_dung_e0502() {
+fn e0502_correct() {
     let mut list = vec![1, 2, 3];
     
     // Bước 1: Đọc giá trị và sao chép (copy) ra biến độc lập trên Stack
-    let gia_tri_dau = list[0];
+    let first_value = list[0];
     
     // Bước 2: Tự do biến đổi vector mà không lo xung đột con trỏ
     list.push(4);
     
-    println!("Phần tử đầu đã sao chép an toàn: {}", gia_tri_dau);
+    println!("Phần tử đầu đã sao chép an toàn: {}", first_value);
     println!("Danh sách sau khi thêm mới: {:?}", list);
 }
 ```
@@ -351,9 +351,113 @@ mod tests {
    - b) Lưu danh sách các bình luận của người dùng trên một bài đăng mạng xã hội (số lượng bình luận tăng dần theo thời gian).
    - c) Viết hàm kiểm tra một chuỗi số có phải là chuỗi đối xứng (Palindrome) hay không mà không cần nhân bản dữ liệu.
 2. **Bài tập 2 (Tìm phần tử lớn nhất bằng Lát cắt)**:  
-   Hãy viết một hàm `fn tim_max(data: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `tim_max` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
+   Hãy viết một hàm `fn max_of(data: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `max_of` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
 3. **Bài tập 3 (Tối ưu hóa dung lượng)**:  
    Viết một đoạn mã tạo một vector chứa các số chẵn từ 2 đến 2000. Đo lường số lần vector phải thay đổi địa chỉ con trỏ `as_ptr()` trong hai trường hợp:
    - Trường hợp A: Sử dụng `Vec::new()` thông thường.
    - Trường hợp B: Sử dụng `Vec::with_capacity(1000)`.  
    Quan sát và đưa ra nhận xét về hiệu quả bảo toàn vùng nhớ.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Ba câu hỏi: kích thước có biết trước lúc biên dịch không? Có cần lớn lên không? Hàm có cần *sở hữu* dữ liệu không?
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+| | Tình huống | Lựa chọn | Vì sao |
+|---|---|---|---|
+| a | Toạ độ 3 chiều `(x, y, z)` | **`[f32; 3]`** | Đúng 3 phần tử, biết chắc lúc biên dịch. Nằm trọn trên ngăn xếp, không cấp phát, `Copy` được |
+| b | Danh sách bình luận, tăng dần | **`Vec<String>`** | Số lượng không biết trước và lớn lên theo thời gian. Chỉ `Vec` mới `push` được |
+| c | Hàm kiểm tra chuỗi đối xứng | **`&[T]`** | Hàm chỉ *đọc*, không cần sở hữu. Nhận lát cắt thì gọi được với **cả** `[T; N]` lẫn `Vec<T>` mà không nhân bản |
+
+**Quy tắc rút ra cho tham số hàm:** nhận `&[T]` chứ đừng nhận `&Vec<T>`. Lát cắt tổng quát hơn — nó nhận được mảng tĩnh, `Vec`, và cả một phần của chúng (`&v[2..5]`). Nhận `&Vec<T>` là tự bó hẹp mình mà không được lợi gì. Clippy có hẳn một cảnh báo cho lỗi này.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`Option` là câu trả lời đúng cho lát cắt có thể rỗng. Thư viện chuẩn đã có `.iter().max()` trả sẵn `Option` — dùng nó thay vì tự viết vòng lặp.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Trả `None` cho lát cắt rỗng — KHÔNG panic.
+/// Nhận `&[i32]` nên gọi được với mảng tĩnh, Vec, hay một phần của chúng.
+pub fn max_of(data: &[i32]) -> Option<i32> {
+    data.iter().copied().max()
+}
+
+#[test]
+fn max_of_hoat_dong_voi_moi_nguon() {
+    let mang = [10, 50, 30];
+    assert_eq!(max_of(&mang), Some(50));          // mảng tĩnh
+
+    let v = vec![-5, -1, -99];
+    assert_eq!(max_of(&v), Some(-1));             // Vec động
+
+    assert_eq!(max_of(&[]), None);                // RỖNG -> None, không panic
+    assert_eq!(max_of(&v[1..]), Some(-1));        // một phần của Vec
+}
+```
+
+Hai chi tiết:
+
+- **`.copied()` trước `.max()`**: `iter()` cho ra `&i32`, mà ta muốn trả `i32`. Không có `.copied()` thì kiểu trả về thành `Option<&i32>` — vẫn dùng được nhưng buộc người gọi phải bóc tham chiếu.
+- **Không có `.unwrap()` nào.** Lát cắt rỗng là trạng thái *hợp lệ*, không phải lỗi lập trình — nên nó phải nằm trong kiểu trả về, đúng tinh thần hàm toàn phần của Chương 13.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`as_ptr()` cho địa chỉ vùng nhớ hiện tại. Mỗi lần `Vec` hết chỗ, nó cấp phát vùng mới và **sao chép toàn bộ** sang đó — địa chỉ đổi. Đếm số lần đổi là đếm số lần tái cấp phát.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+fn dem_lan_doi_dia_chi(dung_truoc: bool) -> (usize, usize) {
+    let mut v: Vec<u32> = if dung_truoc {
+        Vec::with_capacity(1000)     // xin đủ chỗ NGAY TỪ ĐẦU
+    } else {
+        Vec::new()                   // để nó tự lớn dần
+    };
+    let mut dia_chi_cu = v.as_ptr();
+    let mut so_lan_doi = 0;
+
+    for x in (2..=2000).step_by(2) {
+        v.push(x);
+        let moi = v.as_ptr();
+        if moi != dia_chi_cu {       // địa chỉ đổi = vừa tái cấp phát
+            so_lan_doi += 1;
+            dia_chi_cu = moi;
+        }
+    }
+    (so_lan_doi, v.capacity())
+}
+
+fn main() {
+    let (a, cap_a) = dem_lan_doi_dia_chi(false);
+    let (b, cap_b) = dem_lan_doi_dia_chi(true);
+
+    println!("Vec::new()               : {a} lần tái cấp phát, capacity cuối {cap_a}");
+    println!("Vec::with_capacity(1000) : {b} lần tái cấp phát, capacity cuối {cap_b}");
+
+    assert!(a > b, "biết trước sức chứa thì tái cấp phát ít hơn hẳn");
+    assert_eq!(b, 1, "chỉ một lần: lần cấp phát ban đầu");
+}
+```
+
+**Con số thường thấy:** `Vec::new()` đổi địa chỉ khoảng **11 lần** (dung lượng đi 0→4→8→16→…→1024), còn `with_capacity(1000)` đúng **1 lần**.
+
+Vì sao vẫn là O(1) khấu hao dù có tái cấp phát: mỗi lần nhân đôi, tổng số phần tử phải sao chép là 1+2+4+…+N < 2N. Chia cho N thao tác `push` ra một hằng số. Nhưng **khấu hao O(1) không có nghĩa là miễn phí** — mỗi lần tái cấp phát là một lần dừng để sao chép, và trong hệ thống độ trễ thấp (Chương 74) đó chính là cái đuôi độ trễ phải tiêu diệt bằng cách cấp phát trước.
+</details>

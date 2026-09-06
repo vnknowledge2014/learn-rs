@@ -111,11 +111,11 @@ fn escape_html(s: &str) -> String {
 /// Một bản vá (patch) mô tả một thay đổi cần áp lên DOM thật.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SellAnd {
-    ThayThe { path: Vec<usize>, nut_moi: VirtualNode },
-    DoiVanBan { path: Vec<usize>, van_moi: String },
-    DoiThuocTinh { path: Vec<usize>, name: String, value: String },
+    Replaced { path: Vec<usize>, nut_moi: VirtualNode },
+    TextChanged { path: Vec<usize>, van_moi: String },
+    AttrChanged { path: Vec<usize>, name: String, value: String },
     ThemCon { path: Vec<usize>, nut: VirtualNode },
-    XoaCon { path: Vec<usize>, chi_so: usize },
+    ChildRemoved { path: Vec<usize>, chi_so: usize },
 }
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
@@ -125,7 +125,7 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
         // Hai văn bản khác nội dung -> vá văn bản
         (VirtualNode::Van(a), VirtualNode::Van(b)) => {
             if a != b {
-                vec![SellAnd::DoiVanBan { path, van_moi: b.clone() }]
+                vec![SellAnd::TextChanged { path, van_moi: b.clone() }]
             } else {
                 vec![]
             }
@@ -138,7 +138,7 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
             let map_cu: HashMap<_, _> = tta.iter().cloned().collect();
             for (k, v) in ttb {
                 if map_cu.get(k) != Some(v) {
-                    va.push(SellAnd::DoiThuocTinh {
+                    va.push(SellAnd::AttrChanged {
                         path: path.clone(), name: k.clone(), value: v.clone(),
                     });
                 }
@@ -155,12 +155,12 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
                 va.push(SellAnd::ThemCon { path: path.clone(), nut: cb[i].clone() });
             }
             for i in (chung..ca.len()).rev() {
-                va.push(SellAnd::XoaCon { path: path.clone(), chi_so: i });
+                va.push(SellAnd::ChildRemoved { path: path.clone(), chi_so: i });
             }
             va
         }
         // Khác loại/khác tên thẻ -> thay thế cả nút
-        _ => vec![SellAnd::ThayThe { path, nut_moi: new.clone() }],
+        _ => vec![SellAnd::Replaced { path, nut_moi: new.clone() }],
     }
 }
 
@@ -280,7 +280,7 @@ mod tests {
         let new = VirtualNode::van("Đếm: 4");
         let va = diff(&cu, &new, vec![]);
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], SellAnd::DoiVanBan { .. }));
+        assert!(matches!(va[0], SellAnd::TextChanged { .. }));
     }
 
     #[test]
@@ -298,8 +298,8 @@ mod tests {
         // Chỉ số trong <h1> đổi -> đúng 1 bản vá đổi văn bản, các nút button giữ nguyên
         assert_eq!(va.len(), 1);
         match &va[0] {
-            SellAnd::DoiVanBan { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
-            other => panic!("phải là DoiVanBan, nhận {:?}", other),
+            SellAnd::TextChanged { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
+            other => panic!("phải là TextChanged, nhận {:?}", other),
         }
     }
 
@@ -310,7 +310,7 @@ mod tests {
         let them = diff(&cu, &new, vec![]);
         assert!(them.iter().any(|v| matches!(v, SellAnd::ThemCon { .. })));
         let remove = diff(&new, &cu, vec![]);
-        assert!(remove.iter().any(|v| matches!(v, SellAnd::XoaCon { .. })));
+        assert!(remove.iter().any(|v| matches!(v, SellAnd::ChildRemoved { .. })));
     }
 
     #[test]
@@ -318,6 +318,6 @@ mod tests {
         let cu = VirtualNode::the("div", vec![], vec![]);
         let new = VirtualNode::the("span", vec![], vec![]);
         let va = diff(&cu, &new, vec![]);
-        assert!(matches!(va[0], SellAnd::ThayThe { .. }));
+        assert!(matches!(va[0], SellAnd::Replaced { .. }));
     }
 }

@@ -172,7 +172,7 @@ impl BankAccountActor {
                             "    [Actor] Từ chối rút {}đ: Số dư không đủ (Hiện có {}đ)!",
                             amount, self.balance
                         );
-                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
+                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện deliver dịch"));
                     }
                 }
                 AccountMessage::GetBalance { respond_to } => {
@@ -186,7 +186,7 @@ impl BankAccountActor {
     }
 }
 
-/// Giao diện điều khiển thuận tiện cho Client giao tiếp với Actor (Actor Client Handle)
+/// Giao diện điều khiển thuận tiện cho Client deliver tiếp với Actor (Actor Client Handle)
 #[derive(Clone)]
 pub struct BankAccountHandle {
     mailbox_tx: Sender<AccountMessage>,
@@ -241,7 +241,7 @@ fn main() {
     // 3. Tạo tay cầm Handle để các client sử dụng
     let handle = BankAccountHandle::new(mailbox_tx);
 
-    println!("\n[1] Thuc hien cac giao dich nap tien ban dau:");
+    println!("\n[1] Thuc hien cac deliver dich nap tien ban dau:");
     handle.deposit(100_000);
     handle.deposit(250_000);
 
@@ -304,7 +304,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 use std::sync::mpsc::channel;
 
 // Đoạn mã lỗi minh họa E0382:
-fn vi_du_loi_e0382() {
+fn e0382_broken() {
     let (tx, _rx) = channel::<i32>();
     
     // Gửi giá trị và vô tình di chuyển tx
@@ -341,3 +341,177 @@ fn vi_du_dung_e0382() {
    Theo triết lý Erlang OTP "Let It Crash", hãy lập trình một `SupervisorActor` liên tục theo dõi tiến trình của `BankAccountActor`. Nếu luồng của `BankAccountActor` gặp sự cố (bị panic), Supervisor sẽ lập tức phát hiện và tự động khởi tạo lại một Actor mới thay thế ngay lập tức.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Khi nào nên dùng Mutex thay vì Actor?)**:  
    Mô hình Actor cực kỳ mạnh mẽ, nhưng chi phí sao chép thông điệp qua kênh truyền (Channel Message Allocation) có thể là một điểm trừ. Trong trường hợp nào việc sử dụng một `std::sync::RwLock` đơn giản lại cho hiệu năng đọc tốt hơn mô hình Actor?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Chuyển khoản liên actor = một chuỗi thông điệp: A nhận Transfer, tự rút tiền mình, rồi GỬI thông điệp Deposit vào hòm thư của B. Không chạm trực tiếp trạng thái của B — chỉ nhắn tin.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::sync::mpsc::{channel, Sender, Receiver};
+
+/// Thông điệp gửi tới một actor tài khoản.
+pub enum Msg {
+    Deposit(u64),
+    Withdraw { amount: u64, reply: Sender<Result<(), &'static str>> },
+    // Chuyển khoản: rút của mình rồi NHẮN Deposit sang hòm thư actor đích.
+    Transfer { amount: u64, target: Sender<Msg>, reply: Sender<Result<(), &'static str>> },
+    GetBalance(Sender<u64>),
+}
+
+/// Actor tài khoản: sở hữu RIÊNG số dư, chỉ đổi nó qua hòm thư -> không cần khóa.
+pub struct AccountActor { balance: u64, inbox: Receiver<Msg> }
+
+impl AccountActor {
+    pub fn run(mut self) {
+        while let Ok(msg) = self.inbox.recv() {
+            match msg {
+                Msg::Deposit(a) => self.balance += a,
+                Msg::Withdraw { amount, reply } => {
+                    let r = if self.balance >= amount {
+                        self.balance -= amount; Ok(())
+                    } else { Err("số dư không đủ") };
+                    let _ = reply.send(r);
+                }
+                Msg::Transfer { amount, target, reply } => {
+                    // Rút của MÌNH trước; chỉ khi rút được mới nạp sang bên kia.
+                    if self.balance >= amount {
+                        self.balance -= amount;
+                        let _ = target.send(Msg::Deposit(amount)); // NHẮN, không chạm trực tiếp
+                        let _ = reply.send(Ok(()));
+                    } else {
+                        let _ = reply.send(Err("số dư không đủ để chuyển"));
+                    }
+                }
+                Msg::GetBalance(reply) => { let _ = reply.send(self.balance); }
+            }
+        }
+    }
+}
+
+#[test]
+fn chuyen_khoan_lien_actor() {
+    use std::thread;
+    let (tx_a, rx_a) = channel();
+    let (tx_b, rx_b) = channel();
+    // Actor A khởi đầu 100, Actor B khởi đầu 0.
+    thread::spawn(move || AccountActor { balance: 100, inbox: rx_a }.run());
+    thread::spawn(move || AccountActor { balance: 0, inbox: rx_b }.run());
+
+    // A chuyển 30 sang B.
+    let (rtx, rrx) = channel();
+    tx_a.send(Msg::Transfer { amount: 30, target: tx_b.clone(), reply: rtx }).unwrap();
+    assert_eq!(rrx.recv().unwrap(), Ok(()));
+
+    // Kiểm số dư hai bên qua thông điệp GetBalance.
+    let (btx, brx) = channel();
+    tx_a.send(Msg::GetBalance(btx)).unwrap();
+    assert_eq!(brx.recv().unwrap(), 70); // A: 100 - 30
+
+    let (btx, brx) = channel();
+    tx_b.send(Msg::GetBalance(btx)).unwrap();
+    assert_eq!(brx.recv().unwrap(), 30); // B: 0 + 30
+}
+```
+
+Điểm cốt lõi của mô hình Actor: **không có trạng thái chung, chỉ có thông điệp.** Actor A *không bao giờ* chạm thẳng vào số dư của B — nó **gửi một thông điệp `Deposit` vào hòm thư của B**, và B tự xử lý theo trình tự của mình. Nhờ vậy mỗi actor sở hữu riêng dữ liệu của nó và xử lý từng thông điệp *tuần tự*, nên **không cần khóa (Mutex) và không có tranh chấp dữ liệu** — thứ an toàn luồng đạt được bằng *cô lập*, không phải bằng khóa. Lưu ý: bản chuyển khoản này chưa nguyên tử qua hai actor (nếu B sập sau khi A đã rút thì tiền "bốc hơi"); giải quyết trọn vẹn cần mẫu Saga ở Chương 54.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Triết lý 'Let It Crash' của Erlang: đừng cố bắt mọi lỗi trong actor, hãy để nó sập rồi có một Supervisor phát hiện và khởi tạo lại. `JoinHandle::join()` trả `Err` khi luồng con hoảng loạn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
+
+/// Actor có thể sập (panic) khi gặp lệnh xấu — ta CỐ Ý không bắt lỗi bên trong nó.
+fn account_actor(inbox: std::sync::mpsc::Receiver<i64>) {
+    let mut balance: i64 = 100;
+    while let Ok(delta) = inbox.recv() {
+        balance += delta;
+        // "Let it crash": trạng thái không hợp lệ -> sập, để Supervisor lo.
+        assert!(balance >= 0, "số dư âm — trạng thái hỏng, để nó sập!");
+    }
+}
+
+/// Supervisor: sinh actor, theo dõi, và KHỞI TẠO LẠI nếu nó sập.
+/// Trả về số lần đã phải khởi động lại (để test quan sát được).
+pub fn supervise(so_lenh_xau_toi_da: u32) -> u32 {
+    let mut so_lan_restart = 0;
+    for _ in 0..so_lenh_xau_toi_da {
+        let (_tx, rx): (Sender<i64>, _) = channel();
+        // Gửi một lệnh làm số dư âm để ép actor sập.
+        let (tx2, rx2) = channel::<i64>();
+        let handle = thread::spawn(move || account_actor(rx2));
+        tx2.send(-999).unwrap();       // lệnh xấu -> actor sập
+        drop(tx2);                      // đóng hòm thư
+        drop(rx);
+        // join() trả Err khi luồng con HOẢNG LOẠN -> Supervisor phát hiện tại đây.
+        if handle.join().is_err() {
+            so_lan_restart += 1;        // "phát hiện sập -> khởi tạo lại actor mới"
+        }
+    }
+    so_lan_restart
+}
+
+#[test]
+fn supervisor_phat_hien_va_khoi_dong_lai() {
+    // 3 lần actor sập -> Supervisor khởi động lại đúng 3 lần.
+    assert_eq!(supervise(3), 3);
+}
+```
+
+**"Let It Crash" (hãy để nó sập)** là triết lý ngược trực giác từ Erlang/OTP: thay vì nhồi mã bắt lỗi phòng thủ vào *khắp nơi* trong actor — làm code rối và vẫn sót ca lỗi — bạn để actor **sập gọn khi gặp trạng thái không hợp lệ**, và giao việc phục hồi cho một **Supervisor** chuyên trách. Actor trở về trạng thái sạch (khởi tạo lại từ đầu), thay vì cố lết tiếp với dữ liệu đã hỏng. Cơ chế Rust dùng để "phát hiện sập" chính là **`JoinHandle::join()` trả `Result`**: khi luồng con `panic!`, `join()` trả `Err(...)` — đó là tín hiệu Supervisor bắt được để khởi động lại. Đây là nền tảng cho độ bền huyền thoại của hệ thống Erlang (tổng đài điện thoại chạy nhiều năm không ngừng): lỗi được *cô lập* vào từng actor và *phục hồi tự động*, thay vì lan ra làm sập cả hệ thống.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Đánh đổi: Actor trả giá cho mỗi thông điệp (cấp phát, gửi qua kênh, xử lý tuần tự). Khi tải chủ yếu là ĐỌC và hiếm khi ghi, một `RwLock` cho nhiều luồng đọc song song lại nhanh hơn.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Dùng `RwLock` thay vì Actor khi tải chủ yếu là ĐỌC, nhiều luồng đọc đồng thời, và ghi hiếm.**
+
+**Cái giá của mô hình Actor:** mọi tương tác — kể cả một phép *đọc* đơn giản — phải:
+1. **Cấp phát một thông điệp** (`GetBalance`, kèm kênh trả lời).
+2. **Gửi qua kênh** vào hòm thư actor.
+3. **Chờ actor xử lý tuần tự** — actor chỉ làm *một* việc tại một thời điểm, nên mọi yêu cầu đọc **xếp hàng nối đuôi nhau**, dù chúng không hề xung đột.
+
+Bước 3 là điểm chí mạng cho tải nặng đọc: nếu 1.000 luồng cùng muốn *đọc* một giá trị, actor phục vụ chúng **lần lượt**, từng cái một. Đọc không đổi dữ liệu, nên việc tuần tự hóa này là phí phạm thuần túy.
+
+**Vì sao `RwLock` thắng ở đây:**
+```text
+RwLock<T> cho phép:
+  - NHIỀU luồng đọc CÙNG LÚC (read lock chia sẻ)  <- 1.000 luồng đọc SONG SONG
+  - HOẶC một luồng ghi độc quyền (write lock)
+```
+Với tỉ lệ đọc/ghi cao (ví dụ 99% đọc như bảng cấu hình, bộ đệm tra cứu, bảng định tuyến), `RwLock` để **mọi luồng đọc chạy thật sự song song** — không xếp hàng, không cấp phát thông điệp, không nhảy qua kênh. Chỉ khi *ghi* (hiếm) mới cần độc quyền trong chốc lát.
+
+**Bảng chọn nhanh:**
+
+| Tình huống | Nên dùng | Vì sao |
+|---|---|---|
+| Đọc nhiều, ghi hiếm, đọc song song | **`RwLock`** | Nhiều luồng đọc cùng lúc, không chi phí thông điệp |
+| Ghi nhiều, logic trạng thái phức tạp | **Actor** | Tuần tự hóa tự nhiên, không cần khóa, dễ suy luận |
+| Cần cô lập lỗi / giám sát / khởi động lại | **Actor** | "Let it crash" + Supervisor |
+| Chỉ cần bảo vệ một mẩu dữ liệu chung đơn giản | **`Mutex`/`RwLock`** | Nhẹ hơn hẳn cả bộ máy actor |
+
+Nguyên tắc: **Actor mạnh khi bạn cần *tuần tự hóa* thay đổi trạng thái phức tạp và cô lập lỗi; khóa (`RwLock`) thắng khi bạn chỉ cần *bảo vệ* dữ liệu mà phần lớn thao tác là đọc song song.** Đừng dùng cả bộ máy thông điệp của actor cho thứ mà một `RwLock` mười dòng giải quyết nhanh hơn.
+</details>

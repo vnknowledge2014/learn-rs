@@ -370,7 +370,7 @@ fn main() {
     println!("   beta {:.4} (đúng phải là 1.5) · alpha {:.4} · R² {:.4}",
              hq.beta, hq.alpha, hq.r_squared);
     println!("   Tương quan: {:.4}", correlation(&a, &b).unwrap());
-    println!("   → beta chính là số lượng mã B cần bán khi mua 1 mã A để trung hoà.");
+    println!("   → beta chính là số lượng mã B cần bán khi bid 1 mã A để trung hoà.");
 
     println!("\n2. TƯƠNG QUAN CAO KHÔNG BẰNG ĐỒNG LIÊN KẾT");
     let (c, d) = gen_cap_price_cointegration(1_000, 7);
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn identical_assets_give_no_diversification() {
-        // Đa dạng hoá giả: mua hai mã y hệt nhau chẳng giảm rủi ro chút nào.
+        // Đa dạng hoá giả: bid hai mã y hệt nhau chẳng giảm rủi ro chút nào.
         let a = gen_returns(500, 1, 0.02, 0.0);
         let mot = portfolio_stats(&[a.clone()], &[1.0], 0.0).unwrap();
         let two = portfolio_stats(&[a.clone(), a], &[0.5, 0.5], 0.0).unwrap();

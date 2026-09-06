@@ -13,8 +13,8 @@ pub struct Cart {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CartError {
-    SoLuongBangKhong,
-    KhongTonTai,
+    ZeroQuantity,
+    NotFound,
 }
 
 impl Cart {
@@ -25,7 +25,7 @@ impl Cart {
     /// Thêm mặt hàng. Số lượng 0 là lỗi nghiệp vụ (không phải panic).
     pub fn them(&mut self, name: &str, don_price: u64, quantity: u32) -> Result<(), CartError> {
         if quantity == 0 {
-            return Err(CartError::SoLuongBangKhong);
+            return Err(CartError::ZeroQuantity);
         }
         // Nếu đã có, cộng dồn số lượng thay vì tạo dòng mới
         if let Some(dong) = self.mat_queue.iter_mut().find(|(t, _, _)| t == name) {
@@ -143,7 +143,7 @@ mod unit {
     #[test]
     fn zero_quantity_is_error_not_panic() {
         let mut gio = Cart::new();
-        assert_eq!(gio.them("A", 10_000, 0), Err(CartError::SoLuongBangKhong));
+        assert_eq!(gio.them("A", 10_000, 0), Err(CartError::ZeroQuantity));
         assert_eq!(gio.so_dong(), 0); // không thêm gì
     }
 
@@ -277,7 +277,7 @@ mod bdd {
         fn debit(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
     }
 
-    /// Kịch bản: "Khách VIP mua hàng và được giảm 15%".
+    /// Kịch bản: "Khách VIP bid hàng và được giảm 15%".
     #[test]
     fn vip_gets_15_percent_off() {
         // GIVEN — một giỏ hàng trị giá 1.000.000đ và một cổng thanh toán

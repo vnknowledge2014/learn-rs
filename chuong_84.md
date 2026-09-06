@@ -218,7 +218,7 @@ pub fn regression(x: &[f64], y: &[f64]) -> Option<ResultRegression> {
                         sai_num_standard: stddev(&du), so_quan_sat: n })
 }
 
-/// Phần dư của hồi quy — chính là CHÊNH LỆCH mà arbitrage cặp giao dịch.
+/// Phần dư của hồi quy — chính là CHÊNH LỆCH mà arbitrage cặp deliver dịch.
 pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
     let n = x.len().min(y.len());
     (0..n).map(|i| y[i] - (kq.alpha + kq.beta * x[i])).collect()
@@ -288,17 +288,17 @@ impl KalmanFilter {
     }
 
     /// Cập nhật với một cặp quan sát (x, y). Trả về sai số dự báo — chính là
-    /// tín hiệu giao dịch: y lệch bao nhiêu so với mức beta·x dự đoán.
+    /// tín hiệu deliver dịch: y lệch bao nhiêu so với mức beta·x dự đoán.
     pub fn update(&mut self, x: f64, y: f64) -> f64 {
         // Dự đoán: beta không đổi, nhưng độ bất định lớn thêm
-        let p_truoc = self.estimated_variance + self.process_noise;
+        let p_prev = self.estimated_variance + self.process_noise;
         // Sai số dự báo
         let sai_so = y - self.beta * x;
         // Độ lợi Kalman: dữ liệu mới càng đáng tin thì càng gần 1
-        let s = x * x * p_truoc + self.observation_noise;
-        let k = if s.abs() < 1e-12 { 0.0 } else { p_truoc * x / s };
+        let s = x * x * p_prev + self.observation_noise;
+        let k = if s.abs() < 1e-12 { 0.0 } else { p_prev * x / s };
         self.beta += k * sai_so;
-        self.estimated_variance = (1.0 - k * x) * p_truoc;
+        self.estimated_variance = (1.0 - k * x) * p_prev;
         self.num_step += 1;
         sai_so
     }
@@ -324,7 +324,7 @@ pub fn portfolio_stats(loi_suat: &[Vec<f64>], weight: &[f64], phi_rui_ro: f64)
 {
     let n = loi_suat.len();
     if n == 0 || weight.len() != n { return None; }
-    let ls_ky_vong: f64 = (0..n).map(|i| weight[i] * mean(&loi_suat[i])).sum();
+    let expected_returns: f64 = (0..n).map(|i| weight[i] * mean(&loi_suat[i])).sum();
 
     // Phương sai danh mục = Σᵢ Σⱼ wᵢ wⱼ Cov(i, j)
     let mut ps = 0.0;
@@ -335,9 +335,9 @@ pub fn portfolio_stats(loi_suat: &[Vec<f64>], weight: &[f64], phi_rui_ro: f64)
     }
     let sd = ps.max(0.0).sqrt();
     Some(PortfolioStats {
-        expected_return: ls_ky_vong,
+        expected_return: expected_returns,
         stddev: sd,
-        sharpe_ratio: if sd < 1e-12 { 0.0 } else { (ls_ky_vong - phi_rui_ro) / sd },
+        sharpe_ratio: if sd < 1e-12 { 0.0 } else { (expected_returns - phi_rui_ro) / sd },
     })
 }
 
@@ -375,7 +375,7 @@ pub fn expected_shortfall(loi_suat: &[f64], muc_tin_cay: f64) -> Option<f64> {
 // Tối ưu tham số trên toàn bộ dữ liệu rồi khoe kết quả là tự lừa mình. Kiểm
 // định tiến chia dữ liệu thành nhiều đoạn: chọn tham số trên đoạn TRONG MẪU,
 // rồi chấm điểm trên đoạn NGOÀI MẪU ngay sau đó — mô phỏng đúng cách ta thật
-// sự giao dịch: chỉ biết quá khứ.
+// sự deliver dịch: chỉ biết quá khứ.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestSegment {
@@ -433,8 +433,8 @@ where F: FnMut(usize, usize, usize) -> f64
 /// Nhiễu tất định trải đều trong [−1, 1), băm từ (đoạn, tham số).
 /// Dùng splitmix64 thay vì số học modulo thô: modulo thô làm các giá trị co
 /// cụm, và khi đó "chọn tối đa" không còn thật sự khớp vào nhiễu nữa.
-pub fn deterministic_noise(doan: usize, param: usize) -> f64 {
-    let mut z = (doan as u64)
+pub fn deterministic_noise(segment: usize, param: usize) -> f64 {
+    let mut z = (segment as u64)
         .wrapping_mul(0x9E37_79B9_7F4A_7C15)
         .wrapping_add((param as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9));
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -447,23 +447,23 @@ pub fn deterministic_noise(doan: usize, param: usize) -> f64 {
 // 8. SINH DỮ LIỆU TẤT ĐỊNH
 // ============================================================================
 
-/// Hai chuỗi ĐỒNG LIÊN KẾT: cùng theo một nhân tố chung, chênh lệch quay về 0.
+/// Hai chuỗi ĐỒNG LIÊN KẾT: cùng theo một nhân tố shared, chênh lệch quay về 0.
 pub fn sinh_cap_dong_lien_ket(n: usize, hat_giong: u64, beta: f64)
     -> (Vec<f64>, Vec<f64>)
 {
     let mut s = hat_giong;
-    let mut chung = 100.0f64;
-    let mut chenh = 0.0f64;
+    let mut shared = 100.0f64;
+    let mut spread = 0.0f64;
     let (mut a, mut b) = (Vec::with_capacity(n), Vec::with_capacity(n));
     for _ in 0..n {
         s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let e1 = ((s >> 33) % 201) as f64 / 100.0 - 1.0;
         let e2 = ((s >> 45) % 201) as f64 / 100.0 - 1.0;
-        chung += e1 * 0.5;
+        shared += e1 * 0.5;
         // Chênh lệch quay về trung bình: kéo 20% về 0 mỗi bước
-        chenh = chenh * 0.8 + e2 * 0.5;
-        a.push(chung);
-        b.push(beta * chung + chenh);
+        spread = spread * 0.8 + e2 * 0.5;
+        a.push(shared);
+        b.push(beta * shared + spread);
     }
     (a, b)
 }
@@ -472,17 +472,17 @@ pub fn sinh_cap_dong_lien_ket(n: usize, hat_giong: u64, beta: f64)
 /// nhưng chênh lệch tự nó cũng là bước ngẫu nhiên và giãn mãi.
 pub fn gen_cap_price_cointegration(n: usize, hat_giong: u64) -> (Vec<f64>, Vec<f64>) {
     let mut s = hat_giong;
-    let mut chung = 100.0f64;
+    let mut shared = 100.0f64;
     let mut troi = 0.0f64;
     let (mut a, mut b) = (Vec::with_capacity(n), Vec::with_capacity(n));
     for _ in 0..n {
         s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let e1 = ((s >> 33) % 201) as f64 / 100.0 - 1.0;
         let e2 = ((s >> 45) % 201) as f64 / 100.0 - 1.0;
-        chung += e1 * 0.5;
+        shared += e1 * 0.5;
         troi += e2 * 0.3; // KHÔNG có lực kéo về — nó đi lang thang mãi
-        a.push(chung);
-        b.push(chung + troi);
+        a.push(shared);
+        b.push(shared + troi);
     }
     (a, b)
 }
@@ -508,7 +508,7 @@ fn main() {
     println!("   beta {:.4} (đúng phải là 1.5) · alpha {:.4} · R² {:.4}",
              hq.beta, hq.alpha, hq.r_squared);
     println!("   Tương quan: {:.4}", correlation(&a, &b).unwrap());
-    println!("   → beta chính là số lượng mã B cần bán khi mua 1 mã A để trung hoà.");
+    println!("   → beta chính là số lượng mã B cần bán khi bid 1 mã A để trung hoà.");
 
     println!("\n2. TƯƠNG QUAN CAO KHÔNG BẰNG ĐỒNG LIÊN KẾT");
     let (c, d) = gen_cap_price_cointegration(1_000, 7);
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn residuals_are_uncorrelated_with_the_regressor() {
-        // Tính chất thứ hai: phần dư trực giao với biến giải thích. Nếu còn
+        // Tính chất thứ hai: phần dư trực deliver với biến giải thích. Nếu còn
         // tương quan thì vẫn còn thông tin chưa khai thác hết.
         let (a, b) = sinh_cap_dong_lien_ket(500, 13, 1.5);
         let h = regression(&a, &b).unwrap();
@@ -780,7 +780,7 @@ mod tests {
 
     #[test]
     fn identical_assets_give_no_diversification() {
-        // Đa dạng hoá giả: mua hai mã y hệt nhau chẳng giảm rủi ro chút nào.
+        // Đa dạng hoá giả: bid hai mã y hệt nhau chẳng giảm rủi ro chút nào.
         let a = gen_returns(500, 1, 0.02, 0.0);
         let mot = portfolio_stats(&[a.clone()], &[1.0], 0.0).unwrap();
         let two = portfolio_stats(&[a.clone(), a], &[0.5, 0.5], 0.0).unwrap();
@@ -995,11 +995,11 @@ pub fn tim_to_hop_dung(cac_chuoi: &[Vec<f64>], step: usize) -> Option<KetQuaDaBi
             m /= step;
             ts[j] = -2.0 + 4.0 * b as f64 / (step - 1).max(1) as f64;
         }
-        let chenh: Vec<f64> = (0..n)
+        let spread: Vec<f64> = (0..n)
             .map(|i| (0..k).map(|j| ts[j] * cac_chuoi[j][i]).sum())
             .collect();
 
-        if let Some(kq) = cointegration_test(&chenh, -0.01) {
+        if let Some(kq) = cointegration_test(&spread, -0.01) {
             let tot_hon = best.as_ref()
                 .map_or(true, |t| kq.reversion_coef < t.reversion_coef);
             if tot_hon && kq.reversion_coef < 0.0 {
@@ -1031,7 +1031,7 @@ Danh mục 60/40 truyền thống trông cân bằng theo **vốn**, nhưng cổ
 
 ```rust
 /// Xấp xỉ nghịch đảo biến động — đúng chính xác khi các tài sản không tương quan.
-pub fn trong_so_nghich_dao_bien_dong(bien_dong: &[f64]) -> Vec<f64> {
+pub fn inverse_vol_weights(bien_dong: &[f64]) -> Vec<f64> {
     let nghich: Vec<f64> = bien_dong.iter()
         .map(|v| if *v > 1e-12 { 1.0 / v } else { 0.0 }).collect();
     let tong: f64 = nghich.iter().sum();
@@ -1040,7 +1040,7 @@ pub fn trong_so_nghich_dao_bien_dong(bien_dong: &[f64]) -> Vec<f64> {
 }
 
 /// Đóng góp rủi ro của từng tài sản. Ngang bằng rủi ro ⇔ mọi giá trị bằng nhau.
-pub fn dong_gop_rui_ro(weight: &[f64], covariance: &[Vec<f64>]) -> Vec<f64> {
+pub fn risk_contributions(weight: &[f64], covariance: &[Vec<f64>]) -> Vec<f64> {
     let n = weight.len();
     // σ_p = √(wᵀ Σ w)
     let mut ps = 0.0;
@@ -1057,13 +1057,13 @@ pub fn dong_gop_rui_ro(weight: &[f64], covariance: &[Vec<f64>]) -> Vec<f64> {
 }
 
 /// Lặp cho tới khi mọi đóng góp rủi ro bằng nhau (có tương quan).
-pub fn ngang_bang_rui_ro(covariance: &[Vec<f64>], num_round: usize) -> Vec<f64> {
+pub fn risk_parity(covariance: &[Vec<f64>], num_round: usize) -> Vec<f64> {
     let n = covariance.len();
     let mut w = vec![1.0 / n as f64; n];
     let level_spend = 1.0 / n as f64;
 
     for _ in 0..num_round {
-        let dg = dong_gop_rui_ro(&w, covariance);
+        let dg = risk_contributions(&w, covariance);
         let tong: f64 = dg.iter().sum();
         if tong <= 0.0 { break; }
         for i in 0..n {

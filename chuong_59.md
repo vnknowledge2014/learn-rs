@@ -144,16 +144,16 @@ pub struct Server {
 }
 
 pub trait StrategyCanTable {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server>;
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server>;
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
 pub struct RoundRobin { pos_value: usize }
 impl RoundRobin { pub fn new() -> Self { RoundRobin { pos_value: 0 } } }
 impl StrategyCanTable for RoundRobin {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        if may_chu.is_empty() { return None; }
-        let m = &may_chu[self.pos_value % may_chu.len()];
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        if server.is_empty() { return None; }
+        let m = &server[self.pos_value % server.len()];
         self.pos_value += 1;
         Some(m)
     }
@@ -162,8 +162,8 @@ impl StrategyCanTable for RoundRobin {
 /// Ít kết nối nhất (Least-Connections): gửi tới máy đang rảnh nhất.
 pub struct FewConnect;
 impl StrategyCanTable for FewConnect {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        may_chu.iter().min_by_key(|m| m.current_connect)
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        server.iter().min_by_key(|m| m.current_connect)
     }
 }
 
@@ -171,18 +171,18 @@ impl StrategyCanTable for FewConnect {
 pub struct WeightedRoundRobin { count: u32 }
 impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
 impl StrategyCanTable for WeightedRoundRobin {
-    fn pick<'a>(&mut self, may_chu: &'a [Server]) -> Option<&'a Server> {
-        if may_chu.is_empty() { return None; }
-        let tong: u32 = may_chu.iter().map(|m| m.weight).sum();
-        if tong == 0 { return may_chu.first(); }
+    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
+        if server.is_empty() { return None; }
+        let tong: u32 = server.iter().map(|m| m.weight).sum();
+        if tong == 0 { return server.first(); }
         let level = self.count % tong;
         self.count += 1;
         let mut accumulate = 0;
-        for m in may_chu {
+        for m in server {
             accumulate += m.weight;
             if level < accumulate { return Some(m); }
         }
-        may_chu.last()
+        server.last()
     }
 }
 
@@ -472,6 +472,18 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0038: the trait cannot be made into an object` | `Box<dyn StrategyCanTable>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
+| `E0106: missing lifetime specifier` | Trả `Option<&Server>` từ lát cắt truyền vào | Ràng buộc vòng đời tường minh: `fn pick<'a>(&mut self, s: &'a [Server]) -> Option<&'a Server>` |
+| `E0502: cannot borrow as mutable` | `self.pos` đổi trong khi còn mượn `&self.servers` | Đọc chỉ số ra biến trước, tăng `self.pos` sau |
+| `attempt to subtract with overflow` | Trừ dấu thời gian `u64` khi cửa sổ chưa đầy | `saturating_sub` — thời gian có thể chưa trôi đủ |
+| Băm nhất quán phân bố lệch nặng | Quá ít điểm ảo, hoặc hàm băm trộn bit kém | Tăng số điểm ảo lên hàng trăm và dùng bộ trộn có hiệu ứng tuyết lở |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
@@ -559,16 +571,16 @@ Dùng `VecDeque<u64>` chứa dấu thời gian. Mỗi yêu cầu ở thời đi�
 
 ```rust
 use std::collections::VecDeque;
-pub struct CuaSoTruot { dau_thoi_gian: VecDeque<u64>, gioi_han: usize, cua_so_giay: u64 }
-impl CuaSoTruot {
-    pub fn new(gioi_han: usize, cua_so_giay: u64) -> Self {
-        CuaSoTruot { dau_thoi_gian: VecDeque::new(), gioi_han, cua_so_giay }
+pub struct SlidingWindow { dau_thoi_gian: VecDeque<u64>, limit: usize, cua_so_giay: u64 }
+impl SlidingWindow {
+    pub fn new(limit: usize, cua_so_giay: u64) -> Self {
+        SlidingWindow { dau_thoi_gian: VecDeque::new(), limit, cua_so_giay }
     }
     pub fn wait_op(&mut self, now: u64) -> bool {
         while let Some(&cu) = self.dau_thoi_gian.front() {
             if cu + self.cua_so_giay <= now { self.dau_thoi_gian.pop_front(); } else { break; }
         }
-        if self.dau_thoi_gian.len() < self.gioi_han {
+        if self.dau_thoi_gian.len() < self.limit {
             self.dau_thoi_gian.push_back(now);
             true
         } else { false }
@@ -578,8 +590,8 @@ impl CuaSoTruot {
 mod bt2 {
     use super::*;
     #[test]
-    fn gioi_han_3_yeu_cau_moi_10_giay() {
-        let mut cs = CuaSoTruot::new(3, 10);
+    fn limits_three_requests_per_ten_seconds() {
+        let mut cs = SlidingWindow::new(3, 10);
         assert!(cs.wait_op(0)); assert!(cs.wait_op(1)); assert!(cs.wait_op(2));
         assert!(!cs.wait_op(3));      // đã đủ 3 trong cửa sổ
         assert!(cs.wait_op(11));      // cái ở t=0 đã hết hạn (11 >= 0+10)

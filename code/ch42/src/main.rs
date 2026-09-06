@@ -78,7 +78,7 @@ impl SecurityGateEngine {
         if current_role >= required_role {
             Ok(())
         } else {
-            Err("Tu choi truy cap: Khong du dac quyen (Elevation of Privilege blocked)!")
+            Err("Tu choi truy cap: Low du dac quyen (Elevation of Privilege blocked)!")
         }
     }
 }

@@ -153,7 +153,7 @@ pub fn swap_tien(cac_menh_gia: &[u64], so_tien: u64) -> Option<u64> {
     if dp[n] == u64::MAX { None } else { Some(dp[n]) }
 }
 
-/// Dãy con chung dài nhất (Longest Common Subsequence) — LeetCode 1143.
+/// Dãy con shared dài nhất (Longest Common Subsequence) — LeetCode 1143.
 /// Nền tảng của công cụ `diff` và tin sinh học (so sánh chuỗi DNA).
 pub fn longest_common_subsequence(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
@@ -219,8 +219,8 @@ fn backtrack_permutations<T: Clone>(
 pub fn n_hau(n: usize) -> usize {
     let mut cot = vec![false; n];
     let mut cheo_xuoi = vec![false; 2 * n];
-    let mut cheo_nguoc = vec![false; 2 * n];
-    set_suffix(0, n, &mut cot, &mut cheo_xuoi, &mut cheo_nguoc)
+    let mut reverse_diagonal = vec![false; 2 * n];
+    set_suffix(0, n, &mut cot, &mut cheo_xuoi, &mut reverse_diagonal)
 }
 fn set_suffix(queue: usize, n: usize, cot: &mut [bool], cx: &mut [bool], cn: &mut [bool]) -> usize {
     if queue == n { return 1; }
@@ -272,7 +272,7 @@ pub fn greedy_change(mut menh_gia: Vec<u64>, mut so_tien: u64) -> u64 {
 // 4. LÝ THUYẾT SỐ (Number Theory)
 // ============================================================================
 
-/// Ước chung lớn nhất — thuật toán Euclid, O(log min(a,b)).
+/// Ước shared lớn nhất — thuật toán Euclid, O(log min(a,b)).
 pub fn ucln(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
         let t = b;
@@ -281,7 +281,7 @@ pub fn ucln(mut a: u64, mut b: u64) -> u64 {
     }
     a
 }
-/// Bội chung nhỏ nhất.
+/// Bội shared nhỏ nhất.
 pub fn bcnn(a: u64, b: u64) -> u64 {
     if a == 0 || b == 0 { 0 } else { a / ucln(a, b) * b }
 }
@@ -444,6 +444,18 @@ mod tests {
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `attempt to multiply with overflow` | Fibonacci hoặc luỹ thừa vượt `u64` | Dùng `u128`, hoặc `checked_mul` để phát hiện thay vì tràn âm thầm |
+| `attempt to subtract with overflow` | `i - 1` khi `i == 0` trong quy hoạch động | Duyệt từ `1..n`, hoặc `checked_sub`; đây là lỗi biên kinh điển của bảng QHĐ |
+| `E0502: cannot borrow as mutable` | Vừa đọc `bang[i-1]` vừa ghi `bang[i]` | Tách hai dòng bằng `split_at_mut`, hoặc đọc ra biến trước |
+| `E0384: cannot assign twice to immutable variable` | Quên `mut` trên biến tích luỹ của thuật toán tham lam | Thêm `mut` khi khai báo |
+| Quay lui trả kết quả trùng lặp | Không đánh dấu đã dùng, hoặc quên bỏ đánh dấu khi lùi | Đặt cờ trước khi đệ quy và **gỡ cờ ngay sau** — quên gỡ là lỗi phổ biến nhất |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
@@ -467,7 +479,7 @@ Viết `day_tang_dai_nhat(so: &[i32]) -> usize` trả về độ dài dãy con t
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn day_tang_dai_nhat(so: &[i32]) -> usize {
+pub fn longest_increasing_subsequence(so: &[i32]) -> usize {
     if so.is_empty() { return 0; }
     let n = so.len();
     let mut dp = vec![1usize; n];
@@ -486,9 +498,9 @@ mod bt1 {
     use super::*;
     #[test]
     fn lis() {
-        assert_eq!(day_tang_dai_nhat(&[10, 9, 2, 5, 3, 7, 101, 18]), 4);
-        assert_eq!(day_tang_dai_nhat(&[0, 1, 0, 3, 2, 3]), 4);
-        assert_eq!(day_tang_dai_nhat(&[]), 0);
+        assert_eq!(longest_increasing_subsequence(&[10, 9, 2, 5, 3, 7, 101, 18]), 4);
+        assert_eq!(longest_increasing_subsequence(&[0, 1, 0, 3, 2, 3]), 4);
+        assert_eq!(longest_increasing_subsequence(&[]), 0);
     }
 }
 ```

@@ -71,8 +71,8 @@ pub struct Invoice {
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorAccessCap {
-    KhongTonTai,
-    KhongCoQuyen, // đây là lỗ hổng IDOR nếu quên kiểm tra
+    NotFound,
+    Forbidden, // đây là lỗ hổng IDOR nếu quên kiểm tra
 }
 
 /// ❌ DÍNH LỖI: chỉ tra theo id, KHÔNG kiểm tra người gọi có sở hữu không.
@@ -87,9 +87,9 @@ pub fn invoice_view_safe<'a>(
     id: u64,
     caller: u64,
 ) -> Result<&'a Invoice, ErrorAccessCap> {
-    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::KhongTonTai)?;
+    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::NotFound)?;
     if hd.owner != caller {
-        return Err(ErrorAccessCap::KhongCoQuyen);
+        return Err(ErrorAccessCap::Forbidden);
     }
     Ok(hd)
 }
@@ -100,9 +100,9 @@ pub fn invoice_view_safe<'a>(
 
 #[derive(Debug, PartialEq)]
 pub enum UrlError {
-    KhongPhaiHttp,
-    TroToiMangNoiBo, // chặn 127.0.0.1, 169.254.x (metadata đám mây), 10.x, 192.168.x
-    HostKhongDuocPhep,
+    NotHttp,
+    PointsToPrivateNetwork, // chặn 127.0.0.1, 169.254.x (metadata đám mây), 10.x, 192.168.x
+    HostNotAllowed,
 }
 
 /// ✅ Kiểm tra URL trước khi máy chủ đi lấy nội dung (chống SSRF).
@@ -110,16 +110,16 @@ pub enum UrlError {
 pub fn is_safe_url(url: &str, host_cho_phep: &[&str]) -> Result<(), UrlError> {
     let sau_scheme = url.strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
-        .ok_or(UrlError::KhongPhaiHttp)?;
+        .ok_or(UrlError::NotHttp)?;
 
     let host = sau_scheme.split(['/', ':']).next().unwrap_or("");
 
     // Chặn địa chỉ mạng nội bộ / loopback / metadata đám mây
     if is_unit_address(host) {
-        return Err(UrlError::TroToiMangNoiBo);
+        return Err(UrlError::PointsToPrivateNetwork);
     }
     if !host_cho_phep.contains(&host) {
-        return Err(UrlError::HostKhongDuocPhep);
+        return Err(UrlError::HostNotAllowed);
     }
     Ok(())
 }
@@ -162,24 +162,24 @@ pub fn so_sanh_bat_bien(a: &[u8], b: &[u8]) -> bool {
 /// Kiểm tra ĐỘ MẠNH mật khẩu — chính sách tối thiểu.
 #[derive(Debug, PartialEq)]
 pub enum ErrorPassword {
-    QuaNgan,
-    ThieuChuHoa,
-    ThieuChuSo,
-    ThieuKyTuDacBiet,
+    TooShort,
+    MissingUppercase,
+    MissingDigit,
+    MissingSymbol,
 }
 pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
     let mut error = Vec::new();
     if mk.chars().count() < 12 {
-        error.push(ErrorPassword::QuaNgan);
+        error.push(ErrorPassword::TooShort);
     }
     if !mk.chars().any(|c| c.is_uppercase()) {
-        error.push(ErrorPassword::ThieuChuHoa);
+        error.push(ErrorPassword::MissingUppercase);
     }
     if !mk.chars().any(|c| c.is_ascii_digit()) {
-        error.push(ErrorPassword::ThieuChuSo);
+        error.push(ErrorPassword::MissingDigit);
     }
     if !mk.chars().any(|c| !c.is_alphanumeric()) {
-        error.push(ErrorPassword::ThieuKyTuDacBiet);
+        error.push(ErrorPassword::MissingSymbol);
     }
     if error.is_empty() { Ok(()) } else { Err(error) }
 }
@@ -190,11 +190,11 @@ pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
 
 /// ✅ Chuẩn hóa và kiểm tra đường dẫn tệp do người dùng cung cấp.
 /// Chặn `..` để không thoát ra khỏi thư mục gốc cho phép.
-pub fn path_safe(root: &str, yeu_cau: &str) -> Result<String, String> {
-    if yeu_cau.contains("..") || yeu_cau.starts_with('/') || yeu_cau.contains('\0') {
-        return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", yeu_cau));
+pub fn path_safe(root: &str, required: &str) -> Result<String, String> {
+    if required.contains("..") || required.starts_with('/') || required.contains('\0') {
+        return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", required));
     }
-    Ok(format!("{}/{}", root.trim_end_matches('/'), yeu_cau))
+    Ok(format!("{}/{}", root.trim_end_matches('/'), required))
 }
 
 fn main() {
@@ -277,9 +277,9 @@ mod tests {
         // Người #1 xem hóa đơn của chính mình -> OK
         assert!(invoice_view_safe(&store, 100, 1).is_ok());
         // Người #1 xem hóa đơn người #2 -> BỊ CHẶN
-        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::KhongCoQuyen));
+        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::Forbidden));
         // Hóa đơn không tồn tại
-        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::KhongTonTai));
+        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::NotFound));
     }
 
     #[test]
@@ -287,15 +287,15 @@ mod tests {
         let cp = ["api.tot.vn"];
         assert!(is_safe_url("https://api.tot.vn/x", &cp).is_ok());
         // Địa chỉ metadata đám mây — mục tiêu SSRF nguy hiểm nhất
-        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::PointsToPrivateNetwork));
         assert_eq!(is_safe_url("http://172.15.0.1/", &["172.15.0.1"]), Ok(())); // 172.15 KHÔNG nội bộ
         // Host lạ không trong danh sách trắng
-        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostKhongDuocPhep));
+        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostNotAllowed));
         // Không phải http(s)
-        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::KhongPhaiHttp));
+        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::NotHttp));
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
         assert!(check_do_strong("khongcosohoa!X").is_err()); // thiếu số
         assert!(check_do_strong("Rust@2026!Secure").is_ok());
         let error = check_do_strong("short").unwrap_err();
-        assert!(error.contains(&ErrorPassword::QuaNgan));
+        assert!(error.contains(&ErrorPassword::TooShort));
     }
 
     #[test]

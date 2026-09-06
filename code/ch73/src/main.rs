@@ -114,13 +114,13 @@ pub enum AbiValue {
     Bytes32([u8; 32]),
     // --- kiểu ĐỘNG: chỉ ghi con trỏ vào phần đầu, dữ liệu nằm ở đuôi ---
     Bytes(Vec<u8>),
-    Chuoi(String),
+    Text(String),
     MangUint(Vec<u128>),
 }
 
 impl AbiValue {
     pub fn la_dong(&self) -> bool {
-        matches!(self, AbiValue::Bytes(_) | AbiValue::Chuoi(_) | AbiValue::MangUint(_))
+        matches!(self, AbiValue::Bytes(_) | AbiValue::Text(_) | AbiValue::MangUint(_))
     }
 
     fn o_32(v: u128) -> [u8; 32] {
@@ -159,7 +159,7 @@ impl AbiValue {
                 while v.len() % 32 != 0 { v.push(0); }
                 v
             }
-            AbiValue::Chuoi(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
+            AbiValue::Text(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
             AbiValue::MangUint(m) => {
                 let mut v = Self::o_32(m.len() as u128).to_vec();
                 for x in m { v.extend_from_slice(&Self::o_32(*x)); }
@@ -217,12 +217,12 @@ pub fn read_address(data: &[u8], chi_so: usize) -> Option<Address> {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Rlp { Chuoi(Vec<u8>), DanhSach(Vec<Rlp>) }
+pub enum Rlp { Text(Vec<u8>), DanhSach(Vec<Rlp>) }
 
 impl Rlp {
     pub fn encode(&self) -> Vec<u8> {
         match self {
-            Rlp::Chuoi(b) => {
+            Rlp::Text(b) => {
                 if b.len() == 1 && b[0] < 0x80 {
                     b.clone() // byte đơn nhỏ tự mã hoá chính nó
                 } else {
@@ -257,10 +257,10 @@ impl Rlp {
     /// Số nguyên trong RLP dùng big-endian KHÔNG có số 0 thừa ở đầu.
     /// Số 0 mã hoá thành chuỗi RỖNG, không phải byte 0x00 — điểm hay bị sai.
     pub fn numerator(v: u128) -> Rlp {
-        if v == 0 { return Rlp::Chuoi(vec![]); }
+        if v == 0 { return Rlp::Text(vec![]); }
         let b = v.to_be_bytes();
         let bo_qua = b.iter().position(|&x| x != 0).unwrap();
-        Rlp::Chuoi(b[bo_qua..].to_vec())
+        Rlp::Text(b[bo_qua..].to_vec())
     }
 }
 
@@ -290,9 +290,9 @@ impl Tx1559 {
             Rlp::numerator(self.max_priority_fee),
             Rlp::numerator(self.max_fee),
             Rlp::numerator(self.gas_limit as u128),
-            match self.den { Some(a) => Rlp::Chuoi(a.to_vec()), None => Rlp::Chuoi(vec![]) },
+            match self.den { Some(a) => Rlp::Text(a.to_vec()), None => Rlp::Text(vec![]) },
             Rlp::numerator(self.value),
-            Rlp::Chuoi(self.data.clone()),
+            Rlp::Text(self.data.clone()),
             Rlp::DanhSach(vec![]), // danh sách truy cập (EIP-2930), để trống
         ]);
         let mut v = vec![0x02];
@@ -381,7 +381,7 @@ fn main() {
     println!("\n4. KIỂU ĐỘNG — con trỏ ở đầu, dữ liệu ở đuôi");
     let id = abi_encode(&[
         AbiValue::Uint(42),
-        AbiValue::Chuoi("xin chao".into()),
+        AbiValue::Text("xin chao".into()),
         AbiValue::Bool(true),
     ]);
     println!("   (uint 42, string \"xin chao\", bool true) → {} byte", id.len());
@@ -392,13 +392,13 @@ fn main() {
     println!("   ô 4 (dữ liệu)  : {}", hex(&id[128..160]));
 
     println!("\n5. RLP");
-    println!("   RLP(\"dog\")         = {}", hex(&Rlp::Chuoi(b"dog".to_vec()).encode()));
+    println!("   RLP(\"dog\")         = {}", hex(&Rlp::Text(b"dog".to_vec()).encode()));
     println!("   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)", hex(&Rlp::numerator(0).encode()));
     println!("   RLP(15)             = {}", hex(&Rlp::numerator(15).encode()));
     println!("   RLP(1024)           = {}", hex(&Rlp::numerator(1024).encode()));
     println!("   RLP([\"cat\",\"dog\"]) = {}",
-             hex(&Rlp::DanhSach(vec![Rlp::Chuoi(b"cat".to_vec()),
-                                     Rlp::Chuoi(b"dog".to_vec())]).encode()));
+             hex(&Rlp::DanhSach(vec![Rlp::Text(b"cat".to_vec()),
+                                     Rlp::Text(b"dog".to_vec())]).encode()));
 
     println!("\n6. GIAO DỊCH EIP-1559");
     let gd = Tx1559 {
@@ -538,7 +538,7 @@ mod tests {
     fn dynamic_types_write_correct_offsets() {
         let m = abi_encode(&[
             AbiValue::Uint(42),
-            AbiValue::Chuoi("xin chao".into()),
+            AbiValue::Text("xin chao".into()),
             AbiValue::Bool(true),
         ]);
         assert_eq!(doc_uint(&m, 0), Some(42));
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn dynamic_data_is_padded_to_32_bytes() {
-        let m = abi_encode(&[AbiValue::Chuoi("a".into())]);
+        let m = abi_encode(&[AbiValue::Text("a".into())]);
         assert_eq!(m.len() % 32, 0, "toàn bộ mã hoá ABI luôn là bội của 32");
         assert_eq!(m.len(), 32 + 32 + 32, "con trỏ + độ dài + 1 ô dữ liệu đã đệm");
     }
@@ -558,8 +558,8 @@ mod tests {
     #[test]
     fn multiple_dynamic_types_do_not_overlap() {
         let m = abi_encode(&[
-            AbiValue::Chuoi("mot".into()),
-            AbiValue::Chuoi("hai ba bon nam sau bay".into()),
+            AbiValue::Text("mot".into()),
+            AbiValue::Text("hai ba bon nam sau bay".into()),
         ]);
         let p1 = doc_uint(&m, 0).unwrap() as usize;
         let p2 = doc_uint(&m, 1).unwrap() as usize;
@@ -607,13 +607,13 @@ mod tests {
     #[test]
     fn rlp_matches_yellow_paper_examples() {
         // Các ví dụ này lấy thẳng từ Ethereum Yellow Paper.
-        assert_eq!(hex(&Rlp::Chuoi(b"dog".to_vec()).encode()), "83646f67");
-        assert_eq!(hex(&Rlp::Chuoi(vec![]).encode()), "80");
+        assert_eq!(hex(&Rlp::Text(b"dog".to_vec()).encode()), "83646f67");
+        assert_eq!(hex(&Rlp::Text(vec![]).encode()), "80");
         assert_eq!(hex(&Rlp::DanhSach(vec![]).encode()), "c0");
-        assert_eq!(hex(&Rlp::Chuoi(vec![0x0f]).encode()), "0f", "byte nhỏ tự mã hoá");
-        assert_eq!(hex(&Rlp::Chuoi(vec![0x04, 0x00]).encode()), "820400");
+        assert_eq!(hex(&Rlp::Text(vec![0x0f]).encode()), "0f", "byte nhỏ tự mã hoá");
+        assert_eq!(hex(&Rlp::Text(vec![0x04, 0x00]).encode()), "820400");
         assert_eq!(hex(&Rlp::DanhSach(vec![
-            Rlp::Chuoi(b"cat".to_vec()), Rlp::Chuoi(b"dog".to_vec())]).encode()),
+            Rlp::Text(b"cat".to_vec()), Rlp::Text(b"dog".to_vec())]).encode()),
             "c88363617483646f67");
     }
 
@@ -621,20 +621,20 @@ mod tests {
     fn rlp_encodes_zero_as_empty_string() {
         // Bẫy kinh điển: RLP(0) KHÔNG phải 0x00 mà là 0x80 (chuỗi rỗng).
         assert_eq!(hex(&Rlp::numerator(0).encode()), "80");
-        assert_ne!(Rlp::numerator(0), Rlp::Chuoi(vec![0]));
+        assert_ne!(Rlp::numerator(0), Rlp::Text(vec![0]));
     }
 
     #[test]
     fn rlp_integers_have_no_leading_zeros() {
-        assert_eq!(Rlp::numerator(1024), Rlp::Chuoi(vec![0x04, 0x00]));
-        assert_eq!(Rlp::numerator(255), Rlp::Chuoi(vec![0xff]));
-        assert_eq!(Rlp::numerator(256), Rlp::Chuoi(vec![0x01, 0x00]));
+        assert_eq!(Rlp::numerator(1024), Rlp::Text(vec![0x04, 0x00]));
+        assert_eq!(Rlp::numerator(255), Rlp::Text(vec![0xff]));
+        assert_eq!(Rlp::numerator(256), Rlp::Text(vec![0x01, 0x00]));
     }
 
     #[test]
     fn long_strings_use_the_long_length_form() {
         let long = vec![b'a'; 100];
-        let m = Rlp::Chuoi(long).encode();
+        let m = Rlp::Text(long).encode();
         assert_eq!(m[0], 0xB7 + 1, "0xB7 + số byte cần để ghi độ dài");
         assert_eq!(m[1], 100);
         assert_eq!(m.len(), 2 + 100);
@@ -643,8 +643,8 @@ mod tests {
     #[test]
     fn rlp_boundary_at_55_and_56_bytes() {
         // 55 byte dùng định dạng ngắn, 56 byte chuyển sang định dạng dài
-        assert_eq!(Rlp::Chuoi(vec![b'a'; 55]).encode()[0], 0x80 + 55);
-        assert_eq!(Rlp::Chuoi(vec![b'a'; 56]).encode()[0], 0xB7 + 1);
+        assert_eq!(Rlp::Text(vec![b'a'; 55]).encode()[0], 0x80 + 55);
+        assert_eq!(Rlp::Text(vec![b'a'; 56]).encode()[0], 0xB7 + 1);
     }
 
     // ---------- Giao dịch ----------

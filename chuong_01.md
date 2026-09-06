@@ -190,25 +190,25 @@ fn main() {
 
     // 1. Khám phá kích thước của 1 Byte (gồm 8 bits công tắc)
     // std::mem::size_of::<T>() là hàm đo xem kiểu dữ liệu T chiếm bao nhiêu Byte trên RAM.
-    let kich_thuoc_u8 = std::mem::size_of::<u8>();
+    let u8_size = std::mem::size_of::<u8>();
     println!("- Kiểu u8 (số nguyên nhỏ 0..255) chiếm : {} byte ({} bits)", 
-             kich_thuoc_u8, kich_thuoc_u8 * 8);
+             u8_size, u8_size * 8);
 
     // 2. Khám phá kiểu số nguyên tiêu chuẩn 32-bit (i32)
-    let kich_thuoc_i32 = std::mem::size_of::<i32>();
+    let i32_size = std::mem::size_of::<i32>();
     println!("- Kiểu i32 (số nguyên chuẩn) chiếm       : {} bytes ({} bits)", 
-             kich_thuoc_i32, kich_thuoc_i32 * 8);
+             i32_size, i32_size * 8);
 
     // 3. Khám phá kiểu số nguyên cực lớn 64-bit (i64)
-    let kich_thuoc_i64 = std::mem::size_of::<i64>();
+    let i64_size = std::mem::size_of::<i64>();
     println!("- Kiểu i64 (số nguyên lớn) chiếm         : {} bytes ({} bits)", 
-             kich_thuoc_i64, kich_thuoc_i64 * 8);
+             i64_size, i64_size * 8);
 
     // 4. Khám phá kiểu ký tự Unicode (char)
     // Trong Rust, một ký tự có thể là chữ cái tiếng Việt hoặc biểu tượng cảm xúc Emoji!
-    let kich_thuoc_char = std::mem::size_of::<char>();
+    let char_size = std::mem::size_of::<char>();
     println!("- Kiểu char (ký tự Unicode/Emoji) chiếm  : {} bytes ({} bits)", 
-             kich_thuoc_char, kich_thuoc_char * 8);
+             char_size, char_size * 8);
 
     // 5. Khám phá kiểu logic Đúng/Sai (bool)
     let bool_size = std::mem::size_of::<bool>();
@@ -258,3 +258,75 @@ Khi viết chương trình đầu tiên, người mới bắt đầu rất dễ 
 1. **Bài tập tư duy 1**: Hãy nhẩm tính xem một tệp nhạc dung lượng **5 Megabytes (5 MB)** sẽ tương đương với khoảng bao nhiêu Byte và bao nhiêu công tắc điện (Bits)? Giả sử $1 \text{ MB} \approx 1{,}000{,}000 \text{ Bytes}$.
 2. **Bài tập tư duy 2**: Tại sao khi bạn đang soạn thảo một văn bản nhưng đột ngột bị cúp điện (và máy không có pin dự phòng), toàn bộ nội dung bạn chưa kịp bấm nút "Save" lại biến mất hoàn toàn? Hãy giải thích dựa trên hình ảnh căn bếp và mặt bàn RAM.
 3. **Bài tập thực hành 3**: Thử gõ lại mã nguồn ở mục thực chiến vào một tệp mới, sau đó bổ sung thêm dòng lệnh đo kích thước của kiểu số thực `f32` và `f64`. Quan sát kết quả in ra màn hình xem chúng chiếm bao nhiêu Byte trên RAM.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Đổi đơn vị theo hai bậc thang: 1 MB = 1.000.000 byte, và 1 byte = 8 bit (8 công tắc điện).
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+5 MB quy đổi theo hai bước:
+
+| Đơn vị | Phép tính | Kết quả |
+|---|---|---|
+| Byte | 5 × 1.000.000 | **5.000.000 byte** |
+| Bit (công tắc) | 5.000.000 × 8 | **40.000.000 bit** |
+
+Vậy tệp nhạc 5 MB là **năm triệu ô nhớ**, mỗi ô tám công tắc bật/tắt — **bốn mươi triệu công tắc điện** cùng giữ đúng một trạng thái để bản nhạc của bạn tồn tại. Con số này cho thấy vì sao ta không đếm bộ nhớ bằng bit hằng ngày: byte là đơn vị vừa tầm để con người nói chuyện, còn bit là thứ phần cứng thật sự thao tác.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Câu hỏi này về **sự khác nhau giữa RAM và ổ cứng**: cái nào cần điện để nhớ, cái nào không?
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Văn bản chưa lưu biến mất vì nó **chỉ đang nằm trên RAM** — chưa từng được chép xuống ổ cứng.
+
+Nhớ lại hình ảnh căn bếp:
+- **Mặt bàn (RAM)** là nơi đầu bếp bày nguyên liệu đang nấu. Nhanh, tiện, nhưng **cần điện để giữ**. Cúp điện = mặt bàn bị dọn sạch tức thì.
+- **Tủ lạnh / kho (ổ cứng)** là nơi cất đồ lâu dài. Chậm hơn, nhưng **giữ được kể cả khi mất điện**.
+
+Khi bạn gõ, mọi ký tự nằm trên mặt bàn RAM. Bấm nút **"Save"** chính là hành động **chép từ mặt bàn xuống kho** — từ RAM xuống ổ cứng. Chưa bấm Save nghĩa là chưa chép; cúp điện làm RAM mất sạch, và vì bản nào cũng chưa xuống kho nên **không có gì để khôi phục**.
+
+Đây là lý do sâu xa vì sao mọi phần mềm nghiêm túc đều có **tự động lưu** (auto-save) ngầm định — người ta không tin vào trí nhớ dễ quên của RAM.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`std::mem::size_of::<T>()` trả về số byte một kiểu chiếm trên RAM. Không cần biến, chỉ cần tên kiểu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    // size_of trả về số byte kiểu T chiếm trên RAM — biết lúc biên dịch,
+    // không cần tạo biến nào cả.
+    println!("f32 chiếm {} byte", std::mem::size_of::<f32>());
+    println!("f64 chiếm {} byte", std::mem::size_of::<f64>());
+}
+
+#[test]
+fn kich_thuoc_so_thuc() {
+    // f32 = 32 bit = 4 byte (độ chính xác đơn)
+    assert_eq!(std::mem::size_of::<f32>(), 4);
+    // f64 = 64 bit = 8 byte (độ chính xác kép) — gấp đôi f32
+    assert_eq!(std::mem::size_of::<f64>(), 8);
+}
+```
+
+Kết quả: **f32 chiếm 4 byte, f64 chiếm 8 byte** — đúng như tên gọi (32 bit và 64 bit). Điều đáng rút ra: cái tên không phải ngẫu nhiên, con số trong tên **chính là** số bit. f64 đổi lấy độ chính xác cao hơn bằng gấp đôi bộ nhớ; đó là một đánh đổi bạn sẽ gặp lại suốt cả cuốn sách.
+</details>

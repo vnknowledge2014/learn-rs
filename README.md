@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**85 chương · 25 chủ đề · 87 crate · toàn bộ mã nguồn chạy được và có kiểm thử.**
+**85 chương · 25 chủ đề · 87 crate · 844 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 44/87 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
 
 ---
 
@@ -94,8 +94,8 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 2. **Hình tượng hóa đời sống** — một ví dụ đời thực kèm sơ đồ, trước khi có bất kỳ dòng mã nào.
 3. **Khái niệm & Cơ chế kỹ thuật chuyên sâu** — chuyện gì thực sự xảy ra dưới nắp ca-pô.
 4. **Mã nguồn minh họa thực chiến** — một chương trình hoàn chỉnh, chạy được, có trong thư mục [`code/`](./code/).
-5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa.
-6. **Tóm tắt & Bài tập rèn luyện** — kèm **Gợi ý** và **Lời giải** ẩn trong thẻ gập (bấm để mở).
+5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa. *(Chương 56–63 hiện chưa có mục này.)*
+6. **Tóm tắt & Bài tập rèn luyện** — **mọi chương có bài tập đều kèm Gợi ý và Lời giải** ẩn trong thẻ gập (bấm để mở). Toàn bộ lời giải dạng mã đều biên dịch sạch và khớp API của crate tương ứng.
 
 ---
 
@@ -157,7 +157,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 
 1. **Bắt đầu từ đâu?** Mở **[ROADMAP.md](./ROADMAP.md)** để chọn nhánh phù hợp, rồi dùng **[SUMMARY.md](./SUMMARY.md)** làm mục lục. Bấm vào `chuong_01.md` và bắt đầu.
 2. **Đừng nhảy cóc**, đặc biệt là 12 chương đầu. Rust có triết lý quản lý bộ nhớ rất độc đáo (Ownership); bỏ qua nền tảng sẽ khiến bạn khổ sở về sau.
-3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án.
+3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án. Chương nào chưa có lời giải thì đề bài vẫn tự giải được — đáp án nằm trong chính mã nguồn của chương.
 4. **Gõ lại mã, đừng chỉ đọc.** Cách nhanh nhất để hiểu Borrow Checker là để nó từ chối bạn vài chục lần.
 5. **Gặp thuật ngữ lạ?** Tra ngay ở **[GLOSSARY.md](./GLOSSARY.md)** — bảng đối chiếu Việt–Anh cho toàn bộ giáo trình.
 
@@ -166,7 +166,8 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 ## ✅ Cam Kết Chất Lượng
 
 - **Toàn bộ mã nguồn biên dịch được** bằng `rustc` bản ổn định, Rust 2021 Edition — và bạn có thể tự kiểm chứng bằng `cargo build --workspace`.
-- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace`.
+- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 844 passed, 0 failed.
+- **`cargo clippy` còn khoảng 98 cảnh báo, và phần lớn là CỐ Ý.** Đừng chạy `clippy --fix` trên kho này: nhiều đoạn viết dài dòng để *dạy* chứ không phải vì tác giả chưa biết cách ngắn. Ví dụ `assert_eq!(x.and_then(f), x.map(f).flatten())` là bài kiểm chứng **luật Monad**; clippy rút gọn nó thành `assert_eq!(x.and_then(f), x.and_then(f))` — đúng cú pháp, và không còn chứng minh gì.
 - Các đoạn mã **cố tình sai** (dùng để minh họa lỗi biên dịch) đều được đánh dấu rõ bằng ký hiệu `❌` và đóng trong dấu chú thích, để chúng không phá vỡ quá trình biên dịch.
 
 ---

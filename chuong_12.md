@@ -83,12 +83,12 @@ Khi bạn gọi `in_du_lieu(100)` (số nguyên) và `in_du_lieu("Chào")` (chu�
 
 Một Trait định nghĩa một tập hợp các phương thức mà các kiểu dữ liệu khác phải cài đặt:
 ```rust
-trait ThietBiBaoDong {
+trait AlarmDevice {
     // Phương thức bắt buộc phải tự cài đặt
     fn ma_thiet_bi(&self) -> &str;
 
     // Phương thức có sẵn mặc định: Các struct có thể dùng ngay hoặc ghi đè (override)
-    fn phat_canh_bao(&self) {
+    fn raise_alarm(&self) {
         println!("[CÒI BÁO ĐỘNG] Reng reng! Thiết bị {} phát tín hiệu nguy hiểm!", self.ma_thiet_bi());
     }
 }
@@ -148,9 +148,9 @@ Vì sao có luật này? Vì nếu không, hai thư viện khác nhau có thể 
 **Lối thoát chính thức: mẫu kiểu bọc (newtype).** Bọc kiểu của người khác vào một struct của bạn, thế là bạn "sở hữu" nó:
 
 ```rust
-struct DanhSachSo(Vec<i32>);            // giờ đây kiểu này là CỦA BẠN
+struct NumberList(Vec<i32>);            // giờ đây kiểu này là CỦA BẠN
 
-impl std::fmt::Display for DanhSachSo { // hợp lệ 100%
+impl std::fmt::Display for NumberList { // hợp lệ 100%
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}]", self.0.iter().map(|n| n.to_string())
                               .collect::<Vec<_>>().join(", "))
@@ -174,13 +174,13 @@ Rust chuẩn hóa việc chuyển đổi giữa các kiểu bằng bốn trait �
 ```rust
 use std::convert::TryFrom;
 
-struct Tuoi(u8);
+struct Age(u8);
 
-impl TryFrom<i64> for Tuoi {
+impl TryFrom<i64> for Age {
     type Error = String;
     fn try_from(n: i64) -> Result<Self, Self::Error> {
         if (0..=130).contains(&n) {
-            Ok(Tuoi(n as u8))
+            Ok(Age(n as u8))
         } else {
             Err(format!("Tuổi {} không hợp lệ", n))
         }
@@ -216,13 +216,13 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống kiểm
 mod thiet_bi_thong_minh {
     use std::fmt::Display;
 
-    // 1. Định nghĩa Trait giao ước cho mọi cảm biến trong tòa nhà
+    // 1. Định nghĩa Trait deliver ước cho mọi cảm biến trong tòa nhà
     pub trait Sensor: Display {
         // Phương thức bắt buộc mọi cảm biến phải tự hiện thực
         fn read_value(&self) -> f64;
         fn don_pos_do(&self) -> &str;
 
-        // Phương thức mặc định (Default implementation): Dùng chung cho tất cả cảm biến
+        // Phương thức mặc định (Default implementation): Dùng shared cho tất cả cảm biến
         fn check_computed_state(&self) {
             println!("-> Cảm biến [{}] đang hoạt động bình thường.", self);
         }
@@ -357,3 +357,127 @@ Dưới đây là các lỗi thường gặp nhất khi làm việc với Generi
 1. **Bài tập thực hành 1**: Định nghĩa một Trait mang tên `CoDienTich` có một phương thức `fn tinh_dien_tich(&self) -> f64;`. Hãy triển khai Trait này cho hai struct: `HinhTron { ban_kinh: f64 }` và `HinhVuong { canh: f64 }`. Sau đó viết một hàm generic `in_dien_tich<T: CoDienTich>(hinh: &T)` để in diện tích của cả hai hình.
 2. **Bài tập tư duy 2**: Cơ chế Monomorphization của Rust mang lại tốc độ thực thi tuyệt đỉnh, nhưng nó có thể dẫn đến nhược điểm gì về kích thước tệp thực thi nhị phân (Binary Size) và thời gian biên dịch nếu có quá nhiều kiểu dữ liệu cùng dùng chung một hàm generic đồ sộ?
 3. **Bài tập tổ chức mô-đun 3**: Hãy tổ chức một dự án nhỏ gồm 2 module: `mod quan_ly_kho` (chứa struct `HangHoa` có trường `ten` và `gia` được đánh dấu `pub`) và `mod ban_hang` (chứa hàm `xuat_hoa_don`). Thực hành sử dụng từ khóa `pub` và `use` để hai module tương tác trơn tru với nhau trong hàm `main`.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Trait định nghĩa một *hành vi chung*; nhiều kiểu cùng `impl` nó. Hàm generic `<T: CoDienTich>` nhận bất kỳ kiểu nào có hành vi đó.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+// Trait = hợp đồng hành vi: "kiểu nào cũng biết tự tính diện tích của mình".
+trait CoDienTich {
+    fn tinh_dien_tich(&self) -> f64;
+}
+
+struct HinhTron { ban_kinh: f64 }
+struct HinhVuong { canh: f64 }
+
+impl CoDienTich for HinhTron {
+    fn tinh_dien_tich(&self) -> f64 {
+        std::f64::consts::PI * self.ban_kinh * self.ban_kinh
+    }
+}
+impl CoDienTich for HinhVuong {
+    fn tinh_dien_tich(&self) -> f64 {
+        self.canh * self.canh
+    }
+}
+
+// Generic: nhận BẤT KỲ kiểu T nào có triển khai CoDienTich.
+fn in_dien_tich<T: CoDienTich>(hinh: &T) {
+    println!("Diện tích = {:.2}", hinh.tinh_dien_tich());
+}
+
+fn main() {
+    in_dien_tich(&HinhTron { ban_kinh: 2.0 });
+    in_dien_tich(&HinhVuong { canh: 3.0 });
+}
+
+#[test]
+fn dien_tich_hai_hinh() {
+    assert!((HinhTron { ban_kinh: 2.0 }.tinh_dien_tich() - 12.566).abs() < 0.001);
+    assert_eq!(HinhVuong { canh: 3.0 }.tinh_dien_tich(), 9.0);
+}
+```
+
+Điểm cốt lõi: trait tách **"làm gì"** (tính diện tích) khỏi **"làm thế nào"** (công thức của từng hình). Hàm `in_dien_tich` không cần biết nó đang in hình tròn hay hình vuông — chỉ cần kiểu đó *hứa* có `tinh_dien_tich`. Ràng buộc `<T: CoDienTich>` là lời hứa ấy được ép lúc biên dịch: truyền vào một kiểu chưa `impl CoDienTich` sẽ không biên dịch được.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Monomorphization sinh **một bản sao mã máy riêng cho mỗi kiểu** dùng hàm generic. Nhanh khi chạy, nhưng cái giá phải trả nằm ở đâu?
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Monomorphization đổi tốc-độ-chạy lấy **kích thước tệp nhị phân và thời gian biên dịch** — một đánh đổi thật, không phải bữa trưa miễn phí.
+
+**Cơ chế:** khi bạn viết `fn xu_ly<T>(x: T)` rồi gọi với `i32`, `String`, `f64`, trình biên dịch **sinh ba bản sao riêng biệt** của hàm — mỗi bản mã máy chuyên cho một kiểu, như thể bạn viết tay `xu_ly_i32`, `xu_ly_string`, `xu_ly_f64`. Nhờ đó lúc chạy không có chi phí điều phối động (không tra bảng ảo), nhanh ngang mã viết tay. Đó là mặt lợi.
+
+**Mặt hại khi lạm dụng:**
+
+| Hệ quả | Vì sao |
+|---|---|
+| **Phình tệp nhị phân (code bloat)** | Một hàm generic đồ sộ dùng với 20 kiểu -> 20 bản sao mã máy nhét vào tệp. Tệp to lên, và... |
+| **Áp lực bộ nhớ đệm lệnh (i-cache)** | ...20 bản gần-giống-nhau làm loãng cache lệnh của CPU, đôi khi *xóa sạch* lợi thế tốc độ mà monomorphization đem lại |
+| **Biên dịch lâu** | Trình biên dịch phải sinh *và tối ưu* từng bản sao riêng -> thời gian build tăng theo số kiểu |
+
+**Cách giảm nhẹ trong thực tế:** với hàm generic *lớn*, người ta tách phần lõi không phụ thuộc kiểu ra một hàm **không generic** rồi để lớp vỏ generic mỏng gọi vào — kỹ thuật gọi là "làm mảnh" (outlining). Hoặc khi không cần tốc độ tối đa, dùng **điều phối động** (`&dyn Trait`) để có *một* bản mã dùng chung cho mọi kiểu, đổi lại một lần tra bảng ảo lúc chạy. Bài học: monomorphization tuyệt vời cho hàm nhỏ gọi nhiều, nhưng "generic hóa mọi thứ thật to" là con dao hai lưỡi.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`mod` tạo không gian tên; `pub` mở cửa cho bên ngoài; `use` kéo đường dẫn vào cho gọn. Trường không `pub` thì module khác không thấy.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+mod quan_ly_kho {
+    // pub struct: kiểu công khai, NHƯNG trường phải pub RIÊNG mới cho ngoài đọc.
+    pub struct HangHoa {
+        pub ten: String,
+        pub gia: u64,
+    }
+    impl HangHoa {
+        pub fn moi(ten: &str, gia: u64) -> Self {
+            Self { ten: ten.to_string(), gia }
+        }
+    }
+}
+
+mod ban_hang {
+    // use kéo đường dẫn từ module anh em vào cho gọn (super = module cha).
+    use super::quan_ly_kho::HangHoa;
+    pub fn xuat_hoa_don(mon: &HangHoa) -> String {
+        format!("HÓA ĐƠN: {} - {}đ", mon.ten, mon.gia)
+    }
+}
+
+fn main() {
+    use quan_ly_kho::HangHoa;
+    let mon = HangHoa::moi("Bàn phím", 850_000);
+    println!("{}", ban_hang::xuat_hoa_don(&mon));
+}
+
+#[test]
+fn hai_module_tuong_tac() {
+    let mon = quan_ly_kho::HangHoa::moi("Chuột", 320_000);
+    assert_eq!(ban_hang::xuat_hoa_don(&mon), "HÓA ĐƠN: Chuột - 320000đ");
+}
+```
+
+Ba từ khóa, ba vai trò rõ ràng: **`mod`** dựng một không gian tên riêng (tránh đụng tên); **`pub`** quyết định cái gì lọt ra ngoài — mặc định mọi thứ *riêng tư*, nên phải đánh dấu `pub` cho cả `struct` *lẫn từng trường* muốn cho bên ngoài chạm tới; **`use`** chỉ là lối tắt gõ tên ngắn, không thay đổi quyền truy cập. Chi tiết dễ vấp: `pub struct HangHoa` mà trường `ten` *không* `pub` thì module `ban_hang` thấy được kiểu nhưng **không đọc được `.ten`** — đóng gói của Rust chặt tới từng trường, không chỉ tới cả struct.
+</details>

@@ -257,7 +257,7 @@ fn main() {
         strlen(raw_c_ptr)
     };
 
-    println!("    - Chuoi gui sang C : {:?}", c_greeting);
+    println!("    - Text gui sang C : {:?}", c_greeting);
     println!("    - Do dai do boi C strlen: {} bytes", length_from_c);
     assert_eq!(length_from_c, 26);
 
@@ -293,20 +293,20 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi làm việc
 
 ```rust
 // Giả lập hàm cấp thấp nguy hiểm
-unsafe fn xoa_o_dia_cap_thap() {
+unsafe fn raw_disk_wipe() {
     println!("Thao tác cấp thấp nguy hiểm đã chạy!");
 }
 
 // Đoạn mã lỗi minh họa E0133:
-fn vi_du_loi_e0133() {
-    // xoa_o_dia_cap_thap(); // LỖI E0133: Trình biên dịch cấm gọi hàm unsafe trực tiếp!
+fn e0133_broken() {
+    // raw_disk_wipe(); // LỖI E0133: Trình biên dịch cấm gọi hàm unsafe trực tiếp!
 }
 
 // Cách sửa chữa đúng chuẩn:
 fn vi_du_dung_e0133() {
     // Phải có khối lệnh unsafe thể hiện trách nhiệm của lập trình viên
     unsafe {
-        xoa_o_dia_cap_thap();
+        raw_disk_wipe();
     }
 }
 ```
@@ -328,3 +328,138 @@ fn vi_du_dung_e0133() {
    Khai báo hàm `sqrt` (tính căn bậc hai) từ thư viện toán học của C: `extern "C" { fn sqrt(x: f64) -> f64; }`. Viết một chương trình Rust gọi hàm này và so sánh kết quả với phương thức `.sqrt()` có sẵn của Rust.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao `Send` và `Sync` lại là `unsafe trait`?)**:  
    Tại sao trình biên dịch Rust không tự động suy diễn trait `Send` cho các cấu trúc chứa con trỏ thô? Nếu một lập trình viên tự ý đánh dấu `unsafe impl Send` cho một đối tượng chứa con trỏ thô dùng chung mà không có cơ chế khóa bảo vệ (như Mutex), nguy cơ rủi ro nào sẽ xảy ra khi chạy đa luồng?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`std::ptr::read` lấy giá trị ra **mà không** gọi `Drop`; `std::ptr::write` ghi đè **mà không** giải phóng giá trị cũ. Đúng cặp cần cho hoán đổi.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+/// # An toàn
+/// Người gọi phải bảo đảm:
+/// - `a` và `b` đều hợp lệ, căn chỉnh đúng, và trỏ tới `T` đã khởi tạo
+/// - `a` và `b` KHÔNG trùng nhau (chồng lấn thì mất giá trị)
+pub unsafe fn raw_swap<T>(a: *mut T, b: *mut T) {
+    // `read` lấy giá trị ra mà KHÔNG gọi Drop -> tránh giải phóng hai lần.
+    let tam = std::ptr::read(a);
+    // `write` ghi đè mà KHÔNG giải phóng giá trị cũ -> vì ta vừa lấy nó ra rồi.
+    std::ptr::write(a, std::ptr::read(b));
+    std::ptr::write(b, tam);
+}
+
+/// Vỏ bọc AN TOÀN. `&mut T` đã bảo đảm mọi điều kiện ở trên:
+/// hợp lệ, căn chỉnh, đã khởi tạo, và KHÔNG THỂ trùng nhau —
+/// vì Rust không cho tồn tại hai mượn sửa đổi tới cùng một chỗ.
+pub fn safe_swap<T>(a: &mut T, b: &mut T) {
+    unsafe { raw_swap(a as *mut T, b as *mut T) }
+}
+
+#[test]
+fn hoan_doi_dung_ke_ca_kieu_co_drop() {
+    let (mut x, mut y) = (1, 2);
+    safe_swap(&mut x, &mut y);
+    assert_eq!((x, y), (2, 1));
+
+    // Kiểu CÓ cấp phát heap — nơi giải phóng hai lần sẽ lộ ra ngay.
+    let mut s1 = String::from("mot");
+    let mut s2 = String::from("hai");
+    safe_swap(&mut s1, &mut s2);
+    assert_eq!(s1, "hai");
+    assert_eq!(s2, "mot");
+    // Cả hai vẫn hợp lệ, không rò rỉ, không giải phóng hai lần.
+}
+```
+
+**Vì sao `read`/`write` chứ không phải phép gán thường:** `*a = *b` sẽ **giải phóng** giá trị cũ ở `*a` rồi *sao chép* `*b` — với `String` thì bạn có hai `String` cùng trỏ vào một vùng heap, và cả hai đều sẽ giải phóng nó khi hết phạm vi. Đúng lỗi giải phóng hai lần ở Chương 38.
+
+**Điều đáng học nhất là hình dạng của vỏ bọc.** `unsafe fn` đặt gánh nặng chứng minh lên người gọi; `safe_swap` **trả gánh nặng đó về cho hệ thống kiểu**: `&mut T` bảo đảm cả bốn điều kiện, trong đó "không trùng nhau" là thứ Rust bảo đảm mà C không thể. Đây là mẫu thiết kế chuẩn — `unsafe` không biến mất, nó bị **nhốt vào một chỗ nhỏ đã được chứng minh**.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Khai báo `extern "C"`, rồi gọi trong khối `unsafe` vì trình biên dịch Rust không kiểm chứng được gì bên kia ranh giới ngôn ngữ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+// Hàm sqrt của thư viện C, liên kết sẵn trên mọi hệ Unix.
+extern "C" {
+    fn sqrt(x: f64) -> f64;
+}
+
+fn main() {
+    for x in [0.0f64, 1.0, 2.0, 16.0, 1e10] {
+        // `unsafe` vì Rust KHÔNG kiểm chứng được chữ ký hàm bên C.
+        // Khai báo sai kiểu -> hỏng bộ nhớ lúc chạy, không phải lỗi biên dịch.
+        let c = unsafe { sqrt(x) };
+        let r = x.sqrt();
+        println!("sqrt({x:>10}) : C = {c:<22} Rust = {r}");
+        assert_eq!(c.to_bits(), r.to_bits(), "phải giống nhau tới từng bit");
+    }
+
+    // Cả hai xử lý số âm giống nhau: căn của số âm là NaN.
+    assert!(unsafe { sqrt(-1.0) }.is_nan());
+    assert!((-1.0f64).sqrt().is_nan());
+}
+```
+
+**Kết quả: giống nhau tới từng bit.** Không phải trùng hợp — `f64::sqrt` của Rust biên dịch thẳng thành lệnh `sqrtsd` của CPU, và `libm` của C cũng vậy. Cả hai đều tuân IEEE 754, vốn quy định `sqrt` phải **làm tròn đúng**: với mỗi đầu vào chỉ tồn tại đúng một kết quả hợp lệ. Không có chỗ cho khác biệt cài đặt.
+
+**Vì sao FFI bắt buộc `unsafe`:** trình biên dịch chỉ tin lời bạn khai báo. Viết `fn sqrt(x: f32) -> f32` (sai kiểu) thì vẫn biên dịch được, rồi lúc chạy sẽ đọc/ghi sai số byte trên ngăn xếp. Không có cách nào kiểm tra tự động — bên kia ranh giới FFI không còn thông tin kiểu để đối chiếu.
+
+Vì vậy dự án thật không viết tay khai báo FFI mà dùng `bindgen` sinh ra từ tệp tiêu đề C — chuyển việc "chép đúng chữ ký" từ con người sang máy.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`Send` và `Sync` là *lời hứa* với trình biên dịch, không phải thứ nó kiểm chứng được. Hãy hỏi: một con trỏ thô mang theo thông tin gì về an toàn luồng?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao con trỏ thô không tự động có `Send`:**
+
+`*const T` và `*mut T` là **địa chỉ trần**. Chúng không mang theo bất kỳ thông tin nào về: ai sở hữu vùng nhớ đó, nó sống được bao lâu, có ai khác đang ghi vào không, có khoá nào bảo vệ không. Trình biên dịch không có cơ sở để kết luận việc chuyển địa chỉ đó sang luồng khác là an toàn — nên nó **từ chối kết luận**, và bắt bạn tự khẳng định bằng `unsafe impl`.
+
+`Send`/`Sync` là **trait đánh dấu tự động**: một struct có `Send` nếu mọi trường của nó có `Send`. Con trỏ thô cố ý *không* có, nên tính chất đó "lây" sang mọi kiểu chứa nó — chính là điều ta muốn: kiểu nào bọc con trỏ thô thì tác giả của nó **buộc phải suy nghĩ**.
+
+**Rủi ro khi tự ý `unsafe impl Send` mà không có khoá:**
+
+```text
+struct DungChung { p: *mut Vec<u32> }
+unsafe impl Send for DungChung {}   // LỜI HỨA SUÔNG, không gì bảo đảm
+
+Hai luồng cùng push vào một Vec qua con trỏ thô:
+    luồng A đọc len = 5, tính chỗ ghi
+    luồng B đọc len = 5, tính chỗ ghi   <- CÙNG một chỗ
+    cả hai cùng ghi -> mất một phần tử, len thành 7 mà chỉ có 6
+    hoặc cả hai cùng thấy hết chỗ -> cùng tái cấp phát
+        -> một luồng còn giữ con trỏ đã bị giải phóng
+```
+
+Hậu quả cụ thể, xếp theo mức tệ dần:
+
+| Hiện tượng | Nguyên nhân |
+|---|---|
+| Mất hoặc nhân đôi dữ liệu | Hai luồng ghi cùng ô nhớ |
+| Hỏng cấu trúc `Vec` | `len` và `capacity` không còn khớp vùng đệm thật |
+| Dùng-sau-khi-giải-phóng | Một luồng tái cấp phát, luồng kia giữ con trỏ cũ |
+| Giải phóng hai lần | Cả hai luồng cùng huỷ |
+
+Và tệ nhất: **những lỗi này không tái hiện đều đặn**. Chúng phụ thuộc thời điểm chuyển luồng, nên chạy nghìn lần có thể không sao, rồi hỏng đúng lúc tải cao trên máy chủ thật.
+
+**Khi nào `unsafe impl Send` là chính đáng:** khi bạn *đã* có cơ chế đồng bộ mà trình biên dịch không nhìn thấy — con trỏ chỉ được chạm tới qua một `Mutex`, hoặc thiết kế bảo đảm tại mỗi thời điểm chỉ một luồng chạm tới nó. Chính `Mutex<T>` của thư viện chuẩn cài `Sync` theo cách đó: nó *có* dùng `unsafe`, nhưng lời hứa được chứng minh bằng một cái khoá thật bên trong, chứ không phải bằng hy vọng.
+</details>

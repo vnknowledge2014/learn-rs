@@ -213,15 +213,15 @@ fn main() -> io::Result<()> {
     println!("   NHẬT KÝ GHI TRƯỚC WAL & ĐỘNG CƠ LƯU TRỮ HIỆN ĐẠI LSM-TREE ");
     println!("============================================================");
 
-    let duong_dan_wal = "mini_engine.wal";
+    let wal_path = "mini_engine.wal";
 
     // Đảm bảo dọn dẹp tệp cũ trước khi bắt đầu thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
+    let _ = std::fs::remove_file(wal_path);
 
     // GIAI ĐOẠN 1: Khởi động động cơ và ghi chép dữ liệu
     println!("[1] Khởi động động cơ MiniLsmEngine lần đầu:");
     {
-        let mut engine = MiniLsmEngine::open(duong_dan_wal)?;
+        let mut engine = MiniLsmEngine::open(wal_path)?;
         
         println!("    - Ghi khóa 'user:1' -> 'Alice'");
         engine.set("user:1", "Alice")?;
@@ -250,7 +250,7 @@ fn main() -> io::Result<()> {
     // GIAI ĐOẠN 2: Khởi động lại sau sự cố và kiểm tra tính năng phục hồi
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
-        let recovered_engine = MiniLsmEngine::open(duong_dan_wal)?;
+        let recovered_engine = MiniLsmEngine::open(wal_path)?;
         
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
         println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
@@ -267,7 +267,7 @@ fn main() -> io::Result<()> {
     }
 
     // Dọn dẹp tệp thử nghiệm
-    let _ = std::fs::remove_file(duong_dan_wal);
+    let _ = std::fs::remove_file(wal_path);
 
     println!("============================================================");
     println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 30               ");
@@ -297,7 +297,7 @@ use std::io::BufReader;
 // Thiếu use std::io::BufRead;
 
 // Đoạn mã lỗi minh họa E0599: Quên import trait BufRead
-fn doc_dong_loi(f: File) {
+fn read_record_broken(f: File) {
     let reader = BufReader::new(f);
     // for line in reader.lines() { ... } // LỖI E0599: no method named `lines`!
 }
@@ -339,3 +339,142 @@ fn doc_dong_dung(f: File) -> std::io::Result<()> {
    Viết phương thức `fn flush_to_sstable(&mut self, sstable_path: &str) -> io::Result<()>`: Khi số lượng khóa trong `memtable` vượt quá 5 phần tử, ghi toàn bộ các cặp khóa-giá trị đã được sắp xếp từ `memtable` ra một tệp văn bản mới, sau đó xóa sạch `memtable` và tạo lại tệp WAL mới rỗng.
 3. **Bài tập 3 (Tư duy thiết kế)**:  
    Tại sao các hệ thống Big Data phân tán như Apache Cassandra hay Google Bigtable lại chọn kiến trúc LSM-Tree làm động cơ lưu trữ chính thay vì dùng B+ Tree? Trong trường hợp đọc dữ liệu ngẫu nhiên (Random Read), LSM-Tree có nhược điểm gì so với B+ Tree và kỹ thuật Bộ lọc Bloom (Bloom Filter) giúp khắc phục nhược điểm đó như thế nào?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Phát lại WAL theo **đúng thứ tự**, mỗi dòng ghi đè lên trạng thái trước. `DEL` bỏ khoá khỏi bảng. Dòng sau luôn thắng dòng trước.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Phát lại từng dòng, trạng thái `MemTable` sau mỗi bước:
+
+| Dòng WAL | Thao tác | MemTable sau đó |
+|---|---|---|
+| `SET:a=10` | thêm a | `{a: 10}` |
+| `SET:b=20` | thêm b | `{a: 10, b: 20}` |
+| `SET:a=30` | **ghi đè** a | `{a: 30, b: 20}` |
+| `DEL:b` | bỏ b | `{a: 30}` |
+| `SET:c=40` | thêm c | `{a: 30, c: 40}` |
+
+**Kết quả cuối: `a = 30`, `c = 40`. Khoá `b` không còn.**
+
+Ba điều bài này dạy:
+
+1. **WAL là nhật ký ý định, không phải ảnh chụp trạng thái.** Nó ghi *bạn đã làm gì*, không phải *kết quả ra sao*. Trạng thái được dựng lại bằng cách phát lại theo thứ tự.
+2. **Thứ tự là tất cả.** Đảo hai dòng `SET:a=10` và `SET:a=30` là ra kết quả khác. Vì vậy WAL bắt buộc ghi **tuần tự, chỉ nối thêm** — không bao giờ sửa dòng cũ.
+3. **Bỏ khoá cũng là một bản ghi.** `DEL:b` không gỡ dòng `SET:b=20` khỏi tệp — nó *thêm* một dòng mới nói rằng b đã chết. Đây chính là **bia mộ** giống hệt Chương 32, và cũng để lại rác cần dọn về sau.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`BTreeMap` đã sắp xếp sẵn nên chỉ việc duyệt và ghi ra. Thứ tự hai việc — ghi SSTable rồi mới làm mới WAL — là vấn đề an toàn dữ liệu, không phải phong cách.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::io::Write;
+
+impl MiniLsmEngine {
+    pub fn flush_to_sstable(&mut self, sstable_path: &str) -> io::Result<()> {
+        if self.memtable.len() <= 5 { return Ok(()); }
+
+        // 1. Ghi ra SSTable và ÉP XUỐNG ĐĨA trước.
+        //    BTreeMap đã sắp xếp sẵn -> SSTable ra đời đã có thứ tự,
+        //    nên về sau tra cứu bằng tìm kiếm nhị phân được.
+        {
+            let mut f = std::fs::File::create(sstable_path)?;
+            for (k, v) in &self.memtable {
+                writeln!(f, "{k}={v}")?;
+            }
+            f.sync_all()?;   // BẮT BUỘC: chưa sync thì dữ liệu mới ở cache HĐH
+        }
+
+        // 2. Chỉ SAU KHI SSTable nằm chắc trên đĩa mới được làm mới WAL.
+        //    Làm ngược lại rồi mất điện -> mất trắng: WAL đã rỗng mà
+        //    SSTable thì chưa kịp ghi.
+        self.memtable.clear();
+        self.wal_file = std::fs::File::options()
+            .create(true).write(true).truncate(true).read(true)
+            .open(&self.wal_path)?;
+        Ok(())
+    }
+}
+
+#[test]
+fn xa_khi_vuot_nguong_va_lam_moi_wal() -> io::Result<()> {
+    let tmp = std::env::temp_dir();
+    let wal = tmp.join("ch34_flush_test.wal");
+    let sst = tmp.join("ch34_flush_test.sst");
+
+    let mut e = MiniLsmEngine::open(wal.to_str().unwrap())?;
+    for i in 0..6 { e.set(&format!("k{i}"), &format!("v{i}"))?; }
+    assert_eq!(e.total_keys(), 6);
+
+    e.flush_to_sstable(sst.to_str().unwrap())?;
+    assert_eq!(e.total_keys(), 0, "memtable phải rỗng sau khi xả");
+
+    // SSTable phải ĐÃ SẮP XẾP — đó là điều làm nó tra cứu nhanh được.
+    let noi_dung = std::fs::read_to_string(&sst)?;
+    let khoa: Vec<&str> = noi_dung.lines().map(|l| l.split('=').next().unwrap()).collect();
+    let mut sap = khoa.clone(); sap.sort();
+    assert_eq!(khoa, sap, "SSTable phải sắp xếp theo khoá");
+    Ok(())
+}
+```
+
+Chi tiết quyết định đúng/sai: **`sync_all()` trước khi làm mới WAL**. Không có nó, dữ liệu mới còn nằm trong bộ đệm của hệ điều hành; mất điện lúc đó thì SSTable trống mà WAL cũng đã bị cắt. Đây là lý do mọi động cơ lưu trữ đều có một điểm `fsync` mà bạn không được phép bỏ qua vì lý do hiệu năng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+LSM-Tree tối ưu cho **ghi**, B+ Tree tối ưu cho **đọc**. Hãy nghĩ xem mỗi phép ghi trong hai kiến trúc phải chạm đĩa như thế nào.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao Cassandra và Bigtable chọn LSM-Tree:**
+
+| | B+ Tree | LSM-Tree |
+|---|---|---|
+| Một phép ghi | tìm trang đúng, **đọc** nó, sửa, **ghi ngẫu nhiên** | nối vào WAL (**tuần tự**) + ghi vào RAM |
+| Kiểu I/O khi ghi | ngẫu nhiên | tuần tự |
+| Khuếch đại ghi | cao — ghi cả trang 4KB cho vài byte | thấp lúc ghi, dồn vào lúc nén |
+| Thế mạnh | đọc | **ghi** |
+
+Với tải ghi nặng — ghi log, dữ liệu chuỗi thời gian, bảng tin mạng xã hội — chênh lệch là hàng chục lần. LSM-Tree biến ghi ngẫu nhiên thành ghi tuần tự, đúng thủ thuật WAL dùng, nhưng nâng lên thành cả kiến trúc.
+
+**Nhược điểm khi ĐỌC NGẪU NHIÊN:** dữ liệu của một khoá có thể ở MemTable, hoặc SSTable mới nhất, hoặc cũ hơn, hoặc cũ hơn nữa. Không thấy ở tầng này thì phải xuống tầng dưới. Đọc một khoá **không tồn tại** là tệ nhất — phải kiểm **mọi** SSTable rồi mới kết luận là không có:
+
+```
+get("khoa_khong_ton_tai"):
+    MemTable   -> không thấy
+    SSTable-1  -> đọc đĩa, không thấy
+    SSTable-2  -> đọc đĩa, không thấy
+    ...
+    SSTable-N  -> đọc đĩa, không thấy
+    => N lần đọc đĩa chỉ để trả lời "không có"
+```
+
+**Bộ lọc Bloom chữa đúng chỗ đó.** Mỗi SSTable kèm một cấu trúc bit nhỏ trả lời được *"khoá này CHẮC CHẮN không có trong tệp"* mà không chạm đĩa. Nó có thể báo nhầm "có thể có" (dương tính giả), nhưng **không bao giờ báo nhầm "không có"** — và tính bất đối xứng đó là toàn bộ giá trị:
+
+```
+get("khoa_khong_ton_tai") có Bloom filter:
+    Bloom-1    -> "chắc chắn không có"  -> BỎ QUA, không đọc đĩa
+    Bloom-2    -> "chắc chắn không có"  -> BỎ QUA
+    => 0 lần đọc đĩa
+```
+
+Với tỉ lệ dương tính giả 1%, khoảng 10 bit mỗi khoá là đủ — vài megabyte RAM để tránh hàng triệu lần chạm đĩa. Một trong những đánh đổi bộ nhớ/tốc độ hời nhất trong ngành.
+</details>

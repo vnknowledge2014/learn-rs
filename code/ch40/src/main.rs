@@ -137,7 +137,7 @@ fn main() {
     println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
     println!("==================================================================");
     if results.is_empty() {
-        println!("    [!] Khong phat hien thay cong nao mo trong pham vi quet.");
+        println!("    [!] Low phat hien thay cong nao mo trong pham vi quet.");
     } else {
         for res in &results {
             println!(

@@ -329,7 +329,7 @@ impl<T, U, E> HKT<U> for Result<T, E> {
     type DichDen = Result<U, E>;
 }
 
-/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
+/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng shared cho Option, Result và Vec.
 pub trait Functor<U>: HKT<U> {
     fn mapping<F>(self, f: F) -> Self::DichDen
     where
@@ -368,7 +368,7 @@ impl<T, U, E> Functor<U> for Result<T, E> {
 /// Khác `Result`: khi hỏng, `Auth` giữ lại TOÀN BỘ danh sách lỗi.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Auth<T> {
-    Dat(T),
+    Set(T),
     Hong(Vec<String>),
 }
 
@@ -376,7 +376,7 @@ impl<T> Auth<T> {
     /// FUNCTOR: sơn lại giá trị bên trong mà không đụng tới danh sách lỗi.
     pub fn mapping<U>(self, f: impl FnOnce(T) -> U) -> Auth<U> {
         match self {
-            Auth::Dat(x) => Auth::Dat(f(x)),
+            Auth::Set(x) => Auth::Set(f(x)),
             Auth::Hong(error) => Auth::Hong(error),
         }
     }
@@ -384,20 +384,20 @@ impl<T> Auth<T> {
     /// Chuyển từ Result sang Auth để bắt đầu tích lũy lỗi.
     pub fn tu_ket_qua(kq: Result<T, String>) -> Self {
         match kq {
-            Ok(x) => Auth::Dat(x),
+            Ok(x) => Auth::Set(x),
             Err(e) => Auth::Hong(vec![e]),
         }
     }
 
     pub fn is_set(&self) -> bool {
-        matches!(self, Auth::Dat(_))
+        matches!(self, Auth::Set(_))
     }
 }
 
 /// APPLICATIVE: gộp 2 kết quả ĐỘC LẬP. Nếu cả hai hỏng, giữ lại CẢ HAI lỗi.
 pub fn ghep2<A, B>(a: Auth<A>, b: Auth<B>) -> Auth<(A, B)> {
     match (a, b) {
-        (Auth::Dat(x), Auth::Dat(y)) => Auth::Dat((x, y)),
+        (Auth::Set(x), Auth::Set(y)) => Auth::Set((x, y)),
         (Auth::Hong(mut e1), Auth::Hong(e2)) => {
             e1.extend(e2); // ← đây chính là chỗ LỖI ĐƯỢC TÍCH LŨY
             Auth::Hong(e1)
@@ -643,7 +643,7 @@ fn main() {
 
     println!("\n   [B] Dùng `XacThuc` (Applicative — gom hết lỗi):");
     match accumulator_register(&don_hong) {
-        Auth::Dat(nd) => println!("       Thành công: {:?}", nd),
+        Auth::Set(nd) => println!("       Thành công: {:?}", nd),
         Auth::Hong(error) => {
             println!("       Báo về {} lỗi cùng lúc:", error.len());
             for (i, l) in error.iter().enumerate() {
@@ -747,7 +747,7 @@ mod tests {
             Auth::Hong(error) => {
                 assert_eq!(error.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", error)
             }
-            Auth::Dat(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
+            Auth::Set(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
         }
     }
 
@@ -770,13 +770,13 @@ mod tests {
             email: " An.Nguyen@Example.COM ".into(),
             age: " 28 ".into(),
         };
-        let mong_doi = User {
+        let expected = User {
             name: "Nguyễn Văn An".to_string(),
             email: "an.nguyen@example.com".to_string(),
             age: 28,
         };
-        assert_eq!(short_circuit_register(&don), Ok(mong_doi.clone()));
-        assert_eq!(accumulator_register(&don), Auth::Dat(mong_doi));
+        assert_eq!(short_circuit_register(&don), Ok(expected.clone()));
+        assert_eq!(accumulator_register(&don), Auth::Set(expected));
     }
 
     #[test]
@@ -804,24 +804,24 @@ mod tests {
 ### Phân tích lỗi thực tế `E0308` (dùng nhầm `map` thay cho `and_then`):
 
 ```rust
-fn tim_tuoi(s: &str) -> Option<u32> {
+fn find_age(s: &str) -> Option<u32> {
     s.trim().parse::<u32>().ok()
 }
 
 // ❌ Sai: closure trả về Option nên kết quả bị LỒNG hai lớp
 // fn sai(input: Option<&str>) -> Option<u32> {
-//     input.map(|s| tim_tuoi(s))
+//     input.map(|s| find_age(s))
 //     // LỖI E0308: expected `Option<u32>`, found `Option<Option<u32>>`
 // }
 
 // ✅ Cách 1: dùng and_then (bind) — closure trả về hộp thì dùng bind
 fn dung_1(input: Option<&str>) -> Option<u32> {
-    input.and_then(tim_tuoi)
+    input.and_then(find_age)
 }
 
 // ✅ Cách 2: giữ map rồi flatten (join) — hoàn toàn tương đương
 fn dung_2(input: Option<&str>) -> Option<u32> {
-    input.map(tim_tuoi).flatten()
+    input.map(find_age).flatten()
 }
 ```
 
@@ -850,8 +850,8 @@ fn dung_2(input: Option<&str>) -> Option<u32> {
 Cho ba hàm dưới đây, hãy xây một chuỗi xử lý từ `Option<&str>` ra `Option<String>` và giải thích tại sao mỗi bước bạn chọn `map` hoặc `and_then`:
 ```rust
 fn cat(s: &str) -> String;              // luôn thành công
-fn thanh_so(s: String) -> Option<u32>;  // có thể thất bại
-fn dinh_dang(n: u32) -> String;         // luôn thành công
+fn to_number(s: String) -> Option<u32>;  // có thể thất bại
+fn format_it(n: u32) -> String;         // luôn thành công
 ```
 
 <details>
@@ -865,14 +865,14 @@ Nhìn kiểu trả về của từng hàm: hàm nào trả `Option<...>` thì ph
 
 ```rust
 fn cat(s: &str) -> String { s.trim().to_string() }
-fn thanh_so(s: String) -> Option<u32> { s.parse::<u32>().ok() }
-fn dinh_dang(n: u32) -> String { format!("{} đồng", n) }
+fn to_number(s: String) -> Option<u32> { s.parse::<u32>().ok() }
+fn format_it(n: u32) -> String { format!("{} đồng", n) }
 
 fn handle(input: Option<&str>) -> Option<String> {
     input
         .map(cat)           // cat trả String (trần)       -> map
-        .and_then(thanh_so) // thanh_so trả Option (hộp)   -> and_then
-        .map(dinh_dang)     // dinh_dang trả String (trần) -> map
+        .and_then(to_number) // to_number trả Option (hộp)   -> and_then
+        .map(format_it)     // format_it trả String (trần) -> map
 }
 
 fn main() {
@@ -898,7 +898,7 @@ Cho một lát cắt `&[&str]` chứa các dòng cấu hình dạng `"khoa=value
 ```rust
 use std::collections::HashMap;
 
-fn doc_cau_hinh(dong: &[&str]) -> Result<HashMap<String, String>, String> {
+fn read_config(dong: &[&str]) -> Result<HashMap<String, String>, String> {
     dong.iter()
         .map(|d| {
             d.split_once('=')
@@ -910,12 +910,12 @@ fn doc_cau_hinh(dong: &[&str]) -> Result<HashMap<String, String>, String> {
 
 fn main() {
     let tot = ["cong = 8080", "host=localhost"];
-    let bang = doc_cau_hinh(&tot).unwrap();
+    let bang = read_config(&tot).unwrap();
     assert_eq!(bang.get("cong"), Some(&"8080".to_string()));
 
     let hong = ["cong = 8080", "dong sai khong co dau bang"];
-    assert!(doc_cau_hinh(&hong).is_err());
-    println!("{:?}", doc_cau_hinh(&hong));
+    assert!(read_config(&hong).is_err());
+    println!("{:?}", read_config(&hong));
 }
 ```
 

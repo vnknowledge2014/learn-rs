@@ -83,10 +83,10 @@ pub struct SharedBuffer { pub a: AtomicUsize, pub b: AtomicUsize }
 
 /// Đệm cho mỗi bộ đếm chiếm trọn một dòng cache riêng.
 #[repr(C, align(64))]
-pub struct CountHasCount { pub value: AtomicUsize, _dem: [u8; DONG_CACHE - 8] }
+pub struct CountHasCount { pub value: AtomicUsize, _count: [u8; DONG_CACHE - 8] }
 
 impl CountHasCount {
-    pub fn new() -> Self { CountHasCount { value: AtomicUsize::new(0), _dem: [0; DONG_CACHE - 8] } }
+    pub fn new() -> Self { CountHasCount { value: AtomicUsize::new(0), _count: [0; DONG_CACHE - 8] } }
 }
 
 #[repr(C)]
@@ -664,8 +664,8 @@ mod tests {
     fn amdahl_bounds_the_speedup() {
         let ns = nanos_mau();
         // Xoá hẳn chặng 1500 ns khỏi tổng 2450 ns → còn 950 ns
-        let mong_doi = 2_450.0 / 950.0;
-        assert!((ns.max_speedup_if_node_removed() - mong_doi).abs() < 1e-9);
+        let expected = 2_450.0 / 950.0;
+        assert!((ns.max_speedup_if_node_removed() - expected).abs() < 1e-9);
         assert!(ns.max_speedup_if_node_removed() < 3.0,
                 "kể cả xoá sạch nút thắt cũng chỉ nhanh được ~2.6× — đó là định luật Amdahl");
     }
@@ -699,11 +699,11 @@ mod tests {
     #[test]
     fn samples_span_exactly_three_latency_bands() {
         let m = gen_mau_latency(100_000, 1);
-        let nhanh = m.iter().filter(|&&x| x < 1_000).count();
+        let fast = m.iter().filter(|&&x| x < 1_000).count();
         let vua = m.iter().filter(|&&x| (1_000..10_000).contains(&x)).count();
         let cham = m.iter().filter(|&&x| x >= 10_000).count();
-        assert!(nhanh > 95_000, "~99% phải nhanh, thực tế {}", nhanh);
+        assert!(fast > 95_000, "~99% phải nhanh, thực tế {}", fast);
         assert!(vua > 0 && cham > 0, "phải có cả đuôi vừa và đuôi dài");
-        assert_eq!(nhanh + vua + cham, m.len());
+        assert_eq!(fast + vua + cham, m.len());
     }
 }

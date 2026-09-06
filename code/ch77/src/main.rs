@@ -26,15 +26,15 @@ impl Side {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RejectReason {
-    SoLuongKhongDuong(Quantity),
-    GiaKhongDuong(Price),
+    NonPositiveQuantity(Quantity),
+    NonPositivePrice(Price),
     /// Ngón tay béo: giá lệch quá xa giá thị trường — gần như chắc chắn gõ nhầm.
-    NgonTayBeo { price: Price, tham_chieu: Price, lech_percent: f64 },
-    VuotGiaTriLenh { value: i64, tran: i64 },
-    VuotViThe { next_order: i64, tran: i64 },
-    VuotLoTrongNgay { lo: i64, tran: i64 },
-    VuotSoLenhMoiGiay { count: u32, tran: u32 },
-    CongTacTatDaBat,
+    NgonTayBeo { price: Price, reference: Price, lech_percent: f64 },
+    ExceedsOrderValue { value: i64, tran: i64 },
+    ExceedsPosition { next_order: i64, tran: i64 },
+    ExceedsDailyLoss { lo: i64, tran: i64 },
+    ExceedsOrderRate { count: u32, tran: u32 },
+    KillSwitchOn,
 }
 
 #[derive(Debug, Clone)]
@@ -106,31 +106,31 @@ impl RiskGate {
                        reference_price: Price, bay_gio_ns: u64) -> Result<(), RejectReason>
     {
         // Công tắc tắt xét ĐẦU TIÊN. Đã tắt thì không gì lọt qua được.
-        if self.switch_all { return Err(RejectReason::CongTacTatDaBat); }
-        if quantity <= 0 { return Err(RejectReason::SoLuongKhongDuong(quantity)); }
-        if price <= 0 { return Err(RejectReason::GiaKhongDuong(price)); }
+        if self.switch_all { return Err(RejectReason::KillSwitchOn); }
+        if quantity <= 0 { return Err(RejectReason::NonPositiveQuantity(quantity)); }
+        if price <= 0 { return Err(RejectReason::NonPositivePrice(price)); }
 
         // Ngón tay béo: gõ 8400 thành 84000 là chuyện xảy ra hằng năm
         if reference_price > 0 {
             let lech = (price - reference_price).abs() as f64 / reference_price as f64;
             if lech > self.limit.fat_finger_threshold {
-                return Err(RejectReason::NgonTayBeo { price, tham_chieu: reference_price,
+                return Err(RejectReason::NgonTayBeo { price, reference: reference_price,
                                                 lech_percent: lech * 100.0 });
             }
         }
 
         let value = price * quantity;
         if value > self.limit.max_order_value {
-            return Err(RejectReason::VuotGiaTriLenh { value, tran: self.limit.max_order_value });
+            return Err(RejectReason::ExceedsOrderValue { value, tran: self.limit.max_order_value });
         }
 
         let next_order = self.position + side.first() * quantity;
         if next_order.abs() > self.limit.max_position {
-            return Err(RejectReason::VuotViThe { next_order, tran: self.limit.max_position });
+            return Err(RejectReason::ExceedsPosition { next_order, tran: self.limit.max_position });
         }
 
         if self.realized_pnl < -self.limit.max_daily_loss {
-            return Err(RejectReason::VuotLoTrongNgay { lo: -self.realized_pnl,
+            return Err(RejectReason::ExceedsDailyLoss { lo: -self.realized_pnl,
                                                  tran: self.limit.max_daily_loss });
         }
 
@@ -141,7 +141,7 @@ impl RiskGate {
         }
         let count = self.window_order.len() as u32;
         if count >= self.limit.so_lenh_moi_giay_toi_da {
-            return Err(RejectReason::VuotSoLenhMoiGiay { count,
+            return Err(RejectReason::ExceedsOrderRate { count,
                                                    tran: self.limit.so_lenh_moi_giay_toi_da });
         }
         Ok(())
@@ -150,7 +150,7 @@ impl RiskGate {
     /// Ghi nhận một lần khớp — cập nhật vị thế, giá vốn và lãi/lỗ đã chốt.
     ///
     /// Điểm dễ sai nhất trong cả chương: lãi/lỗ KHÔNG phải dòng tiền của lệnh
-    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu mua vào ở 90,00 thì
+    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu bid vào ở 90,00 thì
     /// đó là một khoản LỖ. Muốn biết lãi hay lỗ, bắt buộc phải nhớ GIÁ VỐN.
     pub fn record_recv_fill(&mut self, side: Side, price: Price, quantity: Quantity) {
         let prev = self.position;
@@ -188,7 +188,7 @@ impl RiskGate {
 // ============================================================================
 
 /// Mất cân bằng khối lượng hai bên, chuẩn hoá về [-1, 1].
-/// Dương = áp lực mua. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
+/// Dương = áp lực bid. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
 pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return 0.0; }
@@ -196,7 +196,7 @@ pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
 }
 
 /// Giá vi mô: giá giữa có gia quyền theo khối lượng ĐỐI ỨNG.
-/// Nhiều người muốn mua → giá vi mô lệch về phía giá bán.
+/// Nhiều người muốn bid → giá vi mô lệch về phía giá bán.
 pub fn price_pos_open(price_buy: Price, qty_buy: u64, price_sell: Price, qty_sell: u64) -> Option<f64> {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return None; }
@@ -256,7 +256,7 @@ impl StatsWindow {
 // co, mà là quan hệ giữa hai mã ĐÃ GÃY HẲN mà ta không nhận ra.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SignalCap { MoDaiA, MoDaiB, Dong, KhongLam }
+pub enum SignalCap { OpenLongA, MoDaiB, Dong, KhongLam }
 
 pub struct ArbCap {
     pub proxy_ratio: f64, // beta: 1 đơn vị A ứng với bao nhiêu đơn vị B
@@ -295,12 +295,12 @@ impl ArbCap {
         match self.is_open {
             None => {
                 if z > self.threshold_in {
-                    // A đắt bất thường so với B → bán A, mua B
+                    // A đắt bất thường so với B → bán A, bid B
                     self.is_open = Some(SignalCap::MoDaiB);
                     SignalCap::MoDaiB
                 } else if z < -self.threshold_in {
-                    self.is_open = Some(SignalCap::MoDaiA);
-                    SignalCap::MoDaiA
+                    self.is_open = Some(SignalCap::OpenLongA);
+                    SignalCap::OpenLongA
                 } else { SignalCap::KhongLam }
             }
             Some(_) => {
@@ -333,7 +333,7 @@ pub fn fractional_kelly(xac_suat_thang: f64, ty_le_thang_thua: f64, part: f64) -
     (kelly_fraction(xac_suat_thang, ty_le_thang_thua) * part).clamp(0.0, 1.0)
 }
 
-/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì mua càng ít,
+/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì bid càng ít,
 /// sao cho rủi ro tính bằng tiền là như nhau ở mọi mã.
 pub fn has_theo_volatility(von: i64, bien_dong_muc_tieu: f64,
                          volatility_default_peak: f64, price: Price) -> Quantity {
@@ -454,10 +454,10 @@ fn main() {
 
     println!("\n4. TÍN HIỆU TỪ SỔ LỆNH");
     for (m, b) in [(1000u64, 1000u64), (9000, 1000), (1000, 9000)] {
-        println!("   mua {:>4} / bán {:>4} → mất cân bằng {:>6.2} · giá vi mô {:>8.2}",
+        println!("   bid {:>4} / bán {:>4} → mất cân bằng {:>6.2} · giá vi mô {:>8.2}",
                  m, b, imbalance(m, b), price_pos_open(8_400, m, 8_410, b).unwrap());
     }
-    println!("   → Nhiều người chờ mua thì giá vi mô lệch LÊN phía giá bán.");
+    println!("   → Nhiều người chờ bid thì giá vi mô lệch LÊN phía giá bán.");
 
     println!("\n5. ARBITRAGE CẶP");
     let (ga, gb) = gen_cap_price(3_000, 2024, 1.5);
@@ -465,7 +465,7 @@ fn main() {
     let (mut entries, mut ra) = (0, 0);
     for i in 0..ga.len() {
         match arb.update(ga[i], gb[i]) {
-            SignalCap::MoDaiA | SignalCap::MoDaiB => entries += 1,
+            SignalCap::OpenLongA | SignalCap::MoDaiB => entries += 1,
             SignalCap::Dong => ra += 1,
             SignalCap::KhongLam => {}
         }
@@ -551,28 +551,28 @@ mod tests {
     fn blocks_invalid_size_and_price() {
         let mut c = sample_gate();
         assert_eq!(c.check(Side::Buy, 8_400, 0, 8_400, 1).unwrap_err(),
-                   RejectReason::SoLuongKhongDuong(0));
+                   RejectReason::NonPositiveQuantity(0));
         assert_eq!(c.check(Side::Buy, 8_400, -5, 8_400, 1).unwrap_err(),
-                   RejectReason::SoLuongKhongDuong(-5));
+                   RejectReason::NonPositiveQuantity(-5));
         assert_eq!(c.check(Side::Buy, 0, 10, 0, 1).unwrap_err(),
-                   RejectReason::GiaKhongDuong(0));
+                   RejectReason::NonPositivePrice(0));
     }
 
     #[test]
     fn blocks_oversized_notional() {
         let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 100_000, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotGiaTriLenh { .. }));
+                         RejectReason::ExceedsOrderValue { .. }));
     }
 
     #[test]
     fn blocks_position_breach_on_both_sides() {
         let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 501, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotViThe { next_order: 501, tran: 500 }));
+                         RejectReason::ExceedsPosition { next_order: 501, tran: 500 }));
         assert!(matches!(c.check(Side::Sell, 8_400, 501, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotViThe { next_order: -501, tran: 500 }),
-                "bán khống cũng phải bị chặn, không chỉ mua");
+                         RejectReason::ExceedsPosition { next_order: -501, tran: 500 }),
+                "bán khống cũng phải bị chặn, không chỉ bid");
     }
 
     #[test]
@@ -613,7 +613,7 @@ mod tests {
         c.enable_all_switches();
         // Kể cả lệnh hoàn toàn hợp lệ cũng không lọt
         assert_eq!(c.check(Side::Buy, 8_400, 1, 8_400, 1).unwrap_err(),
-                   RejectReason::CongTacTatDaBat);
+                   RejectReason::KillSwitchOn);
         assert!(c.da_tat(), "công tắc KHÔNG được tự tắt sau khi chặn");
         c.operator_flips_switch();
         assert!(c.check(Side::Buy, 8_400, 1, 8_400, 1).is_ok());
@@ -636,7 +636,7 @@ mod tests {
                                                  ..Default::default() });
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Sell, 8_500, 100);
-        assert_eq!(c.realized_pnl, 50_000, "mua 80.00 bán 85.00 → lãi");
+        assert_eq!(c.realized_pnl, 50_000, "bid 80.00 bán 85.00 → lãi");
         assert!(!c.da_tat());
         assert_eq!(c.position, 0);
     }
@@ -670,7 +670,7 @@ mod tests {
         c.record_recv_fill(Side::Sell, 9_000, 100);
         assert_eq!(c.position, -100);
         c.record_recv_fill(Side::Buy, 8_500, 100);
-        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 mua lại 85.00 → lãi");
+        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 bid lại 85.00 → lãi");
     }
 
     #[test]
@@ -711,7 +711,7 @@ mod tests {
         let many_buy = price_pos_open(8_400, 9_000, 8_410, 1_000).unwrap();
         let many_sell = price_pos_open(8_400, 1_000, 8_410, 9_000).unwrap();
         let can_bang = price_pos_open(8_400, 1_000, 8_410, 1_000).unwrap();
-        assert!(many_buy > can_bang, "áp lực mua đẩy giá vi mô lên");
+        assert!(many_buy > can_bang, "áp lực bid đẩy giá vi mô lên");
         assert!(many_sell < can_bang, "áp lực bán kéo xuống");
         assert!((can_bang - 8_405.0).abs() < 1e-9, "cân bằng thì đúng giá giữa");
         assert!(many_buy > 8_400.0 && many_buy < 8_410.0, "luôn nằm trong chênh lệch");
@@ -786,7 +786,7 @@ mod tests {
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
         // rồi một cú giãn mạnh
         let th = a.update(10_100, 10_000);
-        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A mua B");
+        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A bid B");
         assert_eq!(a.is_open, Some(SignalCap::MoDaiB));
     }
 
@@ -870,14 +870,14 @@ mod tests {
         let von = 1_000_000i64;
         let a = has_theo_volatility(von, 0.10, 0.10, 100);
         let b = has_theo_volatility(von, 0.10, 0.40, 100);
-        assert!(b < a, "mã dao động mạnh gấp 4 thì mua ít hơn hẳn");
+        assert!(b < a, "mã dao động mạnh gấp 4 thì bid ít hơn hẳn");
         assert_eq!(a, 10_000, "biến động khớp mục tiêu → dùng toàn bộ vốn");
         assert_eq!(b, 2_500, "gấp 4 lần biến động → 1/4 tỉ trọng");
     }
 
     #[test]
     fn vol_sizing_never_levers_beyond_capital() {
-        // Mã êm hơn mục tiêu KHÔNG được dẫn tới mua vượt vốn.
+        // Mã êm hơn mục tiêu KHÔNG được dẫn tới bid vượt vốn.
         let c = has_theo_volatility(1_000_000, 0.40, 0.05, 100);
         assert_eq!(c, 10_000, "tỉ trọng bị chặn ở 1.0, không dùng đòn bẩy ngầm");
     }

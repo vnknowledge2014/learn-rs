@@ -79,10 +79,10 @@ Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **Swi
 2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
 3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
    ```rust
-   let mut dem_tu = std::collections::HashMap::new();
+   let mut word_count = std::collections::HashMap::new();
    let tu = "rust";
    // Đếm số lần xuất hiện của từ chỉ với 1 lần tính băm duy nhất!
-   *dem_tu.entry(tu).or_insert(0) += 1;
+   *word_count.entry(tu).or_insert(0) += 1;
    ```
 
 ### 2. Giải mã bí mật: Biểu diễn Đồ thị không sợ Borrow Checker
@@ -177,11 +177,11 @@ impl Graph {
         }
 
         // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
-        let mut da_tham = vec![false; self.adjacency_list.len()];
+        let mut visited = vec![false; self.adjacency_list.len()];
         // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
 
-        da_tham[diem_dau] = true;
+        visited[diem_dau] = true;
         queue.push_back((diem_dau, 0));
 
         while let Some((current, distance)) = queue.pop_front() {
@@ -190,8 +190,8 @@ impl Graph {
             }
 
             for &ke in &self.adjacency_list[current] {
-                if !da_tham[ke] {
-                    da_tham[ke] = true;
+                if !visited[ke] {
+                    visited[ke] = true;
                     queue.push_back((ke, distance + 1));
                 }
             }
@@ -260,7 +260,7 @@ fn main() {
     let binh = array_remote_hoi.add_peak("Bình");   // Đỉnh 1
     let chi = array_remote_hoi.add_peak("Chi");     // Đỉnh 2
     let dung = array_remote_hoi.add_peak("Dũng");   // Đỉnh 3
-    let hoa = array_remote_hoi.add_peak("Hoa");     // Đỉnh 4 (ở xa)
+    let uppercase = array_remote_hoi.add_peak("Hoa");     // Đỉnh 4 (ở xa)
 
     // Thiết lập các mối quan hệ bạn bè (Cạnh)
     // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
@@ -279,8 +279,8 @@ fn main() {
     println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", distance_hidden_use);
     assert_eq!(distance_hidden_use, Some(1));
 
-    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(hoa));
-    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, hoa);
+    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(uppercase));
+    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, uppercase);
     println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
     assert_eq!(distance_to_c, None);
 
@@ -316,25 +316,25 @@ Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình 
 
 ```rust
 // Struct chưa thỏa mãn trait Hash và Eq
-struct NguoiDungLoi {
+struct UserBroken {
     id: u32,
 }
 
-fn thu_nghiem_loi_hash() {
+fn broken_hash() {
     let mut bang_hash = std::collections::HashMap::new();
-    // bang_hash.insert(NguoiDungLoi { id: 1 }, "Admin"); // LỖI E0277!
+    // bang_hash.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0277!
 }
 
 // Cách sửa chữa đúng chuẩn: Derive đầy đủ PartialEq, Eq, Hash
 #[derive(Hash, PartialEq, Eq, Debug)]
-struct NguoiDungChuan {
+struct UserIdiomatic {
     id: u32,
 }
 
-fn thu_nghiem_dung_hash() {
+fn correct_hash() {
     let mut bang_hash = std::collections::HashMap::new();
-    bang_hash.insert(NguoiDungChuan { id: 1 }, "Admin");
-    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&NguoiDungChuan { id: 1 }));
+    bang_hash.insert(UserIdiomatic { id: 1 }, "Admin");
+    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&UserIdiomatic { id: 1 }));
 }
 ```
 
@@ -421,8 +421,149 @@ mod tests {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Tìm kiếm phần tử xuất hiện nhiều nhất)**:  
-   Sử dụng `HashMap`, hãy viết một hàm `fn tim_phan_tu_pho_bien_nhat(ds: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
+   Sử dụng `HashMap`, hãy viết một hàm `fn most_common(list: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
 2. **Bài tập 2 (Phát hiện đỉnh cô lập trong đồ thị)**:  
-   Viết phương thức `fn tim_dinh_co_lap(&self) -> Vec<usize>` cho cấu trúc `Graph` để liệt kê tất cả các đỉnh không có bất kỳ cạnh kết nối nào với các đỉnh khác trong mạng lưới (`adjacency_list[i].is_empty()`).
+   Viết phương thức `fn isolated_vertices(&self) -> Vec<usize>` cho cấu trúc `Graph` để liệt kê tất cả các đỉnh không có bất kỳ cạnh kết nối nào với các đỉnh khác trong mạng lưới (`adjacency_list[i].is_empty()`).
 3. **Bài tập 3 (Thuật toán DFS - Tìm kiếm theo chiều sâu)**:  
-   Dựa trên cấu trúc `Graph` đã học, hãy viết một hàm `fn dfs_kiem_tra_ket_noi(&self, u: usize, v: usize) -> bool` sử dụng đệ quy để kiểm tra xem có tồn tại bất kỳ con đường nào nối giữa hai đỉnh `u` và `v` hay không (không bắt buộc phải là con đường ngắn nhất).
+   Dựa trên cấu trúc `Graph` đã học, hãy viết một hàm `fn dfs_connected(&self, u: usize, v: usize) -> bool` sử dụng đệ quy để kiểm tra xem có tồn tại bất kỳ con đường nào nối giữa hai đỉnh `u` và `v` hay không (không bắt buộc phải là con đường ngắn nhất).
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Một lượt duyệt để đếm tần suất vào `HashMap`, một lượt nữa để tìm khoá có tần suất cao nhất. Hai lượt O(N) vẫn là O(N).
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+/// Tìm số xuất hiện nhiều nhất trong O(N).
+pub fn most_common(list: &[i32]) -> Option<i32> {
+    if list.is_empty() { return None; }
+
+    let mut dem: HashMap<i32, usize> = HashMap::new();
+    for &x in list {
+        *dem.entry(x).or_insert(0) += 1;     // O(1) khấu hao mỗi phần tử
+    }
+    // max_by_key trả phần tử CUỐI khi hoà; thêm khoá vào tiêu chí
+    // so sánh để kết quả TẤT ĐỊNH thay vì phụ thuộc thứ tự duyệt HashMap.
+    dem.into_iter().max_by_key(|&(gt, n)| (n, gt)).map(|(gt, _)| gt)
+}
+
+#[test]
+fn tim_dung_phan_tu_pho_bien() {
+    assert_eq!(most_common(&[1, 3, 3, 2, 3, 1]), Some(3));
+    assert_eq!(most_common(&[]), None);
+    assert_eq!(most_common(&[7]), Some(7));
+    // Hoà nhau -> luôn cho cùng kết quả, không phụ thuộc thứ tự HashMap.
+    let a = most_common(&[1, 1, 2, 2]);
+    let b = most_common(&[2, 2, 1, 1]);
+    assert_eq!(a, b);
+}
+```
+
+Chi tiết dễ bỏ qua: `max_by_key(|&(gt, n)| (n, gt))` chứ không phải `(n)`. Thứ tự duyệt `HashMap` **không xác định**, nên khi hai giá trị hoà tần suất, chỉ so `n` sẽ cho kết quả khác nhau giữa các lần chạy. Thêm khoá vào tiêu chí khiến kết quả tất định — đúng nguyên tắc mà Chương 76 phải trả giá mới học được.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Đỉnh cô lập là đỉnh có danh sách kề rỗng. Chú ý: đồ thị ở đây **vô hướng**, nên nếu `add_edge` thêm cả hai chiều thì một lần kiểm là đủ.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+impl Graph {
+    /// Đỉnh không nối với ai. Với đồ thị VÔ HƯỚNG, danh sách kề rỗng
+    /// là đủ để kết luận — vì mọi cạnh đều được ghi ở cả hai đầu.
+    pub fn isolated_vertices(&self) -> Vec<usize> {
+        self.adjacency_list.iter().enumerate()
+            .filter(|(_, ke)| ke.is_empty())
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
+#[test]
+fn tim_dung_dinh_co_lap() {
+    let mut g = Graph::new();
+    let a = g.add_peak("A");
+    let b = g.add_peak("B");
+    let c = g.add_peak("C");     // C không nối với ai
+    g.add_edge(a, b);
+
+    assert_eq!(g.isolated_vertices(), vec![c]);
+
+    // Nối C vào -> không còn đỉnh cô lập nào.
+    g.add_edge(b, c);
+    assert!(g.isolated_vertices().is_empty());
+}
+```
+
+**Cảnh báo cho đồ thị CÓ HƯỚNG:** danh sách kề rỗng chỉ nghĩa là "không có cạnh **đi ra**". Một đỉnh có thể nhận rất nhiều cạnh đi vào mà vẫn có danh sách kề rỗng — nó không cô lập chút nào. Muốn tìm đỉnh thực sự cô lập trong đồ thị có hướng, phải kiểm cả bậc vào, tức là quét toàn bộ danh sách kề của mọi đỉnh khác.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+DFS đệ quy cần một tập `da_tham` để không lặp vô tận khi đồ thị có chu trình. Đây chính là chỗ hầu hết mọi người quên.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashSet;
+
+impl Graph {
+    /// Có đường đi nào giữa u và v không? Không cần ngắn nhất.
+    pub fn dfs_connected(&self, u: usize, v: usize) -> bool {
+        if u >= self.adjacency_list.len() || v >= self.adjacency_list.len() {
+            return false;
+        }
+        let mut da_tham = HashSet::new();
+        self.dfs(u, v, &mut da_tham)
+    }
+
+    fn dfs(&self, hien_tai: usize, dich: usize, da_tham: &mut HashSet<usize>) -> bool {
+        if hien_tai == dich { return true; }
+        // `insert` trả false nếu đã có -> chặn lặp vô tận khi có chu trình.
+        if !da_tham.insert(hien_tai) { return false; }
+        self.adjacency_list[hien_tai].iter()
+            .any(|&ke| self.dfs(ke, dich, da_tham))
+    }
+}
+
+#[test]
+fn dfs_tim_duoc_duong_va_bao_dung_khi_khong_co() {
+    let mut g = Graph::new();
+    let (a, b, c, d) = (g.add_peak("A"), g.add_peak("B"),
+                        g.add_peak("C"), g.add_peak("D"));
+    g.add_edge(a, b);
+    g.add_edge(b, c);
+    // D tách rời
+
+    assert!(g.dfs_connected(a, c), "A-B-C có đường");
+    assert!(g.dfs_connected(a, a), "chính nó luôn tới được");
+    assert!(!g.dfs_connected(a, d), "D tách rời");
+    assert!(!g.dfs_connected(a, 99), "đỉnh không tồn tại");
+
+    // Có CHU TRÌNH -> phải dừng, không lặp vô tận.
+    g.add_edge(c, a);
+    assert!(g.dfs_connected(a, c));
+    assert!(!g.dfs_connected(a, d));
+}
+```
+
+`da_tham.insert(x)` trả `false` nếu `x` đã có — dùng luôn giá trị trả về làm điều kiện dừng, gọn hơn `if da_tham.contains(&x) { return ... }` rồi mới `insert`.
+
+**DFS khác BFS ở đâu:** DFS trả lời "có đường không?" và tiết kiệm bộ nhớ hơn (chỉ giữ một nhánh trong ngăn xếp), nhưng đường nó tìm ra **không nhất thiết ngắn nhất**. Cần ngắn nhất thì phải dùng BFS, như `bfs_shortest_distance` ở phần trên chương.
+</details>

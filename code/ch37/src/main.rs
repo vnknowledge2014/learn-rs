@@ -58,7 +58,7 @@ fn main() {
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
     println!("\n[2] Phan doan Du lieu toan cuc (.data & .rodata segments):");
     println!("    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
-    println!("    - Chuoi hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
+    println!("    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
     println!("\n[3] Phan doan Vung nho dong (Heap segment):");

@@ -224,8 +224,8 @@ pub fn forgetting_resistant_sort(mut mau: Vec<EdgePattern>) -> Vec<EdgePattern> 
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegacyToolResult {
-    Xong(String),
-    Loi(String),
+    Finished(String),
+    Failed(String),
 }
 
 /// Một CÔNG CỤ mà tác tử được phép gọi. Đây chính là "harness":
@@ -238,17 +238,17 @@ pub trait LegacyTool {
 
 pub struct LegacyComputeTool;
 impl LegacyTool for LegacyComputeTool {
-    fn name(&self) -> &str { "tinh_tong" }
+    fn name(&self) -> &str { "sum_all" }
     fn description(&self) -> &str { "Cộng các số cách nhau bởi dấu phẩy. Ví dụ: \"3,4,5\"" }
     fn run(&self, param: &str) -> LegacyToolResult {
         let mut tong: i64 = 0;
         for part in param.split(',') {
             match part.trim().parse::<i64>() {
                 Ok(n) => tong += n,
-                Err(_) => return LegacyToolResult::Loi(format!("{:?} không phải số", part.trim())),
+                Err(_) => return LegacyToolResult::Failed(format!("{:?} không phải số", part.trim())),
             }
         }
-        LegacyToolResult::Xong(tong.to_string())
+        LegacyToolResult::Finished(tong.to_string())
     }
 }
 
@@ -260,8 +260,8 @@ impl LegacyTool for LookupTool {
     fn description(&self) -> &str { "Tra cứu định nghĩa một thuật ngữ trong kho tri thức." }
     fn run(&self, param: &str) -> LegacyToolResult {
         match self.store.get(param.trim()) {
-            Some(v) => LegacyToolResult::Xong(v.clone()),
-            None => LegacyToolResult::Loi(format!("Không tìm thấy {:?}", param.trim())),
+            Some(v) => LegacyToolResult::Finished(v.clone()),
+            None => LegacyToolResult::Failed(format!("Không tìm thấy {:?}", param.trim())),
         }
     }
 }
@@ -280,7 +280,7 @@ impl UnitFrame {
         self.legacy_tool.push(cc);
         self
     }
-    /// Bản mô tả công cụ để nhét vào ngữ cảnh — đây là "giao diện" tác tử nhìn thấy.
+    /// Bản mô tả công cụ để nhét vào ngữ cảnh — đây là "deliver diện" tác tử nhìn thấy.
     pub fn legacy_open_gate(&self) -> String {
         self.legacy_tool.iter()
             .map(|c| format!("- {}: {}", c.name(), c.description()))
@@ -289,7 +289,7 @@ impl UnitFrame {
     pub fn goi(&self, name: &str, param: &str) -> LegacyToolResult {
         match self.legacy_tool.iter().find(|c| c.name() == name) {
             Some(c) => c.run(param),
-            None => LegacyToolResult::Loi(format!("Công cụ {:?} không tồn tại trong bộ khung", name)),
+            None => LegacyToolResult::Failed(format!("Công cụ {:?} không tồn tại trong bộ khung", name)),
         }
     }
 }
@@ -300,8 +300,8 @@ impl UnitFrame {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecClose {
-    GoiCongCu { name: String, param: String },
-    TraLoi(String),
+    CallTool { name: String, param: String },
+    Answer(String),
 }
 
 /// Bộ não của tác tử. Trong thực tế đây là lời gọi tới mô hình ngôn ngữ;
@@ -312,7 +312,7 @@ pub trait UnitWhich {
 
 #[derive(Debug, PartialEq)]
 pub enum StopReason {
-    HoanThanh,
+    Done,
     HetLuotGoi,
     LapVoHan,
 }
@@ -333,14 +333,14 @@ pub fn run_round_loop(nhiem_vu: &str, which: &dyn UnitWhich, frame: &UnitFrame) 
 
     for step in 1..=frame.so_lan_goi_toi_da {
         match which.decide(nhiem_vu, &history) {
-            ExecClose::TraLoi(t) => {
+            ExecClose::Answer(t) => {
                 history.push(format!("[{}] TRẢ LỜI: {}", step, t));
                 return ResultRoundLoop {
                     return_error: Some(t), num_step: step,
-                    stop_reason: StopReason::HoanThanh, order_log: history,
+                    stop_reason: StopReason::Done, order_log: history,
                 };
             }
-            ExecClose::GoiCongCu { name, param } => {
+            ExecClose::CallTool { name, param } => {
                 // DỪNG #3: phát hiện lặp vô hạn (gọi y hệt lần trước)
                 let first_van_manual = format!("{}::{}", name, param);
                 if !seen.insert(first_van_manual.clone()) {
@@ -352,8 +352,8 @@ pub fn run_round_loop(nhiem_vu: &str, which: &dyn UnitWhich, frame: &UnitFrame) 
                 }
                 let kq = frame.goi(&name, &param);
                 history.push(match kq {
-                    LegacyToolResult::Xong(v) => format!("[{}] {}({}) -> {}", step, name, param, v),
-                    LegacyToolResult::Loi(e) => format!("[{}] {}({}) -> LỖI: {}", step, name, param, e),
+                    LegacyToolResult::Finished(v) => format!("[{}] {}({}) -> {}", step, name, param, v),
+                    LegacyToolResult::Failed(e) => format!("[{}] {}({}) -> LỖI: {}", step, name, param, e),
                 });
             }
         }
@@ -389,26 +389,26 @@ impl RealValueGraph {
             .push((nhan.to_string(), den.to_string()));
     }
 
-    /// Truy xuất nhiều bước: từ một điểm xuất phát, đi tối đa `do_sau` bước
+    /// Truy xuất nhiều bước: từ một điểm xuất phát, đi tối đa `depth` bước
     /// để gom ngữ cảnh liên quan. Đây là điểm khác biệt so với tìm kiếm phẳng.
-    pub fn broadcast_access(&self, start: &str, do_sau: usize) -> Vec<String> {
+    pub fn broadcast_access(&self, start: &str, depth: usize) -> Vec<String> {
         let mut ket_qua = Vec::new();
-        let mut da_tham: HashSet<String> = HashSet::new();
+        let mut visited: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<(String, usize)> = VecDeque::new();
 
         queue.push_back((start.to_string(), 0));
-        da_tham.insert(start.to_string());
+        visited.insert(start.to_string());
 
         while let Some((peak, next)) = queue.pop_front() {
             if let Some(m) = self.description.get(&peak) {
                 ket_qua.push(format!("{}: {}", peak, m));
             }
-            if next >= do_sau { continue; }
+            if next >= depth { continue; }
             if let Some(neighbors) = self.edge.get(&peak) {
                 let mut sx = neighbors.clone();
                 sx.sort(); // tất định
                 for (nhan, den) in sx {
-                    if da_tham.insert(den.clone()) {
+                    if visited.insert(den.clone()) {
                         ket_qua.push(format!("  ({} --{}--> {})", peak, nhan, den));
                         queue.push_back((den, next + 1));
                     }
@@ -433,7 +433,7 @@ impl UnitWhich for UnitWhichPrice {
         self.size_sell
             .get(history.len())
             .cloned()
-            .unwrap_or_else(|| ExecClose::TraLoi("Hết kịch bản".to_string()))
+            .unwrap_or_else(|| ExecClose::Answer("Hết kịch bản".to_string()))
     }
 }
 
@@ -470,9 +470,9 @@ fn main() {
     println!("   Công cụ tác tử được phép dùng:\n{}", frame.legacy_open_gate());
 
     let which = UnitWhichPrice { size_sell: vec![
-        ExecClose::GoiCongCu { name: "tra_cuu".into(), param: "Rust".into() },
-        ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "10,20,12".into() },
-        ExecClose::TraLoi("Rust là ngôn ngữ hệ thống; tổng là 42.".into()),
+        ExecClose::CallTool { name: "tra_cuu".into(), param: "Rust".into() },
+        ExecClose::CallTool { name: "sum_all".into(), param: "10,20,12".into() },
+        ExecClose::Answer("Rust là ngôn ngữ hệ thống; tổng là 42.".into()),
     ]};
     let kq = run_round_loop("Tra cứu Rust rồi cộng 10+20+12", &which, &frame);
     for d in &kq.order_log { println!("   {}", d); }
@@ -480,8 +480,8 @@ fn main() {
 
     // Vòng lặp hỏng: tác tử lặp mãi một lời gọi
     let which_link = UnitWhichPrice { size_sell: vec![
-        ExecClose::GoiCongCu { name: "tra_cuu".into(), param: "X".into() },
-        ExecClose::GoiCongCu { name: "tra_cuu".into(), param: "X".into() },
+        ExecClose::CallTool { name: "tra_cuu".into(), param: "X".into() },
+        ExecClose::CallTool { name: "tra_cuu".into(), param: "X".into() },
     ]};
     let kq2 = run_round_loop("nhiệm vụ hỏng", &which_link, &frame);
     println!("   [Tác tử kẹt] dừng vì: {:?} sau {} bước", kq2.stop_reason, kq2.num_step);
@@ -490,9 +490,9 @@ fn main() {
     println!("\n4. ĐỒ THỊ TRI THỨC — truy xuất lan tỏa 2 bước");
     let mut g = RealValueGraph::new();
     g.add_entity("DonHang", "Đơn hàng của khách");
-    g.add_entity("KhachHang", "Người mua");
+    g.add_entity("KhachHang", "Người bid");
     g.add_entity("ThanhToan", "Giao dịch trừ tiền");
-    g.add_entity("VanDon", "Phiếu giao hàng");
+    g.add_entity("VanDon", "Phiếu deliver hàng");
     g.add_entity("Kho", "Kho hàng vật lý");
     g.add_relation("DonHang", "thuoc_ve", "KhachHang");
     g.add_relation("DonHang", "duoc_tra_boi", "ThanhToan");
@@ -555,26 +555,26 @@ mod tests {
     #[test]
     fn tool_answers_correctly_and_errors_clearly() {
         let cc = LegacyComputeTool;
-        assert_eq!(cc.run("1,2,3"), LegacyToolResult::Xong("6".into()));
-        assert!(matches!(cc.run("1,x"), LegacyToolResult::Loi(_)));
+        assert_eq!(cc.run("1,2,3"), LegacyToolResult::Finished("6".into()));
+        assert!(matches!(cc.run("1,x"), LegacyToolResult::Failed(_)));
     }
 
     #[test]
     fn harness_rejects_unregistered_tools() {
         let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
         // Tác tử KHÔNG THỂ gọi thứ không được đăng ký — đây là ranh giới an toàn.
-        assert!(matches!(frame.goi("xoa_o_cung", "/"), LegacyToolResult::Loi(_)));
+        assert!(matches!(frame.goi("xoa_o_cung", "/"), LegacyToolResult::Failed(_)));
     }
 
     #[test]
     fn loop_stops_on_completion() {
         let frame = UnitFrame::new(5).register(Box::new(LegacyComputeTool));
         let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "40,2".into() },
-            ExecClose::TraLoi("42".into()),
+            ExecClose::CallTool { name: "sum_all".into(), param: "40,2".into() },
+            ExecClose::Answer("42".into()),
         ]};
         let kq = run_round_loop("nv", &which, &frame);
-        assert_eq!(kq.stop_reason, StopReason::HoanThanh);
+        assert_eq!(kq.stop_reason, StopReason::Done);
         assert_eq!(kq.return_error, Some("42".to_string()));
         assert_eq!(kq.num_step, 2);
     }
@@ -584,10 +584,10 @@ mod tests {
         let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
         // Bộ não không bao giờ trả lời, chỉ gọi công cụ với tham số KHÁC nhau
         let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "1".into() },
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "2".into() },
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "3".into() },
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "4".into() },
+            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() },
+            ExecClose::CallTool { name: "sum_all".into(), param: "2".into() },
+            ExecClose::CallTool { name: "sum_all".into(), param: "3".into() },
+            ExecClose::CallTool { name: "sum_all".into(), param: "4".into() },
         ]};
         let kq = run_round_loop("nv", &which, &frame);
         assert_eq!(kq.stop_reason, StopReason::HetLuotGoi);
@@ -598,8 +598,8 @@ mod tests {
     fn loop_detects_stuck_agent() {
         let frame = UnitFrame::new(50).register(Box::new(LegacyComputeTool));
         let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "1".into() },
-            ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "1".into() }, // y hệt
+            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() },
+            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() }, // y hệt
         ]};
         let kq = run_round_loop("nv", &which, &frame);
         assert_eq!(kq.stop_reason, StopReason::LapVoHan);
@@ -643,13 +643,13 @@ mod tests {
 Mã trên dùng `UnitWhichPrice` để mọi thứ tất định và kiểm thử được. Khi nối vào mô hình thật, bạn **chỉ thay đúng một cài đặt trait**:
 
 ```rust
-pub struct BoNaoThat { pub khoa_api: String, pub mo_hinh: String }
+pub struct RealBrain { pub khoa_api: String, pub mo_hinh: String }
 
-impl UnitWhich for BoNaoThat {
+impl UnitWhich for RealBrain {
     fn decide(&self, nhiem_vu: &str, history: &[String]) -> ExecClose {
         // 1. Dựng ngữ cảnh bằng `close_edge_call` (tôn trọng ngân sách token)
         // 2. Gửi HTTP tới nhà cung cấp mô hình (reqwest + serde_json)
-        // 3. Phân tích phản hồi thành ExecClose::GoiCongCu hoặc ExecClose::TraLoi
+        // 3. Phân tích phản hồi thành ExecClose::CallTool hoặc ExecClose::Answer
         todo!("gọi mô hình thật")
     }
 }
@@ -671,6 +671,18 @@ Toàn bộ phần còn lại — bộ khung, vòng lặp, đồ thị, và **t�
 
 ---
 
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0038: the trait cannot be made into an object` | `Box<dyn LegacyTool>` nhưng trait có phương thức generic hoặc trả `Self` | Giữ trait "object-safe": bỏ generic khỏi phương thức, trả `Box<dyn ...>` thay vì `Self` |
+| `E0277: Sized is not satisfied` | Chứa `dyn LegacyTool` trực tiếp trong `Vec` | `Vec<Box<dyn LegacyTool>>` — trait object không có kích thước biết trước |
+| `E0502: cannot borrow as mutable` | Vừa duyệt danh mục công cụ vừa muốn thêm kết quả vào nó | Thu kết quả vào `Vec` cục bộ, gộp lại sau vòng lặp |
+| `E0716: temporary value dropped while borrowed` | Mượn kết quả của một biểu thức tạm khi dựng ngữ cảnh | Gán vào biến `let` trước rồi mới mượn |
+| Ngân sách ngữ cảnh vượt hạn mà không báo | Cộng token sau khi đã thêm vào danh sách | Kiểm ngân sách **trước** khi thêm, không phải sau |
+
+---
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
@@ -688,15 +700,15 @@ Viết `CongCuThoiTiet` trả về nhiệt độ cho một thành phố từ m�
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct CongCuThoiTiet { pub data: HashMap<String, i32> }
+pub struct WeatherTool { pub data: HashMap<String, i32> }
 
-impl LegacyTool for CongCuThoiTiet {
+impl LegacyTool for WeatherTool {
     fn name(&self) -> &str { "thoi_tiet" }
     fn description(&self) -> &str { "Trả về nhiệt độ (°C) của một thành phố. Ví dụ: \"Hà Nội\"" }
     fn run(&self, param: &str) -> LegacyToolResult {
         match self.data.get(param.trim()) {
-            Some(t) => LegacyToolResult::Xong(format!("{}°C", t)),
-            None => LegacyToolResult::Loi(format!("Chưa có dữ liệu cho {:?}", param.trim())),
+            Some(t) => LegacyToolResult::Finished(format!("{}°C", t)),
+            None => LegacyToolResult::Failed(format!("Chưa có dữ liệu cho {:?}", param.trim())),
         }
     }
 }
@@ -705,12 +717,12 @@ impl LegacyTool for CongCuThoiTiet {
 mod bt1 {
     use super::*;
     #[test]
-    fn tac_tu_goi_duoc_cong_cu_thoi_tiet() {
+    fn agent_can_call_weather_tool() {
         let mut dl = HashMap::new();
         dl.insert("Hà Nội".to_string(), 28);
-        let frame = UnitFrame::new(3).register(Box::new(CongCuThoiTiet { data: dl }));
-        assert_eq!(frame.goi("thoi_tiet", "Hà Nội"), LegacyToolResult::Xong("28°C".into()));
-        assert!(matches!(frame.goi("thoi_tiet", "Sao Hỏa"), LegacyToolResult::Loi(_)));
+        let frame = UnitFrame::new(3).register(Box::new(WeatherTool { data: dl }));
+        assert_eq!(frame.goi("thoi_tiet", "Hà Nội"), LegacyToolResult::Finished("28°C".into()));
+        assert!(matches!(frame.goi("thoi_tiet", "Sao Hỏa"), LegacyToolResult::Failed(_)));
     }
 }
 ```

@@ -16,11 +16,11 @@ Hãy so sánh hai cách viết cùng một hàm:
 
 ```rust
 // ❌ Kiểu "thùng rỗng": chữ ký không nói gì cả
-fn gui_thu(address: String) { }
+fn send_mail(address: String) { }
 // Người gọi có thể truyền vào "", "abc", "  " — hàm phải tự kiểm tra lại.
 
 // ✅ Kiểu có bằng chứng: chữ ký là một hợp đồng
-fn gui_thu(address: Email) { }
+fn send_mail(address: Email) { }
 // KHÔNG THỂ tạo ra một `Email` không hợp lệ. Hàm này không cần kiểm tra gì nữa.
 ```
 
@@ -118,20 +118,20 @@ Ví dụ kinh điển:
 
 ```rust
 // ❌ Kiểu TÍCH: 2 × (1 + n) = có 2 tổ hợp VÔ NGHĨA
-struct DonHangXau {
+struct MalformedOrder {
     is_paid: bool,
     id_trade: Option<String>,
 }
 // Tổ hợp 1: is_paid = true,  id_trade = None      → Đã trả tiền mà không có mã?!
-// Tổ hợp 2: is_paid = false, id_trade = Some(...) → Chưa trả mà có mã giao dịch?!
+// Tổ hợp 2: is_paid = false, id_trade = Some(...) → Chưa trả mà có mã deliver dịch?!
 // Hệ quả: mọi hàm đọc struct này phải viết `if` phòng thủ cho hai trường hợp không thể xảy ra.
 
 // ✅ Kiểu TỔNG: 1 + n = KHÔNG CÒN tổ hợp vô nghĩa nào
-enum TrangThaiThanhToan {
+enum PaymentState {
     ChuaTra,
     DaTra { id_trade: String },
 }
-// Trình biên dịch bảo đảm: có mã giao dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
+// Trình biên dịch bảo đảm: có mã deliver dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
 ```
 
 ### 2. Kiểu bọc (Newtype) + Hàm khởi tạo có kiểm chứng (Smart Constructor)
@@ -190,9 +190,9 @@ Cách thông thường là dùng một `enum` trạng thái rồi kiểm tra lú
 
 ```rust
 // Cách thường: kiểm tra LÚC CHẠY
-fn delivery_queue(don: &mut DonQueue) -> Result<(), Loi> {
+fn delivery_queue(don: &mut DonQueue) -> Result<(), Failed> {
     if don.state != State::MathDone {
-        return Err(Loi::ChuaThanhToan);  // ← lỗi này chỉ lộ ra khi chạy tới
+        return Err(Failed::ChuaThanhToan);  // ← lỗi này chỉ lộ ra khi chạy tới
     }
     Ok(())
 }
@@ -306,9 +306,9 @@ pub mod mien {
     pub enum DomainError {
         EmailSai(String),
         TenSanPhamSai(String),
-        SoLuongSai(String),
+        BadQuantity(String),
         DonRong,
-        DonQuaLon { so_dong: usize, toi_da: usize },
+        OrderTooLarge { so_dong: usize, toi_da: usize },
     }
 
     impl fmt::Display for DomainError {
@@ -316,9 +316,9 @@ pub mod mien {
             match self {
                 DomainError::EmailSai(s) => write!(f, "Email không hợp lệ: {}", s),
                 DomainError::TenSanPhamSai(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
-                DomainError::SoLuongSai(s) => write!(f, "Số lượng không hợp lệ: {}", s),
+                DomainError::BadQuantity(s) => write!(f, "Số lượng không hợp lệ: {}", s),
                 DomainError::DonRong => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
-                DomainError::DonQuaLon { so_dong, toi_da } => {
+                DomainError::OrderTooLarge { so_dong, toi_da } => {
                     write!(f, "Đơn có {} dòng, vượt giới hạn {} dòng", so_dong, toi_da)
                 }
             }
@@ -394,9 +394,9 @@ pub mod mien {
 
         pub fn analyze(n: u32) -> Result<Self, DomainError> {
             if n == 0 {
-                Err(DomainError::SoLuongSai("phải lớn hơn 0".to_string()))
+                Err(DomainError::BadQuantity("phải lớn hơn 0".to_string()))
             } else if n > Self::TOI_DA {
-                Err(DomainError::SoLuongSai(format!("{} vượt quá {}", n, Self::TOI_DA)))
+                Err(DomainError::BadQuantity(format!("{} vượt quá {}", n, Self::TOI_DA)))
             } else {
                 Ok(Quantity(n))
             }
@@ -443,8 +443,8 @@ pub mod mien {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum MathOp {
         TienMat,
-        ChuyenKhoan { id_trade: String },
-        The { bon_so_cuoi: String },
+        Transfer { id_trade: String },
+        The { last_four: String },
     }
 
     // ---------------------------------------------------------------------
@@ -489,7 +489,7 @@ pub struct DonQueue<TT> {
     _state: PhantomData<TT>,
 }
 
-/// Các phương thức dùng chung cho MỌI trạng thái.
+/// Các phương thức dùng shared cho MỌI trạng thái.
 impl<TT> DonQueue<TT> {
     pub fn id(&self) -> &str {
         &self.id
@@ -528,7 +528,7 @@ impl DonQueue<Import> {
             return Err(DomainError::DonRong);
         }
         if self.dong.len() > SO_DONG_TOI_DA {
-            return Err(DomainError::DonQuaLon {
+            return Err(DomainError::OrderTooLarge {
                 so_dong: self.dong.len(),
                 toi_da: SO_DONG_TOI_DA,
             });
@@ -556,7 +556,7 @@ impl DonQueue<Authenticated> {
     }
 }
 
-/// Trạng thái ĐÃ THANH TOÁN: chỉ có thể giao hàng.
+/// Trạng thái ĐÃ THANH TOÁN: chỉ có thể deliver hàng.
 impl DonQueue<MathDone> {
     pub fn payment_method(&self) -> &MathOp {
         // An toàn tuyệt đối: chỉ trạng thái này mới tồn tại, và nó LUÔN có thanh toán.
@@ -679,13 +679,13 @@ pub struct Invoice {
 pub fn invoice_loop(don: &DonQueue<Authenticated>) -> Invoice {
     let computed_temp = don.tong_tien();
     let discount = apply_discount(computed_temp, don.so_dong());
-    let sau_chiet_khau = computed_temp.subtract(discount);
-    let phi = shipping_fee(sau_chiet_khau);
+    let after_discount = computed_temp.subtract(discount);
+    let phi = shipping_fee(after_discount);
     Invoice {
         computed_temp,
         discount,
         phi_van_transfer: phi,
-        total_payable: sau_chiet_khau.gate(phi),
+        total_payable: after_discount.gate(phi),
     }
 }
 
@@ -776,13 +776,13 @@ fn main() {
     println!("   │ TỔNG THANH TOÁN : {}", invoice.total_payable);
     println!("   └────────────────────────────────────────────────");
 
-    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::ChuyenKhoan {
+    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::Transfer {
         id_trade: "VCB-99881234".to_string(),
     });
     println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
 
     let _delivered_order: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
-    println!("   [Đã giao]       hoàn tất quy trình ✓");
+    println!("   [Đã deliver]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
     // 5. NHỮNG GÌ TRÌNH BIÊN DỊCH TỪ CHỐI
@@ -920,8 +920,8 @@ mod tests {
         let don = don_mau();
         let da_tra = don.payment(MathOp::TienMat);
         assert_eq!(da_tra.payment_method(), &MathOp::TienMat);
-        let da_giao = da_tra.delivery_queue("VD-001");
-        assert_eq!(da_giao.id(), "ORD-TEST");
+        let delivered = da_tra.delivery_queue("VD-001");
+        assert_eq!(delivered.id(), "ORD-TEST");
     }
 
     #[test]
@@ -990,9 +990,9 @@ Dùng `chars().filter(|c| c.is_ascii_digit()).collect::<String>()` để làm s�
 ```rust
 pub mod lien_lac {
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct SoDienThoaiVN(String);
+    pub struct VnPhone(String);
 
-    impl SoDienThoaiVN {
+    impl VnPhone {
         pub fn analyze(tho: &str) -> Result<Self, String> {
             let clean: String = tho.chars().filter(|c| c.is_ascii_digit()).collect();
             if clean.len() != 10 {
@@ -1001,7 +1001,7 @@ pub mod lien_lac {
             if !clean.starts_with('0') {
                 return Err("Số điện thoại phải bắt đầu bằng 0".to_string());
             }
-            Ok(SoDienThoaiVN(clean))
+            Ok(VnPhone(clean))
         }
         pub fn as_str(&self) -> &str { &self.0 }
     }
@@ -1009,16 +1009,16 @@ pub mod lien_lac {
 
 #[cfg(test)]
 mod t {
-    use super::lien_lac::SoDienThoaiVN as SDT;
+    use super::lien_lac::VnPhone as SDT;
 
     #[test] fn chap_nhan_so_hop_le() {
         assert_eq!(SDT::analyze("0912 345 678").unwrap().as_str(), "0912345678");
     }
-    #[test] fn chap_nhan_dinh_dang_co_dau_cham() {
+    #[test] fn accepts_dotted_format() {
         assert_eq!(SDT::analyze("098.765.4321").unwrap().as_str(), "0987654321");
     }
-    #[test] fn tu_choi_thieu_chu_so() { assert!(SDT::analyze("0912345").is_err()); }
-    #[test] fn tu_choi_khong_bat_dau_bang_0() { assert!(SDT::analyze("1912345678").is_err()); }
+    #[test] fn rejects_too_few_digits() { assert!(SDT::analyze("0912345").is_err()); }
+    #[test] fn rejects_missing_leading_zero() { assert!(SDT::analyze("1912345678").is_err()); }
 }
 ```
 </details>
@@ -1028,9 +1028,9 @@ Cho struct sau đây, hãy đếm số trạng thái nó biểu diễn được,
 
 ```rust
 struct Account {
-    da_kich_hoat: bool,
-    ngay_kich_hoat: Option<String>,
-    ly_do_khoa: Option<String>,
+    activated: bool,
+    activated_on: Option<String>,
+    lock_reason: Option<String>,
 }
 ```
 
@@ -1054,21 +1054,21 @@ Liệt kê các trạng thái nghiệp vụ *thật sự* tồn tại của mộ
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Account {
     ChoKichHoat,
-    DangHoatDong { ngay_kich_hoat: String },
-    BiKhoa { ngay_kich_hoat: String, ly_do: String },
+    DangHoatDong { activated_on: String },
+    BiKhoa { activated_on: String, ly_do: String },
 }
 
 impl Account {
     pub fn activate(self, ngay: String) -> Result<Self, &'static str> {
         match self {
-            Account::ChoKichHoat => Ok(Account::DangHoatDong { ngay_kich_hoat: ngay }),
+            Account::ChoKichHoat => Ok(Account::DangHoatDong { activated_on: ngay }),
             _ => Err("Tài khoản đã được kích hoạt trước đó"),
         }
     }
     pub fn key(self, ly_do: String) -> Result<Self, &'static str> {
         match self {
-            Account::DangHoatDong { ngay_kich_hoat } =>
-                Ok(Account::BiKhoa { ngay_kich_hoat, ly_do }),
+            Account::DangHoatDong { activated_on } =>
+                Ok(Account::BiKhoa { activated_on, ly_do }),
             _ => Err("Chỉ khóa được tài khoản đang hoạt động"),
         }
     }
@@ -1096,60 +1096,60 @@ Mẫu giống hệt `DonQueue<TT>`. Điểm mới: `commit` và `rollback` đi *
 ```rust
 use std::marker::PhantomData;
 
-pub struct ChuaKetNoi;
-pub struct DaKetNoi;
-pub struct TrongGiaoDich;
+pub struct Disconnected;
+pub struct Connected;
+pub struct InTransaction;
 
-pub struct KetNoi<TT> {
-    chuoi_ket_noi: String,
+pub struct Connection<TT> {
+    connection_string: String,
     order_log: Vec<String>,
     _tt: PhantomData<TT>,
 }
 
-impl KetNoi<ChuaKetNoi> {
+impl Connection<Disconnected> {
     pub fn new(series: &str) -> Self {
-        KetNoi { chuoi_ket_noi: series.to_string(), order_log: Vec::new(), _tt: PhantomData }
+        Connection { connection_string: series.to_string(), order_log: Vec::new(), _tt: PhantomData }
     }
-    pub fn ket_noi(self) -> Result<KetNoi<DaKetNoi>, String> {
-        if self.chuoi_ket_noi.is_empty() {
+    pub fn connect(self) -> Result<Connection<Connected>, String> {
+        if self.connection_string.is_empty() {
             return Err("Chuỗi kết nối rỗng".to_string());
         }
-        Ok(KetNoi { chuoi_ket_noi: self.chuoi_ket_noi, order_log: self.order_log, _tt: PhantomData })
+        Ok(Connection { connection_string: self.connection_string, order_log: self.order_log, _tt: PhantomData })
     }
 }
 
-impl KetNoi<DaKetNoi> {
-    pub fn start_trade(self) -> KetNoi<TrongGiaoDich> {
-        KetNoi { chuoi_ket_noi: self.chuoi_ket_noi, order_log: self.order_log, _tt: PhantomData }
+impl Connection<Connected> {
+    pub fn start_trade(self) -> Connection<InTransaction> {
+        Connection { connection_string: self.connection_string, order_log: self.order_log, _tt: PhantomData }
     }
 }
 
-impl KetNoi<TrongGiaoDich> {
-    pub fn truy_van(mut self, sql: &str) -> Self {
+impl Connection<InTransaction> {
+    pub fn query(mut self, sql: &str) -> Self {
         self.order_log.push(sql.to_string());
         self
     }
-    pub fn commit(self) -> KetNoi<DaKetNoi> {
+    pub fn commit(self) -> Connection<Connected> {
         println!("COMMIT {} câu lệnh", self.order_log.len());
-        KetNoi { chuoi_ket_noi: self.chuoi_ket_noi, order_log: Vec::new(), _tt: PhantomData }
+        Connection { connection_string: self.connection_string, order_log: Vec::new(), _tt: PhantomData }
     }
-    pub fn rollback(self) -> KetNoi<DaKetNoi> {
+    pub fn rollback(self) -> Connection<Connected> {
         println!("ROLLBACK, hủy {} câu lệnh", self.order_log.len());
-        KetNoi { chuoi_ket_noi: self.chuoi_ket_noi, order_log: Vec::new(), _tt: PhantomData }
+        Connection { connection_string: self.connection_string, order_log: Vec::new(), _tt: PhantomData }
     }
 }
 
 fn main() {
-    let kn = KetNoi::new("postgres://localhost/shop").ket_noi().unwrap();
+    let kn = Connection::new("postgres://localhost/shop").connect().unwrap();
     let kn = kn.start_trade()
-        .truy_van("UPDATE kho SET so_luong = so_luong - 1 WHERE id = 7")
-        .truy_van("INSERT INTO don_hang VALUES (7, 1)")
+        .query("UPDATE kho SET so_luong = so_luong - 1 WHERE id = 7")
+        .query("INSERT INTO don_hang VALUES (7, 1)")
         .commit();
-    let _ = kn.start_trade().truy_van("DELETE FROM tam").rollback();
+    let _ = kn.start_trade().query("DELETE FROM tam").rollback();
 
     // Các dòng sau KHÔNG biên dịch được — và đó chính là mục đích:
-    // KetNoi::moi("...").truy_van("SELECT 1");  // chưa kết nối
-    // kn.commit();                              // không ở trong giao dịch
+    // Connection::moi("...").query("SELECT 1");  // chưa kết nối
+    // kn.commit();                              // không ở trong deliver dịch
 }
 ```
 

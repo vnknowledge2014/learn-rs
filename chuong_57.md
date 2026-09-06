@@ -77,8 +77,8 @@ IDOR là lỗ hổng **kiểm soát truy cập**: hệ thống tra đối tượ
 Rust cho một mẹo thiết kế mạnh: **đưa id người gọi vào chữ ký hàm bắt buộc**. So sánh:
 
 ```rust
-fn xem_hoa_don(id: u64) -> Option<Invoice>              // ❌ dễ quên kiểm quyền
-fn xem_hoa_don(id: u64, caller: u64) -> Result<..>  // ✅ KHÔNG THỂ gọi mà không có người gọi
+fn view_invoice(id: u64) -> Option<Invoice>              // ❌ dễ quên kiểm quyền
+fn view_invoice(id: u64, caller: u64) -> Result<..>  // ✅ KHÔNG THỂ gọi mà không có người gọi
 ```
 
 Với chữ ký thứ hai, lập trình viên *không thể quên* — muốn gọi hàm là phải cung cấp danh tính người gọi, và trình biên dịch nhắc nếu thiếu.
@@ -154,9 +154,9 @@ pub fn build_safe_sql(name_dang_import: &str) -> SafeSql {
 
 /// Mô phỏng cách trình điều khiển cơ sở dữ liệu thật xử lý: giá trị được
 /// "thoát" và bọc, không bao giờ được diễn giải là cú pháp.
-pub fn co_the_bi_tiem_sql(cau: &SafeSql) -> bool {
+pub fn co_the_bi_tiem_sql(sentence: &SafeSql) -> bool {
     // Với câu tham số hóa, dù tham số chứa gì thì cú pháp vẫn cố định.
-    cau.mau.matches('?').count() == cau.param.len() && cau.mau.contains('?')
+    sentence.mau.matches('?').count() == sentence.param.len() && sentence.mau.contains('?')
 }
 
 // ============================================================================
@@ -196,8 +196,8 @@ pub struct Invoice {
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorAccessCap {
-    KhongTonTai,
-    KhongCoQuyen, // đây là lỗ hổng IDOR nếu quên kiểm tra
+    NotFound,
+    Forbidden, // đây là lỗ hổng IDOR nếu quên kiểm tra
 }
 
 /// ❌ DÍNH LỖI: chỉ tra theo id, KHÔNG kiểm tra người gọi có sở hữu không.
@@ -212,9 +212,9 @@ pub fn invoice_view_safe<'a>(
     id: u64,
     caller: u64,
 ) -> Result<&'a Invoice, ErrorAccessCap> {
-    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::KhongTonTai)?;
+    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::NotFound)?;
     if hd.owner != caller {
-        return Err(ErrorAccessCap::KhongCoQuyen);
+        return Err(ErrorAccessCap::Forbidden);
     }
     Ok(hd)
 }
@@ -225,26 +225,26 @@ pub fn invoice_view_safe<'a>(
 
 #[derive(Debug, PartialEq)]
 pub enum UrlError {
-    KhongPhaiHttp,
-    TroToiMangNoiBo, // chặn 127.0.0.1, 169.254.x (metadata đám mây), 10.x, 192.168.x
-    HostKhongDuocPhep,
+    NotHttp,
+    PointsToPrivateNetwork, // chặn 127.0.0.1, 169.254.x (metadata đám mây), 10.x, 192.168.x
+    HostNotAllowed,
 }
 
 /// ✅ Kiểm tra URL trước khi máy chủ đi lấy nội dung (chống SSRF).
 /// Quy tắc: DANH SÁCH TRẮNG host cho phép, và chặn mọi địa chỉ mạng nội bộ.
 pub fn is_safe_url(url: &str, host_cho_phep: &[&str]) -> Result<(), UrlError> {
-    let sau_scheme = url.strip_prefix("https://")
+    let after_scheme = url.strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
-        .ok_or(UrlError::KhongPhaiHttp)?;
+        .ok_or(UrlError::NotHttp)?;
 
-    let host = sau_scheme.split(['/', ':']).next().unwrap_or("");
+    let host = after_scheme.split(['/', ':']).next().unwrap_or("");
 
     // Chặn địa chỉ mạng nội bộ / loopback / metadata đám mây
     if is_unit_address(host) {
-        return Err(UrlError::TroToiMangNoiBo);
+        return Err(UrlError::PointsToPrivateNetwork);
     }
     if !host_cho_phep.contains(&host) {
-        return Err(UrlError::HostKhongDuocPhep);
+        return Err(UrlError::HostNotAllowed);
     }
     Ok(())
 }
@@ -287,24 +287,24 @@ pub fn so_sanh_bat_bien(a: &[u8], b: &[u8]) -> bool {
 /// Kiểm tra ĐỘ MẠNH mật khẩu — chính sách tối thiểu.
 #[derive(Debug, PartialEq)]
 pub enum ErrorPassword {
-    QuaNgan,
-    ThieuChuHoa,
-    ThieuChuSo,
-    ThieuKyTuDacBiet,
+    TooShort,
+    MissingUppercase,
+    MissingDigit,
+    MissingSymbol,
 }
 pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
     let mut error = Vec::new();
     if mk.chars().count() < 12 {
-        error.push(ErrorPassword::QuaNgan);
+        error.push(ErrorPassword::TooShort);
     }
     if !mk.chars().any(|c| c.is_uppercase()) {
-        error.push(ErrorPassword::ThieuChuHoa);
+        error.push(ErrorPassword::MissingUppercase);
     }
     if !mk.chars().any(|c| c.is_ascii_digit()) {
-        error.push(ErrorPassword::ThieuChuSo);
+        error.push(ErrorPassword::MissingDigit);
     }
     if !mk.chars().any(|c| !c.is_alphanumeric()) {
-        error.push(ErrorPassword::ThieuKyTuDacBiet);
+        error.push(ErrorPassword::MissingSymbol);
     }
     if error.is_empty() { Ok(()) } else { Err(error) }
 }
@@ -315,11 +315,11 @@ pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
 
 /// ✅ Chuẩn hóa và kiểm tra đường dẫn tệp do người dùng cung cấp.
 /// Chặn `..` để không thoát ra khỏi thư mục gốc cho phép.
-pub fn path_safe(root: &str, yeu_cau: &str) -> Result<String, String> {
-    if yeu_cau.contains("..") || yeu_cau.starts_with('/') || yeu_cau.contains('\0') {
-        return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", yeu_cau));
+pub fn path_safe(root: &str, required: &str) -> Result<String, String> {
+    if required.contains("..") || required.starts_with('/') || required.contains('\0') {
+        return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", required));
     }
-    Ok(format!("{}/{}", root.trim_end_matches('/'), yeu_cau))
+    Ok(format!("{}/{}", root.trim_end_matches('/'), required))
 }
 
 fn main() {
@@ -402,9 +402,9 @@ mod tests {
         // Người #1 xem hóa đơn của chính mình -> OK
         assert!(invoice_view_safe(&store, 100, 1).is_ok());
         // Người #1 xem hóa đơn người #2 -> BỊ CHẶN
-        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::KhongCoQuyen));
+        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::Forbidden));
         // Hóa đơn không tồn tại
-        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::KhongTonTai));
+        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::NotFound));
     }
 
     #[test]
@@ -412,22 +412,22 @@ mod tests {
         let cp = ["api.tot.vn"];
         assert!(is_safe_url("https://api.tot.vn/x", &cp).is_ok());
         // Địa chỉ metadata đám mây — mục tiêu SSRF nguy hiểm nhất
-        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::TroToiMangNoiBo));
-        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::TroToiMangNoiBo));
+        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::PointsToPrivateNetwork));
         assert_eq!(is_safe_url("http://172.15.0.1/", &["172.15.0.1"]), Ok(())); // 172.15 KHÔNG nội bộ
         // Host lạ không trong danh sách trắng
-        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostKhongDuocPhep));
+        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostNotAllowed));
         // Không phải http(s)
-        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::KhongPhaiHttp));
+        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::NotHttp));
     }
 
     #[test]
     fn constant_time_compare_is_correct() {
         assert!(so_sanh_bat_bien(b"token-abc", b"token-abc"));
         assert!(!so_sanh_bat_bien(b"token-abc", b"token-xyz"));
-        assert!(!so_sanh_bat_bien(b"ngan", b"dai-hon-nhieu")); // độ dài khác
+        assert!(!so_sanh_bat_bien(b"short", b"dai-hon-nhieu")); // độ dài khác
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod tests {
         assert!(check_do_strong("khongcosohoa!X").is_err()); // thiếu số
         assert!(check_do_strong("Rust@2026!Secure").is_ok());
         let error = check_do_strong("short").unwrap_err();
-        assert!(error.contains(&ErrorPassword::QuaNgan));
+        assert!(error.contains(&ErrorPassword::TooShort));
     }
 
     #[test]
@@ -448,6 +448,18 @@ mod tests {
     }
 }
 ```
+
+---
+
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0308: expected &str, found String` | Trộn `String` và `&str` khi ghép câu truy vấn | Nhận `&str` ở tham số, gọi `.as_str()` hoặc `&s` khi truyền |
+| `E0502: cannot borrow as mutable` | Vừa đọc vừa ghi cùng một bộ đệm khi thoát ký tự | Dựng chuỗi kết quả **mới** thay vì sửa tại chỗ |
+| `E0716: temporary value dropped while borrowed` | `&format!(...)` truyền thẳng vào hàm giữ tham chiếu | Gán ra biến trước: `let s = format!(...); f(&s);` |
+| Escape XSS vẫn lọt | Thoát `<` `>` mà quên `&`, `"`, `'` | Thoát `&` **đầu tiên**, nếu không sẽ thoát chồng lên chính dấu vừa sinh |
+| So sánh bí mật vẫn rò thời gian | Dùng `==` trên `String` | So sánh từng byte, không thoát sớm — thấy ở `constant_time_compare` |
 
 ---
 
@@ -468,7 +480,7 @@ mod tests {
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn thoat_thuoc_tinh(s: &str) -> String {
+pub fn escape_attribute(s: &str) -> String {
     // Trong thuộc tính, dấu nháy kép là ký tự thoát ra ngoài nguy hiểm nhất
     escape_html(s) // đã thoát cả " thành &quot; và ' thành &#x27;
 }
@@ -477,9 +489,9 @@ pub fn thoat_thuoc_tinh(s: &str) -> String {
 mod bt1 {
     use super::*;
     #[test]
-    fn khong_thoat_ra_ngoai_thuoc_tinh() {
+    fn does_not_escape_attribute_context() {
         let payload = "\" onmouseover=\"hack()";
-        let out = format!("<a title=\"{}\">", thoat_thuoc_tinh(payload));
+        let out = format!("<a title=\"{}\">", escape_attribute(payload));
         assert!(!out.contains("onmouseover=\"hack"));
         assert!(out.contains("&quot;"));
     }
@@ -496,17 +508,17 @@ Viết `BoDemDangNhap` cho phép tối đa 5 lần đăng nhập sai trong "cử
 ```rust
 use std::collections::HashMap;
 
-pub struct BoDemDangNhap {
+pub struct LoginCounter {
     lan_sai: HashMap<String, u32>,
-    gioi_han: u32,
+    limit: u32,
 }
-impl BoDemDangNhap {
-    pub fn new(gioi_han: u32) -> Self {
-        BoDemDangNhap { lan_sai: HashMap::new(), gioi_han }
+impl LoginCounter {
+    pub fn new(limit: u32) -> Self {
+        LoginCounter { lan_sai: HashMap::new(), limit }
     }
-    pub fn thu_dang_nhap(&mut self, account: &str, dung: bool) -> Result<(), String> {
+    pub fn try_login(&mut self, account: &str, dung: bool) -> Result<(), String> {
         let count = self.lan_sai.entry(account.to_string()).or_insert(0);
-        if *count >= self.gioi_han {
+        if *count >= self.limit {
             return Err("Tài khoản tạm khóa do quá nhiều lần sai".into());
         }
         if dung {
@@ -523,11 +535,11 @@ impl BoDemDangNhap {
 mod bt2 {
     use super::*;
     #[test]
-    fn khoa_sau_5_lan_sai() {
-        let mut bd = BoDemDangNhap::new(5);
-        for _ in 0..5 { let _ = bd.thu_dang_nhap("an", false); }
+    fn locks_after_five_failures() {
+        let mut bd = LoginCounter::new(5);
+        for _ in 0..5 { let _ = bd.try_login("an", false); }
         // Lần thứ 6 bị chặn dù có nhập đúng
-        assert!(bd.thu_dang_nhap("an", true).unwrap_err().contains("tạm khóa"));
+        assert!(bd.try_login("an", true).unwrap_err().contains("tạm khóa"));
     }
 }
 ```

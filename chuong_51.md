@@ -109,7 +109,7 @@ pub struct ProductEntity {
     pub in_stock: bool,
 }
 
-/// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
+/// Trạng thái dùng shared toàn dịch vụ (Shared Application State)
 pub struct SharedAppState {
     pub catalog: Mutex<HashMap<u64, ProductEntity>>,
 }
@@ -174,7 +174,7 @@ impl ProtobufWireCodec {
     /// Giải mã nhị phân không sao chép từ chuỗi byte gRPC
     pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, &'static str> {
         if bytes.len() < 20 {
-            return Err("Kich thuoc byte protobuf qua ngan!");
+            return Err("Kich thuoc byte protobuf qua short!");
         }
 
         let mut id = 0u64;
@@ -243,7 +243,7 @@ impl TypeSafeServiceRouter {
                 prod.id, prod.name, prod.price_cents, prod.in_stock
             ))
         } else {
-            Err("404 Not Found: Khong tim thay san pham")
+            Err("404 Not Found: Low tim thay san pham")
         }
     }
 
@@ -264,7 +264,7 @@ fn main() {
     println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
     println!("==================================================================");
 
-    // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
+    // 1. Khởi tạo trạng thái dùng shared được bọc trong con trỏ Arc
     let shared_state = Arc::new(SharedAppState::new());
     let router = TypeSafeServiceRouter::new(shared_state);
 
@@ -321,28 +321,28 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0599:
-struct LoiHeThong {
+struct SystemError {
     greeting: String,
 }
 
-// Hàm handler trả về LoiHeThong nhưng chưa có IntoResponse
-// async fn handler_loi() -> Result<&'static str, LoiHeThong> {
-//     Err(LoiHeThong { greeting: "Lỗi nội bộ".into() }) // LỖI E0599!
+// Hàm handler trả về SystemError nhưng chưa có IntoResponse
+// async fn error_handler() -> Result<&'static str, SystemError> {
+//     Err(SystemError { greeting: "Lỗi nội bộ".into() }) // LỖI E0599!
 // }
 
 // Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển đổi sang HTTP Response
-struct LoiChuan {
+struct StdError {
     chi_tiet: &'static str,
 }
 
-impl LoiChuan {
+impl StdError {
     fn to_http_status(&self) -> (u16, &'static str) {
         (500, self.chi_tiet)
     }
 }
 
-fn kiem_tra_loi() {
-    let err = LoiChuan { chi_tiet: "Lỗi kết nối database" };
+fn check_error() {
+    let err = StdError { chi_tiet: "Lỗi kết nối database" };
     let (code, msg) = err.to_http_status();
     println!("Mã lỗi HTTP: {} - Nội dung: {}", code, msg);
 }
@@ -365,3 +365,173 @@ fn kiem_tra_loi() {
    Thiết kế một lớp trung gian Middleware đếm số lượng yêu cầu của một Client IP. Nếu client gửi quá 100 yêu cầu trong vòng 1 giây, lập tức trả về mã lỗi HTTP `429 Too Many Requests`.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao gRPC chưa thay thế hoàn toàn REST?)**:  
    Mặc dù gRPC vượt trội hoàn toàn về mặt tốc độ, tại sao các tập đoàn công nghệ lớn vẫn duy trì cổng REST/JSON cho người dùng đầu cuối (Client-facing)? Hãy phân tích các khía cạnh về: Tính tương thích của trình duyệt web (Browser Compatibility), khả năng debug thủ công qua `curl`, và tính thân thiện với các nhà phát triển thứ ba.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Protobuf mã hóa mỗi trường là cặp (thẻ, giá trị), số nguyên dùng varint. Thêm trường 5 = timestamp, rồi bọc CRC32 quanh toàn gói để bên nhận phát hiện gói bị sửa.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+/// Mã hóa varint (số nguyên độ dài thay đổi) — nền tảng của Protobuf.
+/// Mỗi byte giữ 7 bit dữ liệu + 1 bit "còn nữa" ở đầu.
+fn encode_varint(mut n: u64, out: &mut Vec<u8>) {
+    loop {
+        let mut byte = (n & 0x7F) as u8;
+        n >>= 7;
+        if n != 0 { byte |= 0x80; } // bit cao = "còn byte nữa"
+        out.push(byte);
+        if n == 0 { break; }
+    }
+}
+fn decode_varint(data: &[u8], pos: &mut usize) -> Option<u64> {
+    let (mut result, mut shift) = (0u64, 0);
+    while *pos < data.len() {
+        let byte = data[*pos]; *pos += 1;
+        result |= ((byte & 0x7F) as u64) << shift;
+        if byte & 0x80 == 0 { return Some(result); } // hết chuỗi varint
+        shift += 7;
+    }
+    None
+}
+
+/// CRC32 (đa thức IEEE) để kiểm gói có bị sửa trên đường truyền không.
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in data {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+/// Đóng gói: trường 5 (created_at) + CRC32 bọc quanh toàn bộ phần dữ liệu.
+fn encode_with_timestamp_crc(created_at: u64) -> Vec<u8> {
+    let mut body = Vec::new();
+    encode_varint(5 << 3, &mut body);      // thẻ trường 5, kiểu varint
+    encode_varint(created_at, &mut body);  // giá trị
+    let checksum = crc32(&body);
+    let mut packet = body;
+    packet.extend_from_slice(&checksum.to_le_bytes()); // 4 byte CRC ở cuối
+    packet
+}
+
+/// Giải mã + KIỂM CRC: Err nếu gói bị can thiệp trên đường truyền.
+fn decode_and_verify(packet: &[u8]) -> Result<u64, &'static str> {
+    if packet.len() < 4 { return Err("gói quá ngắn"); }
+    let (body, crc_bytes) = packet.split_at(packet.len() - 4);
+    let stored = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+    if crc32(body) != stored {
+        return Err("CRC không khớp — gói tin đã bị sửa trên đường truyền!");
+    }
+    let mut pos = 0;
+    let _tag = decode_varint(body, &mut pos).ok_or("thiếu thẻ")?;
+    decode_varint(body, &mut pos).ok_or("thiếu giá trị created_at")
+}
+
+#[test]
+fn timestamp_va_crc_phat_hien_sua_doi() {
+    let packet = encode_with_timestamp_crc(1_700_000_000);
+    assert_eq!(decode_and_verify(&packet), Ok(1_700_000_000));
+
+    // Sửa một byte giữa gói -> CRC lệch -> bị phát hiện.
+    let mut hong = packet.clone();
+    hong[1] ^= 0xFF;
+    assert!(decode_and_verify(&hong).is_err());
+}
+```
+
+Hai kỹ thuật nền tảng ở đây: **varint** làm cho số nhỏ tốn ít byte (số 5 chỉ 1 byte thay vì 8) — đó là lý do Protobuf gọn hơn JSON nhiều lần với dữ liệu số. Và **CRC32 bọc quanh gói** cho bên nhận phát hiện *bất kỳ* thay đổi nào trên đường truyền: đổi một bit là CRC lệch hẳn. Lưu ý CRC chỉ chống **hỏng ngẫu nhiên** (nhiễu đường truyền), *không* chống kẻ tấn công cố ý — kẻ tấn công sửa gói thì tính lại CRC mới được; chống sửa đổi có chủ đích cần chữ ký mật mã (HMAC), không phải CRC.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Middleware đếm số yêu cầu mỗi IP trong một cửa sổ trượt 1 giây. Vượt 100 thì trả 429 thay vì cho qua. Đây là cùng ý tưởng rate-limiter, đặt ở tầng trung gian.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+/// Lớp trung gian giới hạn tần suất: mỗi IP tối đa 100 yêu cầu / 1 giây.
+pub struct RateLimitLayer {
+    // ip -> (số đếm trong cửa sổ, thời điểm bắt đầu cửa sổ)
+    counters: HashMap<String, (u32, Instant)>,
+    gioi_han: u32,
+    cua_so: Duration,
+}
+
+impl RateLimitLayer {
+    pub fn new() -> Self {
+        Self { counters: HashMap::new(), gioi_han: 100, cua_so: Duration::from_secs(1) }
+    }
+
+    /// Trả Ok(()) nếu cho qua, Err(429) nếu vượt giới hạn.
+    pub fn check(&mut self, ip: &str, now: Instant) -> Result<(), u16> {
+        let e = self.counters.entry(ip.to_string()).or_insert((0, now));
+        // Cửa sổ 1 giây đã trôi qua -> đặt lại bộ đếm.
+        if now.duration_since(e.1) >= self.cua_so {
+            *e = (0, now);
+        }
+        e.0 += 1;
+        if e.0 > self.gioi_han {
+            Err(429) // HTTP 429 Too Many Requests
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn chan_khi_vuot_100_moi_giay() {
+    let mut rl = RateLimitLayer::new();
+    let t0 = Instant::now();
+    // 100 yêu cầu đầu trong cùng cửa sổ: cho qua.
+    for _ in 0..100 { assert_eq!(rl.check("1.2.3.4", t0), Ok(())); }
+    // Yêu cầu thứ 101: bị chặn với 429.
+    assert_eq!(rl.check("1.2.3.4", t0), Err(429));
+    // Sang cửa sổ mới (qua 1 giây) -> bộ đếm reset, lại cho qua.
+    assert_eq!(rl.check("1.2.3.4", t0 + Duration::from_millis(1100)), Ok(()));
+    // IP khác không bị ảnh hưởng.
+    assert_eq!(rl.check("9.9.9.9", t0), Ok(()));
+}
+```
+
+Đặt giới hạn tần suất thành **một lớp trung gian (middleware/layer)** là mẫu kiến trúc quan trọng: nó tách *mối quan tâm ngang* (cross-cutting concern) — chống lạm dụng — ra khỏi logic nghiệp vụ. Mọi yêu cầu đi qua lớp này *trước khi* chạm tới trình xử lý thật; vượt ngưỡng thì bị chặn ngay tại cửa với mã `429`, không tốn tài nguyên xử lý. Đây chính là cách Tower (hệ sinh thái của Tokio) tổ chức: xếp chồng các lớp (rate-limit, xác thực, ghi log, nén...) quanh dịch vụ lõi, mỗi lớp làm một việc. Bản ở đây dùng **cửa sổ cố định** (đơn giản); dịch vụ thật thường dùng *cửa sổ trượt* hoặc *thùng thẻ bài* (token bucket) để tránh hiện tượng dồn cục ở ranh giới cửa sổ.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Câu hỏi so sánh: gRPC nhanh hơn, nhưng REST/JSON thắng ở đâu khiến các hãng vẫn giữ nó cho người dùng cuối? Nghĩ về trình duyệt, công cụ gỡ lỗi, và rào cản với nhà phát triển bên thứ ba.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**gRPC nhanh hơn nhưng chưa thay REST cho giao diện hướng người dùng cuối**, vì tốc độ không phải yếu tố duy nhất — và ở lớp tiếp xúc bên ngoài, những thứ REST mạnh lại quan trọng hơn.
+
+**Ba khía cạnh REST/JSON vẫn thắng:**
+
+**1. Tương thích trình duyệt.** gRPC chạy trên HTTP/2 với khung nhị phân và yêu cầu kiểm soát mức thấp (trailer, luồng) mà **JavaScript trong trình duyệt không truy cập được trực tiếp**. Muốn gọi gRPC từ trình duyệt phải qua một lớp cầu (gRPC-Web) kèm proxy trung gian. REST/JSON thì gọi thẳng bằng `fetch()` — *mọi* trình duyệt hỗ trợ sẵn, không cần proxy. Với ứng dụng web hướng người dùng, đây gần như là yếu tố quyết định.
+
+**2. Gỡ lỗi thủ công qua `curl`.** REST/JSON là **văn bản người đọc được**: gõ `curl https://api/user/42` là thấy ngay phản hồi JSON, đọc hiểu tức thì, sửa thử tại chỗ. gRPC là **nhị phân** — không `curl` đọc được, phải có công cụ chuyên dụng (`grpcurl`) và tệp định nghĩa `.proto` mới giải mã nổi. Khả năng "mở terminal gõ một dòng là xem được" cực kỳ giá trị khi vận hành và gỡ lỗi lúc 3 giờ sáng.
+
+**3. Thân thiện với nhà phát triển bên thứ ba.** Một API công khai cho hàng nghìn lập trình viên bên ngoài tích hợp cần **rào cản gia nhập thấp nhất có thể**. REST/JSON: đọc tài liệu, gọi thử bằng bất cứ ngôn ngữ nào, không cần công cụ đặc biệt. gRPC: phải lấy tệp `.proto`, chạy trình sinh mã cho đúng ngôn ngữ, học mô hình streaming. Ma sát cao hơn hẳn — chấp nhận được cho *nội bộ*, nhưng cản trở cho một API mở.
+
+**Vì sao vẫn dùng gRPC — và dùng ở đâu:** gRPC tỏa sáng ở **giao tiếp *giữa các dịch vụ nội bộ*** (service-to-service, đông-tây): nơi cả hai đầu do bạn kiểm soát, hiệu năng và hợp đồng kiểu chặt (typed contract) qua `.proto` đáng giá hơn khả năng đọc bằng mắt. Kiến trúc phổ biến nhất hiện nay là **lai**: gRPC cho lõi nội bộ (dịch vụ gọi dịch vụ), và một **cổng REST/JSON ở rìa** (API gateway) để trình duyệt và bên thứ ba nói chuyện với hệ thống. Mỗi giao thức đặt đúng chỗ mạnh của nó — không phải cái này *thay* cái kia, mà là *phân vai*.
+</details>

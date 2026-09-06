@@ -390,7 +390,7 @@ fn main() -> io::Result<()> {
         assert_eq!(inventory.get_available_stock(101), 9);
 
         // Khách hàng bị lag mạng và gửi lại chính xác Idempotency Key đó
-        println!("\n    - Thu gui lai chinh xac yeu cau voi Idempotency Key '{}':", idemp_key);
+        println!("\n    - Thu gui lai chinh xac yeu sentence voi Idempotency Key '{}':", idemp_key);
         let duplicate_order = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
         assert_eq!(duplicate_order.order_id, 1001);
         assert_eq!(inventory.get_available_stock(101), 9); // Kho KHÔNG bị trừ lần 2!
@@ -407,7 +407,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may chu toan dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
@@ -459,19 +459,19 @@ struct DonQueue {
     id: u64,
 }
 
-fn ghi_nhat_ky(dh: DonQueue) {
+fn log_it(dh: DonQueue) {
     println!("Ghi nhật ký: {:?}", dh);
 }
 
 // Đoạn mã lỗi minh họa E0382:
-fn xu_ly_loi(dh: DonQueue) {
-    // ghi_nhat_ky(dh); // Di chuyển quyền sở hữu dh
+fn handle_error(dh: DonQueue) {
+    // log_it(dh); // Di chuyển quyền sở hữu dh
     // println!("Đơn hàng đã xử lý: {:?}", dh); // LỖI E0382: dh đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Truyền tham chiếu mượn hoặc clone
 fn xu_ly_dung(dh: DonQueue) {
-    ghi_nhat_ky(dh.clone()); // Tạo bản sao độc lập
+    log_it(dh.clone()); // Tạo bản sao độc lập
     println!("Đơn hàng an toàn: {:?}", dh); // dh ban đầu vẫn còn nguyên vẹn!
 }
 ```
@@ -493,3 +493,173 @@ fn xu_ly_dung(dh: DonQueue) {
    Sau khi hệ thống ghi nhận 10,000 sự kiện, tệp `orders.wal` sẽ phình to. Hãy viết hàm `compact_wal_log(&self)` chỉ giữ lại trạng thái cuối cùng mới nhất của từng đơn hàng và ghi sang tệp mới gọn gàng, giải phóng dung lượng đĩa tương tự như kiến trúc Bitcask đã học ở Chương 36.
 3. **Bài tập 3 (Suy ngẫm đỉnh cao: Thiết kế Kiến trúc Thanh toán Saga Phân tán)**:  
    Khi Dịch vụ Đơn hàng (Order Service), Dịch vụ Kho (Inventory Service) và Dịch vụ Cổng Thanh toán (Payment Service) nằm trên 3 máy chủ phân tán khác nhau ở 3 quốc gia, việc sử dụng giao dịch phân tán 2PC (Two-Phase Commit) sẽ gây nghẽn mạng nghiêm trọng. Hãy trình bày cách áp dụng **Mô hình Saga điều phối qua Sự kiện (Event-Driven Choreography Saga)** để đảm bảo tính nhất quán cuối cùng (Eventual Consistency) nếu bước thanh toán bất ngờ bị ngân hàng từ chối.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Hủy đơn = giao dịch bù (compensating transaction): đảo ngược hiệu ứng của đơn đã trả tiền — hoàn +1 vào kho và ghi sự kiện CANCELLED xuống WAL. Chỉ hủy được đơn ở đúng trạng thái Paid.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum OrderStatus { Pending, Paid, Fulfilled, Cancelled }
+
+/// Động cơ đơn hàng tối giản (mô phỏng phần cốt lõi của Chương 54).
+pub struct OrderEngine {
+    orders: HashMap<u64, OrderStatus>,
+    stock: HashMap<u32, u32>,   // item_id -> tồn kho
+    item_of: HashMap<u64, u32>, // order_id -> item_id
+    pub wal: Vec<String>,       // nhật ký sự kiện (thay cho tệp orders.wal)
+}
+
+impl OrderEngine {
+    pub fn new() -> Self {
+        Self { orders: HashMap::new(), stock: HashMap::new(),
+               item_of: HashMap::new(), wal: Vec::new() }
+    }
+
+    /// Hủy đơn: CHỈ khi đang ở trạng thái Paid. Hoàn +1 kho, ghi CANCELLED.
+    pub fn cancel_order(&mut self, order_id: u64) -> Result<(), &'static str> {
+        match self.orders.get(&order_id) {
+            Some(OrderStatus::Paid) => {
+                // 1. Hoàn +1 đơn vị sản phẩm vào kho (giao dịch bù).
+                let item = *self.item_of.get(&order_id).ok_or("thiếu item")?;
+                *self.stock.entry(item).or_insert(0) += 1;
+                // 2. Đổi trạng thái + 3. Ghi sự kiện xuống WAL.
+                self.orders.insert(order_id, OrderStatus::Cancelled);
+                self.wal.push(format!("CANCELLED order={order_id} item={item} +1_stock"));
+                Ok(())
+            }
+            Some(OrderStatus::Fulfilled) => Err("đơn đã giao, không hủy được"),
+            Some(_) => Err("chỉ hủy được đơn ở trạng thái Paid"),
+            None => Err("không tìm thấy đơn"),
+        }
+    }
+}
+
+#[test]
+fn huy_don_paid_hoan_kho_va_ghi_wal() {
+    let mut e = OrderEngine::new();
+    e.stock.insert(7, 0);                       // kho item 7 đang 0 (đã bán hết cho đơn này)
+    e.orders.insert(100, OrderStatus::Paid);
+    e.item_of.insert(100, 7);
+
+    assert_eq!(e.cancel_order(100), Ok(()));
+    assert_eq!(e.stock[&7], 1);                 // đã hoàn +1
+    assert_eq!(e.orders[&100], OrderStatus::Cancelled);
+    assert!(e.wal.last().unwrap().contains("CANCELLED order=100"));
+
+    // Không hủy được đơn đã giao / đơn không tồn tại.
+    e.orders.insert(200, OrderStatus::Fulfilled);
+    assert!(e.cancel_order(200).is_err());
+    assert!(e.cancel_order(999).is_err());
+}
+```
+
+Điểm cốt lõi: hủy một đơn *đã trả tiền* không phải là "xóa" nó — mà là chạy một **giao dịch bù (compensating transaction)** đảo ngược mọi hiệu ứng đã gây ra: tiền đã trừ kho thì hoàn kho, và **ghi lại sự kiện `CANCELLED` xuống WAL** thay vì sửa bản ghi cũ. Đây là tư duy **nguồn sự kiện (event sourcing)**: nhật ký chỉ-nối-thêm giữ *toàn bộ lịch sử* — đơn được tạo, trả tiền, rồi hủy — chứ không ghi đè trạng thái. Nhờ vậy bạn luôn dựng lại được trạng thái tại bất kỳ thời điểm nào, và có dấu vết kiểm toán đầy đủ. Ràng buộc "chỉ hủy được đơn ở trạng thái `Paid`" là **bảo vệ bất biến trạng thái**: không cho hủy đơn chưa trả (chẳng có gì để hoàn) hay đơn đã giao (hàng đã ra khỏi kho, hoàn kho là sai).
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Nén nhật ký (giống Bitcask ch36): WAL ghi nối-thêm nên phình to với nhiều sự kiện cho cùng một đơn. Nén = chỉ giữ trạng thái CUỐI CÙNG của mỗi đơn, ghi sang tệp mới gọn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+/// Một dòng WAL: (order_id, trạng thái tại thời điểm ghi). Ghi nối-thêm.
+#[derive(Clone, PartialEq, Debug)]
+pub struct WalRecord { pub order_id: u64, pub status: String }
+
+/// Nén WAL: từ nhật ký đầy đủ (nhiều dòng/đơn), giữ lại CHỈ trạng thái cuối
+/// của mỗi đơn. Giống compact() của Bitcask ở Chương 36.
+pub fn compact_wal_log(full_log: &[WalRecord]) -> Vec<WalRecord> {
+    // Phát lại theo thứ tự: dòng sau ghi đè dòng trước cho cùng order_id.
+    let mut latest: HashMap<u64, String> = HashMap::new();
+    let mut thu_tu: Vec<u64> = Vec::new(); // giữ thứ tự xuất hiện lần đầu cho ổn định
+    for rec in full_log {
+        if !latest.contains_key(&rec.order_id) { thu_tu.push(rec.order_id); }
+        latest.insert(rec.order_id, rec.status.clone());
+    }
+    // Xuất ra nhật ký gọn: mỗi đơn đúng một dòng, trạng thái mới nhất.
+    thu_tu.into_iter()
+        .map(|id| WalRecord { order_id: id, status: latest[&id].clone() })
+        .collect()
+}
+
+#[test]
+fn nen_wal_giu_trang_thai_cuoi() {
+    let r = |id, s: &str| WalRecord { order_id: id, status: s.to_string() };
+    // Nhật ký đầy đủ: đơn 1 đi qua 3 trạng thái, đơn 2 qua 2 trạng thái.
+    let full = vec![
+        r(1, "Pending"), r(1, "Paid"), r(2, "Pending"),
+        r(1, "Fulfilled"), r(2, "Cancelled"),
+    ];
+    let goc_size = full.len(); // 5 dòng
+    let nen = compact_wal_log(&full);
+
+    // Sau nén: mỗi đơn đúng 1 dòng, giữ trạng thái CUỐI.
+    assert_eq!(nen.len(), 2);
+    assert!(nen.iter().any(|w| w.order_id == 1 && w.status == "Fulfilled"));
+    assert!(nen.iter().any(|w| w.order_id == 2 && w.status == "Cancelled"));
+    assert!(nen.len() < goc_size); // đã giải phóng dung lượng
+}
+```
+
+Nén nhật ký giải quyết điểm yếu cố hữu của mọi kiến trúc **ghi nối-thêm** (append-only): tệp *chỉ lớn lên*, không bao giờ nhỏ đi, vì mỗi thay đổi trạng thái là một dòng mới chứ không sửa dòng cũ. Sau 10.000 sự kiện, một đơn hàng đi qua 5 trạng thái để lại 5 dòng — nhưng để *phục hồi*, ta chỉ cần trạng thái **cuối cùng**. Nén làm đúng việc đó: **phát lại toàn bộ nhật ký, giữ lại trạng thái mới nhất của mỗi đơn, ghi sang tệp mới gọn gàng** rồi thay thế tệp cũ. Đây chính là cơ chế `compact()` của Bitcask ở Chương 36 (bỏ các bản ghi bị bia mộ che khuất) và của LSM-Tree ở Chương 34 (gộp SSTable). Điểm an toàn phải nhớ: nén xong phải **ghi tệp mới và ép xuống đĩa (`fsync`) *trước khi* bỏ tệp cũ** — mất điện giữa chừng mà đã bỏ tệp cũ thì mất trắng dữ liệu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Saga thay 2PC bằng một chuỗi giao dịch cục bộ + giao dịch bù khi hỏng. Mỗi dịch vụ tự commit phần của mình; nếu một bước sau thất bại, chạy ngược các bước bù để hoàn tác.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao 2PC gây nghẽn, và Saga giải quyết thế nào — thiết kế thanh toán phân tán qua 3 dịch vụ ở 3 quốc gia:**
+
+**Vấn đề của 2PC (Two-Phase Commit):** 2PC đạt tính nguyên tử bằng cách **khóa tài nguyên ở cả 3 dịch vụ suốt toàn bộ giao dịch**, chờ một điều phối viên ra lệnh commit đồng loạt. Với 3 máy chủ ở 3 quốc gia, độ trễ mạng giữa các châu lục là hàng trăm mili-giây — nghĩa là khóa bị **giữ rất lâu** qua đường truyền chậm. Tệ hơn, nếu điều phối viên hoặc một dịch vụ chết giữa chừng, các dịch vụ kia **kẹt khóa chờ vô định** (blocking). Ở quy mô địa lý, 2PC bóp nghẹt thông lượng và tạo điểm chết đơn lẻ.
+
+**Saga — chuỗi giao dịch cục bộ + bù trừ:** thay vì một giao dịch phân tán khổng lồ có khóa, Saga chia thành **một chuỗi giao dịch cục bộ độc lập**, mỗi dịch vụ **tự commit ngay phần của mình** (không giữ khóa qua mạng). Nếu một bước sau thất bại, Saga chạy các **giao dịch bù (compensating transactions)** để *hoàn tác* các bước đã commit trước đó.
+
+```text
+Luồng thành công (mỗi bước commit cục bộ NGAY, không giữ khóa xuyên quốc gia):
+  [Order Service]     tạo đơn (Pending)        -> commit
+  [Inventory Service] giữ 1 sản phẩm            -> commit
+  [Payment Service]   trừ tiền                  -> commit
+  [Order Service]     đánh dấu đơn Paid         -> commit   -> hoàn tất
+
+Nếu Payment THẤT BẠI ở bước 3 -> chạy NGƯỢC các giao dịch bù:
+  [Inventory Service] HOÀN 1 sản phẩm vào kho   (bù cho bước 2)
+  [Order Service]     đánh dấu đơn Cancelled    (bù cho bước 1)
+  -> hệ thống trở về trạng thái nhất quán, KHÔNG cần khóa toàn cục
+```
+
+**Đánh đổi phải nói thẳng — Saga hy sinh tính cô lập:**
+
+| | 2PC | Saga |
+|---|---|---|
+| Khóa qua mạng | có, giữ suốt giao dịch | không — mỗi bước commit cục bộ ngay |
+| Nguyên tử | thật (all-or-nothing tức thời) | *cuối cùng* (qua bù trừ) |
+| **Tính cô lập** | có | **KHÔNG — có trạng thái trung gian lộ ra** |
+| Chịu lỗi địa lý | kém (blocking) | tốt (không khóa chờ) |
+
+Cái giá của Saga là **mất tính cô lập**: giữa lúc kho đã giữ hàng mà thanh toán chưa xong, tồn tại một *trạng thái trung gian nhìn thấy được* — một truy vấn khác có thể thấy "1 sản phẩm đang bị giữ" cho một đơn rồi sẽ bị hủy. Ứng dụng phải **tự thiết kế để chịu được trạng thái trung gian này** (ví dụ đánh dấu "đang xử lý", không cho thao tác khác đè lên). Và **giao dịch bù phải thật sự đảo ngược được** — hoàn tiền, hoàn kho — điều không phải lúc nào cũng làm được (đã gửi email cho khách thì không "thu hồi email" được).
+
+Nguyên tắc chọn: **2PC** khi các bên ở gần (cùng trung tâm dữ liệu, độ trễ thấp) và cần cô lập chặt; **Saga** khi phân tán về địa lý, ưu tiên khả dụng và thông lượng, và chấp nhận nhất quán *cuối cùng* cùng với việc tự quản lý trạng thái trung gian. Hầu hết hệ thống thương mại điện tử quy mô lớn chọn Saga — vì một đơn hàng "đang xử lý" trong vài giây là chấp nhận được, còn khóa kho toàn cầu thì không.
+</details>

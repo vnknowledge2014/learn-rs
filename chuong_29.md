@@ -90,7 +90,7 @@ Một nút cây nhị phân cần lưu trữ giá trị của chính nó và hai
 pub struct NutCay<T> {
     pub value: T,
     pub left: Option<Box<NutCay<T>>>,
-    pub must: Option<Box<NutCay<T>>>,
+    pub right: Option<Box<NutCay<T>>>,
 }
 ```
 
@@ -132,8 +132,8 @@ impl<T: Copy> NutCay<T> {
             acc = left.gap(acc, f);
         }
         acc = f(acc, self.value);
-        if let Some(must) = &self.must {
-            acc = must.gap(acc, f);
+        if let Some(right) = &self.right {
+            acc = right.gap(acc, f);
         }
         acc
     }
@@ -174,7 +174,7 @@ Dưới đây là một chương trình Rust hoàn chỉnh cài đặt cấu tr�
 pub struct NutCay<T> {
     pub value: T,
     pub left: Option<Box<NutCay<T>>>,
-    pub must: Option<Box<NutCay<T>>>,
+    pub right: Option<Box<NutCay<T>>>,
 }
 
 impl<T> NutCay<T> {
@@ -182,7 +182,7 @@ impl<T> NutCay<T> {
         NutCay {
             value,
             left: None,
-            must: None,
+            right: None,
         }
     }
 }
@@ -221,7 +221,7 @@ impl<T: Ord> BinarySearchTree<T> {
                 if value < current.value {
                     Self::insert_recursive(&mut current.left, value)
                 } else if value > current.value {
-                    Self::insert_recursive(&mut current.must, value)
+                    Self::insert_recursive(&mut current.right, value)
                 } else {
                     // Giá trị đã tồn tại trong cây (không cho phép trùng lặp)
                     false
@@ -239,7 +239,7 @@ impl<T: Ord> BinarySearchTree<T> {
             } else if value < &nut.value {
                 pointer = &nut.left;
             } else {
-                pointer = &nut.must;
+                pointer = &nut.right;
             }
         }
         false
@@ -260,7 +260,7 @@ impl<T: Ord> BinarySearchTree<T> {
             // 2. Thu thập nút hiện tại
             ket_qua.push(&current.value);
             // 3. Duyệt toàn bộ cây con bên phải
-            Self::collect_in_order(&current.must, ket_qua);
+            Self::collect_in_order(&current.right, ket_qua);
         }
     }
 
@@ -274,7 +274,7 @@ impl<T: Ord> BinarySearchTree<T> {
             None => 0,
             Some(current) => {
                 let high_left = Self::recursive_height(&current.left);
-                let high_must = Self::recursive_height(&current.must);
+                let high_must = Self::recursive_height(&current.right);
                 1 + high_left.max(high_must)
             }
         }
@@ -372,22 +372,22 @@ struct ToaDo {
 }
 
 // Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
-fn thu_nghiem_loi_bst() {
+fn broken_bst() {
     // let mut cay = BinarySearchTree::new();
     // cay.them(ToaDo { x: 1, y: 2 }); // LỖI E0277: ToaDo không thỏa mãn trait Ord!
 }
 
 // Cách sửa chữa đúng chuẩn: Derive các trait so sánh cần thiết
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ToaDoChuan {
+struct CoordIdiomatic {
     x: i32,
     y: i32,
 }
 
-fn thu_nghiem_dung_bst() {
+fn correct_bst() {
     let mut cay = BinarySearchTree::new();
-    cay.them(ToaDoChuan { x: 10, y: 20 });
-    cay.them(ToaDoChuan { x: 5, y: 15 });
+    cay.them(CoordIdiomatic { x: 10, y: 20 });
+    cay.them(CoordIdiomatic { x: 5, y: 15 });
     println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", cay.len());
 }
 ```
@@ -471,10 +471,159 @@ mod tests {
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Tìm giá trị nhỏ nhất và lớn nhất)**:  
    Viết hai phương thức cho `BinarySearchTree`:
-   - `fn tim_min(&self) -> Option<&T>`: Lần theo nhánh trái tận cùng để tìm giá trị nhỏ nhất.
-   - `fn tim_max(&self) -> Option<&T>`: Lần theo nhánh phải tận cùng để tìm giá trị lớn nhất.  
+   - `fn min(&self) -> Option<&T>`: Lần theo nhánh trái tận cùng để tìm giá trị nhỏ nhất.
+   - `fn max(&self) -> Option<&T>`: Lần theo nhánh phải tận cùng để tìm giá trị lớn nhất.  
    *(Giải thích: Tại sao hai thao tác này chỉ tốn thời gian tương đương chiều cao của cây?)*
 2. **Bài tập 2 (Đếm số nút lá)**:  
-   Viết phương thức `fn dem_nut_la(&self) -> usize` đếm số lượng nút trong cây không có bất kỳ nút con nào (`trai == None && phai == None`).
+   Viết phương thức `fn leaf_count(&self) -> usize` đếm số lượng nút trong cây không có bất kỳ nút con nào (`left == None && right == None`).
 3. **Bài tập 3 (Tư duy mở rộng)**:  
    Điều gì sẽ xảy ra nếu bạn nạp lần lượt các số `[1, 2, 3, 4, 5, 6, 7]` vào cây BST này? Chiều cao của cây sẽ là bao nhiêu? Làm thế nào để cấu trúc B-Tree trong hệ quản trị cơ sở dữ liệu ngăn chặn được hiện tượng suy biến này?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Giá trị nhỏ nhất nằm ở nhánh **trái tận cùng**, lớn nhất ở nhánh **phải tận cùng**. Đây là hệ quả trực tiếp của bất biến BST, không cần so sánh gì thêm.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+impl<T: Ord> BinarySearchTree<T> {
+    /// Nhỏ nhất = đi trái tới khi không đi được nữa.
+    pub fn min(&self) -> Option<&T> {
+        let mut hien_tai = self.root.as_ref()?;
+        while let Some(t) = hien_tai.left.as_ref() { hien_tai = t; }
+        Some(&hien_tai.value)
+    }
+
+    /// Lớn nhất = đi phải tới khi không đi được nữa.
+    pub fn max(&self) -> Option<&T> {
+        let mut hien_tai = self.root.as_ref()?;
+        while let Some(p) = hien_tai.right.as_ref() { hien_tai = p; }
+        Some(&hien_tai.value)
+    }
+}
+
+#[test]
+fn min_max_khop_voi_duyet_in_order() {
+    let mut cay = BinarySearchTree::new();
+    for x in [50, 30, 70, 20, 40, 60, 80] { cay.them(x); }
+
+    assert_eq!(cay.min(), Some(&20));
+    assert_eq!(cay.max(), Some(&80));
+
+    // Đối chiếu độc lập: duyệt in-order cho dãy TĂNG DẦN,
+    // nên đầu dãy là min và cuối dãy là max.
+    let day = cay.in_order_walk();
+    assert_eq!(cay.min(), day.first().copied());
+    assert_eq!(cay.max(), day.last().copied());
+
+    let rong: BinarySearchTree<i32> = BinarySearchTree::new();
+    assert_eq!(rong.min(), None);
+    assert_eq!(rong.max(), None);
+}
+```
+
+Cả hai đều là **O(h)** với `h` là chiều cao — không phải O(log n). Với cây cân bằng thì hai con số trùng nhau, với cây suy biến thì `h = n` và bạn quay về tìm kiếm tuyến tính. Bài tập 3 nói kỹ chuyện đó.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Nút lá là nút **không có con nào**. Đệ quy: lá đếm 1, nút trong đếm bằng tổng số lá của hai nhánh.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+impl<T: Ord> BinarySearchTree<T> {
+    pub fn leaf_count(&self) -> usize {
+        fn dem<T>(nut: &Option<Box<NutCay<T>>>) -> usize {
+            match nut {
+                None => 0,
+                Some(n) if n.left.is_none() && n.right.is_none() => 1,   // là LÁ
+                Some(n) => dem(&n.left) + dem(&n.right),                 // nút trong
+            }
+        }
+        dem(&self.root)
+    }
+}
+
+#[test]
+fn dem_dung_so_nut_la() {
+    let rong: BinarySearchTree<i32> = BinarySearchTree::new();
+    assert_eq!(rong.leaf_count(), 0);
+
+    let mut mot = BinarySearchTree::new();
+    mot.them(42);
+    assert_eq!(mot.leaf_count(), 1, "gốc không con thì chính nó là lá");
+
+    //        50
+    //      /    \
+    //    30      70
+    //   /  \    /  \
+    //  20  40  60  80      -> 4 lá
+    let mut cay = BinarySearchTree::new();
+    for x in [50, 30, 70, 20, 40, 60, 80] { cay.them(x); }
+    assert_eq!(cay.leaf_count(), 4);
+
+    // Cây suy biến: mọi nút chỉ có một con -> đúng MỘT lá.
+    let mut suy_bien = BinarySearchTree::new();
+    for x in 1..=7 { suy_bien.them(x); }
+    assert_eq!(suy_bien.leaf_count(), 1);
+}
+```
+
+Thứ tự nhánh `match` quan trọng: nhánh `Some(n) if ...is_none()` phải đứng **trước** nhánh `Some(n)` tổng quát, nếu không nó không bao giờ được chạm tới. Rust cảnh báo trường hợp nhánh không thể đạt tới, nhưng ở đây hai nhánh cùng khớp `Some`, phân biệt bằng điều kiện — nên thứ tự là do bạn chịu trách nhiệm.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Nạp dãy đã sắp xếp thì mọi giá trị đều lớn hơn nút hiện tại, nên luôn rẽ phải. Cây thành cái gì? Và B-Tree làm gì khác đi?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Nạp `[1,2,3,4,5,6,7]` cho ra một danh sách liên kết đội lốt cây:**
+
+```text
+1
+ \
+  2
+   \
+    3
+     \
+      4          chiều cao = 7 (đúng bằng n)
+       \        tìm kiếm = O(n), không phải O(log n)
+        5        chỉ có 1 lá
+         \
+          6
+           \
+            7
+```
+
+Mọi giá trị mới đều lớn hơn nút đang đứng nên luôn rẽ phải. Cây **suy biến**. Điều trớ trêu: dữ liệu *đã sắp xếp sẵn* — thứ trông như đầu vào lý tưởng — lại là trường hợp tệ nhất. Và đó là đầu vào rất hay gặp trong thực tế: nạp từ tệp CSV đã sắp, hoặc nạp theo mã tăng dần từ cơ sở dữ liệu.
+
+**B-Tree ngăn chuyện đó bằng cách đảo ngược hướng lớn lên:**
+
+| | BST | B-Tree |
+|---|---|---|
+| Mỗi nút chứa | 1 khoá | hàng chục tới hàng trăm khoá |
+| Cây lớn lên bằng cách | thêm nút ở **đáy** | tách nút, đẩy khoá **lên trên** |
+| Chiều cao | không có gì bảo đảm, tệ nhất `n` | luôn `O(log_B n)`, B là bậc |
+| Cân bằng | không tự có | **bất biến cấu trúc**, luôn đúng |
+
+Điểm mấu chốt: B-Tree không *sửa* mất cân bằng sau khi xảy ra — nó khiến mất cân bằng **không thể xảy ra**. Nút đầy thì tách làm đôi và đẩy khoá giữa lên cha; cây chỉ cao thêm khi *gốc* tách, nên mọi lá luôn ở **cùng một độ sâu**.
+
+Với B = 100, một cây ba tầng chứa được khoảng một triệu khoá. Đó là lý do cơ sở dữ liệu chọn B-Tree: chiều cao 3 nghĩa là **3 lần đọc đĩa**, và đọc đĩa mới là thứ đắt — xem Chương 33.
+
+Với dữ liệu trong bộ nhớ, lối thoát khác là **cây tự cân bằng** (AVL, đỏ-đen). `BTreeMap` của Rust dùng B-Tree; `HashMap` thì tránh vấn đề này hoàn toàn bằng cách không giữ thứ tự.
+</details>

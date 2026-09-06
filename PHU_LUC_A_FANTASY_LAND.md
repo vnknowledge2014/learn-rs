@@ -175,15 +175,15 @@ Vấn đề: một vòng lặp đơn nguyên viết bằng đệ quy sẽ làm p
 
 ```rust
 // ❌ Đệ quy đơn nguyên — 1.000.000 vòng sẽ TRÀN NGĂN XẾP
-fn dem_nguoc(n: u32) -> Option<u32> {
-    if n == 0 { Some(0) } else { dem_nguoc(n - 1) }
+fn count_down(n: u32) -> Option<u32> {
+    if n == 0 { Some(0) } else { count_down(n - 1) }
 }
 ```
 
 `ChainRec` giải quyết bằng cách bắt hàm bước trả về một **thẻ báo hiệu** thay vì tự gọi lại chính nó:
 
 ```rust
-enum StepCont<A, B> { TiepTuc(A), Xong(B) }
+enum StepCont<A, B> { Continue(A), Finished(B) }
 ```
 
 Người điều phối nhận thẻ đó và **lặp bằng vòng lặp**, nên ngăn xếp giữ nguyên độ sâu bất kể bao nhiêu vòng. Đây là kỹ thuật *trampoline* — và trong Rust nó tương ứng với `loop` kết hợp `std::ops::ControlFlow`. Bài kiểm thử trong mã dưới đây chạy **1.000.000 vòng** để chứng minh điều đó.
@@ -441,20 +441,20 @@ pub fn of_vec<A>(a: A) -> Vec<A> { vec![a] }
 /// APPLICATIVE tích lũy lỗi — biến thể `Validation` (không phải Monad!).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Auth<T> {
-    Dat(T),
+    Set(T),
     Hong(Vec<String>),
 }
 impl<T> Auth<T> {
     pub fn mapping<U>(self, f: impl FnOnce(T) -> U) -> Auth<U> {
         match self {
-            Auth::Dat(x) => Auth::Dat(f(x)),
+            Auth::Set(x) => Auth::Set(f(x)),
             Auth::Hong(e) => Auth::Hong(e),
         }
     }
 }
 pub fn ap_auth<A, B>(ham: Auth<Box<dyn Fn(A) -> B>>, gt: Auth<A>) -> Auth<B> {
     match (ham, gt) {
-        (Auth::Dat(f), Auth::Dat(a)) => Auth::Dat(f(a)),
+        (Auth::Set(f), Auth::Set(a)) => Auth::Set(f(a)),
         (Auth::Hong(mut e1), Auth::Hong(e2)) => { e1.extend(e2); Auth::Hong(e1) }
         (Auth::Hong(e), _) => Auth::Hong(e),
         (_, Auth::Hong(e)) => Auth::Hong(e),
@@ -554,8 +554,8 @@ impl<T, U> Monoid<U> for Vec<T> {}
 /// Đây là câu trả lời của Fantasy Land cho việc Rust không tối ưu hóa lời gọi đuôi.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StepCont<A, B> {
-    TiepTuc(A),
-    Xong(B),
+    Continue(A),
+    Finished(B),
 }
 pub fn chain_rec_option<A, B>(
     first_block: A,
@@ -564,8 +564,8 @@ pub fn chain_rec_option<A, B>(
     let mut current = first_block;
     loop {
         match step(current)? {
-            StepCont::TiepTuc(a) => current = a, // vòng lặp, KHÔNG đệ quy
-            StepCont::Xong(b) => return Some(b),
+            StepCont::Continue(a) => current = a, // vòng lặp, KHÔNG đệ quy
+            StepCont::Finished(b) => return Some(b),
         }
     }
 }
@@ -638,10 +638,10 @@ fn main() {
     println!("\n── NHÓM A: ĐẠI SỐ TRÊN MỘT KIỂU ──");
     println!(" 1. Setoid     Tong(5).bang(&Tong(5))      = {}", Tong(5).bang(&Tong(5)));
     println!(" 2. Ord        Tong(3).so_sanh(&Tong(9))   = {:?}", Tong(3).so_sanh(&Tong(9)));
-    println!(" 5. Semigroup  Tong(3).ghep(Tong(4))       = {:?}", Tong(3).compose(Tong(4)));
+    println!(" 5. Semigroup  Tong(3).combine(Tong(4))       = {:?}", Tong(3).compose(Tong(4)));
     println!(" 6. Monoid     don_vi()                    = {:?}", Tong::don_pos());
     println!(" 7. Group      Tong(7).nghich_dao()        = {:?}", Tong(7).nghich_dao());
-    println!("               Mod4(3).ghep(nghich_dao)    = {:?}", Mod4(3).compose(Mod4(3).nghich_dao()));
+    println!("               Mod4(3).combine(nghich_dao)    = {:?}", Mod4(3).compose(Mod4(3).nghich_dao()));
     println!("    (String là Monoid nhưng KHÔNG phải Group: không có \"chuỗi âm\")");
 
     println!("\n── NHÓM B: ĐẠI SỐ TRÊN HÀM ──");
@@ -681,10 +681,10 @@ fn main() {
     println!("18. Chain        Some(4).noi(|x| Some(x*5))= {:?}", Some(4i32).concat(|x| Some(x * 5)));
     println!("20. Monad        = Applicative + Chain (siêu trait đánh dấu)");
 
-    let luy_thua = chain_rec_option(( 1u64, 20u32), |(acc, remaining)| {
-        Some(if remaining == 0 { StepCont::Xong(acc) } else { StepCont::TiepTuc((acc * 2, remaining - 1)) })
+    let power = chain_rec_option(( 1u64, 20u32), |(acc, remaining)| {
+        Some(if remaining == 0 { StepCont::Finished(acc) } else { StepCont::Continue((acc * 2, remaining - 1)) })
     });
-    println!("19. ChainRec     2^20 bằng vòng lặp        = {:?}", luy_thua);
+    println!("19. ChainRec     2^20 bằng vòng lặp        = {:?}", power);
 
     let cs = Window { prev: vec![1i64, 2], spend_point: 3, next: vec![4, 5] };
     println!("22. Comonad      trích xuất tiêu điểm      = {}", cs.extract());
@@ -882,8 +882,8 @@ mod luat {
     #[test] // 19. CHAINREC: chạy 1 TRIỆU vòng mà KHÔNG tràn ngăn xếp
     fn chainrec_does_not_overflow_the_stack() {
         let kq = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
-            Some(if remaining == 0 { StepCont::Xong(acc) }
-                 else { StepCont::TiepTuc((acc + 1, remaining - 1)) })
+            Some(if remaining == 0 { StepCont::Finished(acc) }
+                 else { StepCont::Continue((acc + 1, remaining - 1)) })
         });
         assert_eq!(kq, Some(1_000_000));
     }

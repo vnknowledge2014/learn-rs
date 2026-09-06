@@ -342,20 +342,20 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết k�
 
 ```rust
 // Đoạn mã lỗi minh họa E0038: Trait không thỏa mãn Object Safety
-trait DichVuLoi {
+trait FailingService {
     // Lỗi: Hàm generic không thể tạo Trait Object động
     fn xu_ly_generic<T>(&self, data: T); 
 }
 
-// fn goi_dich_vu(dv: &dyn DichVuLoi) {} // LỖI E0038!
+// fn goi_dich_vu(dv: &dyn FailingService) {} // LỖI E0038!
 
 // Cách sửa chữa đúng chuẩn: Dùng kiểu cụ thể hoặc lát cắt byte
 trait DichVuDung: Send + Sync {
-    fn xu_ly_chuan(&self, data: &[u8]) -> Result<(), &'static str>;
+    fn handle_idiomatic(&self, data: &[u8]) -> Result<(), &'static str>;
 }
 
 fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
-    let _ = dv.xu_ly_chuan(b"data");
+    let _ = dv.handle_idiomatic(b"data");
 }
 ```
 
@@ -376,3 +376,155 @@ fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
    Viết một cấu trúc `BulkheadSemaphore` giới hạn tối đa chỉ cho phép 10 yêu cầu gọi mạng chạy đồng thời cùng lúc. Nếu có yêu cầu thứ 11 ập vào trong khi 10 yêu cầu trước chưa hoàn thành, lập tức xếp vào hàng đợi chờ hoặc từ chối để chống tràn tài nguyên máy chủ.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Khi nào không nên dùng Microservices?)**:  
    Một công ty khởi nghiệp chỉ có 3 lập trình viên và 500 người dùng hoạt động mỗi ngày có nên chia hệ thống thành 15 microservices độc lập hay không? Rủi ro lớn nhất về mặt vận hành hạ tầng (DevOps, Giám sát hệ thống, Distributed Tracing) mà họ sẽ phải đối mặt là gì?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Khi mạch ngắt (Open), thay vì trả lỗi ngay, tra một bản đệm cục bộ đã lưu trước đó. Dữ liệu có thể cũ nhưng còn hơn không — đây là suy giảm duyên dáng (graceful degradation).
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+/// Bộ đệm dự phòng: giữ bản sao dữ liệu khách hàng đã tra thành công trước đó.
+/// Khi mạch Open, phục vụ từ đây thay vì trả lỗi ngay.
+pub struct FallbackCache {
+    snapshot: HashMap<u64, String>, // user_id -> tên (bản chụp gần nhất)
+}
+
+impl FallbackCache {
+    pub fn new() -> Self { Self { snapshot: HashMap::new() } }
+
+    /// Mỗi lần tra THÀNH CÔNG qua dịch vụ thật, lưu lại vào đệm.
+    pub fn ghi_nho(&mut self, user_id: u64, ten: &str) {
+        self.snapshot.insert(user_id, ten.to_string());
+    }
+
+    /// Khi mạch Open: trả bản đệm nếu có (có thể cũ), None nếu chưa từng thấy.
+    pub fn tra_du_phong(&self, user_id: u64) -> Option<String> {
+        self.snapshot.get(&user_id).cloned()
+    }
+}
+
+#[test]
+fn dung_dem_khi_mach_open() {
+    let mut cache = FallbackCache::new();
+    // Lúc mạch còn Closed và tra thành công -> ghi nhớ.
+    cache.ghi_nho(42, "Nguyễn Văn A");
+    // Sau đó dịch vụ sập, mạch chuyển Open -> phục vụ từ đệm thay vì lỗi.
+    assert_eq!(cache.tra_du_phong(42), Some("Nguyễn Văn A".to_string()));
+    // Khách chưa từng tra thành công -> không có gì để dự phòng.
+    assert_eq!(cache.tra_du_phong(99), None);
+}
+```
+
+**Cách gắn vào `OrderCoordinatorService`:** trong luồng `create_order`, khi `circuit_breaker.allow_request()` trả `false` (mạch Open), thay vì `return Err(...)` ngay, hãy gọi `fallback_cache.tra_du_phong(user_id)`. Có bản đệm thì dùng nó tiếp tục xử lý (đánh dấu "dữ liệu có thể cũ"); không có thì mới trả lỗi.
+
+Đây là nguyên tắc **suy giảm duyên dáng (graceful degradation)**: khi một phụ thuộc sập, hệ thống không sập theo mà *lùi về mức phục vụ thấp hơn nhưng vẫn dùng được*. Đánh đổi phải nói rõ: dữ liệu đệm có thể **cũ** (khách vừa đổi tên xong chẳng hạn), nên chỉ hợp với dữ liệu mà "hơi cũ" là chấp nhận được (tên, hồ sơ) — *không* dùng cho dữ liệu phải luôn đúng khoảnh khắc (số dư tài khoản, tồn kho lúc thanh toán).
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Semaphore đếm số 'giấy phép' còn lại. Mỗi cuộc gọi lấy một giấy phép trước khi chạy, trả lại khi xong. Hết giấy phép thì yêu cầu mới bị từ chối — chặn cạn kiệt tài nguyên.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::sync::{Arc, Mutex};
+
+/// Bulkhead (vách ngăn): giới hạn TỐI ĐA số cuộc gọi chạy đồng thời.
+/// Như khoang kín trên tàu — một khoang ngập nước không làm chìm cả tàu.
+pub struct BulkheadSemaphore {
+    giay_phep_con_lai: Arc<Mutex<usize>>,
+    toi_da: usize,
+}
+
+/// Chứng từ giữ chỗ: tự động TRẢ giấy phép khi ra khỏi phạm vi (RAII).
+pub struct GiayPhep {
+    ngu: Arc<Mutex<usize>>,
+}
+impl Drop for GiayPhep {
+    fn drop(&mut self) {
+        *self.ngu.lock().unwrap() += 1; // trả giấy phép khi cuộc gọi kết thúc
+    }
+}
+
+impl BulkheadSemaphore {
+    pub fn new(toi_da: usize) -> Self {
+        Self { giay_phep_con_lai: Arc::new(Mutex::new(toi_da)), toi_da }
+    }
+
+    /// Thử lấy một giấy phép. Some(chứng từ) nếu còn chỗ, None nếu đã đầy -> từ chối.
+    pub fn thu_vao(&self) -> Option<GiayPhep> {
+        let mut con = self.giay_phep_con_lai.lock().unwrap();
+        if *con == 0 {
+            return None; // đã đủ 10 cuộc gọi đồng thời -> từ chối yêu cầu thứ 11
+        }
+        *con -= 1;
+        Some(GiayPhep { ngu: Arc::clone(&self.giay_phep_con_lai) })
+    }
+
+    pub fn cho_trong(&self) -> usize { *self.giay_phep_con_lai.lock().unwrap() }
+}
+
+#[test]
+fn gioi_han_dong_thoi_toi_da_10() {
+    let bh = BulkheadSemaphore::new(10);
+    let mut dang_giu = Vec::new();
+    // 10 cuộc gọi đầu: đều lấy được giấy phép.
+    for _ in 0..10 {
+        let p = bh.thu_vao();
+        assert!(p.is_some());
+        dang_giu.push(p);
+    }
+    // Cuộc gọi thứ 11 khi 10 cái trước chưa xong -> bị từ chối.
+    assert!(bh.thu_vao().is_none());
+    assert_eq!(bh.cho_trong(), 0);
+
+    // Một cuộc gọi xong (chứng từ bị hủy) -> trả lại 1 giấy phép.
+    dang_giu.pop();
+    assert_eq!(bh.cho_trong(), 1);
+    assert!(bh.thu_vao().is_some()); // giờ lại nhận được
+}
+```
+
+Mẫu Bulkhead lấy tên từ **vách ngăn kín nước trên tàu thủy**: chia thân tàu thành nhiều khoang để một khoang thủng không làm chìm cả con tàu. Ở đây nó chặn một lỗi kinh điển: một phụ thuộc chậm (dịch vụ mạng treo) khiến *hàng nghìn* yêu cầu cùng chờ, ngốn sạch luồng/bộ nhớ/kết nối của máy chủ — rồi *toàn bộ* hệ thống sập, không chỉ phần gọi dịch vụ chậm đó. Giới hạn "tối đa 10 cuộc gọi đồng thời" cô lập thiệt hại: yêu cầu thứ 11 bị từ chối *nhanh* (fail nhanh) thay vì xếp hàng chờ vô tận. Chi tiết Rust đẹp ở đây là **RAII qua `Drop`**: chứng từ `GiayPhep` tự trả giấy phép khi ra khỏi phạm vi, nên không bao giờ rò rỉ giấy phép kể cả khi cuộc gọi hoảng loạn giữa chừng.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Câu hỏi về đánh đổi: vi dịch vụ giải quyết vấn đề *quy mô tổ chức* (nhiều đội làm việc độc lập), nhưng đội nhỏ thì cái giá vận hành lại vượt xa lợi ích.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Một startup 3 lập trình viên, 500 người dùng/ngày KHÔNG nên chia thành 15 vi dịch vụ.** Đây gần như là một sai lầm kiến trúc kinh điển.
+
+**Vì sao vi dịch vụ sai ở quy mô này:** vi dịch vụ giải quyết một vấn đề *tổ chức*, không phải vấn đề *kỹ thuật* — nó cho phép **nhiều đội độc lập** triển khai riêng rẽ mà không giẫm chân nhau. Với 3 người, bạn *không có* vấn đề đó. Bạn nhận về mọi cái giá của hệ phân tán mà chẳng hưởng lợi ích nào.
+
+**Rủi ro vận hành lớn nhất họ sẽ đối mặt:**
+
+| Lĩnh vực | Với 1 khối liền (monolith) | Với 15 vi dịch vụ |
+|---|---|---|
+| **Triển khai (DevOps)** | 1 tiến trình, 1 lần deploy | 15 tiến trình, 15 đường ống CI/CD, điều phối container (Kubernetes...) mà 3 người phải tự vận hành |
+| **Giám sát** | 1 tập log, 1 bảng điều khiển | 15 nguồn log rời rạc; một yêu cầu hỏng phải ghép mảnh từ 15 nơi |
+| **Truy vết phân tán** | không cần — mọi lời gọi trong cùng tiến trình, đọc thẳng ngăn xếp | BẮT BUỘC phải có (Jaeger, Zipkin...): một yêu cầu nhảy qua 6 dịch vụ, muốn gỡ lỗi phải lần theo dấu vết xuyên mạng |
+| **Gỡ lỗi** | đặt điểm dừng, đọc ngăn xếp | lỗi ẩn trong *khoảng giữa* các dịch vụ: độ trễ mạng, thử lại, một phần thất bại |
+| **Nhất quán dữ liệu** | một CSDL, một giao dịch ACID | dữ liệu rải nhiều CSDL, phải xử lý giao dịch phân tán / Saga (xem Chương 54) |
+
+**Rủi ro nghiêm trọng nhất: truy vết phân tán và gỡ lỗi xuyên dịch vụ.** Trong khối liền, một yêu cầu hỏng để lại *một* dấu vết ngăn xếp bạn đọc thẳng. Trong 15 vi dịch vụ, cùng yêu cầu đó xuyên qua nhiều tiến trình qua mạng — không có ngăn xếp chung, và bạn *phải* dựng sẵn hạ tầng truy vết phân tán chỉ để trả lời "yêu cầu này chết ở đâu?". Ba lập trình viên sẽ tiêu phần lớn thời gian **vận hành hạ tầng** thay vì xây tính năng.
+
+**Lời khuyên chuẩn của ngành:** *"Bắt đầu bằng khối liền, tách vi dịch vụ khi nỗi đau tổ chức xuất hiện."* Ngay cả những người đề xướng vi dịch vụ (Martin Fowler, Sam Newman) cũng khuyên **"monolith first"**. Khi startup này lớn tới mức có nhiều đội mà việc deploy giẫm chân nhau, *khi đó* mới tách — và tách theo đường biên nghiệp vụ thật, không phải chia bừa thành 15 mảnh.
+</details>

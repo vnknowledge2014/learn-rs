@@ -180,14 +180,14 @@ use std::collections::HashMap;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpMemory { ThanhGhi, L1, L2, L3, Ram, SsdNvme, DiaQuay }
+pub enum UpMemory { Register, L1, L2, L3, Ram, SsdNvme, DiaQuay }
 
 impl UpMemory {
     /// Độ trễ tính bằng CHU KỲ CPU. Cách nhìn này quan trọng hơn nano-giây:
     /// nó cho biết CPU phải ngồi chơi bao nhiêu nhịp.
     pub fn period(self) -> u64 {
         match self {
-            UpMemory::ThanhGhi => 1,
+            UpMemory::Register => 1,
             UpMemory::L1 => 4,
             UpMemory::L2 => 12,
             UpMemory::L3 => 40,
@@ -198,14 +198,14 @@ impl UpMemory {
     }
     pub fn name(self) -> &'static str {
         match self {
-            UpMemory::ThanhGhi => "Thanh ghi", UpMemory::L1 => "Cache L1",
+            UpMemory::Register => "Thanh ghi", UpMemory::L1 => "Cache L1",
             UpMemory::L2 => "Cache L2", UpMemory::L3 => "Cache L3",
             UpMemory::Ram => "RAM", UpMemory::SsdNvme => "SSD NVMe",
             UpMemory::DiaQuay => "Đĩa quay",
         }
     }
     pub fn all() -> [UpMemory; 7] {
-        [UpMemory::ThanhGhi, UpMemory::L1, UpMemory::L2, UpMemory::L3,
+        [UpMemory::Register, UpMemory::L1, UpMemory::L2, UpMemory::L3,
          UpMemory::Ram, UpMemory::SsdNvme, UpMemory::DiaQuay]
     }
 }
@@ -336,13 +336,13 @@ pub fn col_major_scan(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64
 /// Nhân ma trận ngây thơ: vòng lặp i-j-k. Vòng trong quét CỘT của ma trận B.
 pub fn matmul_naive(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
     mp.set_lai();
-    let goc_a = 0usize;
-    let goc_b = n * n * bytes_per_cell;
+    let orig_a = 0usize;
+    let orig_b = n * n * bytes_per_cell;
     for i in 0..n {
         for j in 0..n {
             for k in 0..n {
-                mp.access_cap(goc_a + (i * n + k) * bytes_per_cell);
-                mp.access_cap(goc_b + (k * n + j) * bytes_per_cell); // quét cột!
+                mp.access_cap(orig_a + (i * n + k) * bytes_per_cell);
+                mp.access_cap(orig_b + (k * n + j) * bytes_per_cell); // quét cột!
             }
         }
     }
@@ -355,16 +355,16 @@ pub fn matmul_naive(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
 pub fn blocked_matmul(mp: &mut CacheSim, n: usize, khoi: usize,
                          bytes_per_cell: usize) -> u64 {
     mp.set_lai();
-    let goc_a = 0usize;
-    let goc_b = n * n * bytes_per_cell;
+    let orig_a = 0usize;
+    let orig_b = n * n * bytes_per_cell;
     for ii in (0..n).step_by(khoi) {
         for jj in (0..n).step_by(khoi) {
             for kk in (0..n).step_by(khoi) {
                 for i in ii..(ii + khoi).min(n) {
                     for j in jj..(jj + khoi).min(n) {
                         for k in kk..(kk + khoi).min(n) {
-                            mp.access_cap(goc_a + (i * n + k) * bytes_per_cell);
-                            mp.access_cap(goc_b + (k * n + j) * bytes_per_cell);
+                            mp.access_cap(orig_a + (i * n + k) * bytes_per_cell);
+                            mp.access_cap(orig_b + (k * n + j) * bytes_per_cell);
                         }
                     }
                 }
@@ -401,11 +401,11 @@ impl BranchPredictor {
     pub fn segment_data(&mut self, id_nhanh: usize, actual: bool) -> bool {
         self.branch_count += 1;
         let tt = self.state.entry(id_nhanh).or_insert(1);
-        let doan = *tt >= 2;
-        if doan != actual { self.wrong_guess_balance += 1; }
+        let segment = *tt >= 2;
+        if segment != actual { self.wrong_guess_balance += 1; }
         // Bão hoà: 3 không lên nữa, 0 không xuống nữa
         if actual { *tt = (*tt + 1).min(3); } else { *tt = tt.saturating_sub(1); }
-        doan == actual
+        segment == actual
     }
 
     pub fn ratio_sai(&self) -> f64 {
@@ -421,9 +421,9 @@ impl BranchPredictor {
 pub fn branch_taken_count(data: &[i32], threshold: i32, dd: &mut BranchPredictor) -> (usize, u64) {
     let mut count = 0;
     for &x in data {
-        let dieu_kien = x >= threshold;
-        dd.segment_data(0xB1, dieu_kien); // một vị trí nhánh duy nhất
-        if dieu_kien { count += 1; }
+        let condition = x >= threshold;
+        dd.segment_data(0xB1, condition); // một vị trí nhánh duy nhất
+        if condition { count += 1; }
     }
     (count, dd.wrong_guess_balance)
 }
@@ -571,21 +571,21 @@ fn main() {
     println!("\n3. NHÂN MA TRẬN — chia khối để tái dùng dữ liệu nóng");
     let n = 96;
     let mut mp = CacheSim::new(32 * 1024, 8);
-    let ngay_tho = matmul_naive(&mut mp, n, 8);
-    println!("   Ngây thơ (i-j-k): {:>9} lần trượt", ngay_tho);
+    let naive = matmul_naive(&mut mp, n, 8);
+    println!("   Ngây thơ (i-j-k): {:>9} lần trượt", naive);
     for k in [8usize, 16, 32] {
         let mut mp2 = CacheSim::new(32 * 1024, 8);
         let theo_block = blocked_matmul(&mut mp2, n, k, 8);
         println!("   Chia khối {:>2}x{:<2}   : {:>9} lần trượt → giảm {:.0}%",
-                 k, k, theo_block, (1.0 - theo_block as f64 / ngay_tho as f64) * 100.0);
+                 k, k, theo_block, (1.0 - theo_block as f64 / naive as f64) * 100.0);
     }
     println!("   → CÙNG số phép nhân. Chỉ đổi thứ tự truy cập bộ nhớ.");
 
     println!("\n4. DỰ ĐOÁN NHÁNH — vì sao sắp xếp trước lại nhanh hơn");
-    let lon_xon = gen_data(100_000, 42);
-    let mut da_sap = lon_xon.clone();
+    let shuffled = gen_data(100_000, 42);
+    let mut da_sap = shuffled.clone();
     da_sap.sort_unstable();
-    for (name, d) in [("lộn xộn ", &lon_xon), ("đã sắp  ", &da_sap)] {
+    for (name, d) in [("lộn xộn ", &shuffled), ("đã sắp  ", &da_sap)] {
         let mut dd = BranchPredictor::new();
         let (count, sai) = branch_taken_count(d, 128, &mut dd);
         println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} chu kỳ",
@@ -749,11 +749,11 @@ mod tests {
     fn blocking_cuts_the_miss_count() {
         let n = 96;
         let mut a = CacheSim::new(32 * 1024, 8);
-        let ngay_tho = matmul_naive(&mut a, n, 8);
+        let naive = matmul_naive(&mut a, n, 8);
         let mut b = CacheSim::new(32 * 1024, 8);
         let theo_block = blocked_matmul(&mut b, n, 16, 8);
-        assert!(theo_block < ngay_tho,
-                "chia khối {} phải ít trượt hơn ngây thơ {}", theo_block, ngay_tho);
+        assert!(theo_block < naive,
+                "chia khối {} phải ít trượt hơn ngây thơ {}", theo_block, naive);
     }
 
     #[test]
@@ -803,12 +803,12 @@ mod tests {
         // Câu hỏi phỏng vấn kinh điển: "vì sao sắp xếp mảng trước lại làm
         // vòng lặp đếm chạy nhanh hơn?" — không phải vì phép đếm nhanh hơn,
         // mà vì CPU đoán nhánh đúng hơn.
-        let lon_xon = gen_data(50_000, 42);
-        let mut da_sap = lon_xon.clone();
+        let shuffled = gen_data(50_000, 42);
+        let mut da_sap = shuffled.clone();
         da_sap.sort_unstable();
 
         let mut d1 = BranchPredictor::new();
-        let (a, sai_lon_xon) = branch_taken_count(&lon_xon, 128, &mut d1);
+        let (a, sai_lon_xon) = branch_taken_count(&shuffled, 128, &mut d1);
         let mut d2 = BranchPredictor::new();
         let (b, sai_da_sap) = branch_taken_count(&da_sap, 128, &mut d2);
 
@@ -833,9 +833,9 @@ mod tests {
     fn the_branchless_version_never_mispredicts() {
         // Không có nhánh thì không có gì để đoán — và không có gì để đoán sai.
         // Đây cũng là nền của mã mật mã chạy thời gian không đổi (Chương 57).
-        let lon_xon = gen_data(10_000, 7);
+        let shuffled = gen_data(10_000, 7);
         let dd = BranchPredictor::new();
-        branch_not_taken_count(&lon_xon, 128);
+        branch_not_taken_count(&shuffled, 128);
         assert_eq!(dd.wrong_guess_balance, 0);
         assert_eq!(dd.period_phi(), 0);
     }
@@ -851,11 +851,11 @@ mod tests {
 
     #[test]
     fn multiple_accumulators_raise_ilp() {
-        let mut ilp_truoc = 0.0;
+        let mut ilp_before = 0.0;
         for k in [1u64, 2, 4, 8] {
             let b = analyze_total_many_bien(1_000_000, k, 4);
-            assert!(b.ilp > ilp_truoc, "k={} phải cho ILP cao hơn", k);
-            ilp_truoc = b.ilp;
+            assert!(b.ilp > ilp_before, "k={} phải cho ILP cao hơn", k);
+            ilp_before = b.ilp;
         }
         let b4 = analyze_total_many_bien(1_000_000, 4, 4);
         assert!(b4.ilp > 3.9, "4 bộ tích luỹ phải đạt ILP gần 4, thực tế {:.2}", b4.ilp);
@@ -875,9 +875,9 @@ mod tests {
         // (Với f64 thì KHÔNG — đó là lý do trình biên dịch không tự làm việc
         // này cho số thực trừ khi bạn cho phép nới lỏng ngữ nghĩa dấu phẩy động.)
         let d: Vec<i64> = (1..=10_000).collect();
-        let mong_doi = tong_mot_bien(&d);
+        let expected = tong_mot_bien(&d);
         for k in [1usize, 2, 3, 4, 8, 16] {
-            assert_eq!(total_many_bien(&d, k), mong_doi, "k={}", k);
+            assert_eq!(total_many_bien(&d, k), expected, "k={}", k);
         }
     }
 
@@ -928,9 +928,9 @@ mod tests {
     fn batch_add_matches_scalar_add() {
         let a: Vec<f64> = (0..103).map(|i| i as f64).collect();
         let b: Vec<f64> = (0..103).map(|i| (i * 2) as f64).collect();
-        let mong_doi: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
+        let expected: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
         for w in [1usize, 2, 4, 8, 16] {
-            assert_eq!(batch_add_array(&a, &b, w), mong_doi,
+            assert_eq!(batch_add_array(&a, &b, w), expected,
                        "vector hoá bề rộng {} phải cho cùng kết quả", w);
         }
     }
@@ -997,7 +997,7 @@ Chuyển vị ngây thơ luôn có một phía truy cập theo cột — bất k
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn chuyen_vi_ngay_tho(a: &[f64], n: usize) -> Vec<f64> {
+pub fn transpose_naive(a: &[f64], n: usize) -> Vec<f64> {
     let mut r = vec![0.0; n * n];
     for i in 0..n {
         for j in 0..n {
@@ -1007,7 +1007,7 @@ pub fn chuyen_vi_ngay_tho(a: &[f64], n: usize) -> Vec<f64> {
     r
 }
 
-pub fn chuyen_vi_theo_khoi(a: &[f64], n: usize, khoi: usize) -> Vec<f64> {
+pub fn transpose_blocked(a: &[f64], n: usize, khoi: usize) -> Vec<f64> {
     let mut r = vec![0.0; n * n];
     for ii in (0..n).step_by(khoi) {
         for jj in (0..n).step_by(khoi) {

@@ -487,7 +487,7 @@ struct DemoStore {
 
 // Đoạn mã lỗi minh họa E0502: Mượn lồng nhau gây xung đột
 impl DemoStore {
-    fn doc_loi(&mut self, key: &str) {
+    fn read_broken(&mut self, key: &str) {
         // let offset = self.index.get(key); // Mượn bất biến self.index
         // self.file.set_len(100).unwrap();  // LỖI E0502: Mượn khả biến self.file!
         // println!("Offset: {:?}", offset);
@@ -520,3 +520,124 @@ impl DemoStore {
    Sau khi tiến trình `compact()` hoàn tất, hãy cho ghi thêm một tệp gợi ý `data.db.hint` chỉ chứa các cặp `(key, KeyDirEntry)`. Khi hệ thống khởi động lại, thay vì phải quét toàn bộ tệp dữ liệu lớn, hệ thống chỉ cần đọc tệp Hint File nhỏ bé để khôi phục RAM trong vài mili-giây.
 3. **Bài tập 3 (Giới hạn của Bitcask)**:  
    Điểm yếu lớn nhất của mô hình Bitcask là gì? Nếu cơ sở dữ liệu có 1 tỷ khóa khác nhau thì thanh RAM có thể chứa nổi `KeyDir` không? Trong trường hợp đó, người ta sẽ chuyển sang sử dụng mô hình nào (B+ Tree hay LSM-Tree)?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+CRC32 quét từng byte, cập nhật một thanh ghi 32-bit qua bảng tra 256 mục. Chèn 4 byte CRC vào tiêu đề bản ghi; khi đọc lại thì tính lại và so — lệch là bản ghi hỏng.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+/// CRC32 (đa thức IEEE 0xEDB88320) — cùng thuật toán `crc32fast` dùng,
+/// nhưng tự cài để thấy rõ cơ chế. Kiểm toàn vẹn: dữ liệu lệch 1 bit -> CRC đổi.
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &byte in data {
+        crc ^= byte as u32;
+        // 8 vòng: mỗi bit hoặc dịch phải, hoặc dịch rồi XOR đa thức.
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg(); // 0xFFFFFFFF nếu bit thấp =1, else 0
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc // đảo bit cuối theo chuẩn
+}
+
+#[test]
+fn crc32_dung_vector_chuan() {
+    // Vector kiểm nghiệm kinh điển: "123456789" -> 0xCBF43926
+    assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
+    // Đổi đúng 1 byte -> CRC khác hẳn: đó là điều làm nó phát hiện hỏng.
+    assert_ne!(crc32(b"123456780"), crc32(b"123456789"));
+}
+```
+
+**Cách gắn vào MiniBitcask:** tiêu đề bản ghi hiện là 17 byte (timestamp 8 + is_deleted 1 + k_len 4 + v_len 4). Thêm **4 byte CRC32** đặt ngay đầu, tính trên *toàn bộ phần còn lại của bản ghi* (17 byte tiêu đề cũ + key + value) lúc `set`:
+```text
+[ CRC32 4B ][ timestamp 8B ][ is_deleted 1B ][ k_len 4B ][ v_len 4B ][ key ][ value ]
+  \________ tính CRC trên vùng này ________________________________________________/
+```
+Trong `rebuild_keydir`, sau khi đọc một bản ghi, **tính lại CRC** trên vùng dữ liệu và so với 4 byte CRC đã lưu. Khớp thì nạp vào KeyDir; **lệch thì bỏ qua bản ghi hỏng** (và dừng nếu muốn chặt chẽ) — vì đĩa có thể hỏng bit, hoặc ghi dở khi mất điện giữa chừng.
+
+Đây là lý do mọi định dạng lưu trữ nghiêm túc (SSTable, WAL, gói TCP) đều mang checksum: **RAM và mạng thì tin được, nhưng đĩa và thời gian thì không** — CRC là tấm lưới bắt lỗi âm thầm trước khi nó lan thành dữ liệu sai.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Tệp Hint chỉ chứa `(key, offset, size, timestamp)` — không chứa value. Nhỏ hơn tệp dữ liệu nhiều lần, nên nạp lại RAM nhanh hơn hẳn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Ý tưởng:** khôi phục KeyDir lúc khởi động hiện phải **quét cả tệp dữ liệu lớn** (đọc qua từng value chỉ để lấy offset). Nhưng KeyDir chỉ cần `(key -> offset, size, timestamp)` — *không* cần value. Tệp Hint lưu đúng phần đó.
+
+```rust
+use std::io::Write;
+/// Sau compact(), ghi tệp hint: mỗi dòng là metadata một khóa, KHÔNG có value.
+/// Định dạng đơn giản: key_len(4) | key | offset(8) | size(4) | ts(8)
+fn write_hint_file(path: &str, keydir: &std::collections::HashMap<String, (u64, u32, u64)>)
+    -> std::io::Result<()>
+{
+    let mut f = std::fs::File::create(path)?;
+    for (key, (offset, size, ts)) in keydir {
+        let kb = key.as_bytes();
+        f.write_all(&(kb.len() as u32).to_le_bytes())?;
+        f.write_all(kb)?;
+        f.write_all(&offset.to_le_bytes())?;
+        f.write_all(&size.to_le_bytes())?;
+        f.write_all(&ts.to_le_bytes())?;
+    }
+    f.sync_all()?; // ép xuống đĩa: hint chỉ hữu ích nếu nó sống sót qua mất điện
+    Ok(())
+}
+```
+
+**Vì sao nhanh hơn nhiều bậc:** giả sử mỗi value trung bình 1 KB còn metadata mỗi khóa ~30 byte. Với 1 triệu khóa, tệp dữ liệu ~1 GB, tệp hint chỉ ~30 MB — **nhỏ hơn ~33 lần**. Khởi động lại: thay vì đọc 1 GB, hệ thống đọc 30 MB và dựng lại KeyDir trong vài mili-giây.
+
+Điểm tinh tế cần đúng: khi khởi động phải **ưu tiên đọc hint nếu có**, và chỉ quét tệp dữ liệu đầy đủ khi hint thiếu hoặc cũ hơn tệp dữ liệu (ví dụ đã có ghi mới sau lần compact cuối). Đây chính là cách Bitcask thật (của Riak) rút ngắn thời gian phục hồi — một ví dụ đẹp của việc *tách metadata khỏi dữ liệu* để tăng tốc.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Điểm yếu nằm ở chỗ **KeyDir sống hoàn toàn trên RAM** — mọi khóa đều phải có một mục trong RAM, bất kể dữ liệu lớn đến đâu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Điểm yếu lớn nhất của Bitcask: toàn bộ tập khóa (KeyDir) phải nằm vừa trong RAM.**
+
+Bitcask đánh đổi để đạt tốc độ: mỗi thao tác đọc chỉ tốn *đúng một* lần chạm đĩa, vì RAM giữ sẵn ánh xạ `key -> vị trí trên đĩa`. Cái giá là **RAM phải chứa được mọi khóa**.
+
+**Với 1 tỷ khóa thì sao?** Ước lượng thô mỗi mục KeyDir:
+```text
+key trung bình      ~16 byte
+offset (u64)          8 byte
+size (u32/usize)      8 byte
+timestamp (u64)       8 byte
+chi phí HashMap      ~20 byte (con trỏ, băm, ô trống dự phòng)
+-------------------------------
+mỗi khóa           ~60 byte
+× 1 tỷ khóa        = ~60 GB RAM  chỉ riêng cho MỤC LỤC
+```
+**60 GB RAM chỉ để chứa mục lục** — vượt xa RAM của gần như mọi máy chủ thông thường, và đó là còn *chưa* tính chỗ cho chính dữ liệu. Bitcask sụp đổ ở quy mô này.
+
+**Chuyển sang mô hình nào:** khi tập khóa không còn vừa RAM, người ta dùng cấu trúc **giữ mục lục *trên đĩa*, chỉ nạp phần nóng vào RAM**:
+
+| Mô hình | Ý tưởng | Ai dùng |
+|---|---|---|
+| **B+ Tree** | Cây cân bằng trên đĩa; mỗi tra cứu vài lần đọc đĩa (log n), nhưng mục lục *không* cần vừa RAM | Hầu hết CSDL quan hệ (PostgreSQL, MySQL/InnoDB) |
+| **LSM-Tree** | Ghi vào RAM rồi xả xuống các SSTable đã sắp xếp trên đĩa; tra cứu qua nhiều tầng + bộ lọc Bloom | Cassandra, RocksDB, LevelDB |
+
+Chọn giữa hai: **B+ Tree** khi đọc ngẫu nhiên nhiều (ưu tiên đọc nhanh, ổn định); **LSM-Tree** khi ghi rất nhiều (biến ghi ngẫu nhiên thành ghi tuần tự — xem lại Chương 34). Cả hai đều bỏ ràng buộc "mọi khóa phải vừa RAM" của Bitcask, đổi lấy mỗi lần đọc tốn hơn một lần chạm đĩa.
+</details>

@@ -62,8 +62,8 @@ Chiếc thẻ ATM của bạn lưu giữ số dư tiền bạc. Khối `impl` cu
 
 Khi bạn định nghĩa một Struct:
 ```rust
-struct GoiHang {
-    dang_giao: bool, // 1 byte
+struct Parcel {
+    in_transit: bool, // 1 byte
     quantity: f64, // 8 bytes
     ma_so: u8,       // 1 byte
 }
@@ -81,13 +81,13 @@ Trong khối `impl TenStruct`, các hàm có tham số đầu tiên là `self` �
 ```rust
 impl Account {
     // 1. Tham chiếu bất biến: Chỉ đọc dữ liệu (Borrow immutable)
-    fn xem_so_du(&self) -> f64 { self.balance }
+    fn show_balance(&self) -> f64 { self.balance }
 
     // 2. Tham chiếu khả biến: Cho phép chỉnh sửa trạng thái (Borrow mutable)
     fn nap_tien(&mut self, tien: f64) { self.balance += tien; }
 
     // 3. Quyền sở hữu độc quyền: Tiêu thụ và hủy đối tượng (Take ownership & Drop)
-    fn dong_tai_khoan(self) {
+    fn close_account(self) {
         println!("Tài khoản của {} đã chính thức bị đóng vĩnh viễn!", self.name);
         // Khi hàm này kết thúc, self đi ra khỏi scope và bị giải phóng!
     }
@@ -129,7 +129,7 @@ Chương trình hoàn chỉnh dưới đây mô phỏng một hệ thống quả
 // 1. Tuple Struct: Biểu diễn tọa độ GPS của trụ sở ngân hàng (Kinh độ, Vĩ độ)
 struct GpsCoord(f64, f64);
 
-// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
+// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật deliver dịch
 struct LostReport;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
@@ -201,9 +201,9 @@ fn main() {
     println!("============================================================");
 
     // Sử dụng Tuple Struct để lưu tọa độ chi nhánh ngân hàng
-    let chi_nhanh_ha_noi = GpsCoord(21.0285, 105.8542);
-    println!("Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}", 
-             chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
+    let hanoi_branch = GpsCoord(21.0285, 105.8542);
+    println!("Tọa độ chi nhánh deliver dịch: Vĩ độ {}, Kinh độ {}", 
+             hanoi_branch.0, hanoi_branch.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
     let _auth_session = LostReport;
@@ -219,12 +219,12 @@ fn main() {
     // Tra cứu thông tin (gọi phương thức &self)
     account_hidden.tra_cuu_thong_tin();
 
-    // Thực hiện các giao dịch làm biến đổi số dư (gọi phương thức &mut self)
+    // Thực hiện các deliver dịch làm biến đổi số dư (gọi phương thức &mut self)
     account_hidden.nap_tien(500_000.0);
     account_hidden.rut_tien(200_000.0);
     account_hidden.rut_tien(2_000_000.0); // Thử rút vượt số dư
 
-    // Tra cứu lại thông tin sau giao dịch
+    // Tra cứu lại thông tin sau deliver dịch
     account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)
@@ -279,3 +279,121 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
    - Phương thức `co_phai_hinh_vuong(&self) -> bool`.
 2. **Bài tập tư duy 2**: Tại sao Rust lại hỗ trợ phương thức tiêu thụ `self` (chuyển giao quyền sở hữu)? Hãy nêu một tình huống thực tế (ví dụ: gửi một bức thư điện tử hoặc đốt một que diêm) mà phương thức `self` giúp ngăn chặn người dùng sử dụng lại đối tượng đã hết giá trị.
 3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `DonQueue(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`impl` gom các phương thức của struct. Hàm liên kết `tao_moi` không có `self` (gọi qua `HinhChuNhat::tao_moi`), các phương thức còn lại nhận `&self` để đọc dữ liệu.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+struct HinhChuNhat {
+    chieu_dai: f64,
+    chieu_rong: f64,
+}
+
+impl HinhChuNhat {
+    // Hàm LIÊN KẾT: không có self, đóng vai trò "nhà xây dựng".
+    fn tao_moi(dai: f64, rong: f64) -> Self {
+        Self { chieu_dai: dai, chieu_rong: rong }
+    }
+    // Các PHƯƠNG THỨC: nhận &self để đọc dữ liệu mà không lấy quyền sở hữu.
+    fn tinh_dien_tich(&self) -> f64 {
+        self.chieu_dai * self.chieu_rong
+    }
+    fn tinh_chu_vi(&self) -> f64 {
+        2.0 * (self.chieu_dai + self.chieu_rong)
+    }
+    fn co_phai_hinh_vuong(&self) -> bool {
+        self.chieu_dai == self.chieu_rong
+    }
+}
+
+fn main() {
+    let hcn = HinhChuNhat::tao_moi(5.0, 3.0);
+    println!("Diện tích {}, chu vi {}", hcn.tinh_dien_tich(), hcn.tinh_chu_vi());
+    println!("Là hình vuông? {}", hcn.co_phai_hinh_vuong());
+}
+
+#[test]
+fn tinh_toan_hinh_chu_nhat() {
+    let hcn = HinhChuNhat::tao_moi(5.0, 3.0);
+    assert_eq!(hcn.tinh_dien_tich(), 15.0);
+    assert_eq!(hcn.tinh_chu_vi(), 16.0);
+    assert!(!hcn.co_phai_hinh_vuong());
+    assert!(HinhChuNhat::tao_moi(4.0, 4.0).co_phai_hinh_vuong());
+}
+```
+
+Điểm phân biệt cốt lõi: **hàm liên kết** (`tao_moi`, không có `self`) gọi qua `TênKiểu::ham()` và thường dùng làm nhà xây dựng; **phương thức** (có `&self`) gọi qua `bien.phuong_thuc()`. Cả bốn dùng `&self` (mượn đọc) là đúng — chúng chỉ cần *đọc* kích thước để tính, không cần sửa và cũng không nên nuốt mất đối tượng.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Phương thức nhận `self` (không phải `&self`) **nuốt** đối tượng — sau khi gọi, biến cũ không dùng lại được. Nghĩ tới hành động **chỉ làm được một lần** rồi vật thể không còn nguyên vẹn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+Rust hỗ trợ phương thức tiêu thụ `self` để mô hình hóa những hành động **dùng một lần rồi hết** — biến quy tắc nghiệp vụ thành thứ trình biên dịch ép được.
+
+**Ví dụ que diêm:**
+```text
+struct QueDiem { con_dau: bool }
+impl QueDiem {
+    fn dot(self) -> String {   // self, KHÔNG phải &self -> nuốt luôn que diêm
+        String::from("Bùng cháy!")
+    }
+}
+let que = QueDiem { con_dau: true };
+let lua = que.dot();
+// que.dot();   // <- LỖI BIÊN DỊCH: que đã bị nuốt ở lần đốt trước
+```
+
+Sau `que.dot()`, biến `que` bị **di chuyển vào hàm và hủy** — dòng đốt lần hai *không biên dịch được*. Đây đúng bản chất thực tế: một que diêm cháy rồi thì không đốt lại được. Cũng vậy với **gửi thư điện tử**: `fn gui(self)` nuốt đối tượng thư, nên bạn không thể vô tình `gui()` hai lần cùng một bức thư — tránh gửi trùng.
+
+Giá trị nằm ở chỗ: quy tắc "đối tượng này chỉ dùng được một lần" thường chỉ nằm trong tài liệu hoặc đầu người lập trình. Phương thức `self` **nâng nó thành ràng buộc kiểu**: mọi lần dùng lại đều bị chặn ngay lúc biên dịch, không đợi tới lúc chạy mới phát hiện.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Tuple struct đặt tên cho một bộ giá trị nhưng truy xuất qua chỉ số `.0`, `.1`, `.2` thay vì tên trường.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+// Tuple struct: có tên kiểu (DonQueue) nhưng trường truy xuất bằng chỉ số.
+struct DonQueue(u64, u64, u64); // (tiền hàng, phí giao, phụ phí đóng gói)
+
+impl DonQueue {
+    fn tinh_tong_thanh_toan(&self) -> u64 {
+        self.0 + self.1 + self.2   // truy xuất qua .0 .1 .2, không có tên trường
+    }
+}
+
+fn main() {
+    let don = DonQueue(250_000, 30_000, 10_000);
+    println!("Tổng thanh toán: {}đ", don.tinh_tong_thanh_toan());
+}
+
+#[test]
+fn tong_ba_khoan_chi_phi() {
+    let don = DonQueue(250_000, 30_000, 10_000);
+    assert_eq!(don.tinh_tong_thanh_toan(), 290_000);
+}
+```
+
+Tuple struct hợp khi bạn muốn một **kiểu riêng có tên** (để trình biên dịch phân biệt `DonQueue` với một `(u64,u64,u64)` bất kỳ) nhưng bản thân các trường đã rõ nghĩa theo thứ tự, không cần đặt tên. Đánh đổi: gọn hơn struct thường, nhưng `.0/.1/.2` kém tự mô tả — nhầm thứ tự tiền hàng và phí ship là lỗi âm thầm. Quy tắc thực dụng: ít trường và thứ tự hiển nhiên thì dùng tuple struct; nhiều trường hoặc dễ lẫn thì đặt tên trường.
+</details>

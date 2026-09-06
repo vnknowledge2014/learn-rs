@@ -96,7 +96,7 @@ Giả sử bạn có một `Vec` chứa 1.000.000 phần tử và muốn lấy p
 ```rust
 // CẢNH BÁO HIỆU NĂNG THẢM HỌA: O(N)
 let mut list = vec![1, 2, 3, 4, 5];
-let phan_tu_dau = list.remove(0); // Buộc CPU phải dời toàn bộ các phần tử phía sau!
+let front_item = list.remove(0); // Buộc CPU phải dời toàn bộ các phần tử phía sau!
 ```
 Điều gì diễn ra bên dưới thanh RAM?
 1. Rust lấy phần tử tại ô nhớ chỉ số 0.
@@ -227,17 +227,17 @@ fn main() {
 
     // 1. Kiểm thử thuật toán kiểm tra dấu ngoặc với Stack
     println!("[1] Kiểm tra tính hợp lệ của biểu thức toán học:");
-    let bieu_thuc_1 = "{ a + [ b * ( c + d ) ] }";
-    let bieu_thuc_2 = "( a + b ]";
-    let bieu_thuc_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
+    let expr_1 = "{ a + [ b * ( c + d ) ] }";
+    let expr_2 = "( a + b ]";
+    let expr_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
-    println!("    - Biểu thức 1 '{}': {}", bieu_thuc_1, is_balanced_brackets(bieu_thuc_1));
-    println!("    - Biểu thức 2 '{}': {}", bieu_thuc_2, is_balanced_brackets(bieu_thuc_2));
-    println!("    - Biểu thức 3 '{}': {}", bieu_thuc_3, is_balanced_brackets(bieu_thuc_3));
+    println!("    - Biểu thức 1 '{}': {}", expr_1, is_balanced_brackets(expr_1));
+    println!("    - Biểu thức 2 '{}': {}", expr_2, is_balanced_brackets(expr_2));
+    println!("    - Biểu thức 3 '{}': {}", expr_3, is_balanced_brackets(expr_3));
 
-    assert!(is_balanced_brackets(bieu_thuc_1));
-    assert!(!is_balanced_brackets(bieu_thuc_2));
-    assert!(!is_balanced_brackets(bieu_thuc_3));
+    assert!(is_balanced_brackets(expr_1));
+    assert!(!is_balanced_brackets(expr_2));
+    assert!(!is_balanced_brackets(expr_3));
 
     // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
     println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
@@ -307,12 +307,12 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thao tác v
 
 ```rust
 // Đoạn mã lỗi minh họa: Quên xử lý trường hợp ngăn xếp bị rỗng
-fn lay_dinh_loi(mut stack: Vec<i32>) {
+fn peek_broken(mut stack: Vec<i32>) {
     // let value: i32 = stack.pop(); // LỖI E0308: pop() trả về Option<i32>, không phải i32!
 }
 
 // Cách sửa chữa đúng chuẩn: Xử lý an toàn với Option
-fn lay_dinh_dung(mut stack: Vec<i32>) {
+fn peek_correct(mut stack: Vec<i32>) {
     match stack.pop() {
         Some(value) => println!("Đã lấy được giá trị: {}", value),
         None => println!("Ngăn xếp đang rỗng, không có gì để lấy!"),
@@ -376,11 +376,163 @@ mod tests {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Bộ chuyển đổi cơ số 10 sang nhị phân)**:  
-   Áp dụng nguyên lý Ngăn xếp (LIFO), hãy viết một hàm `fn doi_thap_phan_sang_nhi_phan(mut so: u32) -> String`:
+   Áp dụng nguyên lý Ngăn xếp (LIFO), hãy viết một hàm `fn to_binary(mut n: u32) -> String`:
    - Liên tục chia `so` cho 2, lấy phần dư đẩy vào một Stack.
    - Khi `so == 0`, lần lượt rút (`pop`) các phần dư ra khỏi Stack và ghép thành chuỗi kết quả.
    *(Giải thích: Tại sao cơ chế LIFO của Stack lại đảo ngược chính xác các số dư thành chuỗi nhị phân chuẩn?)*
 2. **Bài tập 2 (Mô phỏng bộ đệm bàn phím)**:  
-   Sử dụng `VecDeque<char>` để viết cấu trúc `BoDemPhim` có sức chứa tối đa 10 ký tự. Khi người dùng gõ ký tự thứ 11, ký tự cũ nhất ở đầu hàng đợi sẽ tự động bị loại bỏ (`pop_front`) để nhường chỗ cho ký tự mới ở cuối hàng đợi (`push_back`).
+   Sử dụng `VecDeque<char>` để viết cấu trúc `KeyBuffer` có sức chứa tối đa 10 ký tự. Khi người dùng gõ ký tự thứ 11, ký tự cũ nhất ở đầu hàng đợi sẽ tự động bị loại bỏ (`pop_front`) để nhường chỗ cho ký tự mới ở cuối hàng đợi (`push_back`).
 3. **Bài tập 3 (Tư duy thiết kế: Hàng đợi bằng 2 Ngăn xếp)**:  
    Làm thế nào để bạn có thể giả lập một Hàng đợi (Queue - FIFO) chỉ bằng cách sử dụng **hai Ngăn xếp (Stack 1 và Stack 2)**? Hãy mô tả quy trình nạp dữ liệu vào Stack 1 và đổ ngược dữ liệu sang Stack 2 khi cần lấy ra.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Chia liên tục cho 2, đẩy phần dư vào ngăn xếp. Phần dư ra **ngược** thứ tự cần in, và LIFO chính là thứ đảo nó lại giúp bạn.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+/// Đổi số thập phân sang chuỗi nhị phân bằng NGĂN XẾP.
+pub fn to_binary(mut n: u32) -> String {
+    if n == 0 { return "0".to_string(); }   // trường hợp biên, dễ quên nhất
+
+    let mut stack = Vec::new();
+    while n > 0 {
+        stack.push(n % 2);   // phần dư ra theo thứ tự NGƯỢC với kết quả cần in
+        n /= 2;
+    }
+    // Rút ra theo LIFO -> tự động đảo lại đúng thứ tự.
+    let mut ra = String::with_capacity(stack.len());
+    while let Some(bit) = stack.pop() {
+        ra.push(if bit == 1 { '1' } else { '0' });
+    }
+    ra
+}
+
+#[test]
+fn doi_nhi_phan_dung() {
+    assert_eq!(to_binary(0), "0");
+    assert_eq!(to_binary(1), "1");
+    assert_eq!(to_binary(10), "1010");
+    assert_eq!(to_binary(255), "11111111");
+    // Đối chiếu với bộ định dạng của Rust — nguồn sự thật độc lập.
+    for n in [0u32, 1, 7, 64, 1000, u32::MAX] {
+        assert_eq!(to_binary(n), format!("{n:b}"));
+    }
+}
+```
+
+Bài này chọn ngăn xếp không phải vì nhanh hơn mà vì nó **diễn đạt đúng bài toán**: "tôi sinh ra kết quả theo thứ tự ngược, cần đảo lại". Bạn hoàn toàn có thể `insert(0, ...)` vào `String`, nhưng mỗi lần chèn đầu là O(N) — tổng thành O(N²) một cách vô ích.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`VecDeque` cho phép thêm ở cuối và bỏ ở đầu đều O(1). Kiểm sức chứa **trước** khi thêm, nếu đầy thì `pop_front()` một ký tự.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::collections::VecDeque;
+
+/// Bộ đệm bàn phím sức chứa cố định: đầy thì ký tự CŨ NHẤT bị đẩy ra.
+pub struct KeyBuffer {
+    buf: VecDeque<char>,
+    capacity: usize,
+}
+
+impl KeyBuffer {
+    pub fn new(capacity: usize) -> Self {
+        KeyBuffer { buf: VecDeque::with_capacity(capacity), capacity }
+    }
+
+    /// Trả về ký tự bị đẩy ra (nếu có) — đừng nuốt mất thông tin đó.
+    pub fn go(&mut self, c: char) -> Option<char> {
+        let bi_bo = if self.buf.len() == self.capacity {
+            self.buf.pop_front()
+        } else { None };
+        self.buf.push_back(c);
+        bi_bo
+    }
+
+    pub fn noi_dung(&self) -> String { self.buf.iter().collect() }
+    pub fn len(&self) -> usize { self.buf.len() }
+    pub fn is_empty(&self) -> bool { self.buf.is_empty() }
+}
+
+#[test]
+fn day_thi_day_ky_tu_cu_nhat_ra() {
+    let mut kb = KeyBuffer::new(10);
+    for c in "abcdefghij".chars() {
+        assert_eq!(kb.go(c), None);          // chưa đầy -> không đẩy ai ra
+    }
+    assert_eq!(kb.noi_dung(), "abcdefghij");
+
+    assert_eq!(kb.go('k'), Some('a'));       // ký tự thứ 11 -> 'a' bị đẩy ra
+    assert_eq!(kb.noi_dung(), "bcdefghijk");
+    assert_eq!(kb.len(), 10);                // sức chứa KHÔNG BAO GIỜ vượt
+}
+```
+
+Chi tiết đáng học: `go` **trả về** ký tự bị loại thay vì lặng lẽ vứt đi. Trong một trình soạn thảo thật, đó là thứ bạn cần để ghi nhật ký hoặc hoàn tác. Hàm nuốt mất thông tin là hàm khó dùng lại.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Mấu chốt: chỉ đổ từ ngăn xếp Vào sang ngăn xếp Ra **khi Ra rỗng**. Đổ đúng lúc đó thì mỗi phần tử chỉ bị chuyển đúng một lần trong cả đời.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+```rust
+/// Hàng đợi FIFO dựng từ hai ngăn xếp LIFO.
+pub struct QueueTuHaiStack<T> {
+    vao: Vec<T>,   // nơi nhận phần tử mới
+    ra:  Vec<T>,   // nơi lấy phần tử ra, thứ tự đã ĐẢO sẵn
+}
+
+impl<T> QueueTuHaiStack<T> {
+    pub fn new() -> Self { QueueTuHaiStack { vao: Vec::new(), ra: Vec::new() } }
+
+    pub fn push(&mut self, x: T) { self.vao.push(x); }
+
+    pub fn pop(&mut self) -> Option<T> {
+        if self.ra.is_empty() {
+            // CHỈ đổ khi `ra` đã cạn. Đổ sớm hơn là làm hỏng thứ tự.
+            while let Some(x) = self.vao.pop() { self.ra.push(x); }
+        }
+        self.ra.pop()
+    }
+
+    pub fn len(&self) -> usize { self.vao.len() + self.ra.len() }
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
+}
+
+#[test]
+fn hai_stack_cho_dung_thu_tu_fifo() {
+    let mut q = QueueTuHaiStack::new();
+    q.push(1); q.push(2); q.push(3);
+    assert_eq!(q.pop(), Some(1));   // vào trước ra trước
+    q.push(4);                      // thêm giữa chừng
+    assert_eq!(q.pop(), Some(2));
+    assert_eq!(q.pop(), Some(3));
+    assert_eq!(q.pop(), Some(4));
+    assert_eq!(q.pop(), None);
+}
+```
+
+**Vì sao đây là O(1) khấu hao dù `pop` đôi khi tốn O(N):** mỗi phần tử được chuyển từ `vao` sang `ra` **đúng một lần** trong cả vòng đời của nó. Chia tổng chi phí cho tổng số thao tác ra một hằng số. Đây chính là *thời gian khấu hao* (amortized time) mà Chương 25 nói tới — cùng loại lập luận với việc `Vec` nhân đôi dung lượng.
+
+Cái bẫy: nếu đổ mỗi lần `pop` (không kiểm `ra.is_empty()`), lập luận khấu hao sụp đổ và bạn có O(N) thật cho mỗi thao tác.
+</details>

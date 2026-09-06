@@ -14,7 +14,7 @@ pub enum StateProcess {
     SanSang,    // chờ được cấp CPU
     DangChay,   // đang giữ CPU
     Cho,        // chờ I/O
-    KetThuc,
+    Finished,
 }
 
 /// Khối điều khiển tiến trình — thứ mà nhân hệ điều hành lưu cho MỖI tiến trình.
@@ -90,7 +90,7 @@ pub fn lap_lich_fcfs(mut tt: Vec<Process>) -> KetQuaLapLich {
         }
         p.remaining = 0;
         p.end = Some(clock);
-        p.state = StateProcess::KetThuc;
+        p.state = StateProcess::Finished;
     }
     tong_ket(tt, dtg)
 }
@@ -118,7 +118,7 @@ pub fn lap_lich_sjf(mut tt: Vec<Process>) -> KetQuaLapLich {
                 }
                 tt[i].remaining = 0;
                 tt[i].end = Some(clock);
-                tt[i].state = StateProcess::KetThuc;
+                tt[i].state = StateProcess::Finished;
                 da_chay[i] = true;
                 done += 1;
             }
@@ -161,7 +161,7 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
                 tt[i].remaining -= run;
                 if tt[i].remaining == 0 {
                     tt[i].end = Some(clock);
-                    tt[i].state = StateProcess::KetThuc;
+                    tt[i].state = StateProcess::Finished;
                     done += 1;
                 } else {
                     queue.push_back(i); // chưa xong -> quay lại cuối hàng
@@ -274,12 +274,12 @@ impl WaitForGraph {
     /// Phát hiện bế tắc = tìm chu trình bằng DFS 3 màu.
     pub fn has_deadlock(&self) -> Option<Vec<u32>> {
         let mut mau: HashMap<u32, u8> = HashMap::new(); // 0=trắng 1=xám 2=đen
-        let mut duong: Vec<u32> = Vec::new();
+        let mut positive: Vec<u32> = Vec::new();
         let mut peak: Vec<u32> = self.edge.keys().copied().collect();
         peak.sort();
         for d in peak {
             if mau.get(&d).copied().unwrap_or(0) == 0 {
-                if let Some(chu_trinh) = self.dfs(d, &mut mau, &mut duong) {
+                if let Some(chu_trinh) = self.dfs(d, &mut mau, &mut positive) {
                     return Some(chu_trinh);
                 }
             }
@@ -287,9 +287,9 @@ impl WaitForGraph {
         None
     }
 
-    fn dfs(&self, d: u32, mau: &mut HashMap<u32, u8>, duong: &mut Vec<u32>) -> Option<Vec<u32>> {
+    fn dfs(&self, d: u32, mau: &mut HashMap<u32, u8>, positive: &mut Vec<u32>) -> Option<Vec<u32>> {
         mau.insert(d, 1); // xám = đang thăm
-        duong.push(d);
+        positive.push(d);
         if let Some(ke) = self.edge.get(&d) {
             let mut ke = ke.clone();
             ke.sort();
@@ -297,17 +297,17 @@ impl WaitForGraph {
                 match mau.get(&k).copied().unwrap_or(0) {
                     1 => {
                         // gặp lại đỉnh XÁM -> có chu trình
-                        let start = duong.iter().position(|&x| x == k).unwrap();
-                        return Some(duong[start..].to_vec());
+                        let start = positive.iter().position(|&x| x == k).unwrap();
+                        return Some(positive[start..].to_vec());
                     }
                     0 => {
-                        if let Some(c) = self.dfs(k, mau, duong) { return Some(c); }
+                        if let Some(c) = self.dfs(k, mau, positive) { return Some(c); }
                     }
                     _ => {}
                 }
             }
         }
-        duong.pop();
+        positive.pop();
         mau.insert(d, 2); // đen = xong
         None
     }

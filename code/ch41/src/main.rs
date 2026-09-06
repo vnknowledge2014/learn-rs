@@ -137,7 +137,7 @@ fn main() {
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
             println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
         }
-        Err(err) => println!("    [!] Loi phan tich: {}", err),
+        Err(err) => println!("    [!] Failed phan tich: {}", err),
     }
 
     // -------------------------------------------------------------
@@ -167,7 +167,7 @@ fn main() {
             println!("    - Dia chi khoi chay : 0x{:012X}", elf.entry_point_address);
             println!("    => Nhan dang tep nhi phan thanh cong chi voi 64 bytes dau!");
         }
-        Err(err) => println!("    [!] Loi phan tich ELF: {}", err),
+        Err(err) => println!("    [!] Failed phan tich ELF: {}", err),
     }
 
     println!("\n==================================================================");

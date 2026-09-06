@@ -14,14 +14,14 @@ use std::collections::HashMap;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpMemory { ThanhGhi, L1, L2, L3, Ram, SsdNvme, DiaQuay }
+pub enum UpMemory { Register, L1, L2, L3, Ram, SsdNvme, DiaQuay }
 
 impl UpMemory {
     /// Độ trễ tính bằng CHU KỲ CPU. Cách nhìn này quan trọng hơn nano-giây:
     /// nó cho biết CPU phải ngồi chơi bao nhiêu nhịp.
     pub fn period(self) -> u64 {
         match self {
-            UpMemory::ThanhGhi => 1,
+            UpMemory::Register => 1,
             UpMemory::L1 => 4,
             UpMemory::L2 => 12,
             UpMemory::L3 => 40,
@@ -32,14 +32,14 @@ impl UpMemory {
     }
     pub fn name(self) -> &'static str {
         match self {
-            UpMemory::ThanhGhi => "Thanh ghi", UpMemory::L1 => "Cache L1",
+            UpMemory::Register => "Thanh ghi", UpMemory::L1 => "Cache L1",
             UpMemory::L2 => "Cache L2", UpMemory::L3 => "Cache L3",
             UpMemory::Ram => "RAM", UpMemory::SsdNvme => "SSD NVMe",
             UpMemory::DiaQuay => "Đĩa quay",
         }
     }
     pub fn all() -> [UpMemory; 7] {
-        [UpMemory::ThanhGhi, UpMemory::L1, UpMemory::L2, UpMemory::L3,
+        [UpMemory::Register, UpMemory::L1, UpMemory::L2, UpMemory::L3,
          UpMemory::Ram, UpMemory::SsdNvme, UpMemory::DiaQuay]
     }
 }
@@ -709,9 +709,9 @@ mod tests {
         // (Với f64 thì KHÔNG — đó là lý do trình biên dịch không tự làm việc
         // này cho số thực trừ khi bạn cho phép nới lỏng ngữ nghĩa dấu phẩy động.)
         let d: Vec<i64> = (1..=10_000).collect();
-        let mong_doi = tong_mot_bien(&d);
+        let expected = tong_mot_bien(&d);
         for k in [1usize, 2, 3, 4, 8, 16] {
-            assert_eq!(total_many_bien(&d, k), mong_doi, "k={}", k);
+            assert_eq!(total_many_bien(&d, k), expected, "k={}", k);
         }
     }
 
@@ -762,9 +762,9 @@ mod tests {
     fn batch_add_matches_scalar_add() {
         let a: Vec<f64> = (0..103).map(|i| i as f64).collect();
         let b: Vec<f64> = (0..103).map(|i| (i * 2) as f64).collect();
-        let mong_doi: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
+        let expected: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
         for w in [1usize, 2, 4, 8, 16] {
-            assert_eq!(batch_add_array(&a, &b, w), mong_doi,
+            assert_eq!(batch_add_array(&a, &b, w), expected,
                        "vector hoá bề rộng {} phải cho cùng kết quả", w);
         }
     }

@@ -298,3 +298,105 @@ fn pick_first_word(sentence: &str) -> &str {
 }
 ```
 Hãy giải thích vì sao hàm trên thực tế vẫn có thể biên dịch được nếu tận dụng quy tắc Lifetime Elision, hoặc chỉ ra trường hợp nào khiến hàm trả về tham chiếu trỏ vào vùng nhớ tạm bị hủy bỏ.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Quy tắc mượn ví như mượn sách thư viện: nhiều người cùng *đọc* một cuốn thì được; nhưng khi một người đang *sửa* (viết vào) cuốn đó thì không ai được đọc, kể cả chính họ đọc bản khác.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**Giải thích E0502 bằng ngôn ngữ đời thường:**
+
+Hãy hình dung `numbers` là một **cuốn sách trong thư viện**, và các phép mượn là quy tắc mượn sách:
+
+- **Mượn bất biến (`&numbers`)** = *mượn để đọc*. Thư viện cho phép **nhiều người cùng đọc** một cuốn sách một lúc — ai cũng chỉ nhìn, không ai làm hỏng nội dung, nên vô hại.
+- **Mượn khả biến (`&mut numbers`)** = *mượn để sửa*, tức mang cuốn sách đi viết/tẩy xóa. Việc này đòi hỏi **độc quyền tuyệt đối**: chừng nào một người đang sửa cuốn sách, **không ai khác được đọc nó** — vì nội dung đang thay đổi giữa chừng, đọc lúc đó sẽ thấy thứ dở dang, sai lệch.
+
+Lỗi `cannot borrow numbers as mutable because it is also borrowed as immutable` nghĩa là lập trình viên (hoặc AI) đã phạm điều cấm: **vừa có người đang đọc cuốn sách (`&numbers` còn hiệu lực), vừa đòi mang nó đi sửa (`&mut numbers`).** Thư viện từ chối — không thể vừa cho người ta đọc vừa tẩy xóa cùng lúc.
+
+Quy tắc gói gọn trong một câu: **"nhiều người đọc, HOẶC một người sửa — không bao giờ cả hai cùng lúc."** Đây chính là quy tắc mượn cốt lõi của Rust, và nó chặn từ gốc cả một họ lỗi hỏng dữ liệu do đọc-trong-lúc-đang-sửa. Cách gỡ luôn là: đảm bảo mọi người đọc đã "trả sách" (phép mượn đọc kết thúc ở lần dùng cuối) *trước khi* ai đó mang đi sửa.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Đường ống iterator biểu đạt *ý định* trực tiếp: 'lọc những từ dài hơn 5, rồi đếm'. Không cần chỉ số `i`, không cần `mut count` — ít chỗ sai hơn hẳn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+// Nhận &[String] (lát cắt) thay vì &Vec<String> -> linh hoạt hơn, nhận được cả mảng.
+fn count_long_words_idiomatic(words: &[String]) -> usize {
+    words.iter()                    // duyệt từng từ
+         .filter(|w| w.len() > 5)   // giữ lại từ dài hơn 5 ký tự
+         .count()                   // đếm số còn lại
+}
+
+#[test]
+fn dem_tu_dai() {
+    let ds = vec![
+        String::from("Rust"),        // 4 -> loại
+        String::from("Programming"), // 11 -> giữ
+        String::from("code"),        // 4 -> loại
+        String::from("compiler"),    // 8 -> giữ
+    ];
+    assert_eq!(count_long_words_idiomatic(&ds), 2);
+    // Nhận cả mảng cố định nhờ nhận &[String]:
+    assert_eq!(count_long_words_idiomatic(&[]), 0);
+}
+```
+
+So sánh bản cũ và bản này cho thấy vì sao phong cách iterator được ưa chuộng:
+
+| | Bản cũ (`for i in 0..len`) | Bản iterator |
+|---|---|---|
+| Chỉ số `i` | có — và có thể sai biên (`words[i]`) | không có |
+| `mut count` | có — trạng thái đổi được, dễ sai | không có |
+| Đọc ra ý định | "lặp qua chỉ số, kiểm, tăng biến đếm" | "lọc từ dài, rồi đếm" |
+| Rủi ro tràn chỉ số | có (`words[i]` có thể hoảng loạn) | không (iterator không dùng chỉ số) |
+
+Điểm cốt lõi: đường ống `iter().filter().count()` **nói thẳng bạn MUỐN gì**, không phải *làm từng bước thế nào*. Không có biến `mut` nghĩa là không có trạng thái trung gian để lỡ tay làm sai; không có chỉ số `i` nghĩa là không thể truy cập ngoài biên. Đổi `&Vec<String>` sang `&[String]` cũng là một nâng cấp: lát cắt tổng quát hơn, nhận được cả `Vec` lẫn mảng cố định lẫn một phần của mảng. Đây là hình mẫu Rust idiomatic mà bạn nên yêu cầu AI tuân theo.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Điểm tinh tế: hàm này *vẫn biên dịch được* nhờ quy tắc rút gọn vòng đời (một tham chiếu vào -> đầu ra mượn từ nó). Nguy hiểm chỉ xuất hiện khi ta cố trả về tham chiếu tới dữ liệu *tạo bên trong hàm*.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Điều bất ngờ: hàm này KHÔNG lỗi — nó biên dịch được.** Đề đánh lừa; hãy giải thích cho đúng.
+
+```rust
+fn pick_first_word(sentence: &str) -> &str {
+    let parts: Vec<&str> = sentence.split_whitespace().collect();
+    if parts.is_empty() { "" } else { parts[0] }
+}
+```
+
+**Vì sao nó biên dịch được nhờ rút gọn vòng đời (lifetime elision):** hàm có *đúng một* tham chiếu đầu vào (`sentence`). Quy tắc rút gọn nói: khi chỉ có một tham chiếu vào, đầu ra tự động mượn vòng đời của nó — như thể bạn viết `fn pick_first_word<'a>(sentence: &'a str) -> &'a str`. Và điều đó *đúng về mặt an toàn*: mỗi phần tử của `parts` là một lát cắt trỏ **thẳng vào `sentence`** (chính `split_whitespace` mượn từ `sentence`, không sao chép). Nên `parts[0]` sống đúng bằng `sentence`. Nhánh `""` là chuỗi hằng `&'static`, sống mãi mãi. Cả hai nhánh đều hợp lệ.
+
+Điểm tinh tế: `Vec<&str>` (biến `parts`) bị hủy khi hàm kết thúc, nhưng **cái bị trả ra là một `&str` *bên trong* Vec, mà lát cắt đó lại trỏ vào `sentence`** — không trỏ vào bộ đệm của Vec. Vec chỉ là cái giá đỡ tạm; hủy nó không ảnh hưởng dữ liệu mà lát cắt trỏ tới.
+
+**Trường hợp NÀO thì thành lỗi (trả về tham chiếu trỏ vào vùng bị hủy):** khi bạn trả về tham chiếu tới dữ liệu *tạo mới bên trong hàm*, thay vì mượn từ đầu vào:
+```text
+fn first_word_owned(sentence: &str) -> &str {
+    let s = sentence.to_uppercase();  // TẠO String MỚI trong hàm
+    s.split_whitespace().next().unwrap()  // LỖI E0515: trả về tham chiếu tới `s`
+}                                          // ...mà `s` chết ở đây -> tham chiếu treo
+```
+Ở đây `s` là dữ liệu *mới*, không mượn từ `sentence`, và nó chết khi hàm kết thúc — trả về lát cắt của nó là trả về con trỏ treo. Rust chặn với E0515. **Cách sửa:** trả về `String` sở hữu (`s.split_whitespace().next().unwrap().to_string()`).
+
+Bài học phân biệt: trả về `&str` **an toàn khi nó mượn từ tham số đầu vào** (dữ liệu sống lâu hơn hàm), nhưng **treo khi nó mượn từ biến cục bộ** (dữ liệu chết cùng hàm). Rút gọn vòng đời chỉ giúp bạn *viết gọn* ở ca an toàn; nó không cho phép ca nguy hiểm — trình biên dịch vẫn bắt được ca sau.
+</details>

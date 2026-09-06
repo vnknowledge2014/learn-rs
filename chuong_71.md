@@ -204,9 +204,9 @@ pub struct BucketArray { pub nut: BTreeMap<MaNut, RoutingTable> }
 impl BucketArray {
     /// Dựng mạng và cho các nút "gặp nhau" theo kiểu bootstrap thật:
     /// mỗi nút mới tự tra cứu chính mình qua một nút đã có sẵn.
-    pub fn dung(cac_ma: &[u64]) -> BucketArray {
+    pub fn dung(ids: &[u64]) -> BucketArray {
         let mut m = BucketArray { nut: BTreeMap::new() };
-        for &x in cac_ma {
+        for &x in ids {
             let id = MaNut(x);
             m.nut.insert(id, RoutingTable::new(id));
         }
@@ -305,7 +305,7 @@ pub fn gossip_propagate(
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecPos { TrungThuc, Im, HaiMat }
+pub enum ExecPos { Honest, Im, HaiMat }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ballot { Thuan(u32), Chong }
@@ -322,12 +322,12 @@ pub fn fault_tolerance(n: usize) -> usize { (n - 1) / 3 }
 ///
 /// Nó chỉ đúng khi n ĐÚNG BẰNG 3f+1. Với n bất kỳ, quy tắc tổng quát là:
 ///
-///   an toàn : hai quorum bất kỳ phải giao nhau ở nhiều hơn f nút
+///   an toàn : hai quorum bất kỳ phải deliver nhau ở nhiều hơn f nút
 ///             ⟹ 2q − n > f  ⟺  q > (n+f)/2
 ///   sống còn: phải gom đủ phiếu dù f nút im lặng  ⟹  q ≤ n − f
 ///
 /// Ví dụ n = 5, f = 1: công thức "2f+1" cho q = 3. Nhưng hai quorum 3 trên 5
-/// chỉ giao nhau ĐÚNG MỘT nút — và nút đó có thể chính là kẻ phản bội. Khi ấy
+/// chỉ deliver nhau ĐÚNG MỘT nút — và nút đó có thể chính là kẻ phản bội. Khi ấy
 /// hai nhóm chốt hai giá trị khác nhau: chuỗi rẽ đôi. Đáp số đúng là q = 4.
 pub fn quorum_threshold(n: usize) -> usize {
     let f = fault_tolerance(n);
@@ -350,7 +350,7 @@ pub fn consensus_round(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound
 
     for (i, &h) in hanh_vi.iter().enumerate() {
         match h {
-            ExecPos::TrungThuc => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
+            ExecPos::Honest => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
             ExecPos::Im => {}  // không gửi gì — lỗi "dừng", dạng nhẹ nhất
             ExecPos::HaiMat => {
                 // Nút phản bội gửi giá trị KHÁC NHAU cho các nhóm khác nhau.
@@ -381,9 +381,9 @@ pub struct HashMapPartTan {
 }
 
 impl HashMapPartTan {
-    pub fn new(cac_ma: &[u64], he_so_nhan_ban: usize) -> Self {
-        let mang = BucketArray::dung(cac_ma);
-        let store = cac_ma.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
+    pub fn new(ids: &[u64], he_so_nhan_ban: usize) -> Self {
+        let mang = BucketArray::dung(ids);
+        let store = ids.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
         HashMapPartTan { mang, store, he_so_nhan_ban }
     }
 
@@ -465,7 +465,7 @@ fn main() {
         println!("   {:>3} nút → chịu được {:>2} nút phản bội · cần {:>2} phiếu",
                  n, fault_tolerance(n), quorum_threshold(n));
     }
-    let hv = vec![ExecPos::TrungThuc; 10];
+    let hv = vec![ExecPos::Honest; 10];
     println!("\n   10 nút, tăng dần số kẻ phản bội:");
     for so_gian in 0..5 {
         let mut h = hv.clone();
@@ -583,14 +583,14 @@ mod tests {
     }
 
     #[test]
-    fn no_from_add_main_minh() {
+    fn node_never_adds_itself() {
         let mut b = RoutingTable::new(MaNut(42));
         assert!(!b.them(MaNut(42)));
         assert_eq!(b.tong_so_nut(), 0);
     }
 
     #[test]
-    fn near_nhat_sort_use_theo_distance() {
+    fn closest_is_sorted_by_distance() {
         let mut b = RoutingTable::new(MaNut(0));
         for i in 1..100u64 { b.them(MaNut(i)); }
         let dich = MaNut(50);
@@ -706,12 +706,12 @@ mod tests {
             let q = quorum_threshold(n);
             assert!(3 * f + 1 <= n, "n={} phải chứa nổi 3f+1 với f={}", n, f);
 
-            // AN TOÀN: hai quorum giao nhau ở nhiều hơn f nút, nên luôn có ít
+            // AN TOÀN: hai quorum deliver nhau ở nhiều hơn f nút, nên luôn có ít
             // nhất một nút TRUNG THỰC nằm trong cả hai → không thể chốt hai
             // giá trị mâu thuẫn.
-            let giao = 2 * q as i64 - n as i64;
-            assert!(giao > f as i64,
-                    "n={}: hai quorum giao {} nút, phải nhiều hơn f={}", n, giao, f);
+            let deliver = 2 * q as i64 - n as i64;
+            assert!(deliver > f as i64,
+                    "n={}: hai quorum deliver {} nút, phải nhiều hơn f={}", n, deliver, f);
 
             // SỐNG CÒN: gom đủ q phiếu ngay cả khi f nút im lặng hoàn toàn.
             assert!(q <= n - f, "n={}: cần {} phiếu nhưng chỉ chắc chắn có {}", n, q, n - f);
@@ -728,8 +728,8 @@ mod tests {
         // Trường hợp "xấu": n = 5, f = 1 → 2f+1 = 3 là KHÔNG AN TOÀN
         assert_eq!(fault_tolerance(5), 1);
         assert_eq!(quorum_threshold(5), 4, "phải là 4, không phải 3");
-        assert!(2 * 3 - 5 <= 1, "quorum 3 chỉ giao 1 nút — có thể chính là kẻ gian");
-        assert!(2 * 4 - 5 > 1, "quorum 4 giao 3 nút — chắc chắn có nút trung thực");
+        assert!(2 * 3 - 5 <= 1, "quorum 3 chỉ deliver 1 nút — có thể chính là kẻ gian");
+        assert!(2 * 4 - 5 > 1, "quorum 4 deliver 3 nút — chắc chắn có nút trung thực");
     }
 
     #[test]
@@ -737,7 +737,7 @@ mod tests {
         let n = 10;
         let f = fault_tolerance(n); // 3
         for so_gian in 0..=f {
-            let mut h = vec![ExecPos::TrungThuc; n];
+            let mut h = vec![ExecPos::Honest; n];
             for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
             let r = consensus_round(&h, 42);
             assert_eq!(r.decide, Some(42),
@@ -749,7 +749,7 @@ mod tests {
     fn consensus_fails_beyond_the_threshold() {
         let n = 10;
         let f = fault_tolerance(n);
-        let mut h = vec![ExecPos::TrungThuc; n];
+        let mut h = vec![ExecPos::Honest; n];
         for i in 0..=f + 1 { h[i] = ExecPos::HaiMat; }
         let r = consensus_round(&h, 42);
         assert_eq!(r.decide, None, "quá f kẻ gian → THÀ DỪNG còn hơn chốt sai");
@@ -760,8 +760,8 @@ mod tests {
         // Lỗi "dừng" nhẹ hơn lỗi Byzantine: nút im chỉ không đóng góp,
         // còn nút hai mặt vừa không đóng góp vừa gây nhiễu phiếu.
         let n = 10;
-        let mut im = vec![ExecPos::TrungThuc; n];
-        let mut time = vec![ExecPos::TrungThuc; n];
+        let mut im = vec![ExecPos::Honest; n];
+        let mut time = vec![ExecPos::Honest; n];
         for i in 0..3 { im[i] = ExecPos::Im; time[i] = ExecPos::HaiMat; }
         assert_eq!(consensus_round(&im, 42).decide, Some(42));
         assert_eq!(consensus_round(&time, 42).decide, Some(42));
@@ -774,10 +774,10 @@ mod tests {
     fn four_nodes_tolerate_exactly_one_traitor() {
         assert_eq!(fault_tolerance(4), 1);
         assert_eq!(quorum_threshold(4), 3);
-        let r = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
-                                  ExecPos::TrungThuc, ExecPos::HaiMat], 7);
+        let r = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
+                                  ExecPos::Honest, ExecPos::HaiMat], 7);
         assert_eq!(r.decide, Some(7));
-        let r2 = consensus_round(&[ExecPos::TrungThuc, ExecPos::TrungThuc,
+        let r2 = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
                                    ExecPos::HaiMat, ExecPos::HaiMat], 7);
         assert_eq!(r2.decide, None, "2 kẻ gian trên 4 nút là quá ngưỡng");
     }
@@ -869,9 +869,9 @@ pub struct MangChongEntropy {
 }
 
 impl MangChongEntropy {
-    pub fn new(cac_nut: &[MaNut]) -> Self {
+    pub fn new(nodes: &[MaNut]) -> Self {
         MangChongEntropy {
-            seen: cac_nut.iter().map(|&n| (n, Default::default())).collect(),
+            seen: nodes.iter().map(|&n| (n, Default::default())).collect(),
         }
     }
 
@@ -886,26 +886,26 @@ impl MangChongEntropy {
             (Some(x), Some(y)) => (x.clone(), y.clone()),
             _ => return 0,
         };
-        let mut trao_doi = 0;
-        for m in &ca { if self.seen.get_mut(&b).unwrap().insert(*m) { trao_doi += 1; } }
-        for m in &cb { if self.seen.get_mut(&a).unwrap().insert(*m) { trao_doi += 1; } }
-        trao_doi
+        let mut exchanged = 0;
+        for m in &ca { if self.seen.get_mut(&b).unwrap().insert(*m) { exchanged += 1; } }
+        for m in &cb { if self.seen.get_mut(&a).unwrap().insert(*m) { exchanged += 1; } }
+        exchanged
     }
 
     /// Chạy anti-entropy tới khi mọi nút hội tụ, hoặc hết `toi_da` vòng.
     pub fn hoi_tu(&mut self, toi_da: usize) -> Option<usize> {
-        let cac_nut: Vec<MaNut> = self.seen.keys().copied().collect();
-        let n = cac_nut.len();
+        let nodes: Vec<MaNut> = self.seen.keys().copied().collect();
+        let n = nodes.len();
         if n == 0 { return Some(0); }
         for round in 1..=toi_da {
             // Ghép cặp TẤT ĐỊNH: nút i đồng bộ với nút (i + vòng) mod n.
             // Cách ghép này bảo đảm mọi cặp gặp nhau trong nhiều nhất n−1 vòng,
             // nên hội tụ là CHẮC CHẮN, không phải xác suất.
             for i in 0..n {
-                let (a, b) = (cac_nut[i], cac_nut[(i + round) % n]);
+                let (a, b) = (nodes[i], nodes[(i + round) % n]);
                 self.chong_entropy(a, b);
             }
-            let dich = self.seen[&cac_nut[0]].len();
+            let dich = self.seen[&nodes[0]].len();
             if self.seen.values().all(|x| x.len() == dich) { return Some(round); }
         }
         None
@@ -929,7 +929,7 @@ Nói dối nhất quán thì khó phát hiện. Nhưng nói **hai điều mâu t
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BangChungDoiMat {
+pub struct EquivocationProof {
     pub nut: usize,
     pub round: u64,
     pub gia_tri_a: u64,
@@ -937,17 +937,17 @@ pub struct BangChungDoiMat {
 }
 
 #[derive(Default)]
-pub struct BoBatDoiMat {
+pub struct EquivocationDetector {
     /// (nút, vòng) → giá trị đã bỏ phiếu lần đầu
     seen: HashMap<(usize, u64), u64>,
-    pub bang_chung: Vec<BangChungDoiMat>,
+    pub proofs: Vec<EquivocationProof>,
 }
 
-impl BoBatDoiMat {
+impl EquivocationDetector {
     pub fn quan_sat(&mut self, nut: usize, round: u64, value: u64) -> bool {
         match self.seen.get(&(nut, round)) {
             Some(&cu) if cu != value => {
-                self.bang_chung.push(BangChungDoiMat {
+                self.proofs.push(EquivocationProof {
                     nut, round, gia_tri_a: cu, gia_tri_b: value,
                 });
                 true // phát hiện đôi mặt
@@ -958,8 +958,8 @@ impl BoBatDoiMat {
     }
 
     /// Danh sách nút đã bị chứng minh là Byzantine — đưa vào danh sách phạt.
-    pub fn nut_pham_loi(&self) -> Vec<usize> {
-        let mut v: Vec<usize> = self.bang_chung.iter().map(|b| b.nut).collect();
+    pub fn faulty_nodes(&self) -> Vec<usize> {
+        let mut v: Vec<usize> = self.proofs.iter().map(|b| b.nut).collect();
         v.sort_unstable();
         v.dedup();
         v

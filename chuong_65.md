@@ -149,15 +149,15 @@ pub enum Tang {
     VatLy = 1,
     LienKet = 2,   // Ethernet — địa chỉ MAC, trong một mạng LAN
     Mang = 3,      // IP — địa chỉ IP, định tuyến giữa các mạng
-    GiaoVan = 4,   // TCP/UDP — cổng, tin cậy
-    UngDung = 7,   // HTTP/DNS — ý nghĩa dữ liệu
+    Transport = 4,   // TCP/UDP — cổng, tin cậy
+    Application = 7,   // HTTP/DNS — ý nghĩa dữ liệu
 }
 
 impl fmt::Display for Tang {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t = match self {
             Tang::VatLy => "Vật lý", Tang::LienKet => "Liên kết",
-            Tang::Mang => "Mạng", Tang::GiaoVan => "Giao vận", Tang::UngDung => "Ứng dụng",
+            Tang::Mang => "Mạng", Tang::Transport => "Giao vận", Tang::Application => "Ứng dụng",
         };
         write!(f, "L{} {}", *self as u8, t)
     }
@@ -186,11 +186,11 @@ impl GoiTin {
     pub fn size(&self) -> usize { self.header.len() + self.tai.len() }
 }
 
-/// Dựng chồng giao thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
+/// Dựng chồng deliver thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
 pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
-    let http = GoiTin { tang: Tang::UngDung, header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
+    let http = GoiTin { tang: Tang::Application, header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
                         tai: du_lieu_ung_dung.to_vec() };
-    let tcp = http.boc(Tang::GiaoVan, vec![0u8; 20]);   // TCP header tối thiểu 20 byte
+    let tcp = http.boc(Tang::Transport, vec![0u8; 20]);   // TCP header tối thiểu 20 byte
     let ip = tcp.boc(Tang::Mang, vec![0u8; 20]);        // IPv4 header tối thiểu 20 byte
     ip.boc(Tang::LienKet, vec![0u8; 14])                // Ethernet header 14 byte
 }
@@ -203,25 +203,25 @@ pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
 pub enum TcpState {
     Dong,          // CLOSED
     Nghe,          // LISTEN
-    DaGuiSyn,      // SYN_SENT
+    SynSent,      // SYN_SENT
     DaNhanSyn,     // SYN_RECEIVED
     DaThietLap,    // ESTABLISHED
     ChoDong1,      // FIN_WAIT_1
     ChoDong2,      // FIN_WAIT_2
-    ChoCuoi,       // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
-    ChoDongThuDong,// CLOSE_WAIT
-    ChoXacNhanCuoi,// LAST_ACK
+    LastAck,       // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
+    CloseWait,// CLOSE_WAIT
+    TimeWait,// LAST_ACK
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpEvent {
-    MoChuDong,   // ứng dụng gọi connect()
-    MoThuDong,   // ứng dụng gọi listen()
+    ActiveOpen,   // ứng dụng gọi connect()
+    PassiveOpen,   // ứng dụng gọi listen()
     NhanSyn,
     NhanSynAck,
     NhanAck,
     NhanFin,
-    UngDungDong, // ứng dụng gọi close()
+    AppClose, // ứng dụng gọi close()
     HetGio,      // hết 2×MSL
 }
 
@@ -232,24 +232,24 @@ pub fn transfer_state(tt: TcpState, sk: TcpEvent) -> Option<TcpState> {
     use TcpState::*;
     Some(match (tt, sk) {
         // --- Mở kết nối: bắt tay ba bước ---
-        (Dong, MoChuDong)      => DaGuiSyn,      // gửi SYN
-        (Dong, MoThuDong)      => Nghe,
+        (Dong, ActiveOpen)      => SynSent,      // gửi SYN
+        (Dong, PassiveOpen)      => Nghe,
         (Nghe, NhanSyn)        => DaNhanSyn,     // gửi SYN+ACK
-        (DaGuiSyn, NhanSynAck) => DaThietLap,    // gửi ACK  ← bước 3
-        (DaGuiSyn, NhanSyn)    => DaNhanSyn,     // mở đồng thời (hiếm)
+        (SynSent, NhanSynAck) => DaThietLap,    // gửi ACK  ← bước 3
+        (SynSent, NhanSyn)    => DaNhanSyn,     // mở đồng thời (hiếm)
         (DaNhanSyn, NhanAck)   => DaThietLap,
 
         // --- Đóng chủ động: bắt tay bốn bước ---
-        (DaThietLap, UngDungDong) => ChoDong1,   // gửi FIN
+        (DaThietLap, AppClose) => ChoDong1,   // gửi FIN
         (ChoDong1, NhanAck)       => ChoDong2,
-        (ChoDong2, NhanFin)       => ChoCuoi,    // gửi ACK
-        (ChoDong1, NhanFin)       => ChoCuoi,    // đóng đồng thời
-        (ChoCuoi, HetGio)         => Dong,       // sau 2×MSL
+        (ChoDong2, NhanFin)       => LastAck,    // gửi ACK
+        (ChoDong1, NhanFin)       => LastAck,    // đóng đồng thời
+        (LastAck, HetGio)         => Dong,       // sau 2×MSL
 
         // --- Đóng thụ động ---
-        (DaThietLap, NhanFin)        => ChoDongThuDong, // gửi ACK
-        (ChoDongThuDong, UngDungDong)=> ChoXacNhanCuoi, // gửi FIN
-        (ChoXacNhanCuoi, NhanAck)    => Dong,
+        (DaThietLap, NhanFin)        => CloseWait, // gửi ACK
+        (CloseWait, AppClose)=> TimeWait, // gửi FIN
+        (TimeWait, NhanAck)    => Dong,
         _ => return None,
     })
 }
@@ -460,7 +460,7 @@ fn main() {
     println!("   MẠNG MÁY TÍNH: PHÂN TẦNG · TCP · TẮC NGHẼN · CIDR · DNS  ");
     println!("═══════════════════════════════════════════════════════════");
 
-    println!("\n1. ĐÓNG GÓI THEO TẦNG — 5 byte dữ liệu đi hết chồng giao thức");
+    println!("\n1. ĐÓNG GÓI THEO TẦNG — 5 byte dữ liệu đi hết chồng deliver thức");
     let goi = dong_goi_xuong(b"hello");
     println!("   Gói cuối ở {} — tổng {} byte", goi.tang, goi.size());
     println!("   Chi phí phần đầu = {} byte cho 5 byte dữ liệu ({}% là bao bì)",
@@ -468,9 +468,9 @@ fn main() {
 
     println!("\n2. BẮT TAY BA BƯỚC");
     use TcpEvent::*;
-    let kq = run_session(TcpState::Dong, &[MoChuDong, NhanSynAck]);
-    println!("   Máy khách: Dong -SYN-> DaGuiSyn -SYN/ACK-> {:?}", kq.unwrap());
-    let kq = run_session(TcpState::Dong, &[MoThuDong, NhanSyn, NhanAck]);
+    let kq = run_session(TcpState::Dong, &[ActiveOpen, NhanSynAck]);
+    println!("   Máy khách: Dong -SYN-> SynSent -SYN/ACK-> {:?}", kq.unwrap());
+    let kq = run_session(TcpState::Dong, &[PassiveOpen, NhanSyn, NhanAck]);
     println!("   Máy chủ  : Dong -listen-> Nghe -SYN-> DaNhanSyn -ACK-> {:?}", kq.unwrap());
     println!("   Sự kiện sai: {:?}", run_session(TcpState::Dong, &[NhanAck]).unwrap_err());
 
@@ -510,8 +510,8 @@ fn main() {
 
     println!("\n6. DNS");
     let dns = DnsServer { sell_record: vec![
-        ("www.vidu.vn".into(), SellRecord::CNAME("may-owner.vidu.vn".into())),
-        ("may-owner.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
+        ("www.vidu.vn".into(), SellRecord::CNAME("may-chu.vidu.vn".into())),
+        ("may-chu.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
     ]};
     println!("   www.vidu.vn  → {:?}", dns.part_solve("www.vidu.vn"));
     println!("   khong-co.vn  → {:?}", dns.part_solve("khong-co.vn"));
@@ -549,24 +549,24 @@ mod tests {
 
     #[test]
     fn three_way_handshake_client_side() {
-        assert_eq!(run_session(Dong, &[MoChuDong, NhanSynAck]), Ok(DaThietLap));
+        assert_eq!(run_session(Dong, &[ActiveOpen, NhanSynAck]), Ok(DaThietLap));
     }
 
     #[test]
     fn three_way_handshake_server_side() {
-        assert_eq!(run_session(Dong, &[MoThuDong, NhanSyn, NhanAck]), Ok(DaThietLap));
+        assert_eq!(run_session(Dong, &[PassiveOpen, NhanSyn, NhanAck]), Ok(DaThietLap));
     }
 
     #[test]
     fn active_close_passes_through_time_wait() {
-        let kq = run_session(Dong, &[MoChuDong, NhanSynAck, UngDungDong, NhanAck, NhanFin]);
-        assert_eq!(kq, Ok(ChoCuoi), "phải dừng ở TIME_WAIT chứ không đóng ngay");
-        assert_eq!(transfer_state(ChoCuoi, HetGio), Some(Dong));
+        let kq = run_session(Dong, &[ActiveOpen, NhanSynAck, AppClose, NhanAck, NhanFin]);
+        assert_eq!(kq, Ok(LastAck), "phải dừng ở TIME_WAIT chứ không đóng ngay");
+        assert_eq!(transfer_state(LastAck, HetGio), Some(Dong));
     }
 
     #[test]
     fn passive_close_passes_through_close_wait() {
-        let kq = run_session(Dong, &[MoThuDong, NhanSyn, NhanAck, NhanFin, UngDungDong, NhanAck]);
+        let kq = run_session(Dong, &[PassiveOpen, NhanSyn, NhanAck, NhanFin, AppClose, NhanAck]);
         assert_eq!(kq, Ok(Dong));
     }
 
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn checksum_misses_word_transposition() {
-        // Điểm YẾU đã biết: phép cộng có tính giao hoán nên đảo chỗ hai từ 16-bit
+        // Điểm YẾU đã biết: phép cộng có tính deliver hoán nên đảo chỗ hai từ 16-bit
         // cho ra cùng checksum. Đây là lý do tầng ứng dụng vẫn cần CRC/hash mạnh.
         let a = [0x11u8, 0x22, 0x33, 0x44];
         let b = [0x33u8, 0x44, 0x11, 0x22];
@@ -701,7 +701,7 @@ mod tests {
     #[test]
     fn go_back_n_delivers_every_packet_in_order() {
         let kq = go_back_n(10, 4, &[2, 6]);
-        assert_eq!(kq.da_nhan, (0..10).collect::<Vec<u32>>(), "phải giao đủ và đúng thứ tự");
+        assert_eq!(kq.da_nhan, (0..10).collect::<Vec<u32>>(), "phải deliver đủ và đúng thứ tự");
     }
 
     #[test]
@@ -757,32 +757,32 @@ Thêm biến thể `NhanRst` vào `TcpEvent`, rồi đặt một nhánh `(_, Nha
 ```rust
 // BƯỚC 1: thêm biến thể mới vào enum sự kiện.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SuKienTcpV2 {
-    MoChuDong, MoThuDong, NhanSyn, NhanSynAck, NhanAck, NhanFin,
-    UngDungDong, HetGio,
+pub enum TcpEventV2 {
+    ActiveOpen, PassiveOpen, NhanSyn, NhanSynAck, NhanAck, NhanFin,
+    AppClose, HetGio,
     NhanRst,                     // ← mới
 }
 
-impl SuKienTcpV2 {
+impl TcpEventV2 {
     /// Ánh xạ về sự kiện gốc; `None` với `NhanRst` vì nó không có tương ứng.
-    fn thanh_su_kien_goc(self) -> Option<TcpEvent> {
+    fn to_base_event(self) -> Option<TcpEvent> {
         Some(match self {
-            SuKienTcpV2::MoChuDong => TcpEvent::MoChuDong,
-            SuKienTcpV2::MoThuDong => TcpEvent::MoThuDong,
-            SuKienTcpV2::NhanSyn => TcpEvent::NhanSyn,
-            SuKienTcpV2::NhanSynAck => TcpEvent::NhanSynAck,
-            SuKienTcpV2::NhanAck => TcpEvent::NhanAck,
-            SuKienTcpV2::NhanFin => TcpEvent::NhanFin,
-            SuKienTcpV2::UngDungDong => TcpEvent::UngDungDong,
-            SuKienTcpV2::HetGio => TcpEvent::HetGio,
-            SuKienTcpV2::NhanRst => return None,
+            TcpEventV2::ActiveOpen => TcpEvent::ActiveOpen,
+            TcpEventV2::PassiveOpen => TcpEvent::PassiveOpen,
+            TcpEventV2::NhanSyn => TcpEvent::NhanSyn,
+            TcpEventV2::NhanSynAck => TcpEvent::NhanSynAck,
+            TcpEventV2::NhanAck => TcpEvent::NhanAck,
+            TcpEventV2::NhanFin => TcpEvent::NhanFin,
+            TcpEventV2::AppClose => TcpEvent::AppClose,
+            TcpEventV2::HetGio => TcpEvent::HetGio,
+            TcpEventV2::NhanRst => return None,
         })
     }
 }
 
 // BƯỚC 2: xét RST TRƯỚC mọi luật khác — nó phá kết nối từ bất kỳ trạng thái nào.
-pub fn chuyen_trang_thai_v2(tt: TcpState, sk: SuKienTcpV2) -> Option<TcpState> {
-    match sk.thanh_su_kien_goc() {
+pub fn transition_v2(tt: TcpState, sk: TcpEventV2) -> Option<TcpState> {
+    match sk.to_base_event() {
         None => Some(TcpState::Dong),          // NhanRst: về CLOSED ngay
         Some(root) => transfer_state(tt, root),
     }
@@ -790,8 +790,8 @@ pub fn chuyen_trang_thai_v2(tt: TcpState, sk: SuKienTcpV2) -> Option<TcpState> {
 
 // Kiểm chứng: RST hạ kết nối từ MỌI trạng thái, kể cả trạng thái mà
 // không sự kiện nào khác làm được điều đó.
-//   for tt in [TcpState::DaThietLap, TcpState::Nghe, TcpState::ChoCuoi] {
-//       assert_eq!(chuyen_trang_thai_v2(tt, SuKienTcpV2::NhanRst), Some(TcpState::Dong));
+//   for tt in [TcpState::DaThietLap, TcpState::Nghe, TcpState::LastAck] {
+//       assert_eq!(transition_v2(tt, TcpEventV2::NhanRst), Some(TcpState::Dong));
 //   }
 ```
 
@@ -812,7 +812,7 @@ Máy nhận cần một **bộ đệm sắp xếp lại**: nó chấp nhận gó
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn lap_lai_chon_loc(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult {
+pub fn selective_repeat(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult {
     let mut da_nhan_co: Vec<bool> = vec![false; tong_goi as usize];
     let mut count_send = 0;
     let mut con_mat: std::collections::VecDeque<u32> = mat_tai.iter().copied().collect();
@@ -861,8 +861,8 @@ pub fn chia_mang_con(root: MangCon, so_mang: u32) -> Option<Vec<MangCon>> {
     if so_mang == 0 { return None; }
     // Số bit cần mượn = trần của log2(so_mang).
     // Ví dụ: 3 mạng con vẫn phải mượn 2 bit (2 bit cho được 4 khối, dùng 3).
-    let bit_muon = if so_mang <= 1 { 0 } else { (so_mang - 1).ilog2() + 1 };
-    let tien_to_moi = root.prefix as u32 + bit_muon;
+    let wanted_bit = if so_mang <= 1 { 0 } else { (so_mang - 1).ilog2() + 1 };
+    let tien_to_moi = root.prefix as u32 + wanted_bit;
     if tien_to_moi > 32 { return None; } // không đủ địa chỉ để chia
 
     let step = if tien_to_moi == 32 { 1u32 } else { 1u32 << (32 - tien_to_moi) };

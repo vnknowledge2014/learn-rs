@@ -155,10 +155,10 @@ impl<T> DeriveExport<T> {
 }
 
 // ============================================================================
-// 2. VIRTUAL DOM — cây mô tả giao diện, và thuật toán DIFF
+// 2. VIRTUAL DOM — cây mô tả deliver diện, và thuật toán DIFF
 // ============================================================================
 
-/// Một nút trong cây giao diện ảo. Framework dựng cây này từ trạng thái,
+/// Một nút trong cây deliver diện ảo. Framework dựng cây này từ trạng thái,
 /// so nó với cây cũ, rồi chỉ cập nhật phần THAY ĐỔI lên DOM thật (tốn kém).
 #[derive(Debug, Clone, PartialEq)]
 pub enum VirtualNode {
@@ -207,11 +207,11 @@ fn escape_html(s: &str) -> String {
 /// Một bản vá (patch) mô tả một thay đổi cần áp lên DOM thật.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SellAnd {
-    ThayThe { path: Vec<usize>, nut_moi: VirtualNode },
-    DoiVanBan { path: Vec<usize>, van_moi: String },
-    DoiThuocTinh { path: Vec<usize>, name: String, value: String },
+    Replaced { path: Vec<usize>, nut_moi: VirtualNode },
+    TextChanged { path: Vec<usize>, van_moi: String },
+    AttrChanged { path: Vec<usize>, name: String, value: String },
     ThemCon { path: Vec<usize>, nut: VirtualNode },
-    XoaCon { path: Vec<usize>, chi_so: usize },
+    ChildRemoved { path: Vec<usize>, chi_so: usize },
 }
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
@@ -221,7 +221,7 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
         // Hai văn bản khác nội dung -> vá văn bản
         (VirtualNode::Van(a), VirtualNode::Van(b)) => {
             if a != b {
-                vec![SellAnd::DoiVanBan { path, van_moi: b.clone() }]
+                vec![SellAnd::TextChanged { path, van_moi: b.clone() }]
             } else {
                 vec![]
             }
@@ -234,29 +234,29 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
             let map_cu: HashMap<_, _> = tta.iter().cloned().collect();
             for (k, v) in ttb {
                 if map_cu.get(k) != Some(v) {
-                    va.push(SellAnd::DoiThuocTinh {
+                    va.push(SellAnd::AttrChanged {
                         path: path.clone(), name: k.clone(), value: v.clone(),
                     });
                 }
             }
             // So các con theo vị trí
-            let chung = ca.len().min(cb.len());
-            for i in 0..chung {
+            let shared = ca.len().min(cb.len());
+            for i in 0..shared {
                 let mut dd = path.clone();
                 dd.push(i);
                 va.extend(diff(&ca[i], &cb[i], dd));
             }
             // Con thừa ở cây mới -> thêm; thừa ở cây cũ -> xóa
-            for i in chung..cb.len() {
+            for i in shared..cb.len() {
                 va.push(SellAnd::ThemCon { path: path.clone(), nut: cb[i].clone() });
             }
-            for i in (chung..ca.len()).rev() {
-                va.push(SellAnd::XoaCon { path: path.clone(), chi_so: i });
+            for i in (shared..ca.len()).rev() {
+                va.push(SellAnd::ChildRemoved { path: path.clone(), chi_so: i });
             }
             va
         }
         // Khác loại/khác tên thẻ -> thay thế cả nút
-        _ => vec![SellAnd::ThayThe { path, nut_moi: new.clone() }],
+        _ => vec![SellAnd::Replaced { path, nut_moi: new.clone() }],
     }
 }
 
@@ -269,8 +269,8 @@ pub struct StateCount {
     pub so: Signal<i64>,
 }
 
-/// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây giao diện ảo.
-/// Đây là bản chất của UI khai báo (declarative): giao diện là HÀM của trạng thái.
+/// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây deliver diện ảo.
+/// Đây là bản chất của UI khai báo (declarative): deliver diện là HÀM của trạng thái.
 pub fn counter_view(tt: &StateCount) -> VirtualNode {
     VirtualNode::the("div", vec![("class", "dem")], vec![
         VirtualNode::the("h1", vec![], vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))]),
@@ -376,7 +376,7 @@ mod tests {
         let new = VirtualNode::van("Đếm: 4");
         let va = diff(&cu, &new, vec![]);
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], SellAnd::DoiVanBan { .. }));
+        assert!(matches!(va[0], SellAnd::TextChanged { .. }));
     }
 
     #[test]
@@ -394,8 +394,8 @@ mod tests {
         // Chỉ số trong <h1> đổi -> đúng 1 bản vá đổi văn bản, các nút button giữ nguyên
         assert_eq!(va.len(), 1);
         match &va[0] {
-            SellAnd::DoiVanBan { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
-            other => panic!("phải là DoiVanBan, nhận {:?}", other),
+            SellAnd::TextChanged { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
+            other => panic!("phải là TextChanged, nhận {:?}", other),
         }
     }
 
@@ -406,7 +406,7 @@ mod tests {
         let them = diff(&cu, &new, vec![]);
         assert!(them.iter().any(|v| matches!(v, SellAnd::ThemCon { .. })));
         let remove = diff(&new, &cu, vec![]);
-        assert!(remove.iter().any(|v| matches!(v, SellAnd::XoaCon { .. })));
+        assert!(remove.iter().any(|v| matches!(v, SellAnd::ChildRemoved { .. })));
     }
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
         let cu = VirtualNode::the("div", vec![], vec![]);
         let new = VirtualNode::the("span", vec![], vec![]);
         let va = diff(&cu, &new, vec![]);
-        assert!(matches!(va[0], SellAnd::ThayThe { .. }));
+        assert!(matches!(va[0], SellAnd::Replaced { .. }));
     }
 }
 ```
@@ -430,7 +430,7 @@ Cùng bộ đếm viết bằng [Leptos](https://leptos.dev/) — chú ý `creat
 use leptos::prelude::*;
 
 #[component]
-fn BoDem() -> impl IntoView {
+fn Counter() -> impl IntoView {
     // create_signal = Signal ở trên: (bộ đọc, bộ ghi)
     let (so, dat_so) = signal(0i64);
 
@@ -445,7 +445,7 @@ fn BoDem() -> impl IntoView {
 }
 
 fn main() {
-    leptos::mount::mount_to_body(BoDem);
+    leptos::mount::mount_to_body(Counter);
 }
 ```
 
@@ -472,10 +472,22 @@ Một mô hình phổ biến khác: giao diện bằng **Svelte/React/Vue** (Jav
 ```rust
 // Rust (lõi Tauri)
 #[tauri::command]
-fn tinh_tong(a: i64, b: i64) -> i64 { a + b }
+fn sum_all(a: i64, b: i64) -> i64 { a + b }
 ```
 
 Đây là "lõi thuần túy (Rust), vỏ giao diện (Svelte)" — chủ đề đầy đủ của **Chương 63**.
+
+---
+
+## Bảng tra cứu lỗi biên dịch thường gặp
+
+| Lỗi | Nguyên nhân trong chương này | Cách sửa |
+|---|---|---|
+| `E0502: already borrowed: BorrowMutError` (lúc chạy) | Gọi `borrow_mut()` khi còn một `borrow()` đang sống | Gói mỗi lần mượn trong khối `{ ... }` riêng — `RefCell` kiểm tra lúc **chạy**, không phải lúc biên dịch |
+| `E0277: Rc<RefCell<T>> cannot be sent between threads` | Định đưa tín hiệu sang luồng khác | `Rc`/`RefCell` chỉ dùng một luồng; muốn đa luồng thì `Arc<Mutex<T>>` |
+| `E0038: the trait cannot be made into an object` | `Box<dyn Fn>` cho bộ đăng ký nhưng chữ ký không đồng nhất | Chuẩn hoá chữ ký closure, hoặc bọc bằng enum |
+| `E0499: two mutable borrows` | Cập nhật tín hiệu nguồn ngay trong lúc tính tín hiệu dẫn xuất | Tính giá trị mới ra biến, thoát khỏi vùng mượn, rồi mới ghi |
+| Giao diện không cập nhật | Đặt lại đúng giá trị cũ nên bị bỏ qua | Đúng như thiết kế — xem bài kiểm thử "signal_skips_redundant_updates" |
 
 ---
 
@@ -508,13 +520,13 @@ pub fn view_todo(level: &[(&str, bool)]) -> VirtualNode {
 mod bt1 {
     use super::*;
     #[test]
-    fn danh_dau_xong_chi_va_thuoc_tinh() {
+    fn marks_only_text_and_attr_changes() {
         let a = view_todo(&[("Học Rust", false), ("Uống nước", true)]);
         let b = view_todo(&[("Học Rust", true), ("Uống nước", true)]); // việc 1 -> xong
         let va = diff(&a, &b, vec![]);
         // Chỉ đổi class của <li> đầu -> 1 bản vá đổi thuộc tính
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], SellAnd::DoiThuocTinh { .. }));
+        assert!(matches!(va[0], SellAnd::AttrChanged { .. }));
     }
 }
 ```

@@ -5,18 +5,18 @@
 // 1. Tự định nghĩa kiểu Lỗi Nghiệp Vụ Tùy Biến (Custom Error Type) bằng Enum
 #[derive(Debug)]
 enum MathError {
-    SoTienKhongHopLe(String),
-    TaiKhoanBiKhoa,
-    SoDuKhongDu { balance: f64, can_rut: f64 },
+    InvalidAmount(String),
+    AccountLocked,
+    InsufficientBalance { balance: f64, can_rut: f64 },
 }
 
 // Cài đặt khả năng in ấn đẹp mắt cho kiểu lỗi của chúng ta
 impl std::fmt::Display for MathError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            MathError::SoTienKhongHopLe(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
-            MathError::TaiKhoanBiKhoa => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
-            MathError::SoDuKhongDu { balance, can_rut } => {
+            MathError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
+            MathError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
+            MathError::InsufficientBalance { balance, can_rut } => {
                 write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
             }
         }
@@ -26,11 +26,11 @@ impl std::fmt::Display for MathError {
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
 fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
     let so_tien: f64 = input_buffer.trim().parse().map_err(|_| {
-        MathError::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
+        MathError::InvalidAmount(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
     if so_tien <= 0.0 {
-        return Err(MathError::SoTienKhongHopLe(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(MathError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
     }
 
     Ok(so_tien)
@@ -44,7 +44,7 @@ fn display_trade(
 ) -> Result<f64, MathError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
     if !is_account_active {
-        return Err(MathError::TaiKhoanBiKhoa);
+        return Err(MathError::AccountLocked);
     }
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
@@ -53,7 +53,7 @@ fn display_trade(
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
-        return Err(MathError::SoDuKhongDu {
+        return Err(MathError::InsufficientBalance {
             balance: so_du_hien_tai,
             can_rut: so_tien_can_rut,
         });

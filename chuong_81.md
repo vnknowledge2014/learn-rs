@@ -168,7 +168,7 @@ Chạy bằng `cargo run -p ch81`, kiểm thử bằng `cargo test -p ch81`.
 //! nhân ma trận theo lát.
 //!
 //! Theo phân loại bài tập của [LeetGPU](https://leetgpu.com/) — 99 bài chia
-//! ba mức, từ cộng vector tới khối transformer. Ở đây ta ĐẾM số giao dịch bộ
+//! ba mức, từ cộng vector tới khối transformer. Ở đây ta ĐẾM số deliver dịch bộ
 //! nhớ và số lần thực thi bị tuần tự hoá bằng mô phỏng tất định, thay vì đo
 //! đồng hồ — nhờ vậy kiểm thử được mà không cần GPU.
 //!
@@ -230,12 +230,12 @@ pub struct DivergenceAnalysis {
     pub he_so_cham: f64,
 }
 
-/// `dieu_kien[i]` là kết quả `if` của luồng thứ `i`.
-pub fn divergence_analysis(dieu_kien: &[bool]) -> DivergenceAnalysis {
-    let so_warp = dieu_kien.len().div_ceil(LUONG_MOI_WARP);
+/// `condition[i]` là kết quả `if` của luồng thứ `i`.
+pub fn divergence_analysis(condition: &[bool]) -> DivergenceAnalysis {
+    let so_warp = condition.len().div_ceil(LUONG_MOI_WARP);
     let mut divergence = 0;
     let mut luot = 0;
-    for w in dieu_kien.chunks(LUONG_MOI_WARP) {
+    for w in condition.chunks(LUONG_MOI_WARP) {
         let has_use = w.iter().any(|&x| x);
         let has_sai = w.iter().any(|&x| !x);
         if has_use && has_sai { divergence += 1; luot += 2; } else { luot += 1; }
@@ -262,8 +262,8 @@ pub fn branch_on_warp(n: usize) -> Vec<bool> {
 // 3. GỘP TRUY CẬP BỘ NHỚ
 // ============================================================================
 // Bộ nhớ toàn cục của GPU phục vụ theo GIAO DỊCH 128 byte. Nếu 32 luồng trong
-// warp đọc 32 số f32 LIỀN NHAU, cả warp gói gọn trong 1 giao dịch. Nếu chúng
-// đọc cách quãng, mỗi luồng có thể tốn một giao dịch riêng — chậm gấp 32 lần
+// warp đọc 32 số f32 LIỀN NHAU, cả warp gói gọn trong 1 deliver dịch. Nếu chúng
+// đọc cách quãng, mỗi luồng có thể tốn một deliver dịch riêng — chậm gấp 32 lần
 // dù đọc cùng số byte có ích.
 
 pub const BYTE_MOI_GIAO_DICH: usize = 128;
@@ -278,7 +278,7 @@ pub struct CoalescingAnalysis {
     pub efficiency: f64,
 }
 
-/// Đếm số giao dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
+/// Đếm số deliver dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
 pub fn coalescing_analysis(quantity: usize, byte_moi_phan_tu: usize, buoc_nhay: usize)
     -> CoalescingAnalysis
 {
@@ -388,7 +388,7 @@ pub fn num_step_reduce(n: usize) -> usize {
 // ============================================================================
 // Bản ngây thơ: mỗi luồng đọc cả một hàng và một cột từ bộ nhớ toàn cục —
 // mỗi phần tử bị đọc lại n lần. Bản theo lát: cả khối cùng nạp một lát vào
-// bộ nhớ chia sẻ, rồi mọi luồng dùng chung. Số lần đọc toàn cục giảm `lat` lần.
+// bộ nhớ chia sẻ, rồi mọi luồng dùng shared. Số lần đọc toàn cục giảm `lat` lần.
 
 #[derive(Debug, PartialEq)]
 pub struct GemmAnalysis {
@@ -500,13 +500,13 @@ fn main() {
 
     println!("\n3. GỘP TRUY CẬP BỘ NHỚ (một warp đọc f32)");
     println!("   {:>10} {:>14} {:>14} {:>12}",
-             "bước nhảy", "giao dịch", "byte chuyển", "hiệu suất");
+             "bước nhảy", "deliver dịch", "byte chuyển", "hiệu suất");
     for b in [1usize, 2, 4, 8, 32] {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
         println!("   {:>10} {:>14} {:>14} {:>11.1}%",
                  b, p.num_trade, p.bytes_transferred, p.efficiency * 100.0);
     }
-    println!("   → Bước nhảy 32 tốn {} giao dịch cho cùng {} byte có ích.",
+    println!("   → Bước nhảy 32 tốn {} deliver dịch cho cùng {} byte có ích.",
              coalescing_analysis(32, 4, 32).num_trade, 32 * 4);
 
     println!("\n4. XUNG ĐỘT NGÂN HÀNG BỘ NHỚ CHIA SẺ");
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn contiguous_access_coalesces_into_the_fewest_transactions() {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, 1);
-        assert_eq!(p.num_trade, 1, "32 luồng x 4 byte = 128 byte = đúng 1 giao dịch");
+        assert_eq!(p.num_trade, 1, "32 luồng x 4 byte = 128 byte = đúng 1 deliver dịch");
         assert!((p.efficiency - 1.0).abs() < 1e-9, "hiệu suất băng thông hoàn hảo");
     }
 
@@ -665,7 +665,7 @@ mod tests {
             prev = p.num_trade;
         }
         assert_eq!(coalescing_analysis(LUONG_MOI_WARP, 4, 32).num_trade, 32,
-                   "bước nhảy 32 → mỗi luồng một giao dịch riêng");
+                   "bước nhảy 32 → mỗi luồng một deliver dịch riêng");
     }
 
     #[test]
@@ -720,7 +720,7 @@ mod tests {
             let p = bank_analysis(&access_cap_col_lat(be_rong));
             assert!(!p.has_conflict, "bề rộng {} không nên xung đột", be_rong);
         }
-        // Bề rộng chẵn có ước chung với 32 thì xung đột
+        // Bề rộng chẵn có ước shared với 32 thì xung đột
         for be_rong in [2usize, 4, 8, 16, 32] {
             assert!(bank_analysis(&access_cap_col_lat(be_rong)).has_conflict,
                     "bề rộng {} phải xung đột", be_rong);
@@ -897,9 +897,9 @@ Cách ngây thơ dùng `atomicAdd` trên bộ nhớ toàn cục và bị tuần 
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct MoPhongHistogram {
+pub struct HistogramSim {
     pub so_thung: usize,
-    pub so_luong_khoi: usize,
+    pub block_count: usize,
     pub amount_new_block: usize,
 }
 
@@ -910,20 +910,20 @@ pub struct KetQuaHistogram {
     pub va_cham_nguyen_tu: u64,
 }
 
-impl MoPhongHistogram {
+impl HistogramSim {
     /// Cách ngây thơ: mọi luồng nguyên tử lên bộ nhớ TOÀN CỤC.
-    pub fn toan_cuc(&self, data: &[u32]) -> KetQuaHistogram {
+    pub fn global(&self, data: &[u32]) -> KetQuaHistogram {
         let mut count = vec![0u32; self.so_thung];
         let mut va_cham = 0u64;
         for lo in data.chunks(32) {          // mỗi warp
-            let mut trong_warp = std::collections::HashMap::new();
+            let mut in_warp = std::collections::HashMap::new();
             for &x in lo {
                 let t = (x as usize) % self.so_thung;
-                *trong_warp.entry(t).or_insert(0u64) += 1;
+                *in_warp.entry(t).or_insert(0u64) += 1;
                 count[t] += 1;
             }
             // Nhiều luồng cùng thùng trong một warp = tuần tự hoá
-            for (_, n) in trong_warp { if n > 1 { va_cham += n - 1; } }
+            for (_, n) in in_warp { if n > 1 { va_cham += n - 1; } }
         }
         KetQuaHistogram { count, va_cham_nguyen_tu: va_cham }
     }
@@ -981,19 +981,19 @@ pub fn rut_gon_warp(mut v: [f32; 32]) -> f32 {
 
 #[derive(Debug)]
 pub struct SoSanhRutGon {
-    pub buoc_qua_bo_nho_chia_se: usize,
-    pub buoc_trao_doi_warp: usize,
-    pub rao_chan_can_thiet: usize,
+    pub shared_memory_steps: usize,
+    pub warp_shuffle_steps: usize,
+    pub barriers_needed: usize,
 }
 
-pub fn so_sanh_cach_rut_gon(quantity: usize) -> SoSanhRutGon {
+pub fn compare_reduction_styles(quantity: usize) -> SoSanhRutGon {
     let step = (quantity as f64).log2().ceil() as usize;
     SoSanhRutGon {
-        buoc_qua_bo_nho_chia_se: step,
+        shared_memory_steps: step,
         // 5 bước cuối (trong phạm vi warp) làm bằng trao đổi thanh ghi
-        buoc_trao_doi_warp: step.saturating_sub(5),
+        warp_shuffle_steps: step.saturating_sub(5),
         // Trao đổi trong warp KHÔNG cần rào chắn — đó là cái lợi chính
-        rao_chan_can_thiet: step.saturating_sub(5),
+        barriers_needed: step.saturating_sub(5),
     }
 }
 ```

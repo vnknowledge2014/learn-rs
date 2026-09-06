@@ -88,9 +88,9 @@ Khi trình biên dịch `rustc` tính toán kích thước vật lý của `NutL
 
 **Giải pháp với `Box<T>`**:
 ```rust
-struct NutChuan<T> {
+struct NodeIdiomatic<T> {
     value: T,
-    next: Option<Box<NutChuan<T>>>, // Hợp lệ 100%!
+    next: Option<Box<NodeIdiomatic<T>>>, // Hợp lệ 100%!
 }
 ```
 Bản thân `Box<T>` là một con trỏ thông minh (smart pointer). Kích thước của `Box` trên Stack luôn luôn cố định là **8 bytes** (kích thước một địa chỉ ô nhớ trên hệ điều hành 64-bit), dù dữ liệu thực tế nó trỏ tới trên Heap lớn đến đâu. Chuỗi đệ quy vô hạn đã bị chặn đứng!
@@ -326,18 +326,18 @@ Khi thiết kế danh sách liên kết và sử dụng con trỏ thông minh (s
 ### Ví dụ phân tích lỗi `E0507` và phương pháp khắc phục với `.take()`:
 
 ```rust
-struct NutMinhHoa {
+struct NodeDemo {
     value: i32,
-    next: Option<Box<NutMinhHoa>>,
+    next: Option<Box<NodeDemo>>,
 }
 
 // Đoạn mã lỗi minh họa E0507: Cố đoạt quyền sở hữu từ tham chiếu mượn
-fn lay_dinh_loi(peak: &mut Option<Box<NutMinhHoa>>) {
+fn peek_broken(peak: &mut Option<Box<NodeDemo>>) {
     // let nut_cu = *dinh; // LỖI E0507: cannot move out of `*dinh`!
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng Option::take()
-fn lay_dinh_dung(peak: &mut Option<Box<NutMinhHoa>>) {
+fn peek_correct(peak: &mut Option<Box<NodeDemo>>) {
     // .take() sẽ lấy Some(box) ra và gán lại None vào vị trí cũ một cách an toàn
     let nut_cu = peak.take();
     if let Some(nut) = nut_cu {
@@ -413,3 +413,121 @@ mod tests {
    Cài đặt phương thức `fn chua_phan_tu(&self, value: &T) -> bool` kiểm tra xem một giá trị có tồn tại trong danh sách liên kết hay không (với điều kiện `T: PartialEq`).
 3. **Bài tập 3 (Tư duy con trỏ thông minh)**:  
    Tại sao chúng ta không thể sử dụng `Box<T>` đơn thuần để tạo một Danh sách liên kết đôi (Doubly Linked List - nơi mỗi nút vừa trỏ tới nút kế tiếp `next`, vừa trỏ tới nút đứng trước `prev`)? Hãy giải thích vì sao trường hợp này đòi hỏi sự kết hợp giữa `Rc` và `RefCell` hoặc con trỏ thô (Raw Pointer).
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Dùng một biến `&Option<Box<Nut<T>>>` chạy dọc danh sách. Mỗi vòng lặp nhảy sang `nut.next` cho tới khi gặp `None`.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+impl<T> ListLienLink<T> {
+    /// Đếm bằng cách DUYỆT, không đọc trường `length`.
+    /// Độ phức tạp O(N): phải chạm từng nút đúng một lần.
+    pub fn dem_phan_tu_thu_cong(&self) -> usize {
+        let mut n = 0;
+        let mut hien_tai = &self.peak;      // mượn ĐỌC, không đụng quyền sở hữu
+        while let Some(nut) = hien_tai {
+            n += 1;
+            hien_tai = &nut.next;           // nhảy sang nút kế
+        }
+        n
+    }
+}
+
+#[test]
+fn dem_thu_cong_khop_voi_len() {
+    let mut ds = ListLienLink::new();
+    for i in 0..5 { ds.push_front(i); }
+    assert_eq!(ds.dem_phan_tu_thu_cong(), 5);
+    assert_eq!(ds.dem_phan_tu_thu_cong(), ds.len());
+
+    let rong: ListLienLink<i32> = ListLienLink::new();
+    assert_eq!(rong.dem_phan_tu_thu_cong(), 0);
+}
+```
+
+**Vì sao O(N) mà `len()` lại O(1):** `len()` đọc một trường được cập nhật sẵn mỗi lần thêm/bớt. Đó là đánh đổi kinh điển — trả trước một phép cộng lúc ghi để khỏi phải duyệt lúc đọc. Bài này tồn tại để bạn *thấy* cái giá của việc không có trường đó.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Duyệt giống bài 1, nhưng so sánh giá trị mỗi nút. Cần ràng buộc `T: PartialEq` vì không phải kiểu nào cũng so sánh bằng được.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+impl<T: PartialEq> ListLienLink<T> {
+    pub fn chua_phan_tu(&self, value: &T) -> bool {
+        let mut hien_tai = &self.peak;
+        while let Some(nut) = hien_tai {
+            if &nut.value == value {
+                return true;            // THOÁT SỚM — không duyệt tiếp
+            }
+            hien_tai = &nut.next;
+        }
+        false
+    }
+}
+
+#[test]
+fn tim_thay_va_khong_tim_thay() {
+    let mut ds = ListLienLink::new();
+    ds.push_front("b");
+    ds.push_front("a");
+    assert!(ds.chua_phan_tu(&"a"));
+    assert!(ds.chua_phan_tu(&"b"));
+    assert!(!ds.chua_phan_tu(&"z"));
+
+    let rong: ListLienLink<i32> = ListLienLink::new();
+    assert!(!rong.chua_phan_tu(&1));
+}
+```
+
+Chú ý `impl<T: PartialEq>` là một khối **riêng**, không gộp vào `impl<T>`. Nhờ vậy `ListLienLink<T>` vẫn dùng được với kiểu `T` không so sánh bằng — chỉ có mỗi `chua_phan_tu` là không gọi được. Đây là cách Rust cho phép "tính năng có điều kiện" mà không hy sinh tính tổng quát.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`Box<T>` có nghĩa **sở hữu duy nhất**. Hãy thử vẽ ra: nút B được A trỏ tới bằng `next`, và cũng được C trỏ tới bằng `prev`. Ai sở hữu B?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+`Box<T>` mã hoá một lời hứa: **đúng một chủ sở hữu**. Danh sách liên kết đôi phá vỡ lời hứa đó.
+
+```text
+   A ──next──►  B  ──next──►  C
+   A ◄──prev──  B  ◄──prev──  C
+
+   B được A sở hữu (qua next của A)
+   B cũng được C trỏ tới (qua prev của C)
+   → hai đường sở hữu tới cùng một nút → Box KHÔNG diễn đạt được
+```
+
+Thử `Box` cho cả hai chiều thì `A.next` sở hữu `B`, mà `B.prev` lại sở hữu `A` — thành **chu trình sở hữu**. Rust từ chối biên dịch, và nếu có cho qua thì huỷ danh sách sẽ đệ quy vô tận.
+
+Ba lối thoát, mỗi lối một cái giá:
+
+| Cách | Cơ chế | Cái giá |
+|---|---|---|
+| `Rc<RefCell<Nut>>` cho `next`, `Weak` cho `prev` | Đếm tham chiếu; `Weak` không tính vào số chủ | Kiểm tra mượn lúc **chạy** (`BorrowMutError`), tốn thêm hai bộ đếm mỗi nút |
+| Con trỏ thô `*mut Nut` | Không có luật sở hữu nào | Phải viết `unsafe`, tự bảo đảm không có con trỏ lơ lửng |
+| Chỉ số vào một `Vec<Nut>` | "Con trỏ" là `usize` | An toàn và nhanh, nhưng xoá nút để lại lỗ; phải tự quản lý ô trống |
+
+Thư viện chuẩn chọn cách thứ hai: `std::collections::LinkedList` dùng con trỏ thô bên trong, bọc trong API an toàn. Còn các game engine thường chọn cách thứ ba — đó chính là "kho thực thể" của kiến trúc ECS ở Chương 68.
+
+**Điểm cốt lõi:** đây không phải hạn chế của Rust mà là *vấn đề đã luôn tồn tại*. Trong C++ cùng cấu trúc này cũng có hai con trỏ tới một nút — chỉ khác là trình biên dịch không nói gì, và bạn phát hiện ra lúc chạy.
+</details>

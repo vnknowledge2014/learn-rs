@@ -167,8 +167,8 @@ pub struct Cart {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CartError {
-    SoLuongBangKhong,
-    KhongTonTai,
+    ZeroQuantity,
+    NotFound,
 }
 
 impl Cart {
@@ -179,7 +179,7 @@ impl Cart {
     /// Thêm mặt hàng. Số lượng 0 là lỗi nghiệp vụ (không phải panic).
     pub fn them(&mut self, name: &str, don_price: u64, quantity: u32) -> Result<(), CartError> {
         if quantity == 0 {
-            return Err(CartError::SoLuongBangKhong);
+            return Err(CartError::ZeroQuantity);
         }
         // Nếu đã có, cộng dồn số lượng thay vì tạo dòng mới
         if let Some(dong) = self.mat_queue.iter_mut().find(|(t, _, _)| t == name) {
@@ -475,15 +475,15 @@ Và đây là **tầng kiểm thử tích hợp**, đặt ở `tests/integration
 use ch55::{checkout, PaymentGateway, Cart};
 
 /// Cổng giả cấp module test tích hợp (không truy cập được nội bộ crate).
-struct CongGia;
-impl PaymentGateway for CongGia {
+struct FakeGateway;
+impl PaymentGateway for FakeGateway {
     fn debit(&self, so_tien: u64) -> Result<String, String> {
         Ok(format!("TICH-HOP-{}", so_tien))
     }
 }
 
 #[test]
-fn luong_mua_hang_hoan_chinh_tu_ben_ngoai() {
+fn full_purchase_flow_end_to_end() {
     // Dựng giỏ, cộng dồn, giảm giá, thanh toán — toàn bộ qua API công khai
     let mut gio = Cart::new();
     gio.them("Màn hình", 5_000_000, 1).unwrap();
@@ -493,12 +493,12 @@ fn luong_mua_hang_hoan_chinh_tu_ben_ngoai() {
     assert_eq!(gio.so_dong(), 2);
     assert_eq!(gio.tong_tien(), 10_300_000);
 
-    let id = checkout(&gio, &CongGia, 10).unwrap();
+    let id = checkout(&gio, &FakeGateway, 10).unwrap();
     assert_eq!(id, "TICH-HOP-9270000"); // 10.300.000 - 10%
 }
 
 #[test]
-fn giu_bat_bien_qua_nhieu_thao_tac() {
+fn invariant_holds_across_operations() {
     let mut gio = Cart::new();
     for i in 0..20 {
         gio.them(&format!("SP{}", i % 5), 1000, 1).unwrap(); // 5 tên, mỗi tên 4 lần
@@ -560,7 +560,7 @@ impl Cart {
     pub fn remove(&mut self, name: &str) -> Result<(), CartError> {
         match self.mat_queue.iter().position(|(t, _, _)| t == name) {
             Some(i) => { self.mat_queue.remove(i); Ok(()) }
-            None => Err(CartError::KhongTonTai),
+            None => Err(CartError::NotFound),
         }
     }
 }
@@ -569,7 +569,7 @@ impl Cart {
 mod bai_tap_1 {
     use super::*;
     #[test]
-    fn xoa_dong_ton_tai() {
+    fn removing_existing_line() {
         let mut gio = Cart::new();
         gio.them("A", 100, 1).unwrap();
         gio.them("B", 200, 1).unwrap();
@@ -578,9 +578,9 @@ mod bai_tap_1 {
         assert_eq!(gio.tong_tien(), 200);
     }
     #[test]
-    fn xoa_dong_khong_ton_tai_bao_loi() {
+    fn removing_missing_line_errors() {
         let mut gio = Cart::new();
-        assert_eq!(gio.remove("KhongCo"), Err(CartError::KhongTonTai));
+        assert_eq!(gio.remove("KhongCo"), Err(CartError::NotFound));
     }
 }
 ```
@@ -598,7 +598,7 @@ pub trait DongHo { fn now(&self) -> u64; }
 pub struct DongHoGia(pub u64);
 impl DongHo for DongHoGia { fn now(&self) -> u64 { self.0 } }
 
-pub fn ma_don_hang(clock: &dyn DongHo) -> String {
+pub fn order_code(clock: &dyn DongHo) -> String {
     format!("ORD-{}", clock.now())
 }
 
@@ -606,9 +606,9 @@ pub fn ma_don_hang(clock: &dyn DongHo) -> String {
 mod bai_tap_2 {
     use super::*;
     #[test]
-    fn ma_don_hang_tat_dinh_nho_dong_ho_gia() {
+    fn order_code_deterministic_via_fake_clock() {
         let dh = DongHoGia(1_700_000_000);
-        assert_eq!(ma_don_hang(&dh), "ORD-1700000000"); // luôn giống nhau!
+        assert_eq!(order_code(&dh), "ORD-1700000000"); // luôn giống nhau!
     }
 }
 ```

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     So(f64),
-    Chuoi(String),
+    Text(String),
     Rong, // giá trị thiếu (NULL/NaN)
 }
 
@@ -21,7 +21,7 @@ impl Value {
         match self { Value::So(x) => Some(*x), _ => None }
     }
     pub fn series(&self) -> Option<&str> {
-        match self { Value::Chuoi(s) => Some(s), _ => None }
+        match self { Value::Text(s) => Some(s), _ => None }
     }
 }
 
@@ -93,7 +93,7 @@ pub fn infer_type(o: String) -> Value {
     } else if let Ok(n) = t.parse::<f64>() {
         Value::So(n)
     } else {
-        Value::Chuoi(t.to_string())
+        Value::Text(t.to_string())
     }
 }
 
@@ -152,7 +152,7 @@ impl Bang {
         let mut gom: HashMap<String, (f64, usize, f64, f64)> = HashMap::new();
         for h in 0..self.num_queue() {
             let key = match &self.cot[c_theo][h] {
-                Value::Chuoi(s) => s.clone(),
+                Value::Text(s) => s.clone(),
                 Value::So(n) => n.to_string(),
                 Value::Rong => "(thiếu)".to_string(),
             };
@@ -210,20 +210,20 @@ pub fn emit_normal(data: &[f64], threshold: f64) -> Vec<usize> {
 // ============================================================================
 
 /// Inner join: chỉ giữ hàng có khóa khớp ở CẢ HAI bảng.
-pub fn inner_join(left: &Bang, must: &Bang, key: &str) -> Bang {
+pub fn inner_join(left: &Bang, right: &Bang, key: &str) -> Bang {
     let ct = left.chi_so_cot(key).expect("khóa không có ở bảng trái");
-    let cp = must.chi_so_cot(key).expect("khóa không có ở bảng phải");
+    let cp = right.chi_so_cot(key).expect("khóa không có ở bảng phải");
 
     // Chỉ mục bảng phải theo khóa (băm) -> tra cứu O(1)
     let mut only_level: HashMap<String, Vec<usize>> = HashMap::new();
-    for h in 0..must.num_queue() {
-        let k = format!("{:?}", must.cot[cp][h]);
+    for h in 0..right.num_queue() {
+        let k = format!("{:?}", right.cot[cp][h]);
         only_level.entry(k).or_default().push(h);
     }
 
     // Cột kết quả: cột trái + cột phải (bỏ cột khóa trùng ở bảng phải)
     let mut name: Vec<String> = left.ten_cot.clone();
-    for (i, t) in must.ten_cot.iter().enumerate() {
+    for (i, t) in right.ten_cot.iter().enumerate() {
         if i != cp { name.push(format!("{}_phai", t)); }
     }
     let mut kq = Bang::new(name.iter().map(|s| s.as_str()).collect());
@@ -234,8 +234,8 @@ pub fn inner_join(left: &Bang, must: &Bang, key: &str) -> Bang {
             for &hp in hang_phai {
                 let mut queue: Vec<Value> =
                     (0..left.ten_cot.len()).map(|i| left.cot[i][h].clone()).collect();
-                for i in 0..must.ten_cot.len() {
-                    if i != cp { queue.push(must.cot[i][hp].clone()); }
+                for i in 0..right.ten_cot.len() {
+                    if i != cp { queue.push(right.cot[i][hp].clone()); }
                 }
                 kq.add_queue(queue);
             }
@@ -283,8 +283,8 @@ fn main() {
 
     println!("\n6. JOIN: ghép doanh thu với dân số khu vực");
     let mut list = Bang::new(vec!["khu_vuc", "dan_so_trieu"]);
-    list.add_queue(vec![Value::Chuoi("Hà Nội".into()), Value::So(8.4)]);
-    list.add_queue(vec![Value::Chuoi("TP.HCM".into()), Value::So(9.3)]);
+    list.add_queue(vec![Value::Text("Hà Nội".into()), Value::So(8.4)]);
+    list.add_queue(vec![Value::Text("TP.HCM".into()), Value::So(9.3)]);
     let compose = inner_join(&bang, &list, "khu_vuc");
     println!("   Kết quả join có {} hàng, {} cột (Đà Nẵng bị loại vì không có dân số)",
              compose.num_queue(), compose.ten_cot.len());
@@ -317,7 +317,7 @@ mod tests {
     fn type_inference_is_correct() {
         assert_eq!(infer_type("42".into()), Value::So(42.0));
         assert_eq!(infer_type("3.14".into()), Value::So(3.14));
-        assert_eq!(infer_type("Hà Nội".into()), Value::Chuoi("Hà Nội".into()));
+        assert_eq!(infer_type("Hà Nội".into()), Value::Text("Hà Nội".into()));
         assert_eq!(infer_type("".into()), Value::Rong);
         assert_eq!(infer_type("NA".into()), Value::Rong);
     }
@@ -378,9 +378,9 @@ mod tests {
     #[test]
     fn inner_join_keeps_only_matching_keys() {
         let mut t = Bang::new(vec!["id", "ten"]);
-        t.add_queue(vec![Value::So(1.0), Value::Chuoi("An".into())]);
-        t.add_queue(vec![Value::So(2.0), Value::Chuoi("Bình".into())]);
-        t.add_queue(vec![Value::So(3.0), Value::Chuoi("Chi".into())]);
+        t.add_queue(vec![Value::So(1.0), Value::Text("An".into())]);
+        t.add_queue(vec![Value::So(2.0), Value::Text("Bình".into())]);
+        t.add_queue(vec![Value::So(3.0), Value::Text("Chi".into())]);
         let mut p = Bang::new(vec!["id", "diem"]);
         p.add_queue(vec![Value::So(1.0), Value::So(9.0)]);
         p.add_queue(vec![Value::So(2.0), Value::So(8.0)]);

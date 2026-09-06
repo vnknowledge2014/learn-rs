@@ -16,11 +16,11 @@ pub fn reverse_inverse_tai_wait(data: &mut [i32]) {
         return;
     }
     let mut left = 0;
-    let mut must = data.len() - 1;
-    while left < must {
-        data.swap(left, must);
+    let mut right = data.len() - 1;
+    while left < right {
+        data.swap(left, right);
         left += 1;
-        must -= 1;
+        right -= 1;
     }
 }
 

@@ -127,7 +127,7 @@ Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cà
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Bộ đếm giao dịch toàn cục tự tăng an toàn luồng
+/// Bộ đếm deliver dịch toàn cục tự tăng an toàn luồng
 static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Cấu trúc một bản ghi dữ liệu có gắn phiên bản thời gian (Versioned Record)
@@ -150,7 +150,7 @@ impl MvccStore {
         }
     }
 
-    /// Khởi động một giao dịch mới - Nhận một mã định danh thời gian duy nhất
+    /// Khởi động một deliver dịch mới - Nhận một mã định danh thời gian duy nhất
     pub fn start_trade(&self) -> u64 {
         GLOBAL_TX_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
@@ -159,7 +159,7 @@ impl MvccStore {
     pub fn record(&mut self, key: &str, value: &str, tx_id: u64) {
         let list_session_sell = self.data.entry(key.to_string()).or_default();
 
-        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi giao dịch hiện tại
+        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi deliver dịch hiện tại
         for pb in list_session_sell.iter_mut().rev() {
             if pb.deleted_by_tx.is_none() {
                 pb.deleted_by_tx = Some(tx_id);
@@ -181,9 +181,9 @@ impl MvccStore {
         if let Some(list_session_sell) = self.data.get(key) {
             // Duyệt từ phiên bản mới nhất lùi về phiên bản cũ nhất
             for pb in list_session_sell.iter().rev() {
-                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm giao dịch này
+                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm deliver dịch này
                 let hop_le_ve_make = pb.created_by_tx <= current_tx_id;
-                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một giao dịch xảy ra trong tương lai
+                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một deliver dịch xảy ra trong tương lai
                 let hop_le_ve_remove = match pb.deleted_by_tx {
                     None => true,
                     Some(del_tx) => del_tx > current_tx_id,
@@ -197,12 +197,12 @@ impl MvccStore {
         None
     }
 
-    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn giao dịch nào cần đến
+    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn deliver dịch nào cần đến
     pub fn don_dep_rac(&mut self, oldest_active_tx: u64) -> usize {
         let mut num_sell_record_da_remove = 0;
         for list in self.data.values_mut() {
             let first_sell = list.len();
-            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc giao dịch cũ nhất còn sống
+            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc deliver dịch cũ nhất còn sống
             list.retain(|pb| {
                 match pb.deleted_by_tx {
                     None => true,
@@ -226,35 +226,35 @@ fn main() {
     println!("  GIAO DỊCH, ĐẢM BẢO ACID & KIỂM SOÁT ĐỒNG THỜI MVCC TRONG RUST");
     println!("============================================================");
 
-    let mut kho_mvcc = MvccStore::new();
+    let mut mvcc_store = MvccStore::new();
 
     // 1. Dữ liệu ban đầu được nạp bởi Giao dịch số 1 (Giao dịch khởi tạo hệ thống)
     let tx_block_make = 1;
-    kho_mvcc.record("tai_khoan:A", "1000", tx_block_make);
+    mvcc_store.record("tai_khoan:A", "1000", tx_block_make);
     println!("[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000", tx_block_make);
 
-    // 2. Kịch bản chạy đồng thời hai giao dịch:
+    // 2. Kịch bản chạy đồng thời hai deliver dịch:
     // - Giao dịch Đọc (TX_DOC = 2): Bắt đầu kiểm toán báo cáo tài chính
     // - Giao dịch Ghi  (TX_GHI = 3): Khách hàng nạp thêm tiền vào tài khoản
-    let tx_read = kho_mvcc.start_trade(); // tx = 2
-    let tx_record = kho_mvcc.start_trade(); // tx = 3
-    println!("\n[2] Hai giao dịch đồng thời xuất hiện:");
+    let tx_read = mvcc_store.start_trade(); // tx = 2
+    let tx_record = mvcc_store.start_trade(); // tx = 3
+    println!("\n[2] Hai deliver dịch đồng thời xuất hiện:");
     println!("    - Giao dịch Đọc khởi động tại mốc: tx_id = {}", tx_read);
     println!("    - Giao dịch Ghi khởi động tại mốc : tx_id = {}", tx_record);
 
     // Giao dịch Ghi cập nhật số dư lên 1500 (Tạo phiên bản mới)
     println!("\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...", tx_record);
-    kho_mvcc.record("tai_khoan:A", "1500", tx_record);
+    mvcc_store.record("tai_khoan:A", "1500", tx_record);
 
     // 3. Kiểm tra tính cô lập Snapshot Isolation của MVCC:
     // Giao dịch Đọc (tx = 2) đọc lại tài khoản A
     println!("\n[3] Kiểm tra tính cô lập Snapshot Isolation:");
-    let balance_read = kho_mvcc.doc("tai_khoan:A", tx_read);
+    let balance_read = mvcc_store.doc("tai_khoan:A", tx_read);
     println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
 
     // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
-    let future_tx = kho_mvcc.start_trade(); // tx = 4
-    let new_balance = kho_mvcc.doc("tai_khoan:A", future_tx);
+    let future_tx = mvcc_store.start_trade(); // tx = 4
+    let new_balance = mvcc_store.doc("tai_khoan:A", future_tx);
     println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
 
     // Xác nhận tính chính xác tuyệt đối:
@@ -265,8 +265,8 @@ fn main() {
 
     // 4. Kiểm thử tính năng dọn rác Vacuum / Compaction
     println!("\n[4] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Compaction):");
-    // Khi giao dịch cũ tx=2 đã kết thúc, giao dịch cũ nhất hiện tại là tx=4
-    let so_rac_da_don = kho_mvcc.don_dep_rac(4);
+    // Khi deliver dịch cũ tx=2 đã kết thúc, deliver dịch cũ nhất hiện tại là tx=4
+    let so_rac_da_don = mvcc_store.don_dep_rac(4);
     println!("    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!", so_rac_da_don);
     assert_eq!(so_rac_da_don, 1); // Phiên bản v1 đã bị dọn dẹp
 
@@ -293,14 +293,14 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0502: Xung đột mượn đọc và mượn ghi
-fn thu_nghiem_loi_mvcc(store: &mut MvccStore) {
+fn broken_mvcc(store: &mut MvccStore) {
     // let ket_qua = store.doc("key", 2); // Mượn bất biến store
     // store.ghi("key", "val_moi", 3);    // LỖI E0502: Mượn khả biến store khi đang bị mượn đọc!
     // println!("Đã đọc: {:?}", ket_qua);
 }
 
 // Cách sửa chữa đúng chuẩn: Chuyển dữ liệu mượn thành kiểu sở hữu độc lập
-fn thu_nghiem_dung_mvcc(store: &mut MvccStore) {
+fn correct_mvcc(store: &mut MvccStore) {
     // Bước 1: Sao chép kết quả ra biến String độc lập
     let ket_qua = store.doc("key", 2).map(|s| s.to_string());
     
@@ -325,6 +325,148 @@ fn thu_nghiem_dung_mvcc(store: &mut MvccStore) {
 1. **Bài tập 1 (Phân tích kịch bản chuyển tiền ACID)**:  
    Giao dịch $T_1$ chuyển 200 nghìn từ tài khoản A sang tài khoản B gồm hai bước: `A = A - 200` và `B = B + 200`. Nếu máy tính sập nguồn ngay sau khi bước 1 hoàn thành, thuộc tính ACID nào sẽ đảm bảo tài khoản A không bị mất oan 200 nghìn? Quy trình khôi phục diễn ra như thế nào?
 2. **Bài tập 2 (Xử lý Rollback trong MVCC)**:  
-   Hãy thiết kế thêm phương thức `fn rollback_giao_dich(&mut self, tx_id: u64)` cho `MvccStore`: Tìm tất cả các bản ghi có `created_by_tx == tx_id` và xóa chúng khỏi hệ thống, đồng thời khôi phục lại các bản ghi cũ bị đánh dấu `deleted_by_tx == Some(tx_id)` về trạng thái `None`.
+   Hãy thiết kế thêm phương thức `fn rollback(&mut self, tx_id: u64)` cho `MvccStore`: Tìm tất cả các bản ghi có `created_by_tx == tx_id` và xóa chúng khỏi hệ thống, đồng thời khôi phục lại các bản ghi cũ bị đánh dấu `deleted_by_tx == Some(tx_id)` về trạng thái `None`.
 3. **Bài tập 3 (Tư duy mở rộng)**:  
    Trong các hệ quản trị cơ sở dữ liệu lớn như PostgreSQL, hiện tượng gì sẽ xảy ra nếu một giao dịch đọc kéo dài hàng tuần lễ mà không chịu đóng lại (`commit`/`abort`)? Giao dịch này sẽ gây ảnh hưởng tiêu cực như thế nào đến tiến trình dọn rác (Vacuum / Compaction) của MVCC?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Bốn chữ cái ACID: Atomicity, Consistency, Isolation, Durability. Hỏi: chữ nào hứa rằng *một nửa giao dịch* không bao giờ được coi là đã xong?
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**Thuộc tính bảo vệ A là Nguyên tử (Atomicity)** — chữ *A* trong ACID.
+
+Nguyên tử hứa: giao dịch **hoặc xong hẳn, hoặc như chưa từng bắt đầu**. Không có trạng thái giữa chừng. Sập nguồn sau bước 1 tạo ra đúng cái trạng thái giữa chừng đó, và Nguyên tử là thứ bảo đảm nó không được phép tồn tại.
+
+**Quy trình khôi phục, theo đúng thứ tự:**
+
+```
+1. Khởi động lại -> động cơ đọc WAL từ điểm kiểm tra gần nhất
+2. Với mỗi giao dịch trong WAL, hỏi: có bản ghi COMMIT không?
+       CÓ    -> REDO: áp dụng lại mọi thay đổi (bảo đảm chữ D — Bền vững)
+       KHÔNG -> UNDO: hoàn tác mọi thay đổi đã ghi (bảo đảm chữ A)
+3. T1 có "A = A - 200" nhưng KHÔNG có COMMIT
+       -> UNDO: A được trả về giá trị cũ
+4. Cơ sở dữ liệu mở cửa trở lại, A nguyên vẹn
+```
+
+**Vì sao WAL biết đường hoàn tác:** vì nó ghi cả **ảnh cũ** lẫn **ảnh mới** của mỗi thay đổi:
+
+```
+LSN 101  T1  BEGIN
+LSN 102  T1  UPDATE A: cũ=1000, mới=800
+         <-- SẬP NGUỒN TẠI ĐÂY. Không có COMMIT.
+```
+
+Khi khôi phục, thấy T1 không commit, động cơ ghi lại `A = 1000` từ trường "cũ". Đây là **hoàn tác vật lý**, và nó cần WAL đã nằm chắc trên đĩa **trước khi** trang dữ liệu bị sửa — nguyên tắc *write-ahead* mà cái tên WAL nói tới.
+
+Ba chữ còn lại đóng vai khác: **C** (Nhất quán) bảo đảm ràng buộc như "số dư không âm" vẫn đúng sau giao dịch; **I** (Cô lập) bảo đảm giao dịch khác không nhìn thấy trạng thái nửa vời của T1 — đó chính là việc MVCC làm; **D** (Bền vững) bảo đảm giao dịch **đã commit** thì không mất dù sập nguồn.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Hoàn tác cần làm hai việc ngược nhau: **bỏ** những bản ghi giao dịch này tạo ra, và **hồi sinh** những bản ghi nó đã đánh dấu là xoá.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+impl MvccStore {
+    /// Hoàn tác một giao dịch chưa commit.
+    /// HAI việc ngược nhau, đều bắt buộc:
+    ///   1. bỏ những phiên bản do tx này TẠO RA
+    ///   2. hồi sinh những phiên bản do tx này ĐÁNH DẤU XOÁ
+    pub fn rollback(&mut self, tx_id: u64) {
+        for cac_ban in self.data.values_mut() {
+            // 1. Bỏ phiên bản do chính tx này tạo — chúng chưa từng hợp lệ
+            //    với ai khác, nên bỏ đi là an toàn tuyệt đối.
+            cac_ban.retain(|b| b.created_by_tx != tx_id);
+
+            // 2. Gỡ dấu xoá: bản ghi cũ phải sống lại nguyên trạng.
+            for b in cac_ban.iter_mut() {
+                if b.deleted_by_tx == Some(tx_id) {
+                    b.deleted_by_tx = None;
+                }
+            }
+        }
+        // Khoá nào không còn phiên bản nào thì bỏ luôn, tránh rác.
+        self.data.retain(|_, v| !v.is_empty());
+    }
+}
+
+#[test]
+fn rollback_tra_lai_trang_thai_truoc_giao_dich() {
+    let mut kho = MvccStore::new();
+    let t1 = kho.start_trade();
+    kho.record("a", "ban_dau", t1);
+
+    let t2 = kho.start_trade();
+    kho.record("a", "sua_boi_t2", t2);      // tạo phiên bản mới
+    assert_eq!(kho.doc("a", t2 + 1), Some("sua_boi_t2"));
+
+    kho.rollback(t2);
+    assert_eq!(kho.doc("a", t2 + 1), Some("ban_dau"),
+               "hoàn tác phải trả về đúng giá trị trước giao dịch");
+
+    // Hoàn tác một tx chưa từng chạm gì -> không được làm hỏng gì.
+    let t3 = kho.start_trade();
+    kho.rollback(t3);
+    assert_eq!(kho.doc("a", t3 + 1), Some("ban_dau"));
+}
+```
+
+**Vì sao bước 2 dễ quên nhưng chí mạng:** nếu chỉ làm bước 1, một bản ghi bị T2 đánh dấu xoá sẽ **vĩnh viễn không đọc được nữa**, dù T2 đã bị hoàn tác. Dữ liệu không mất khỏi đĩa, nhưng mất khỏi tầm nhìn — dạng mất dữ liệu tệ nhất vì nó im lặng.
+
+**Vì sao hoàn tác trong MVCC rẻ:** nó không đụng gì tới dữ liệu *cũ*. Giao dịch chưa commit chỉ ghi vào phiên bản riêng của nó, nên hoàn tác chỉ là vứt phiên bản đó đi. So với hoàn tác kiểu ghi-đè-tại-chỗ — nơi bạn phải đọc ảnh cũ từ WAL rồi ghi ngược lại — thì đây gần như miễn phí.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Dọn rác MVCC chỉ được xoá phiên bản mà **không giao dịch nào còn có thể nhìn thấy**. Một giao dịch mở từ tuần trước vẫn có quyền nhìn thấy trạng thái của tuần trước.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Hiện tượng: cơ sở dữ liệu phình to không kiểm soát, và mọi truy vấn chậm dần.**
+
+MVCC giữ nhiều phiên bản của cùng một dòng. Dọn rác (`VACUUM` trong Postgres) chỉ được bỏ một phiên bản khi **chắc chắn không giao dịch đang chạy nào còn có thể nhìn thấy nó** — nghĩa là khi nó cũ hơn giao dịch đang mở lâu đời nhất.
+
+```
+Giao dịch T_cu mở lúc 09:00 thứ Hai, KHÔNG BAO GIỜ ĐÓNG.
+
+Suốt tuần, hàng triệu dòng được cập nhật.
+Mỗi cập nhật để lại một phiên bản cũ.
+
+VACUUM chạy, nhìn thấy T_cu vẫn mở, và kết luận:
+    "T_cu có thể vẫn cần đọc trạng thái lúc 09:00 thứ Hai
+     -> KHÔNG được xoá bất cứ phiên bản nào tạo sau thời điểm đó"
+
+=> VACUUM chạy đều đặn mà không thu hồi được một byte nào.
+```
+
+**Hậu quả dây chuyền:**
+
+| | Hệ quả |
+|---|---|
+| Bảng phình xác | Một bảng 10 GB có thể thành 100 GB toàn phiên bản chết |
+| Quét bảng chậm dần | Đọc 100 GB để lấy 10 GB dữ liệu sống |
+| Chỉ mục cũng phình | Mỗi phiên bản cần một mục chỉ mục riêng |
+| Bộ đệm mất tác dụng | Buffer pool chứa đầy phiên bản chết |
+| Nguy cơ quấn vòng ID giao dịch | Postgres dùng ID 32 bit; không dọn được thì tới ngưỡng nó **dừng nhận ghi** để tự bảo vệ |
+
+Cái cuối là kịch bản tệ nhất và có thật: một giao dịch bị quên có thể khiến cả cụm cơ sở dữ liệu ngừng nhận ghi.
+
+**Vì vậy trong thực tế:** đặt `idle_in_transaction_session_timeout` để tự giết phiên bỏ quên; theo dõi `pg_stat_activity` tìm giao dịch mở lâu; và **không bao giờ mở giao dịch rồi đi làm việc khác** — mở muộn nhất có thể, đóng sớm nhất có thể. Một giao dịch chỉ đọc mà mở suốt phiên làm việc của người dùng là mẫu thiết kế sai kinh điển.
+</details>

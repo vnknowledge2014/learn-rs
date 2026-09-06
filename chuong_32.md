@@ -358,13 +358,13 @@ Dưới đây là các lỗi biên dịch điển hình khi thiết kế Slotted
 
 ```rust
 // Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu trang vào Buffer Pool
-fn thu_nghiem_loi_trang(mut pool: BufferPool, state: SlottedPage) {
+fn broken_page(mut pool: BufferPool, state: SlottedPage) {
     // pool.put_page(trang, false); // Quyền sở hữu trang bị chuyển vào HashMap!
     // println!("Mã trang: {}", trang.page_id); // LỖI E0382: trang đã bị moved!
 }
 
 // Cách sửa chữa đúng chuẩn: Lấy mã ID ra trước hoặc truy cập qua Pool
-fn thu_nghiem_dung_trang(mut pool: BufferPool, state: SlottedPage) {
+fn correct_page(mut pool: BufferPool, state: SlottedPage) {
     let id = state.page_id;
     pool.put_page(state, false);
     println!("Mã trang vừa nạp: {}", id);
@@ -388,6 +388,131 @@ fn thu_nghiem_dung_trang(mut pool: BufferPool, state: SlottedPage) {
 1. **Bài tập 1 (Tính toán dung lượng Slotted-Page)**:  
    Giả sử mỗi bản ghi có kích thước trung bình là 100 bytes. Hãy tính xem một trang Slotted-Page 4096 bytes (với Header 8 bytes và mỗi khe Slot chiếm 4 bytes) có thể chứa tối đa bao nhiêu bản ghi?
 2. **Bài tập 2 (Xóa bản ghi trong Slotted-Page)**:  
-   Hãy viết thêm phương thức `fn xoa_ban_ghi(&mut self, slot_id: u16) -> bool` cho `SlottedPage`. Để xóa bản ghi, ta chỉ cần gán độ dài khe `length = 0` trong Slot Directory (đánh dấu Tombstone) mà không cần phải dời dữ liệu bên dưới đáy.
+   Hãy viết thêm phương thức `fn delete_record(&mut self, slot_id: u16) -> bool` cho `SlottedPage`. Để xóa bản ghi, ta chỉ cần gán độ dài khe `length = 0` trong Slot Directory (đánh dấu Tombstone) mà không cần phải dời dữ liệu bên dưới đáy.
 3. **Bài tập 3 (Cơ chế Pin Count)**:  
    Tại sao trong các hệ quản trị cơ sở dữ liệu thực tế, Buffer Pool phải có thêm trường `pin_count: usize` (số luồng đang đọc trang)? Nếu một trang có `pin_count > 0` thì thuật toán LRU có được phép trục xuất (evict) trang đó không? Vì sao?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Mỗi bản ghi tốn hai thứ: dữ liệu ở đáy trang, **và** một khe 4 byte trong bảng khe ở đầu trang. Đừng quên phần thứ hai.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Mỗi bản ghi tiêu tốn **hai** vùng, không phải một:
+
+```
+chi phí mỗi bản ghi = 100 byte dữ liệu + 4 byte khe = 104 byte
+không gian dùng được = 4096 − 8 (header) = 4088 byte
+số bản ghi tối đa    = 4088 ÷ 104 = 39,3 → 39 bản ghi
+```
+
+Kiểm lại: 39 × 100 = 3900 byte dữ liệu, 39 × 4 = 156 byte bảng khe, cộng 8 byte header là **4064** — vừa trong 4096, còn thừa 32 byte.
+
+Thử 40 bản ghi: 4000 + 160 + 8 = **4168** > 4096. Không đủ chỗ.
+
+**Sai lầm hay gặp:** tính `4088 ÷ 100 = 40` rồi kết luận 40 bản ghi. Nó quên mất rằng bảng khe cũng lớn lên theo số bản ghi — hai đầu trang tiến về phía nhau, và chúng gặp nhau sớm hơn bạn tưởng. Đó chính là lý do `add_sell_record` phải kiểm tra **cả hai** con trỏ trước khi ghi.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Đánh dấu bia mộ nghĩa là **chỉ sửa bảng khe**, không đụng vào dữ liệu ở đáy. Xoá là O(1); phần dọn dẹp để dành cho lúc nén trang.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+impl SlottedPage {
+    /// Xoá bằng BIA MỘ: chỉ ghi `length = 0` vào bảng khe ở ĐẦU trang.
+    /// Dữ liệu ở đáy trang vẫn nằm nguyên đó — đó là CHỦ Ý.
+    pub fn delete_record(&mut self, slot_id: u16) -> bool {
+        if slot_id >= self.slot_count() { return false; }
+        let slot_pos = 8 + (slot_id as usize * 4);
+        let length = u16::from_le_bytes(
+            self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap());
+        if length == 0 { return false; }              // đã là bia mộ rồi
+        self.data[slot_pos + 2..slot_pos + 4].copy_from_slice(&0u16.to_le_bytes());
+        true
+    }
+
+    /// Đọc có TÔN TRỌNG bia mộ. `read_sell_record` gốc không kiểm
+    /// `length == 0` nên nó trả về lát cắt RỖNG thay vì `None` —
+    /// đúng cú pháp, nhưng che mất sự khác biệt giữa "bản ghi rỗng"
+    /// và "bản ghi đã xoá".
+    pub fn read_sell_record_live(&self, slot_id: u16) -> Option<&[u8]> {
+        if slot_id >= self.slot_count() { return None; }
+        let slot_pos = 8 + (slot_id as usize * 4);
+        let offset = u16::from_le_bytes(
+            self.data[slot_pos..slot_pos + 2].try_into().unwrap()) as usize;
+        let length = u16::from_le_bytes(
+            self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap()) as usize;
+        if length == 0 { return None; }               // bia mộ
+        Some(&self.data[offset..offset + length])
+    }
+}
+
+#[test]
+fn xoa_bang_bia_mo() {
+    let mut p = SlottedPage::new(1);
+    let a = p.add_sell_record(b"ban ghi A").unwrap();
+    let b = p.add_sell_record(b"ban ghi B").unwrap();
+
+    assert!(p.delete_record(a));
+    assert_eq!(p.read_sell_record_live(a), None, "đã xoá thì đọc ra None");
+    assert_eq!(p.read_sell_record_live(b), Some(&b"ban ghi B"[..]),
+               "B không bị ảnh hưởng");
+
+    assert!(!p.delete_record(a), "xoá hai lần thì lần sau trả false");
+    assert!(!p.delete_record(999), "khe không tồn tại");
+
+    // Dữ liệu của A VẪN nằm ở đáy trang — chỉ khe bị đánh dấu.
+    // Đó là lý do trang bị "phình xác" cho tới lần nén tiếp theo.
+    assert_eq!(p.tail_pointer() as usize, PAGE_SIZE - 9 - 9);
+}
+```
+
+**Vì sao không dời dữ liệu ngay:**
+
+1. **Xoá là O(1).** Dời dữ liệu là O(kích thước trang) và phải cập nhật mọi khe phía sau.
+2. **Chỉ số khe giữ nguyên.** Nhiều thứ khác trỏ tới bản ghi bằng `(page_id, slot_id)` — chỉ mục, con trỏ từ trang khác. Dồn dữ liệu mà giữ nguyên `slot_id` được là nhờ khe chỉ chứa *offset*, nhưng dồn *khe* thì mọi tham chiếu bên ngoài hỏng hết.
+3. **Không gian được thu hồi lúc nén trang**, khi trang đầy và cần chỗ. Gộp nhiều lần xoá vào một lần dọn thì rẻ hơn dọn từng lần.
+
+Cái giá: trang bị **phình xác** (bloat). Postgres gọi đây là *dead tuple*, và tiến trình `VACUUM` chính là bước nén trang đó — Chương 35 nói tiếp.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Nếu một luồng đang *đọc* trang mà trang bị trục xuất, con trỏ nó đang cầm trỏ vào bộ nhớ đã bị tái sử dụng. Đó là dùng-sau-khi-giải-phóng, ở tầng cơ sở dữ liệu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+`pin_count` đếm **số luồng đang thực sự dùng trang**, và LRU **tuyệt đối không được** trục xuất trang có `pin_count > 0`.
+
+**Nếu trục xuất thì sao:** một luồng đang cầm `&[u8]` trỏ vào khung nhớ đó. Buffer Pool giải phóng khung, nạp trang khác vào cùng chỗ. Luồng kia đọc tiếp — và thấy dữ liệu của trang hoàn toàn khác. Đây đúng là **dùng-sau-khi-giải-phóng**, chỉ khác là nó xảy ra ở tầng cơ sở dữ liệu chứ không phải tầng cấp phát bộ nhớ. Không sập ngay, mà trả ra dữ liệu sai — dạng lỗi tệ hơn nhiều.
+
+**Vì sao LRU một mình không đủ:** LRU trả lời "trang nào *lâu nhất chưa dùng*". Nhưng "lâu chưa dùng" và "đang được dùng" là hai chuyện khác nhau. Một luồng có thể ghim trang từ lâu rồi ngủ chờ I/O — trang đó vừa là ứng viên LRU tốt nhất, vừa là trang tuyệt đối không được đụng.
+
+```
+tìm trang để trục xuất:
+    duyệt danh sách LRU từ cũ nhất
+        nếu pin_count == 0  ->  chọn trang này
+        ngược lại           ->  bỏ qua, xét trang kế
+    nếu MỌI trang đều bị ghim -> KHÔNG trục xuất được
+        -> trả lỗi "buffer pool đã cạn", không được chờ vô hạn
+```
+
+Trường hợp cuối là chuyện có thật: nếu mọi khung đều bị ghim và một luồng lại xin thêm trang, hệ thống **bế tắc**. Vì vậy cơ sở dữ liệu thật giới hạn số trang mỗi giao dịch được ghim cùng lúc, và trả lỗi rõ ràng thay vì treo — cùng nguyên tắc "từ chối rõ ràng khi quá tải" của back-pressure ở Chương 59.
+
+Trong Rust, `pin_count` chính là thứ `Rc`/`Arc` làm tự động: đếm số người đang giữ tham chiếu, và chỉ giải phóng khi đếm về 0.
+</details>

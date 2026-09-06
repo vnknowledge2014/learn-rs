@@ -105,7 +105,7 @@ Chạy bằng `cargo run -p ch75`, kiểm thử bằng `cargo test -p ch75`.
 
 ```rust
 #![allow(dead_code)]
-//! Chương 75 — Xử lý luồng dữ liệu thị trường: giao thức nhị phân kiểu ITCH,
+//! Chương 75 — Xử lý luồng dữ liệu thị trường: deliver thức nhị phân kiểu ITCH,
 //! phát hiện khe số thứ tự, dựng sổ lệnh L2/L3 từ bản tin gia tăng, và kiểm
 //! tra chất lượng dữ liệu.
 //!
@@ -133,11 +133,11 @@ pub enum BanTin {
     /// Thêm lệnh mới vào sổ
     AddOrder { id: OrderId, id_chain: u32, side: Side, price: Price, quantity: Quantity },
     /// Lệnh bị huỷ một phần hoặc toàn bộ
-    CancelOrder { id: OrderId, so_luong_huy: Quantity },
+    CancelOrder { id: OrderId, cancel_quantity: Quantity },
     /// Lệnh khớp
     Fill { id: OrderId, quantity: Quantity, price: Price },
     /// Thay thế lệnh: huỷ cũ, tạo mới, MẤT ưu tiên thời gian
-    ThayThe { old_id: OrderId, ma_moi: OrderId, price: Price, quantity: Quantity },
+    Replaced { old_id: OrderId, ma_moi: OrderId, price: Price, quantity: Quantity },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -149,15 +149,15 @@ pub struct FieldPacket {
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorAnalyze {
-    QuaNgan { can: usize, co: usize },
-    LoaiBanTinLa(u8),
-    ChieuLa(u8),
+    TooShort { can: usize, co: usize },
+    UnknownMessageKind(u8),
+    UnknownSide(u8),
 }
 
 /// Phân tích một bản tin nhị phân. Không cấp phát, không sao chép — chỉ đọc
 /// số nguyên từ các vị trí cố định. Đây là ý nghĩa của "phân tích zero-copy".
 ///
-/// Bố cục dây (big-endian, như mọi giao thức mạng):
+/// Bố cục dây (big-endian, như mọi deliver thức mạng):
 /// ```text
 ///  0        1        9           17     25      29      30       38
 ///  +--------+--------+-----------+------+-------+-------+--------+
@@ -1076,7 +1076,7 @@ Sổ lệnh dựng gia tăng sẽ **trôi** theo thời gian — vì gói mất,
 
 ```rust
 #[derive(Debug, PartialEq)]
-pub enum KetQuaDoiChieu {
+pub enum ReconcileOutcome {
     Khop,
     Lech { muc_sai: usize, chi_tiet: Vec<String> },
 }
@@ -1087,9 +1087,9 @@ impl L2Book {
         match side { Side::Buy => &self.buy, Side::Sell => &self.ban }
     }
 
-    pub fn doi_chieu(&self, snap: &L2Book) -> KetQuaDoiChieu {
+    pub fn reconcile(&self, snap: &L2Book) -> ReconcileOutcome {
         let mut chi_tiet = Vec::new();
-        for (side, ta, no) in [("mua", self.levels(Side::Buy), snap.levels(Side::Buy)),
+        for (side, ta, no) in [("bid", self.levels(Side::Buy), snap.levels(Side::Buy)),
                                 ("ban", self.levels(Side::Sell), snap.levels(Side::Sell))] {
             for (price, kl) in ta {
                 match no.get(price) {
@@ -1106,12 +1106,12 @@ impl L2Book {
                 }
             }
         }
-        if chi_tiet.is_empty() { KetQuaDoiChieu::Khop }
-        else { KetQuaDoiChieu::Lech { muc_sai: chi_tiet.len(), chi_tiet } }
+        if chi_tiet.is_empty() { ReconcileOutcome::Khop }
+        else { ReconcileOutcome::Lech { muc_sai: chi_tiet.len(), chi_tiet } }
     }
 
     /// Khi lệch: XÂY LẠI, không vá. Sổ đã sai thì mọi phép vá đều đoán mò.
-    pub fn xay_lai_tu(&mut self, snap: &L2Book) {
+    pub fn rebuild_from(&mut self, snap: &L2Book) {
         self.buy = snap.buy.clone();
         self.ban = snap.ban.clone();
     }
@@ -1133,42 +1133,42 @@ Vị trí xếp hàng (Queue position) giảm khi lệnh đứng trước bị k
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct TheoDoiHang {
-    pub ma_lenh_cua_ta: OrderId,
+pub struct QueueTracker {
+    pub our_order_id: OrderId,
     pub price: Price,
     pub queue_ahead: u64,
-    pub khoi_luong_ban_dau_truoc: u64,
+    pub initial_queue_ahead: u64,
 }
 
-impl TheoDoiHang {
+impl QueueTracker {
     /// Sổ L3 đã cho sẵn `queue_ahead` — ta chỉ chụp lại giá trị đó
     /// tại thời điểm đặt lệnh để về sau đo được tiến độ.
     pub fn new(so: &L3Book, id: OrderId) -> Option<Self> {
         let l = so.order.get(&id)?;
         let prev = so.queue_ahead(id)?;
-        Some(TheoDoiHang {
-            ma_lenh_cua_ta: id,
+        Some(QueueTracker {
+            our_order_id: id,
             price: l.price,
             queue_ahead: prev,
-            khoi_luong_ban_dau_truoc: prev,
+            initial_queue_ahead: prev,
         })
     }
 
     /// Lệnh đứng trước bị khớp HOẶC bị huỷ → hàng ngắn lại.
-    pub fn hang_ngan_lai(&mut self, quantity: u64) {
+    pub fn queue_shrank(&mut self, quantity: u64) {
         self.queue_ahead =
             self.queue_ahead.saturating_sub(quantity);
     }
 
     /// Tỉ lệ đã tiến được, 0.0 → 1.0.
     pub fn tien_do(&self) -> f64 {
-        if self.khoi_luong_ban_dau_truoc == 0 { return 1.0; }
+        if self.initial_queue_ahead == 0 { return 1.0; }
         1.0 - self.queue_ahead as f64
-               / self.khoi_luong_ban_dau_truoc as f64
+               / self.initial_queue_ahead as f64
     }
 
     /// Ước lượng thô xác suất được khớp trước khi giá đi mất.
-    pub fn xac_suat_khop(&self, khoi_luong_ky_vong: u64) -> f64 {
+    pub fn fill_probability(&self, khoi_luong_ky_vong: u64) -> f64 {
         if self.queue_ahead == 0 { return 1.0; }
         (khoi_luong_ky_vong as f64 / self.queue_ahead as f64).min(1.0)
     }

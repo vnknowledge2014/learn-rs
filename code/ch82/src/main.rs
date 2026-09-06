@@ -62,13 +62,13 @@ impl Candle {
 pub enum Pattern { Doji, BuaTang, SaoBangGiam, NhanChimTang, NhanChimGiam, KhongCo }
 
 /// Doji: giá mở gần bằng giá đóng — hai phe giằng co, không ai thắng.
-pub fn la_doji(n: &Candle, nguong_phan_van: i64) -> bool {
+pub fn la_doji(n: &Candle, threshold_bps: i64) -> bool {
     if n.bien_do() == 0 { return true; }
-    n.than() * 10_000 <= n.bien_do() * nguong_phan_van
+    n.than() * 10_000 <= n.bien_do() * threshold_bps
 }
 
 /// Búa: thân nhỏ ở TRÊN, bóng dưới dài — người bán đẩy giá xuống nhưng bị
-/// người mua kéo lại hết. Chỉ có ý nghĩa khi xuất hiện SAU một đợt giảm.
+/// người bid kéo lại hết. Chỉ có ý nghĩa khi xuất hiện SAU một đợt giảm.
 pub fn la_bua(n: &Candle) -> bool {
     n.bien_do() > 0
         && n.than() > 0
@@ -159,7 +159,7 @@ pub fn wma(price: &[f64], period: usize) -> Option<f64> {
 // 4. RSI — CHỈ SỐ SỨC MẠNH TƯƠNG ĐỐI
 // ============================================================================
 // RSI đo tương quan giữa mức tăng và mức giảm gần đây, quy về thang 0–100.
-// Trên 70 thường gọi là "quá mua", dưới 30 là "quá bán" — nhưng trong xu
+// Trên 70 thường gọi là "quá bid", dưới 30 là "quá bán" — nhưng trong xu
 // hướng mạnh, RSI có thể nằm trên 70 hàng tuần liền. Đó là lý do dùng RSI
 // một mình để đoán đảo chiều là cách mất tiền nhanh nhất.
 
@@ -203,28 +203,28 @@ pub struct MacdValue { pub macd: f64, pub signal: f64, pub histogram: f64 }
 
 /// MACD = EMA nhanh − EMA chậm. Đường tín hiệu = EMA của chính MACD.
 /// Biểu đồ = MACD − tín hiệu, đo đà tăng tốc.
-pub fn macd_series(price: &[f64], nhanh: usize, cham: usize, signal: usize)
+pub fn macd_series(price: &[f64], fast: usize, cham: usize, signal: usize)
     -> Vec<Option<MacdValue>>
 {
     let mut ra = vec![None; price.len()];
     if cham == 0 || price.len() < cham { return ra; }
-    let e_nhanh = ema_series(price, nhanh);
+    let e_nhanh = ema_series(price, fast);
     let e_cham = ema_series(price, cham);
 
     // Chuỗi MACD chỉ có giá trị từ khi CẢ HAI đường EMA đã sẵn sàng
-    let mut duong_macd: Vec<f64> = Vec::new();
+    let mut macd_line: Vec<f64> = Vec::new();
     let mut root_indices: Vec<usize> = Vec::new();
     for i in 0..price.len() {
         if let (Some(a), Some(b)) = (e_nhanh[i], e_cham[i]) {
-            duong_macd.push(a - b);
+            macd_line.push(a - b);
             root_indices.push(i);
         }
     }
-    let e_tin_hieu = ema_series(&duong_macd, signal);
+    let e_tin_hieu = ema_series(&macd_line, signal);
     for (k, &i) in root_indices.iter().enumerate() {
         if let Some(s) = e_tin_hieu[k] {
-            ra[i] = Some(MacdValue { macd: duong_macd[k], signal: s,
-                                      histogram: duong_macd[k] - s });
+            ra[i] = Some(MacdValue { macd: macd_line[k], signal: s,
+                                      histogram: macd_line[k] - s });
         }
     }
     ra
@@ -291,7 +291,7 @@ pub fn atr_series(candle: &[Candle], period: usize) -> Vec<Option<f64>> {
 }
 
 /// Định cỡ vị thế theo ATR: rủi ro mỗi lệnh cố định bằng tiền, nên mã dao
-/// động mạnh thì mua ít. Đây là công thức nền của mọi hệ thống theo xu hướng.
+/// động mạnh thì bid ít. Đây là công thức nền của mọi hệ thống theo xu hướng.
 pub fn co_theo_atr(von_rui_ro: i64, atr: f64, so_atr_cat_lo: f64) -> i64 {
     let risk_new_don_pos = atr * so_atr_cat_lo;
     if risk_new_don_pos < 1e-9 { return 0; }
@@ -363,7 +363,7 @@ fn main() {
     let qua_buy = r14.iter().filter(|x| x.is_some_and(|v| v > 70.0)).count();
     let qua_ban = r14.iter().filter(|x| x.is_some_and(|v| v < 30.0)).count();
     println!("   RSI(14) tại nến 499: {:.1}", r14[499].unwrap());
-    println!("   Số phiên > 70 (quá mua): {} · < 30 (quá bán): {}", qua_buy, qua_ban);
+    println!("   Số phiên > 70 (quá bid): {} · < 30 (quá bán): {}", qua_buy, qua_ban);
     let tang_deu: Vec<f64> = (1..=50).map(|i| i as f64 * 100.0).collect();
     let giam_deu: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
     println!("   Chuỗi tăng đều  → RSI = {:.0}", rsi_series(&tang_deu, 14)[49].unwrap());
@@ -405,12 +405,12 @@ fn main() {
     println!("\n7. ATR & ĐỊNH CỠ VỊ THẾ");
     let a14 = atr_series(&candle, 14);
     println!("   ATR(14) tại nến 499: {:.1} tick", a14[499].unwrap());
-    println!("   {:>16} {:>12} {:>16}", "vốn rủi ro", "ATR", "số lượng mua");
+    println!("   {:>16} {:>12} {:>16}", "vốn rủi ro", "ATR", "số lượng bid");
     for atr in [20.0f64, 50.0, 100.0, 200.0] {
         println!("   {:>16} {:>12.0} {:>16}",
                  100_000, atr, co_theo_atr(100_000, atr, 2.0));
     }
-    println!("   → Cùng mức rủi ro bằng tiền. Mã dao động mạnh gấp 10 thì mua ít đi 10 lần.");
+    println!("   → Cùng mức rủi ro bằng tiền. Mã dao động mạnh gấp 10 thì bid ít đi 10 lần.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   CHỈ BÁO KHÔNG DỰ BÁO TƯƠNG LAI — CHÚNG TÓM TẮT QUÁ KHỨ   ");

@@ -302,7 +302,7 @@ fn main() -> io::Result<()> {
     // -------------------------------------------------------------
     // GIAI ĐOẠN 2: KIỂM THỬ PHỤC HỒI SAU SỰ CỐ SẬP MÁY CHỦ (CRASH RECOVERY)
     // -------------------------------------------------------------
-    println!("\n[2] Gia lap su co sap may owner toan dien va khoi dong lai:");
+    println!("\n[2] Gia lap su co sap may chu toan dien va khoi dong lai:");
     {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;

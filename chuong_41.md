@@ -120,7 +120,7 @@ pub struct ParsedIpv4Header<'a> {
 /// Trình phân tích tiêu đề gói tin mạng IPv4
 pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'static str> {
     if raw_bytes.len() < 20 {
-        return Err("Kich thuoc goi tin qua ngan de chua IPv4 Header hop le!");
+        return Err("Kich thuoc goi tin qua short de chua IPv4 Header hop le!");
     }
 
     // Byte 0: 4-bit Version và 4-bit IHL
@@ -243,7 +243,7 @@ fn main() {
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
             println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
         }
-        Err(err) => println!("    [!] Loi phan tich: {}", err),
+        Err(err) => println!("    [!] Failed phan products: {}", err),
     }
 
     // -------------------------------------------------------------
@@ -273,7 +273,7 @@ fn main() {
             println!("    - Dia chi khoi chay : 0x{:012X}", elf.entry_point_address);
             println!("    => Nhan dang tep nhi phan thanh cong chi voi 64 bytes dau!");
         }
-        Err(err) => println!("    [!] Loi phan tich ELF: {}", err),
+        Err(err) => println!("    [!] Failed phan products ELF: {}", err),
     }
 
     println!("\n==================================================================");
@@ -299,7 +299,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 ```rust
 // Đoạn mã lỗi minh họa E0507:
-fn vi_du_loi_e0507(slice: &[u8]) {
+fn e0507_broken(slice: &[u8]) {
     // let mang_bon_byte: [u8; 4] = slice[0..4]; // LỖI E0507: Không thể move dữ liệu từ slice mượn!
 }
 
@@ -328,3 +328,132 @@ fn vi_du_dung_e0507(slice: &[u8]) -> [u8; 4] {
    Viết hàm `parse_pe_header(data: &[u8]) -> bool`. Kiểm tra xem 2 byte đầu có phải là `0x4D, 0x5A` ('M', 'Z') hay không. Đọc độ lệch tại byte `0x3C` (e_lfanew) để nhảy tới vị trí tiêu đề PE Signature và xác nhận chuỗi `PE\0\0`.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Denial of Service trong Packet Parser)**:  
    Nếu kẻ tấn công gửi một gói tin có trường `IHL = 15` (khai báo tiêu đề dài 60 bytes) nhưng toàn bộ gói tin gửi qua mạng chỉ dài 20 bytes, chuyện gì sẽ xảy ra nếu trình phân tích không kiểm tra kích thước? Tại sao Rust giúp ngăn chặn triệt để lỗi khai thác này?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Tiêu đề UDP đúng 8 byte, bốn trường u16 liên tiếp. `u16::from_be_bytes` đọc 2 byte theo thứ tự mạng (big-endian). Nhớ kiểm độ dài trước khi đọc.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+#[derive(Debug, PartialEq, Eq)]
+pub struct UdpHeader {
+    pub source_port: u16,
+    pub dest_port: u16,
+    pub length: u16,
+    pub checksum: u16,
+}
+
+/// Phân tích 8 byte tiêu đề UDP. Trả Err nếu không đủ 8 byte.
+pub fn parse_udp_header(data: &[u8]) -> Result<UdpHeader, &'static str> {
+    if data.len() < 8 {
+        return Err("Goi tin qua ngan cho UDP header (can it nhat 8 byte)!");
+    }
+    // Mạng dùng big-endian (network byte order) -> from_be_bytes.
+    Ok(UdpHeader {
+        source_port: u16::from_be_bytes([data[0], data[1]]),
+        dest_port:   u16::from_be_bytes([data[2], data[3]]),
+        length:      u16::from_be_bytes([data[4], data[5]]),
+        checksum:    u16::from_be_bytes([data[6], data[7]]),
+    })
+}
+
+#[test]
+fn phan_tich_udp_dns() {
+    // Cổng nguồn 0x0035 = 53 (DNS), cổng đích 0x1F90 = 8080, length 0x0020 = 32
+    let goi = [0x00, 0x35, 0x1F, 0x90, 0x00, 0x20, 0xAB, 0xCD];
+    let h = parse_udp_header(&goi).unwrap();
+    assert_eq!(h.source_port, 53);
+    assert_eq!(h.dest_port, 8080);
+    assert_eq!(h.length, 32);
+    assert_eq!(h.checksum, 0xABCD);
+    // Thiếu byte -> Err, không đọc tràn.
+    assert!(parse_udp_header(&[0, 1, 2]).is_err());
+}
+```
+
+Hai điều đáng khắc: **big-endian là quy ước bắt buộc của mạng** — mọi số nhiều byte trên dây được gửi byte cao trước, nên phải `from_be_bytes` (không phải `from_le_bytes` của máy x86). Và **kiểm `len() < 8` trước khi chạm `data[7]`** — bỏ bước này thì một gói cụt sẽ gây hoảng loạn truy cập ngoài biên; chính là mầm mống bài tập DoS phía dưới.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Định dạng PE có hai mốc: 2 byte đầu là 'MZ' (0x4D 0x5A), và một con trỏ 4 byte tại offset 0x3C chỉ tới chữ ký 'PE\0\0'. Mọi lần đọc đều phải kiểm biên trước.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Nhận diện tệp thực thi Windows PE. Kiểm mọi biên trước khi đọc để KHÔNG hoảng loạn.
+pub fn parse_pe_header(data: &[u8]) -> bool {
+    // 1. Chữ ký MZ ở 2 byte đầu (di sản từ MS-DOS).
+    if data.len() < 2 || data[0] != 0x4D || data[1] != 0x5A {
+        return false;
+    }
+    // 2. Tại offset 0x3C là con trỏ 4 byte (e_lfanew) trỏ tới tiêu đề PE.
+    if data.len() < 0x40 {
+        return false;
+    }
+    let e_lfanew = u32::from_le_bytes([data[0x3C], data[0x3D], data[0x3E], data[0x3F]]) as usize;
+    // 3. Nhảy tới đó và xác nhận chữ ký "PE  " — NHỚ kiểm đủ 4 byte tại vị trí nhảy.
+    if e_lfanew + 4 > data.len() {
+        return false;
+    }
+    &data[e_lfanew..e_lfanew + 4] == b"PE\0\0"
+}
+
+#[test]
+fn nhan_dien_pe() {
+    // Dựng một PE tối thiểu: MZ ở đầu, e_lfanew = 0x40, "PE  " tại 0x40.
+    let mut data = vec![0u8; 0x44];
+    data[0] = 0x4D; data[1] = 0x5A;                 // "MZ"
+    data[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes()); // e_lfanew = 0x40
+    data[0x40..0x44].copy_from_slice(b"PE\0\0");     // chữ ký PE
+    assert!(parse_pe_header(&data));
+
+    // Không phải PE / dữ liệu cụt -> false, không sập.
+    assert!(!parse_pe_header(b"MZ"));            // có MZ nhưng quá ngắn
+    assert!(!parse_pe_header(b"hello world"));   // sai chữ ký ngay từ đầu
+    assert!(!parse_pe_header(&[]));              // rỗng
+}
+```
+
+Điểm cốt lõi của phân tích định dạng nhị phân: **con trỏ trong dữ liệu là dữ liệu không tin được.** `e_lfanew` là một số *đọc từ tệp* — kẻ tấn công đặt nó bằng 0xFFFFFFFF thì `data[e_lfanew..]` sẽ tràn. Nên trước mỗi lần nhảy phải kiểm `e_lfanew + 4 > data.len()`. Cấu trúc "MZ đầu tệp, con trỏ tới PE ở 0x3C" là di sản lịch sử: mọi tệp .exe Windows vẫn mở đầu bằng một chương trình MS-DOS cổ in ra dòng chữ quen thuộc khi chạy ở chế độ DOS.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Kịch bản tấn công: IHL khai báo tiêu đề dài 60 byte nhưng gói chỉ có 20 byte. Nếu parser tin lời khai mà không kiểm, nó đọc ra ngoài vùng nhớ gói tin.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Chuyện xảy ra nếu parser không kiểm kích thước:**
+
+Trường IHL = 15 nghĩa là "tiêu đề dài 15 × 4 = 60 byte". Nếu parser tin con số này rồi làm `payload = &raw_bytes[60..]` trong khi gói tin thật chỉ có 20 byte, thì nó **đọc ra ngoài vùng nhớ của gói** — 40 byte không thuộc về nó.
+
+Trong **C/C++**, đây là thảm họa kinh điển: con trỏ chạy quá cuối bộ đệm, đọc trúng vùng nhớ bên cạnh. Hậu quả tùy nội dung vùng nhớ đó:
+- Đọc trúng dữ liệu của phiên khác -> **rò rỉ thông tin** (đúng cơ chế lỗ hổng Heartbleed năm 2014).
+- Con trỏ trỏ vào vùng chưa ánh xạ -> **sập tiến trình** (từ chối dịch vụ - DoS).
+- Kẻ tấn công gửi hàng loạt gói dị dạng như vậy -> **DoS quy mô lớn** với chi phí gần như bằng 0 cho bên tấn công.
+
+**Vì sao Rust chặn triệt để lỗi này:**
+
+1. **Kiểm biên tự động lúc chạy.** Nếu bạn *quên* kiểm và cứ `&raw_bytes[60..]` trên gói 20 byte, Rust **hoảng loạn (panic) và dừng an toàn** — không bao giờ đọc lén vùng nhớ kế bên. Tệ nhất là một cú sập *có kiểm soát*, không phải rò rỉ dữ liệu âm thầm.
+
+2. **Lát cắt (slice) mang theo độ dài.** `&[u8]` là con trỏ béo: luôn biết vùng nó bao phủ dài bao nhiêu. Không có "con trỏ trần" chạy tự do như C — mọi truy cập đều đối chiếu với độ dài đó.
+
+3. **Kiểu buộc bạn xử lý ca lỗi.** Chính hàm `parse_ipv4_packet` của chương này trả `Result` và có dòng `if raw_bytes.len() < header_length_bytes { return Err(...) }`. Cách *đúng* là biến gói dị dạng thành một `Err` tường minh mà người gọi phải xử lý — thay vì để nó âm thầm phá bộ nhớ.
+
+Nói gọn: trong C, lỗi này là **đọc lén vùng nhớ người khác** (bí mật, nguy hiểm); trong Rust, tệ nhất nó là **một panic có kiểm soát**, và nếu viết đúng thì chỉ là một `Err`. Rust không xóa được lỗi *logic* (quên kiểm), nhưng nó biến hậu quả từ "lỗ hổng bảo mật" thành "dừng an toàn".
+</details>

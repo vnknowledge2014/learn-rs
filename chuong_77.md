@@ -126,7 +126,7 @@ Chạy bằng `cargo run -p ch77`, kiểm thử bằng `cargo test -p ch77`.
 ```rust
 #![allow(dead_code)]
 //! Chương 77 — Chiến lược & Quản trị rủi ro thời gian thực: cổng rủi ro trước
-//! giao dịch, tín hiệu từ sổ lệnh, arbitrage thống kê theo cặp, định cỡ vị thế,
+//! deliver dịch, tín hiệu từ sổ lệnh, arbitrage thống kê theo cặp, định cỡ vị thế,
 //! và các thước đo rủi ro.
 //!
 //! Nguyên tắc xuyên suốt: **cổng rủi ro là thứ DUY NHẤT không được phép có
@@ -152,15 +152,15 @@ impl Side {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RejectReason {
-    SoLuongKhongDuong(Quantity),
-    GiaKhongDuong(Price),
+    NonPositiveQuantity(Quantity),
+    NonPositivePrice(Price),
     /// Ngón tay béo: giá lệch quá xa giá thị trường — gần như chắc chắn gõ nhầm.
-    NgonTayBeo { price: Price, tham_chieu: Price, lech_percent: f64 },
-    VuotGiaTriLenh { value: i64, tran: i64 },
-    VuotViThe { next_order: i64, tran: i64 },
-    VuotLoTrongNgay { lo: i64, tran: i64 },
-    VuotSoLenhMoiGiay { count: u32, tran: u32 },
-    CongTacTatDaBat,
+    NgonTayBeo { price: Price, reference: Price, lech_percent: f64 },
+    ExceedsOrderValue { value: i64, tran: i64 },
+    ExceedsPosition { next_order: i64, tran: i64 },
+    ExceedsDailyLoss { lo: i64, tran: i64 },
+    ExceedsOrderRate { count: u32, tran: u32 },
+    KillSwitchOn,
 }
 
 #[derive(Debug, Clone)]
@@ -232,31 +232,31 @@ impl RiskGate {
                        reference_price: Price, bay_gio_ns: u64) -> Result<(), RejectReason>
     {
         // Công tắc tắt xét ĐẦU TIÊN. Đã tắt thì không gì lọt qua được.
-        if self.switch_all { return Err(RejectReason::CongTacTatDaBat); }
-        if quantity <= 0 { return Err(RejectReason::SoLuongKhongDuong(quantity)); }
-        if price <= 0 { return Err(RejectReason::GiaKhongDuong(price)); }
+        if self.switch_all { return Err(RejectReason::KillSwitchOn); }
+        if quantity <= 0 { return Err(RejectReason::NonPositiveQuantity(quantity)); }
+        if price <= 0 { return Err(RejectReason::NonPositivePrice(price)); }
 
         // Ngón tay béo: gõ 8400 thành 84000 là chuyện xảy ra hằng năm
         if reference_price > 0 {
             let lech = (price - reference_price).abs() as f64 / reference_price as f64;
             if lech > self.limit.fat_finger_threshold {
-                return Err(RejectReason::NgonTayBeo { price, tham_chieu: reference_price,
+                return Err(RejectReason::NgonTayBeo { price, reference: reference_price,
                                                 lech_percent: lech * 100.0 });
             }
         }
 
         let value = price * quantity;
         if value > self.limit.max_order_value {
-            return Err(RejectReason::VuotGiaTriLenh { value, tran: self.limit.max_order_value });
+            return Err(RejectReason::ExceedsOrderValue { value, tran: self.limit.max_order_value });
         }
 
         let next_order = self.position + side.first() * quantity;
         if next_order.abs() > self.limit.max_position {
-            return Err(RejectReason::VuotViThe { next_order, tran: self.limit.max_position });
+            return Err(RejectReason::ExceedsPosition { next_order, tran: self.limit.max_position });
         }
 
         if self.realized_pnl < -self.limit.max_daily_loss {
-            return Err(RejectReason::VuotLoTrongNgay { lo: -self.realized_pnl,
+            return Err(RejectReason::ExceedsDailyLoss { lo: -self.realized_pnl,
                                                  tran: self.limit.max_daily_loss });
         }
 
@@ -267,7 +267,7 @@ impl RiskGate {
         }
         let count = self.window_order.len() as u32;
         if count >= self.limit.so_lenh_moi_giay_toi_da {
-            return Err(RejectReason::VuotSoLenhMoiGiay { count,
+            return Err(RejectReason::ExceedsOrderRate { count,
                                                    tran: self.limit.so_lenh_moi_giay_toi_da });
         }
         Ok(())
@@ -276,7 +276,7 @@ impl RiskGate {
     /// Ghi nhận một lần khớp — cập nhật vị thế, giá vốn và lãi/lỗ đã chốt.
     ///
     /// Điểm dễ sai nhất trong cả chương: lãi/lỗ KHÔNG phải dòng tiền của lệnh
-    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu mua vào ở 90,00 thì
+    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu bid vào ở 90,00 thì
     /// đó là một khoản LỖ. Muốn biết lãi hay lỗ, bắt buộc phải nhớ GIÁ VỐN.
     pub fn record_recv_fill(&mut self, side: Side, price: Price, quantity: Quantity) {
         let prev = self.position;
@@ -314,7 +314,7 @@ impl RiskGate {
 // ============================================================================
 
 /// Mất cân bằng khối lượng hai bên, chuẩn hoá về [-1, 1].
-/// Dương = áp lực mua. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
+/// Dương = áp lực bid. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
 pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return 0.0; }
@@ -322,7 +322,7 @@ pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
 }
 
 /// Giá vi mô: giá giữa có gia quyền theo khối lượng ĐỐI ỨNG.
-/// Nhiều người muốn mua → giá vi mô lệch về phía giá bán.
+/// Nhiều người muốn bid → giá vi mô lệch về phía giá bán.
 pub fn price_pos_open(price_buy: Price, qty_buy: u64, price_sell: Price, qty_sell: u64) -> Option<f64> {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return None; }
@@ -382,7 +382,7 @@ impl StatsWindow {
 // co, mà là quan hệ giữa hai mã ĐÃ GÃY HẲN mà ta không nhận ra.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SignalCap { MoDaiA, MoDaiB, Dong, KhongLam }
+pub enum SignalCap { OpenLongA, MoDaiB, Dong, KhongLam }
 
 pub struct ArbCap {
     pub proxy_ratio: f64, // beta: 1 đơn vị A ứng với bao nhiêu đơn vị B
@@ -421,12 +421,12 @@ impl ArbCap {
         match self.is_open {
             None => {
                 if z > self.threshold_in {
-                    // A đắt bất thường so với B → bán A, mua B
+                    // A đắt bất thường so với B → bán A, bid B
                     self.is_open = Some(SignalCap::MoDaiB);
                     SignalCap::MoDaiB
                 } else if z < -self.threshold_in {
-                    self.is_open = Some(SignalCap::MoDaiA);
-                    SignalCap::MoDaiA
+                    self.is_open = Some(SignalCap::OpenLongA);
+                    SignalCap::OpenLongA
                 } else { SignalCap::KhongLam }
             }
             Some(_) => {
@@ -459,13 +459,13 @@ pub fn fractional_kelly(xac_suat_thang: f64, ty_le_thang_thua: f64, part: f64) -
     (kelly_fraction(xac_suat_thang, ty_le_thang_thua) * part).clamp(0.0, 1.0)
 }
 
-/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì mua càng ít,
+/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì bid càng ít,
 /// sao cho rủi ro tính bằng tiền là như nhau ở mọi mã.
-pub fn has_theo_volatility(von: i64, bien_dong_muc_tieu: f64,
+pub fn has_theo_volatility(capital: i64, bien_dong_muc_tieu: f64,
                          volatility_default_peak: f64, price: Price) -> Quantity {
     if volatility_default_peak <= 0.0 || price <= 0 { return 0; }
     let ty_in = (bien_dong_muc_tieu / volatility_default_peak).min(1.0);
-    ((von as f64 * ty_in) / price as f64) as Quantity
+    ((capital as f64 * ty_in) / price as f64) as Quantity
 }
 
 // ============================================================================
@@ -513,20 +513,20 @@ pub fn risk_level(equity_curve: &[i64]) -> RiskOwned {
 // 6. SINH DỮ LIỆU TẤT ĐỊNH
 // ============================================================================
 
-/// Hai chuỗi giá đồng liên kết: chúng cùng đi theo một nhân tố chung, cộng
+/// Hai chuỗi giá đồng liên kết: chúng cùng đi theo một nhân tố shared, cộng
 /// thêm nhiễu riêng. Đây đúng là tình huống mà arbitrage cặp khai thác.
 pub fn gen_cap_price(n: usize, hat_giong: u64, beta: f64) -> (Vec<Price>, Vec<Price>) {
     let mut s = hat_giong;
-    let mut recv_to_chung = 10_000.0f64;
+    let mut shared_receiver = 10_000.0f64;
     let (mut a, mut b) = (Vec::with_capacity(n), Vec::with_capacity(n));
     for _ in 0..n {
         s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let e1 = ((s >> 33) % 201) as f64 - 100.0;
         let e2 = ((s >> 45) % 61) as f64 - 30.0;
         let e3 = ((s >> 20) % 61) as f64 - 30.0;
-        recv_to_chung += e1 * 0.1;
-        a.push((recv_to_chung + e2) as Price);
-        b.push(((recv_to_chung + e3) / beta) as Price);
+        shared_receiver += e1 * 0.1;
+        a.push((shared_receiver + e2) as Price);
+        b.push(((shared_receiver + e3) / beta) as Price);
     }
     (a, b)
 }
@@ -575,15 +575,15 @@ fn main() {
     println!("   Lệnh tiếp theo → {:?}",
              c3.check(Side::Buy, 8_400, 1, tc, 2_000_000_000).unwrap_err());
     c3.operator_flips_switch();
-    println!("   Người vận hành gỡ công tắc → giao dịch lại được: {}",
+    println!("   Người vận hành gỡ công tắc → deliver dịch lại được: {}",
              c3.check(Side::Buy, 8_400, 1, tc, 3_000_000_000).is_ok());
 
     println!("\n4. TÍN HIỆU TỪ SỔ LỆNH");
     for (m, b) in [(1000u64, 1000u64), (9000, 1000), (1000, 9000)] {
-        println!("   mua {:>4} / bán {:>4} → mất cân bằng {:>6.2} · giá vi mô {:>8.2}",
+        println!("   bid {:>4} / bán {:>4} → mất cân bằng {:>6.2} · giá vi mô {:>8.2}",
                  m, b, imbalance(m, b), price_pos_open(8_400, m, 8_410, b).unwrap());
     }
-    println!("   → Nhiều người chờ mua thì giá vi mô lệch LÊN phía giá bán.");
+    println!("   → Nhiều người chờ bid thì giá vi mô lệch LÊN phía giá bán.");
 
     println!("\n5. ARBITRAGE CẶP");
     let (ga, gb) = gen_cap_price(3_000, 2024, 1.5);
@@ -591,7 +591,7 @@ fn main() {
     let (mut entries, mut ra) = (0, 0);
     for i in 0..ga.len() {
         match arb.update(ga[i], gb[i]) {
-            SignalCap::MoDaiA | SignalCap::MoDaiB => entries += 1,
+            SignalCap::OpenLongA | SignalCap::MoDaiB => entries += 1,
             SignalCap::Dong => ra += 1,
             SignalCap::KhongLam => {}
         }
@@ -628,7 +628,7 @@ fn main() {
     }
     println!("   → Đường xóc lãi NHIỀU HƠN, nhưng Sharpe thấp hơn ~35 lần và có");
     println!("     những cú sụt 8.000 giữa đường. Phần lớn người sẽ bỏ cuộc trước khi");
-    println!("     nó kịp về đích — lợi nhuận trên giấy không phải lợi nhuận thu được.");
+    println!("     nó kịp về đích — lợi nhuận trên giấy không phải lợi nhuận attempt được.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   CHIẾN LƯỢC ĐƯỢC PHÉP SAI. CỔNG RỦI RO THÌ KHÔNG.         ");
@@ -677,32 +677,32 @@ mod tests {
     fn block_quantity_and_price_no_hop_le() {
         let mut c = sample_gate();
         assert_eq!(c.check(Side::Buy, 8_400, 0, 8_400, 1).unwrap_err(),
-                   RejectReason::SoLuongKhongDuong(0));
+                   RejectReason::NonPositiveQuantity(0));
         assert_eq!(c.check(Side::Buy, 8_400, -5, 8_400, 1).unwrap_err(),
-                   RejectReason::SoLuongKhongDuong(-5));
+                   RejectReason::NonPositiveQuantity(-5));
         assert_eq!(c.check(Side::Buy, 0, 10, 0, 1).unwrap_err(),
-                   RejectReason::GiaKhongDuong(0));
+                   RejectReason::NonPositivePrice(0));
     }
 
     #[test]
     fn blocks_oversized_notional() {
         let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 100_000, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotGiaTriLenh { .. }));
+                         RejectReason::ExceedsOrderValue { .. }));
     }
 
     #[test]
     fn block_exceed_cap_position_all_two_side() {
         let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 501, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotViThe { next_order: 501, tran: 500 }));
+                         RejectReason::ExceedsPosition { next_order: 501, tran: 500 }));
         assert!(matches!(c.check(Side::Sell, 8_400, 501, 8_400, 1).unwrap_err(),
-                         RejectReason::VuotViThe { next_order: -501, tran: 500 }),
-                "bán khống cũng phải bị chặn, không chỉ mua");
+                         RejectReason::ExceedsPosition { next_order: -501, tran: 500 }),
+                "bán khống cũng phải bị chặn, không chỉ bid");
     }
 
     #[test]
-    fn position_current_can_tinh_in_limit() {
+    fn current_position_counts_toward_the_limit() {
         let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_400, 400);
         assert!(c.check(Side::Buy, 8_400, 100, 8_400, 1).is_ok(), "400+100 = 500, vừa trần");
@@ -723,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn window_rate_truot_theo_time_time() {
+    fn the_rate_window_slides_with_time() {
         let mut c = sample_gate();
         for i in 0..5u64 {
             assert!(c.check(Side::Buy, 8_400, 1, 8_400, 1_000_000_000 + i).is_ok());
@@ -739,14 +739,14 @@ mod tests {
         c.enable_all_switches();
         // Kể cả lệnh hoàn toàn hợp lệ cũng không lọt
         assert_eq!(c.check(Side::Buy, 8_400, 1, 8_400, 1).unwrap_err(),
-                   RejectReason::CongTacTatDaBat);
+                   RejectReason::KillSwitchOn);
         assert!(c.da_tat(), "công tắc KHÔNG được tự tắt sau khi chặn");
         c.operator_flips_switch();
         assert!(c.check(Side::Buy, 8_400, 1, 8_400, 1).is_ok());
     }
 
     #[test]
-    fn lo_slow_cap_thi_from_enable_cong_tac_all() {
+    fn hitting_the_loss_cap_trips_the_kill_switch() {
         let mut c = RiskGate::new(LimitRisk { max_daily_loss: 10_000,
                                                  ..Default::default() });
         assert!(!c.da_tat());
@@ -757,12 +757,12 @@ mod tests {
     }
 
     #[test]
-    fn close_position_has_lai_thi_no_enable_cong_tac() {
+    fn a_profitable_close_does_not_trip_the_switch() {
         let mut c = RiskGate::new(LimitRisk { max_daily_loss: 10_000,
                                                  ..Default::default() });
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Sell, 8_500, 100);
-        assert_eq!(c.realized_pnl, 50_000, "mua 80.00 bán 85.00 → lãi");
+        assert_eq!(c.realized_pnl, 50_000, "bid 80.00 bán 85.00 → lãi");
         assert!(!c.da_tat());
         assert_eq!(c.position, 0);
     }
@@ -796,11 +796,11 @@ mod tests {
         c.record_recv_fill(Side::Sell, 9_000, 100);
         assert_eq!(c.position, -100);
         c.record_recv_fill(Side::Buy, 8_500, 100);
-        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 mua lại 85.00 → lãi");
+        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 bid lại 85.00 → lãi");
     }
 
     #[test]
-    fn open_add_same_side_thi_chua_show_thuc_hoa_pnl() {
+    fn adding_in_the_same_direction_realizes_nothing() {
         let mut c = sample_gate();
         c.record_recv_fill(Side::Buy, 8_000, 100);
         c.record_recv_fill(Side::Buy, 9_000, 100);
@@ -837,7 +837,7 @@ mod tests {
         let many_buy = price_pos_open(8_400, 9_000, 8_410, 1_000).unwrap();
         let many_sell = price_pos_open(8_400, 1_000, 8_410, 9_000).unwrap();
         let can_bang = price_pos_open(8_400, 1_000, 8_410, 1_000).unwrap();
-        assert!(many_buy > can_bang, "áp lực mua đẩy giá vi mô lên");
+        assert!(many_buy > can_bang, "áp lực bid đẩy giá vi mô lên");
         assert!(many_sell < can_bang, "áp lực bán kéo xuống");
         assert!((can_bang - 8_405.0).abs() < 1e-9, "cân bằng thì đúng giá giữa");
         assert!(many_buy > 8_400.0 && many_buy < 8_410.0, "luôn nằm trong chênh lệch");
@@ -850,7 +850,7 @@ mod tests {
 
     // ---------- Cửa sổ thống kê ----------
     #[test]
-    fn window_tinh_use_mean_and_do_lech() {
+    fn window_computes_mean_and_stddev_correctly() {
         let mut c = StatsWindow::new(5);
         for x in [2.0, 4.0, 4.0, 4.0, 5.0] { c.them(x); }
         assert!((c.mean() - 3.8).abs() < 1e-9);
@@ -860,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn old_window_truot_unit_value() {
+    fn the_sliding_window_drops_old_values() {
         let mut c = StatsWindow::new(3);
         for x in [1.0, 2.0, 3.0, 4.0, 5.0] { c.them(x); }
         assert_eq!(c.quantity(), 3);
@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn window_chua_data_two_point_thi_variance_table_no() {
+    fn fewer_than_two_points_gives_zero_variance() {
         let mut c = StatsWindow::new(10);
         assert_eq!(c.variance(), 0.0);
         c.them(5.0);
@@ -912,7 +912,7 @@ mod tests {
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
         // rồi một cú giãn mạnh
         let th = a.update(10_100, 10_000);
-        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A mua B");
+        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A bid B");
         assert_eq!(a.is_open, Some(SignalCap::MoDaiB));
     }
 
@@ -942,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    fn spread_tinh_use_theo_ratio_phong_proxy() {
+    fn the_spread_uses_the_correct_hedge_ratio() {
         let a = ArbCap::new(1.5, 10, 2.0, 0.5, 4.0);
         assert!((a.spread(15_000, 10_000) - 0.0).abs() < 1e-9);
         assert!((a.spread(15_150, 10_000) - 150.0).abs() < 1e-9);
@@ -978,10 +978,10 @@ mod tests {
     #[test]
     fn fractional_kelly_is_always_below_full_kelly() {
         for p in [0.55, 0.60, 0.75] {
-            let toan = kelly_fraction(p, 1.0);
+            let total = kelly_fraction(p, 1.0);
             let part = fractional_kelly(p, 1.0, 0.25);
-            assert!(part < toan);
-            assert!((part - toan * 0.25).abs() < 1e-9);
+            assert!(part < total);
+            assert!((part - total * 0.25).abs() < 1e-9);
         }
     }
 
@@ -993,17 +993,17 @@ mod tests {
 
     #[test]
     fn has_theo_volatility_down_when_volatility_up() {
-        let von = 1_000_000i64;
-        let a = has_theo_volatility(von, 0.10, 0.10, 100);
-        let b = has_theo_volatility(von, 0.10, 0.40, 100);
-        assert!(b < a, "mã dao động mạnh gấp 4 thì mua ít hơn hẳn");
+        let capital = 1_000_000i64;
+        let a = has_theo_volatility(capital, 0.10, 0.10, 100);
+        let b = has_theo_volatility(capital, 0.10, 0.40, 100);
+        assert!(b < a, "mã dao động mạnh gấp 4 thì bid ít hơn hẳn");
         assert_eq!(a, 10_000, "biến động khớp mục tiêu → dùng toàn bộ vốn");
         assert_eq!(b, 2_500, "gấp 4 lần biến động → 1/4 tỉ trọng");
     }
 
     #[test]
     fn vol_sizing_never_levers_beyond_capital() {
-        // Mã êm hơn mục tiêu KHÔNG được dẫn tới mua vượt vốn.
+        // Mã êm hơn mục tiêu KHÔNG được dẫn tới bid vượt vốn.
         let c = has_theo_volatility(1_000_000, 0.40, 0.05, 100);
         assert_eq!(c, 10_000, "tỉ trọng bị chặn ở 1.0, không dùng đòn bẩy ngầm");
     }
@@ -1129,36 +1129,36 @@ Hạn mức tĩnh có một vấn đề: chúng đúng cho điều kiện bình 
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct RuiRoThichUng {
-    pub han_muc_co_ban: i64,
+pub struct AdaptiveRisk {
+    pub base_limit: i64,
     pub he_so: f64,           // 0,25 → 1,0
-    pub chuoi_thang: u32,
-    pub chuoi_thua: u32,
+    pub win_streak: u32,
+    pub loss_streak: u32,
 }
 
-impl RuiRoThichUng {
+impl AdaptiveRisk {
     pub fn record(&mut self, pnl: i64) {
         if pnl > 0 {
-            self.chuoi_thang += 1;
-            self.chuoi_thua = 0;
+            self.win_streak += 1;
+            self.loss_streak = 0;
             // Nới CHẬM: cần 5 lần thắng liên tiếp mới tăng 10%
-            if self.chuoi_thang >= 5 {
+            if self.win_streak >= 5 {
                 self.he_so = (self.he_so * 1.1).min(1.0);
-                self.chuoi_thang = 0;
+                self.win_streak = 0;
             }
         } else if pnl < 0 {
-            self.chuoi_thua += 1;
-            self.chuoi_thang = 0;
+            self.loss_streak += 1;
+            self.win_streak = 0;
             // Thu NHANH: 3 lần thua liên tiếp là cắt 30%
-            if self.chuoi_thua >= 3 {
+            if self.loss_streak >= 3 {
                 self.he_so = (self.he_so * 0.7).max(0.25);
-                self.chuoi_thua = 0;
+                self.loss_streak = 0;
             }
         }
     }
 
-    pub fn han_muc_hien_tai(&self) -> i64 {
-        (self.han_muc_co_ban as f64 * self.he_so) as i64
+    pub fn current_limit(&self) -> i64 {
+        (self.base_limit as f64 * self.he_so) as i64
     }
 }
 ```
@@ -1178,13 +1178,13 @@ Cộng nhiều tín hiệu chỉ hữu ích nếu chúng **độc lập**. Hai t
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct ToHopTinHieu {
+pub struct SignalBlend {
     pub name: Vec<String>,
     pub weight: Vec<f64>,
     pub history: Vec<Vec<f64>>,   // lịch sử giá trị từng tín hiệu
 }
 
-impl ToHopTinHieu {
+impl SignalBlend {
     pub fn ket_hop(&mut self, value: &[f64]) -> f64 {
         for (i, v) in value.iter().enumerate() {
             if i < self.history.len() { self.history[i].push(*v); }

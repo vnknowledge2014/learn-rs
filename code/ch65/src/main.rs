@@ -14,15 +14,15 @@ pub enum Tang {
     VatLy = 1,
     LienKet = 2,   // Ethernet — địa chỉ MAC, trong một mạng LAN
     Mang = 3,      // IP — địa chỉ IP, định tuyến giữa các mạng
-    GiaoVan = 4,   // TCP/UDP — cổng, tin cậy
-    UngDung = 7,   // HTTP/DNS — ý nghĩa dữ liệu
+    Transport = 4,   // TCP/UDP — cổng, tin cậy
+    Application = 7,   // HTTP/DNS — ý nghĩa dữ liệu
 }
 
 impl fmt::Display for Tang {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t = match self {
             Tang::VatLy => "Vật lý", Tang::LienKet => "Liên kết",
-            Tang::Mang => "Mạng", Tang::GiaoVan => "Giao vận", Tang::UngDung => "Ứng dụng",
+            Tang::Mang => "Mạng", Tang::Transport => "Giao vận", Tang::Application => "Ứng dụng",
         };
         write!(f, "L{} {}", *self as u8, t)
     }
@@ -53,9 +53,9 @@ impl GoiTin {
 
 /// Dựng chồng giao thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
 pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
-    let http = GoiTin { tang: Tang::UngDung, header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
+    let http = GoiTin { tang: Tang::Application, header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
                         tai: du_lieu_ung_dung.to_vec() };
-    let tcp = http.boc(Tang::GiaoVan, vec![0u8; 20]);   // TCP header tối thiểu 20 byte
+    let tcp = http.boc(Tang::Transport, vec![0u8; 20]);   // TCP header tối thiểu 20 byte
     let ip = tcp.boc(Tang::Mang, vec![0u8; 20]);        // IPv4 header tối thiểu 20 byte
     ip.boc(Tang::LienKet, vec![0u8; 14])                // Ethernet header 14 byte
 }
@@ -68,25 +68,25 @@ pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
 pub enum TcpState {
     Dong,          // CLOSED
     Nghe,          // LISTEN
-    DaGuiSyn,      // SYN_SENT
+    SynSent,      // SYN_SENT
     DaNhanSyn,     // SYN_RECEIVED
     DaThietLap,    // ESTABLISHED
     ChoDong1,      // FIN_WAIT_1
     ChoDong2,      // FIN_WAIT_2
-    ChoCuoi,       // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
-    ChoDongThuDong,// CLOSE_WAIT
-    ChoXacNhanCuoi,// LAST_ACK
+    LastAck,       // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
+    CloseWait,// CLOSE_WAIT
+    TimeWait,// LAST_ACK
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpEvent {
-    MoChuDong,   // ứng dụng gọi connect()
-    MoThuDong,   // ứng dụng gọi listen()
+    ActiveOpen,   // ứng dụng gọi connect()
+    PassiveOpen,   // ứng dụng gọi listen()
     NhanSyn,
     NhanSynAck,
     NhanAck,
     NhanFin,
-    UngDungDong, // ứng dụng gọi close()
+    AppClose, // ứng dụng gọi close()
     HetGio,      // hết 2×MSL
 }
 
@@ -97,24 +97,24 @@ pub fn transfer_state(tt: TcpState, sk: TcpEvent) -> Option<TcpState> {
     use TcpState::*;
     Some(match (tt, sk) {
         // --- Mở kết nối: bắt tay ba bước ---
-        (Dong, MoChuDong)      => DaGuiSyn,      // gửi SYN
-        (Dong, MoThuDong)      => Nghe,
+        (Dong, ActiveOpen)      => SynSent,      // gửi SYN
+        (Dong, PassiveOpen)      => Nghe,
         (Nghe, NhanSyn)        => DaNhanSyn,     // gửi SYN+ACK
-        (DaGuiSyn, NhanSynAck) => DaThietLap,    // gửi ACK  ← bước 3
-        (DaGuiSyn, NhanSyn)    => DaNhanSyn,     // mở đồng thời (hiếm)
+        (SynSent, NhanSynAck) => DaThietLap,    // gửi ACK  ← bước 3
+        (SynSent, NhanSyn)    => DaNhanSyn,     // mở đồng thời (hiếm)
         (DaNhanSyn, NhanAck)   => DaThietLap,
 
         // --- Đóng chủ động: bắt tay bốn bước ---
-        (DaThietLap, UngDungDong) => ChoDong1,   // gửi FIN
+        (DaThietLap, AppClose) => ChoDong1,   // gửi FIN
         (ChoDong1, NhanAck)       => ChoDong2,
-        (ChoDong2, NhanFin)       => ChoCuoi,    // gửi ACK
-        (ChoDong1, NhanFin)       => ChoCuoi,    // đóng đồng thời
-        (ChoCuoi, HetGio)         => Dong,       // sau 2×MSL
+        (ChoDong2, NhanFin)       => LastAck,    // gửi ACK
+        (ChoDong1, NhanFin)       => LastAck,    // đóng đồng thời
+        (LastAck, HetGio)         => Dong,       // sau 2×MSL
 
         // --- Đóng thụ động ---
-        (DaThietLap, NhanFin)        => ChoDongThuDong, // gửi ACK
-        (ChoDongThuDong, UngDungDong)=> ChoXacNhanCuoi, // gửi FIN
-        (ChoXacNhanCuoi, NhanAck)    => Dong,
+        (DaThietLap, NhanFin)        => CloseWait, // gửi ACK
+        (CloseWait, AppClose)=> TimeWait, // gửi FIN
+        (TimeWait, NhanAck)    => Dong,
         _ => return None,
     })
 }
@@ -333,9 +333,9 @@ fn main() {
 
     println!("\n2. BẮT TAY BA BƯỚC");
     use TcpEvent::*;
-    let kq = run_session(TcpState::Dong, &[MoChuDong, NhanSynAck]);
-    println!("   Máy khách: Dong -SYN-> DaGuiSyn -SYN/ACK-> {:?}", kq.unwrap());
-    let kq = run_session(TcpState::Dong, &[MoThuDong, NhanSyn, NhanAck]);
+    let kq = run_session(TcpState::Dong, &[ActiveOpen, NhanSynAck]);
+    println!("   Máy khách: Dong -SYN-> SynSent -SYN/ACK-> {:?}", kq.unwrap());
+    let kq = run_session(TcpState::Dong, &[PassiveOpen, NhanSyn, NhanAck]);
     println!("   Máy chủ  : Dong -listen-> Nghe -SYN-> DaNhanSyn -ACK-> {:?}", kq.unwrap());
     println!("   Sự kiện sai: {:?}", run_session(TcpState::Dong, &[NhanAck]).unwrap_err());
 
@@ -375,8 +375,8 @@ fn main() {
 
     println!("\n6. DNS");
     let dns = DnsServer { sell_record: vec![
-        ("www.vidu.vn".into(), SellRecord::CNAME("may-owner.vidu.vn".into())),
-        ("may-owner.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
+        ("www.vidu.vn".into(), SellRecord::CNAME("may-chu.vidu.vn".into())),
+        ("may-chu.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
     ]};
     println!("   www.vidu.vn  → {:?}", dns.part_solve("www.vidu.vn"));
     println!("   khong-co.vn  → {:?}", dns.part_solve("khong-co.vn"));
@@ -414,24 +414,24 @@ mod tests {
 
     #[test]
     fn three_way_handshake_client_side() {
-        assert_eq!(run_session(Dong, &[MoChuDong, NhanSynAck]), Ok(DaThietLap));
+        assert_eq!(run_session(Dong, &[ActiveOpen, NhanSynAck]), Ok(DaThietLap));
     }
 
     #[test]
     fn three_way_handshake_server_side() {
-        assert_eq!(run_session(Dong, &[MoThuDong, NhanSyn, NhanAck]), Ok(DaThietLap));
+        assert_eq!(run_session(Dong, &[PassiveOpen, NhanSyn, NhanAck]), Ok(DaThietLap));
     }
 
     #[test]
     fn active_close_passes_through_time_wait() {
-        let kq = run_session(Dong, &[MoChuDong, NhanSynAck, UngDungDong, NhanAck, NhanFin]);
-        assert_eq!(kq, Ok(ChoCuoi), "phải dừng ở TIME_WAIT chứ không đóng ngay");
-        assert_eq!(transfer_state(ChoCuoi, HetGio), Some(Dong));
+        let kq = run_session(Dong, &[ActiveOpen, NhanSynAck, AppClose, NhanAck, NhanFin]);
+        assert_eq!(kq, Ok(LastAck), "phải dừng ở TIME_WAIT chứ không đóng ngay");
+        assert_eq!(transfer_state(LastAck, HetGio), Some(Dong));
     }
 
     #[test]
     fn passive_close_passes_through_close_wait() {
-        let kq = run_session(Dong, &[MoThuDong, NhanSyn, NhanAck, NhanFin, UngDungDong, NhanAck]);
+        let kq = run_session(Dong, &[PassiveOpen, NhanSyn, NhanAck, NhanFin, AppClose, NhanAck]);
         assert_eq!(kq, Ok(Dong));
     }
 

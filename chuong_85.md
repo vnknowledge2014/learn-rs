@@ -2679,43 +2679,43 @@ Ba triệu chứng đã gặp trong chính chương này, và cả ba đều đo
 
 ```rust
 #[derive(Debug, PartialEq)]
-pub enum CanhBao {
+pub enum HealthAlert {
     CongChanQuaNhieu { ratio: f64 },
     ChuDongQuaNhieu { passive_ratio: f64 },
     LenhTreoPhinhTo { so_lenh: usize },
     KhongCoKhopNao,
 }
 
-pub struct GiamSatSucKhoe {
-    pub nguong_chan: f64,
-    pub nguong_thu_dong: f64,
-    pub nguong_lenh_treo: usize,
+pub struct HealthMonitor {
+    pub block_threshold: f64,
+    pub passive_threshold: f64,
+    pub resting_threshold: usize,
 }
 
-impl GiamSatSucKhoe {
+impl HealthMonitor {
     pub fn typical() -> Self {
-        GiamSatSucKhoe { nguong_chan: 0.5, nguong_thu_dong: 0.5, nguong_lenh_treo: 200 }
+        HealthMonitor { block_threshold: 0.5, passive_threshold: 0.5, resting_threshold: 200 }
     }
 
-    pub fn check(&self, h: &Ecosystem) -> Vec<CanhBao> {
+    pub fn check(&self, h: &Ecosystem) -> Vec<HealthAlert> {
         let m = &h.metrics;
         let mut ra = Vec::new();
 
         // Triệu chứng ③+④: phơi nhiễm kẹt, cổng chặn gần như mọi thứ.
-        if m.intents > 100 && m.block_ratio() > self.nguong_chan {
-            ra.push(CanhBao::CongChanQuaNhieu { ratio: m.block_ratio() });
+        if m.intents > 100 && m.block_ratio() > self.block_threshold {
+            ra.push(HealthAlert::CongChanQuaNhieu { ratio: m.block_ratio() });
         }
         // Triệu chứng ⑤: nhà tạo lập đang cắt qua sổ.
-        if m.filled_qty > 0 && m.passive_ratio() < self.nguong_thu_dong {
-            ra.push(CanhBao::ChuDongQuaNhieu { passive_ratio: m.passive_ratio() });
+        if m.filled_qty > 0 && m.passive_ratio() < self.passive_threshold {
+            ra.push(HealthAlert::ChuDongQuaNhieu { passive_ratio: m.passive_ratio() });
         }
         // Triệu chứng ③: báo giá không bao giờ được rút.
         let resting = h.venue_lit.our_resting_orders().len();
-        if resting > self.nguong_lenh_treo {
-            ra.push(CanhBao::LenhTreoPhinhTo { so_lenh: resting });
+        if resting > self.resting_threshold {
+            ra.push(HealthAlert::LenhTreoPhinhTo { so_lenh: resting });
         }
         if m.orders_sent > 100 && m.fill_count == 0 {
-            ra.push(CanhBao::KhongCoKhopNao);
+            ra.push(HealthAlert::KhongCoKhopNao);
         }
         ra
     }
@@ -2745,7 +2745,7 @@ pub struct TheoDanBe {
     pub limit: Quantity,
     /// Thời điểm vào lệnh gần nhất — nền của giới hạn thời gian giữ.
     pub entered_at: Option<Nanos>,
-    pub thoi_gian_giu_toi_da_ns: Nanos,
+    pub max_hold_ns: Nanos,
 }
 
 impl TheoDanBe {
@@ -2755,7 +2755,7 @@ impl TheoDanBe {
             quantity: 10,
             limit,
             entered_at: None,
-            thoi_gian_giu_toi_da_ns: 50_000_000, // 50 ms
+            max_hold_ns: 50_000_000, // 50 ms
         }
     }
 }
@@ -2768,7 +2768,7 @@ impl Strategy for TheoDanBe {
         // không có giới hạn thời gian sẽ biến thành khoản đầu tư dài hạn
         // ngoài ý muốn.
         if let Some(t0) = self.entered_at {
-            if snap.timestamp.saturating_sub(t0) > self.thoi_gian_giu_toi_da_ns && position != 0 {
+            if snap.timestamp.saturating_sub(t0) > self.max_hold_ns && position != 0 {
                 self.entered_at = None;
                 let (side, level) = if position > 0 {
                     (Side::Sell, snap.lit_buy)
@@ -2789,7 +2789,7 @@ impl Strategy for TheoDanBe {
         let cl = match snap.cross_venue_bps() { Some(x) => x, None => return Vec::new() };
         if cl.abs() < self.threshold_bps { return Vec::new(); }
 
-        // Bể đắt hơn → dự báo sàn truyền thống sẽ đi LÊN → mua.
+        // Bể đắt hơn → dự báo sàn truyền thống sẽ đi LÊN → bid.
         let (side, level) = if cl > 0.0 { (Side::Buy, snap.lit_sell) } else { (Side::Sell, snap.lit_buy) };
         if (side == Side::Buy && position >= self.limit)
             || (side == Side::Sell && position <= -self.limit)

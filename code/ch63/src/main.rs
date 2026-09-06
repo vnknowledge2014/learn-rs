@@ -31,11 +31,11 @@ pub enum Filter { TatCa, ChuaXong, DaXong }
 /// Không có hành động nào ngoài danh sách này — trạng thái thay đổi có kiểm soát.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThongMessage {
-    ThemViec(String),
+    AddTask(String),
     BatTat(u64),
-    Xoa(u64),
-    DoiBoLoc(Filter),
-    XoaDaXong,
+    Remove(u64),
+    SetFilter(Filter),
+    ClearCompleted,
 }
 
 impl OpenImage {
@@ -48,7 +48,7 @@ impl OpenImage {
     /// suy luận, dễ kiểm thử, dễ ghi lại (undo/redo, ghi nhật ký, phát lại).
     pub fn update(mut self, td: ThongMessage) -> Self {
         match td {
-            ThongMessage::ThemViec(title) => {
+            ThongMessage::AddTask(title) => {
                 let t = title.trim();
                 if !t.is_empty() {
                     self.job.push(WorkPort {
@@ -62,13 +62,13 @@ impl OpenImage {
                     cv.done = !cv.done;
                 }
             }
-            ThongMessage::Xoa(id) => {
+            ThongMessage::Remove(id) => {
                 self.job.retain(|c| c.id != id);
             }
-            ThongMessage::DoiBoLoc(bl) => {
+            ThongMessage::SetFilter(bl) => {
                 self.filter = bl;
             }
-            ThongMessage::XoaDaXong => {
+            ThongMessage::ClearCompleted => {
                 self.job.retain(|c| !c.done);
             }
         }
@@ -98,7 +98,7 @@ impl OpenImage {
 #[derive(Debug, PartialEq)]
 pub enum ResultOrder {
     Ok(String),
-    Loi(String),
+    Failed(String),
 }
 
 pub trait BackendCommand {
@@ -122,11 +122,11 @@ impl BackendCommand for OrderSaveFile {
     fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
         let name = match param.get("ten") {
             Some(t) if !t.is_empty() => t,
-            _ => return ResultOrder::Loi("thiếu tên tệp".into()),
+            _ => return ResultOrder::Failed("thiếu tên tệp".into()),
         };
         // Chặn path traversal (Chương 57) — webview không được ghi ra ngoài thư mục app!
         if name.contains("..") || name.starts_with('/') {
-            return ResultOrder::Loi("đường dẫn không an toàn".into());
+            return ResultOrder::Failed("đường dẫn không an toàn".into());
         }
         ResultOrder::Ok(format!("đã lưu {}", name))
     }
@@ -146,7 +146,7 @@ impl IpcBridge {
     pub fn invoke(&self, name: &str, param: HashMap<String, String>) -> ResultOrder {
         match self.order.iter().find(|l| l.name() == name) {
             Some(l) => l.run(&param),
-            None => ResultOrder::Loi(format!("lệnh {:?} không được đăng ký", name)),
+            None => ResultOrder::Failed(format!("lệnh {:?} không được đăng ký", name)),
         }
     }
 }
@@ -158,13 +158,13 @@ fn main() {
 
     println!("\n1. KIẾN TRÚC TRẠNG THÁI (Elm/Redux) — mọi thay đổi qua `update`");
     let m = OpenImage::new()
-        .update(ThongMessage::ThemViec("Học Tauri".into()))
-        .update(ThongMessage::ThemViec("Viết ứng dụng".into()))
-        .update(ThongMessage::ThemViec("Đóng gói đa nền tảng".into()))
+        .update(ThongMessage::AddTask("Học Tauri".into()))
+        .update(ThongMessage::AddTask("Viết ứng dụng".into()))
+        .update(ThongMessage::AddTask("Đóng gói đa nền tảng".into()))
         .update(ThongMessage::BatTat(1)); // đánh dấu việc #1 xong
 
     println!("   Tổng công việc: {}, chưa xong: {}", m.job.len(), m.pending_count());
-    let m = m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong));
+    let m = m.update(ThongMessage::SetFilter(Filter::ChuaXong));
     println!("   Lọc 'chưa xong': {:?}", m.display().iter().map(|c| &c.title).collect::<Vec<_>>());
 
     println!("\n2. CẦU IPC — frontend (Svelte/JS) gọi backend (Rust)");
@@ -192,8 +192,8 @@ mod tests {
     #[test]
     fn add_task_increments_id() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()));
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()));
         assert_eq!(m.job.len(), 2);
         assert_eq!(m.job[0].id, 1);
         assert_eq!(m.job[1].id, 2);
@@ -202,14 +202,14 @@ mod tests {
     #[test]
     fn add_work_empty_is_unit_qua() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("   ".into()))
-            .update(ThongMessage::ThemViec("".into()));
+            .update(ThongMessage::AddTask("   ".into()))
+            .update(ThongMessage::AddTask("".into()));
         assert_eq!(m.job.len(), 0);
     }
 
     #[test]
     fn toggle_state() {
-        let m = OpenImage::new().update(ThongMessage::ThemViec("X".into()));
+        let m = OpenImage::new().update(ThongMessage::AddTask("X".into()));
         assert!(!m.job[0].done);
         let m = m.update(ThongMessage::BatTat(1));
         assert!(m.job[0].done);
@@ -220,16 +220,16 @@ mod tests {
     #[test]
     fn remove_and_clear_completed() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()))
-            .update(ThongMessage::ThemViec("C".into()))
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()))
+            .update(ThongMessage::AddTask("C".into()))
             .update(ThongMessage::BatTat(1))
             .update(ThongMessage::BatTat(3));
         // Xóa 1 việc cụ thể
-        let m2 = m.clone().update(ThongMessage::Xoa(2));
+        let m2 = m.clone().update(ThongMessage::Remove(2));
         assert_eq!(m2.job.len(), 2);
         // Xóa mọi việc đã xong (1 và 3)
-        let m3 = m.update(ThongMessage::XoaDaXong);
+        let m3 = m.update(ThongMessage::ClearCompleted);
         assert_eq!(m3.job.len(), 1);
         assert_eq!(m3.job[0].title, "B");
     }
@@ -237,12 +237,12 @@ mod tests {
     #[test]
     fn filter_shows_correct_items() {
         let m = OpenImage::new()
-            .update(ThongMessage::ThemViec("A".into()))
-            .update(ThongMessage::ThemViec("B".into()))
+            .update(ThongMessage::AddTask("A".into()))
+            .update(ThongMessage::AddTask("B".into()))
             .update(ThongMessage::BatTat(1)); // A xong
-        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::TatCa)).display().len(), 2);
-        assert_eq!(m.clone().update(ThongMessage::DoiBoLoc(Filter::DaXong)).display().len(), 1);
-        assert_eq!(m.update(ThongMessage::DoiBoLoc(Filter::ChuaXong)).display().len(), 1);
+        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::TatCa)).display().len(), 2);
+        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::DaXong)).display().len(), 1);
+        assert_eq!(m.update(ThongMessage::SetFilter(Filter::ChuaXong)).display().len(), 1);
     }
 
     #[test]
@@ -250,8 +250,8 @@ mod tests {
         // Vì update thuần túy, ta có thể PHÁT LẠI một chuỗi thông điệp để dựng
         // lại đúng trạng thái — nền của undo/redo và event sourcing (Chương 54).
         let history = vec![
-            ThongMessage::ThemViec("A".into()),
-            ThongMessage::ThemViec("B".into()),
+            ThongMessage::AddTask("A".into()),
+            ThongMessage::AddTask("B".into()),
             ThongMessage::BatTat(1),
         ];
         let dung = |list: &[ThongMessage]| list.iter().cloned().fold(OpenImage::new(), |m, td| m.update(td));
@@ -265,7 +265,7 @@ mod tests {
             .register(Box::new(SystemInfoRequest))
             .register(Box::new(OrderSaveFile));
         assert!(matches!(cau.invoke("thong_tin_he_thong", HashMap::new()), ResultOrder::Ok(_)));
-        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Loi(_)));
+        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Failed(_)));
     }
 
     #[test]
@@ -278,6 +278,6 @@ mod tests {
         let mut xau = HashMap::new();
         xau.insert("ten".into(), "../../../etc/passwd".to_string());
         // Cầu IPC chặn — webview KHÔNG được ghi ra ngoài thư mục app (bảo mật)
-        assert!(matches!(cau.invoke("luu_tep", xau), ResultOrder::Loi(_)));
+        assert!(matches!(cau.invoke("luu_tep", xau), ResultOrder::Failed(_)));
     }
 }

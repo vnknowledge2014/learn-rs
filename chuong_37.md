@@ -148,7 +148,7 @@ static READ_ONLY_STRING: &str = "Ban do bo nho Rust Masterclass";
 
 // Một hàm đơn giản nằm trong phân đoạn mã máy (.text)
 fn sample_target_function() {
-    println!("    [Execute] Ham muc tieu dang chay ben trong phan doan .text!");
+    println!("    [Execute] Ham muc tieu dang chay ben trong phan segment .text!");
 }
 
 // Hàm đệ quy mô phỏng việc đẩy nhiều khung ngăn xếp (Stack Frames) liên tiếp
@@ -189,18 +189,18 @@ fn main() {
 
     // 1. Phân đoạn Mã lệnh (.text)
     let text_addr = sample_target_function as fn() as usize;
-    println!("\n[1] Phan doan Ma may (.text segment):");
+    println!("\n[1] Phan segment Ma may (.text segment):");
     println!("    - Dia chi ham sample_target_function: 0x{:012x}", text_addr);
 
     // 2. Phân đoạn Dữ liệu (.data & .rodata)
     let data_addr = &GLOBAL_DATA_VAR as *const i32 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
-    println!("\n[2] Phan doan Du lieu toan cuc (.data & .rodata segments):");
+    println!("\n[2] Phan segment Du lieu toan cuc (.data & .rodata segments):");
     println!("    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
-    println!("    - Chuoi hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
+    println!("    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
-    println!("\n[3] Phan doan Vung nho dong (Heap segment):");
+    println!("\n[3] Phan segment Vung nho dong (Heap segment):");
     let heap_box_1 = Box::new(1000u64);
     let heap_box_2 = Box::new(2000u64);
     let heap_box_3 = Box::new(3000u64);
@@ -221,7 +221,7 @@ fn main() {
     }
 
     // 4. Phân đoạn Ngăn xếp (Stack segment)
-    println!("\n[4] Phan doan Ngan xep cuoc goi (Stack segment):");
+    println!("\n[4] Phan segment Ngan xep cuoc goi (Stack segment):");
     let main_stack_var: u64 = 42;
     println!(
         "    - Bien cuc bo trong ham main(): 0x{:012x}",
@@ -263,7 +263,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất khi lập trình v
 
 ```rust
 // Đoạn mã lỗi minh họa E0716:
-fn vi_du_loi_e0716() {
+fn e0716_broken() {
     // Lỗi: Chuỗi String được tạo ra tạm thời rồi lập tức bị giải phóng
     // let addr = String::from("Rust Security").as_ptr();
     // println!("Địa chỉ: {:p}", addr); // Sử dụng con trỏ trỏ vào vùng nhớ đã chết!
@@ -294,3 +294,112 @@ fn vi_du_dung_e0716() {
    Khởi tạo hai biến `Vec<u8>` có kích thước lần lượt là 64 bytes và 1024 bytes. Sử dụng phương thức `.as_ptr()` để in ra địa chỉ vùng đệm thực tế trên Heap của hai vector này. Nhận xét xem trình cấp phát bộ nhớ có đặt chúng liền kề nhau hay không.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Stack Overflow)**:  
    Nếu bạn viết một hàm đệ quy vô tận không có điểm dừng, chuyện gì sẽ xảy ra về mặt cơ chế bộ nhớ? Khi thanh ghi `RSP` đi xuống quá sâu và vượt qua giới hạn cho phép của hệ điều hành, tín hiệu lỗi nào sẽ được phát ra? Tại sao hệ điều hành không để Stack phát triển vô hạn?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+`&x as *const _ as usize` cho địa chỉ dưới dạng số. Khung ngăn xếp ít nhất bằng khoảng cách giữa địa chỉ cao nhất và thấp nhất, cộng kích thước biến ở địa chỉ cao nhất.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+fn do_khung_ngan_xep(x: u64, y: u64) {
+    let buffer = [0u8; 128];
+
+    let a_x = &x as *const u64 as usize;
+    let a_y = &y as *const u64 as usize;
+    let a_b = buffer.as_ptr() as usize;
+
+    println!("x      : {a_x:#x}");
+    println!("y      : {a_y:#x}");
+    println!("buffer : {a_b:#x}");
+
+    let cao = a_x.max(a_y).max(a_b);
+    let thap = a_x.min(a_y).min(a_b);
+    println!("khoảng cách cao-thấp : {} byte", cao - thap);
+    println!("khung tối thiểu      : ~{} byte", cao - thap + 8);
+}
+
+fn main() { do_khung_ngan_xep(1, 2); }
+```
+
+**Phép tính tối thiểu:** `8 (x) + 8 (y) + 128 (buffer) = 144 byte`. Nhưng con số thật bạn in ra thường **lớn hơn**, vì ba lý do:
+
+1. **Căn chỉnh 16 byte.** ABI System V yêu cầu con trỏ ngăn xếp căn theo 16 byte tại mỗi lời gọi hàm, nên 144 bị làm tròn lên 144 hoặc 160.
+2. **Con trỏ khung và địa chỉ trở về.** Mỗi lời gọi đẩy thêm ~16 byte mà mã của bạn không nhìn thấy.
+3. **Trình biên dịch có thể sắp xếp lại.** Ở bản `--release`, `x` và `y` có khả năng nằm hẳn trong thanh ghi và **không chiếm byte nào** trên ngăn xếp — lúc đó `&x` buộc trình biên dịch phải đổ chúng ra bộ nhớ chỉ để bạn lấy được địa chỉ.
+
+Điểm cần rút ra: bố cục ngăn xếp là **chi tiết cài đặt**, không phải hợp đồng. Rust không hứa gì về thứ tự biến trên ngăn xếp — và đó chính là lý do khai thác tràn bộ đệm kiểu cũ khó hơn nhiều trên mã hiện đại.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+`.as_ptr()` cho địa chỉ vùng đệm trên heap. So hai địa chỉ và tính khoảng cách — rồi so nó với kích thước bạn xin.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    let nho: Vec<u8> = vec![0; 64];
+    let lon: Vec<u8> = vec![0; 1024];
+
+    let a = nho.as_ptr() as usize;
+    let b = lon.as_ptr() as usize;
+
+    println!("nho (64B)   : {a:#x}");
+    println!("lon (1024B) : {b:#x}");
+    println!("khoảng cách : {} byte", a.abs_diff(b));
+    println!("liền kề?    : {}", a.abs_diff(b) == 64);
+}
+```
+
+**Nhận xét:** hai vùng đệm gần như **không bao giờ liền kề**. Khoảng cách thường là vài trăm tới vài nghìn byte, và không cố định giữa các lần chạy. Ba nguyên nhân:
+
+- **Trình cấp phát chia theo lớp kích thước.** Yêu cầu 64 byte và 1024 byte rơi vào hai *nhóm* khác nhau, phục vụ từ hai vùng khác nhau.
+- **Siêu dữ liệu xen giữa.** Mỗi khối cấp phát mang theo phần đầu ghi kích thước và trạng thái.
+- **ASLR.** Hệ điều hành ngẫu nhiên hoá địa chỉ nền của heap mỗi lần chạy, nên con số bạn thấy khác nhau mỗi lượt.
+
+Đây chính là điều làm heap khác ngăn xếp: **ngăn xếp có bố cục đoán được, heap thì không**. Kẻ tấn công khai thác tràn heap phải làm việc vất vả hơn nhiều — họ phải *phun* dữ liệu để tăng xác suất trúng, thay vì tính toạ độ chính xác như với ngăn xếp.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Ngăn xếp lớn xuống bằng cách giảm `RSP`. Hệ điều hành đặt một trang không có quyền truy cập ngay dưới đáy ngăn xếp. Chạm vào trang đó thì sao?
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Cơ chế xảy ra, theo đúng thứ tự:**
+
+```
+1. Mỗi lời gọi hàm đẩy khung mới -> RSP GIẢM dần
+2. Đệ quy vô tận -> RSP giảm không ngừng
+3. RSP vượt qua đáy vùng ngăn xếp và chạm TRANG BẢO VỆ
+       (guard page: một trang được ánh xạ với quyền = không gì cả)
+4. MMU phát hiện truy cập không hợp lệ -> ngắt lỗi trang
+5. Nhân hệ điều hành thấy địa chỉ nằm ngoài vùng hợp lệ
+       -> gửi tín hiệu SIGSEGV (Segmentation Fault) tới tiến trình
+6. Không có bộ xử lý tín hiệu -> tiến trình bị giết
+```
+
+Rust in ra `thread 'main' has overflowed its stack` **nhờ** trang bảo vệ đó — nó cài một bộ xử lý tín hiệu để đổi thông báo mờ mịt "SIGSEGV" thành câu tiếng người.
+
+**Vì sao hệ điều hành không cho ngăn xếp lớn vô hạn — ba lý do:**
+
+1. **Ngăn xếp phải liền mạch.** Khung hàm được truy cập bằng độ lệch cố định từ con trỏ khung; ngăn xếp mà rời rạc thì mọi phép tính đó sai. Muốn liền mạch thì phải đặt trước một vùng địa chỉ, và vùng đó phải có biên.
+2. **Nó là cơ chế phát hiện lỗi.** Đệ quy vô tận là *lỗi*. Ngăn xếp vô hạn biến một lỗi phát hiện ngay trong vài mili giây thành một tiến trình ngốn hết RAM của cả máy.
+3. **Đa luồng.** Mỗi luồng cần ngăn xếp riêng. Ngăn xếp 8 MB × 1000 luồng đã là 8 GB *vùng địa chỉ*. Cho phép lớn vô hạn thì không thể đặt trước chỗ cho luồng nào.
+
+Rust chống được tràn bộ đệm nhưng **không chống được tràn ngăn xếp** — đó là một lỗi *an toàn* (chương trình dừng có kiểm soát) chứ không phải lỗi *an toàn bộ nhớ*. Đệ quy sâu vẫn là thứ bạn phải tự lo, thường bằng cách chuyển sang vòng lặp với ngăn xếp tường minh trên heap.
+</details>

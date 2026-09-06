@@ -218,10 +218,10 @@ pub struct SharedBuffer { pub a: AtomicUsize, pub b: AtomicUsize }
 
 /// Đệm cho mỗi bộ đếm chiếm trọn một dòng cache riêng.
 #[repr(C, align(64))]
-pub struct CountHasCount { pub value: AtomicUsize, _dem: [u8; DONG_CACHE - 8] }
+pub struct CountHasCount { pub value: AtomicUsize, _count: [u8; DONG_CACHE - 8] }
 
 impl CountHasCount {
-    pub fn new() -> Self { CountHasCount { value: AtomicUsize::new(0), _dem: [0; DONG_CACHE - 8] } }
+    pub fn new() -> Self { CountHasCount { value: AtomicUsize::new(0), _count: [0; DONG_CACHE - 8] } }
 }
 
 #[repr(C)]
@@ -467,7 +467,7 @@ fn main() {
              bd.percentile(0.999), bd.max);
     println!("   — gấp {:.0} lần trung bình. (Phân vị là cận TRÊN của xô log.)",
              bd.max as f64 / bd.mean());
-    println!("   Trong giao dịch, chính CÁI ĐUÔI đó là lúc bạn mất tiền.");
+    println!("   Trong deliver dịch, chính CÁI ĐUÔI đó là lúc bạn mất tiền.");
 
     println!("\n2. CHIA SẺ GIẢ — kích thước quyết định tốc độ");
     println!("   BoDemChungDong: {} byte (hai bộ đếm CÙNG một dòng cache)",
@@ -489,9 +489,9 @@ fn main() {
 
     println!("\n4. BỂ ĐỐI TƯỢNG");
     let mut be: ObjectPool<OrderPacket> = ObjectPool::new(4);
-    let cac_i: Vec<usize> = (0..4).filter_map(|_| be.borrow()).collect();
+    let indices: Vec<usize> = (0..4).filter_map(|_| be.borrow()).collect();
     println!("   Mượn 4/4 → còn rảnh {} · mượn thêm → {:?}", be.con_ranh(), be.borrow());
-    be.tra(cac_i[0]);
+    be.tra(indices[0]);
     println!("   Trả 1 lại → còn rảnh {} · số lần hết bể = {}", be.con_ranh(), be.so_lan_het_be);
     println!("   Một GoiLenh = {} byte — vừa đúng một dòng cache",
              std::mem::size_of::<OrderPacket>());
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn two_buffer_split_close_no_position_chung_close_cache() {
+    fn padded_counters_never_share_a_line() {
         let b = BufferSplitClose { a: CountHasCount::new(), b: CountHasCount::new() };
         let dc_a = &b.a as *const _ as usize;
         let dc_b = &b.b as *const _ as usize;
@@ -799,8 +799,8 @@ mod tests {
     fn amdahl_bounds_the_speedup() {
         let ns = nanos_mau();
         // Xoá hẳn chặng 1500 ns khỏi tổng 2450 ns → còn 950 ns
-        let mong_doi = 2_450.0 / 950.0;
-        assert!((ns.max_speedup_if_node_removed() - mong_doi).abs() < 1e-9);
+        let expected = 2_450.0 / 950.0;
+        assert!((ns.max_speedup_if_node_removed() - expected).abs() < 1e-9);
         assert!(ns.max_speedup_if_node_removed() < 3.0,
                 "kể cả xoá sạch nút thắt cũng chỉ nhanh được ~2.6× — đó là định luật Amdahl");
     }
@@ -834,12 +834,12 @@ mod tests {
     #[test]
     fn gen_mau_has_use_three_region_latency() {
         let m = gen_mau_latency(100_000, 1);
-        let nhanh = m.iter().filter(|&&x| x < 1_000).count();
+        let fast = m.iter().filter(|&&x| x < 1_000).count();
         let vua = m.iter().filter(|&&x| (1_000..10_000).contains(&x)).count();
         let cham = m.iter().filter(|&&x| x >= 10_000).count();
-        assert!(nhanh > 95_000, "~99% phải nhanh, thực tế {}", nhanh);
+        assert!(fast > 95_000, "~99% phải nhanh, thực tế {}", fast);
         assert!(vua > 0 && cham > 0, "phải có cả đuôi vừa và đuôi dài");
-        assert_eq!(nhanh + vua + cham, m.len());
+        assert_eq!(fast + vua + cham, m.len());
     }
 }
 ```
@@ -882,14 +882,14 @@ mod tests {
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct VongNhieuDoc<T, const N: usize> {
+pub struct MultiReaderRing<T, const N: usize> {
     count: Vec<Option<T>>,
     record: u64,
     /// Mỗi người tiêu thụ giữ con trỏ riêng.
     doc: Vec<u64>,
 }
 
-impl<T: Clone, const N: usize> VongNhieuDoc<T, N> {
+impl<T: Clone, const N: usize> MultiReaderRing<T, N> {
     pub fn new(so_nguoi_doc: usize) -> Self {
         assert!(N.is_power_of_two(), "N phải là luỹ thừa của 2");
         Self {
@@ -900,10 +900,10 @@ impl<T: Clone, const N: usize> VongNhieuDoc<T, N> {
     }
 
     /// Rào chắn: người ghi bị chặn bởi NGƯỜI ĐỌC CHẬM NHẤT.
-    fn cham_nhat(&self) -> u64 { self.doc.iter().copied().min().unwrap_or(self.record) }
+    fn slowest(&self) -> u64 { self.doc.iter().copied().min().unwrap_or(self.record) }
 
     pub fn record(&mut self, value: T) -> bool {
-        if self.record - self.cham_nhat() >= N as u64 { return false; } // đầy
+        if self.record - self.slowest() >= N as u64 { return false; } // đầy
         let i = (self.record as usize) & (N - 1);
         self.count[i] = Some(value);
         self.record += 1;
@@ -942,10 +942,10 @@ impl<T: Clone, const N: usize> VongNhieuDoc<T, N> {
 ```rust
 use std::time::Instant;
 
-pub struct DongHoHieuChinh { chi_phi_ns: u64 }
+pub struct CalibratedClock { chi_phi_ns: u64 }
 
-impl DongHoHieuChinh {
-    pub fn hieu_chinh(samples: usize) -> Self {
+impl CalibratedClock {
+    pub fn calibrate(samples: usize) -> Self {
         let mut all_mau = Vec::with_capacity(samples);
         for _ in 0..samples {
             let t0 = Instant::now();

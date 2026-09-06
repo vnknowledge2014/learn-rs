@@ -66,8 +66,8 @@ impl FieldExtractor {
         // Tổng kiểm tra cũng tính SONG SONG bằng cây XOR — độ sâu log(n)
         // thay vì n bước cộng dồn như phần mềm.
         let account = xor_tree(&goi[..17]) & 0x00FF_FFFF;
-        let mong_doi = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
-        if account != mong_doi {
+        let expected = u32::from_be_bytes([0, goi[17], goi[18], goi[19]]);
+        if account != expected {
             self.so_goi_hong += 1;
             return Some(PacketField { is_valid: false, ..t });
         }
@@ -131,7 +131,7 @@ impl Default for OrderBookHardware {
 }
 
 impl OrderBookHardware {
-    /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
+    /// Bộ mã hoá ưu tiên: tìm mức bid có giá CAO nhất. Trên phần cứng đây là
     /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
@@ -295,7 +295,7 @@ pub fn software_latency_ns() -> f64 { 3_400.0 }
 // logic hay đổi thì nằm trên CPU.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExecutionUnit { PhanCung, PhanMem }
+pub enum ExecutionUnit { Hardware, PhanMem }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeavyStage {
@@ -309,7 +309,7 @@ pub struct HeavyStage {
 /// hàng chục phút, và một chiến lược không thử nghiệm được là chiến lược chết.
 pub fn partial_sum(c: &HeavyStage) -> ExecutionUnit {
     if c.on_hot_path && c.rate_swap <= 4 {
-        ExecutionUnit::PhanCung
+        ExecutionUnit::Hardware
     } else {
         ExecutionUnit::PhanMem
     }
@@ -522,7 +522,7 @@ mod tests {
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
             s.update(false, g, kl);
         }
-        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên bid lấy giá CAO nhất");
         assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
         assert_eq!(s.spread(), Some(10));
     }
@@ -707,7 +707,7 @@ mod tests {
     #[test]
     fn hot_and_stable_work_belongs_in_hardware() {
         let c = HeavyStage { name: "tách gói".into(), rate_swap: 1, on_hot_path: true };
-        assert_eq!(partial_sum(&c), ExecutionUnit::PhanCung);
+        assert_eq!(partial_sum(&c), ExecutionUnit::Hardware);
     }
 
     #[test]

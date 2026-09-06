@@ -4,7 +4,7 @@
 pub struct NutCay<T> {
     pub value: T,
     pub left: Option<Box<NutCay<T>>>,
-    pub must: Option<Box<NutCay<T>>>,
+    pub right: Option<Box<NutCay<T>>>,
 }
 
 impl<T> NutCay<T> {
@@ -12,7 +12,7 @@ impl<T> NutCay<T> {
         NutCay {
             value,
             left: None,
-            must: None,
+            right: None,
         }
     }
 }
@@ -51,7 +51,7 @@ impl<T: Ord> BinarySearchTree<T> {
                 if value < current.value {
                     Self::insert_recursive(&mut current.left, value)
                 } else if value > current.value {
-                    Self::insert_recursive(&mut current.must, value)
+                    Self::insert_recursive(&mut current.right, value)
                 } else {
                     // Giá trị đã tồn tại trong cây (không cho phép trùng lặp)
                     false
@@ -69,7 +69,7 @@ impl<T: Ord> BinarySearchTree<T> {
             } else if value < &nut.value {
                 pointer = &nut.left;
             } else {
-                pointer = &nut.must;
+                pointer = &nut.right;
             }
         }
         false
@@ -90,7 +90,7 @@ impl<T: Ord> BinarySearchTree<T> {
             // 2. Thu thập nút hiện tại
             ket_qua.push(&current.value);
             // 3. Duyệt toàn bộ cây con bên phải
-            Self::collect_in_order(&current.must, ket_qua);
+            Self::collect_in_order(&current.right, ket_qua);
         }
     }
 
@@ -104,7 +104,7 @@ impl<T: Ord> BinarySearchTree<T> {
             None => 0,
             Some(current) => {
                 let high_left = Self::recursive_height(&current.left);
-                let high_must = Self::recursive_height(&current.must);
+                let high_must = Self::recursive_height(&current.right);
                 1 + high_left.max(high_must)
             }
         }

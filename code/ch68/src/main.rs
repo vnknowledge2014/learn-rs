@@ -36,8 +36,8 @@ impl Vec2 {
         self.gate(den.subtract(self).nhan(t))
     }
     /// Phản xạ quanh pháp tuyến — quả bóng nảy khỏi tường.
-    pub fn part_remote(self, phap_tuyen: Vec2) -> Vec2 {
-        let n = phap_tuyen.normalize();
+    pub fn part_remote(self, normal: Vec2) -> Vec2 {
+        let n = normal.normalize();
         self.subtract(n.nhan(2.0 * self.dot(n)))
     }
 }
@@ -161,8 +161,8 @@ pub fn semi_implicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> Physi
 pub struct HopReport { pub min: Vec2, pub max: Vec2 }
 
 impl HopReport {
-    pub fn self_centered(tam: Vec2, nua_kich_thuoc: Vec2) -> HopReport {
-        HopReport { min: tam.subtract(nua_kich_thuoc), max: tam.gate(nua_kich_thuoc) }
+    pub fn self_centered(tam: Vec2, half_extent: Vec2) -> HopReport {
+        HopReport { min: tam.subtract(half_extent), max: tam.gate(half_extent) }
     }
     /// Định lý trục tách: hai hộp KHÔNG chạm nhau nếu tồn tại MỘT trục mà
     /// hình chiếu của chúng rời nhau. Với AABB chỉ cần thử 2 trục X và Y.
@@ -658,7 +658,7 @@ mod tests {
 
     // ---------- Băm không gian ----------
     #[test]
-    fn luoi_bam_cho_ket_qua_y_HET_vet_can() {
+    fn luoi_bam_cho_ket_qua_y_het_vet_can() {
         let hop: Vec<HopReport> = (0..200).map(|i| {
             let x = ((i * 37) % 100) as f32;
             let y = ((i * 53) % 100) as f32;

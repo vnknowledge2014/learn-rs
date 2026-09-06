@@ -222,20 +222,20 @@ pub fn of_vec<A>(a: A) -> Vec<A> { vec![a] }
 /// APPLICATIVE tích lũy lỗi — biến thể `Validation` (không phải Monad!).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Auth<T> {
-    Dat(T),
+    Set(T),
     Hong(Vec<String>),
 }
 impl<T> Auth<T> {
     pub fn mapping<U>(self, f: impl FnOnce(T) -> U) -> Auth<U> {
         match self {
-            Auth::Dat(x) => Auth::Dat(f(x)),
+            Auth::Set(x) => Auth::Set(f(x)),
             Auth::Hong(e) => Auth::Hong(e),
         }
     }
 }
 pub fn ap_auth<A, B>(ham: Auth<Box<dyn Fn(A) -> B>>, gt: Auth<A>) -> Auth<B> {
     match (ham, gt) {
-        (Auth::Dat(f), Auth::Dat(a)) => Auth::Dat(f(a)),
+        (Auth::Set(f), Auth::Set(a)) => Auth::Set(f(a)),
         (Auth::Hong(mut e1), Auth::Hong(e2)) => { e1.extend(e2); Auth::Hong(e1) }
         (Auth::Hong(e), _) => Auth::Hong(e),
         (_, Auth::Hong(e)) => Auth::Hong(e),
@@ -335,8 +335,8 @@ impl<T, U> Monoid<U> for Vec<T> {}
 /// Đây là câu trả lời của Fantasy Land cho việc Rust không tối ưu hóa lời gọi đuôi.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StepCont<A, B> {
-    TiepTuc(A),
-    Xong(B),
+    Continue(A),
+    Finished(B),
 }
 pub fn chain_rec_option<A, B>(
     first_block: A,
@@ -345,8 +345,8 @@ pub fn chain_rec_option<A, B>(
     let mut current = first_block;
     loop {
         match step(current)? {
-            StepCont::TiepTuc(a) => current = a, // vòng lặp, KHÔNG đệ quy
-            StepCont::Xong(b) => return Some(b),
+            StepCont::Continue(a) => current = a, // vòng lặp, KHÔNG đệ quy
+            StepCont::Finished(b) => return Some(b),
         }
     }
 }
@@ -463,7 +463,7 @@ fn main() {
     println!("20. Monad        = Applicative + Chain (siêu trait đánh dấu)");
 
     let luy_thua = chain_rec_option(( 1u64, 20u32), |(acc, remaining)| {
-        Some(if remaining == 0 { StepCont::Xong(acc) } else { StepCont::TiepTuc((acc * 2, remaining - 1)) })
+        Some(if remaining == 0 { StepCont::Finished(acc) } else { StepCont::Continue((acc * 2, remaining - 1)) })
     });
     println!("19. ChainRec     2^20 bằng vòng lặp        = {:?}", luy_thua);
 
@@ -513,9 +513,9 @@ mod luat {
         for x in [-5i64, 0, 7, 100] {
             let left = Ham::new(|a: i64| a + 1).compose_with(Ham::new(|a: i64| a * 2))
                           .compose_with(Ham::new(|a: i64| a - 3));
-            let must = Ham::new(|a: i64| a + 1)
+            let right = Ham::new(|a: i64| a + 1)
                           .compose_with(Ham::new(|a: i64| a * 2).compose_with(Ham::new(|a: i64| a - 3)));
-            assert_eq!(left.run(x), must.run(x));
+            assert_eq!(left.run(x), right.run(x));
         }
     }
 
@@ -663,8 +663,8 @@ mod luat {
     #[test] // 19. CHAINREC: chạy 1 TRIỆU vòng mà KHÔNG tràn ngăn xếp
     fn chainrec_does_not_overflow_the_stack() {
         let kq = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
-            Some(if remaining == 0 { StepCont::Xong(acc) }
-                 else { StepCont::TiepTuc((acc + 1, remaining - 1)) })
+            Some(if remaining == 0 { StepCont::Finished(acc) }
+                 else { StepCont::Continue((acc + 1, remaining - 1)) })
         });
         assert_eq!(kq, Some(1_000_000));
     }

@@ -48,8 +48,8 @@ let mut diem_so = 0;
 ### 3. Dán một tờ giấy mới đè lên vị trí cũ (Hiện tượng che khuất - Shadowing)
 Rust cho phép bạn khai báo lại một biến mới toanh có **cùng tên** với một biến cũ đã tồn tại bằng từ khóa `let`:
 ```rust
-let tien_luong = "5000000"; // Chuỗi văn bản
-let tien_luong = 5000000;   // Số nguyên thực tế
+let salary = "5000000"; // Chuỗi văn bản
+let salary = 5000000;   // Số nguyên thực tế
 ```
 Hiện tượng này giống như bạn có một chiếc bảng cũ, nhưng thay vì lau phấn, bạn lấy một tờ giấy dán tường mới tinh dán đè kín mít lên chiếc bảng đó. Từ nay về sau, khi ai đó nhắc đến "tờ giấy trên tường", họ chỉ nhìn thấy nội dung mới. Điều kỳ diệu là: tờ giấy mới có thể mang kiểu dáng, kích thước và màu sắc hoàn toàn khác biệt so với chiếc bảng cũ ban đầu!
 
@@ -158,12 +158,12 @@ fn main() {
 
     println!("\n=== 5. KIỂU LOGIC VÀ KÝ TỰ UNICODE ===");
     let dang_hoc_rust: bool = true;
-    let bieu_cam: char = '🎯'; // Ký tự Unicode chiếm trọn vẹn 4 bytes
-    let ky_tu_tieng_viet: char = 'Đ';
+    let emoji: char = '🎯'; // Ký tự Unicode chiếm trọn vẹn 4 bytes
+    let vietnamese_char: char = 'Đ';
 
     println!("Đang say mê học Rust? {}", dang_hoc_rust);
-    println!("Mục tiêu học tập    : {}", bieu_cam);
-    println!("Chữ cái tiếng Việt  : {}", ky_tu_tieng_viet);
+    println!("Mục tiêu học tập    : {}", emoji);
+    println!("Chữ cái tiếng Việt  : {}", vietnamese_char);
     println!("Kích thước char trên RAM: {} bytes", std::mem::size_of::<char>());
 
     println!("\n=== 6. ÉP KIỂU AN TOÀN VỚI TỪ KHÓA 'as' ===");
@@ -213,3 +213,96 @@ Hệ thống kiểu dữ liệu tĩnh nghiêm ngặt của Rust sẽ giúp bạn
    println!("Điểm mới: {}", diem_so);
    ```
    Hãy chỉ ra lỗi biên dịch sẽ xuất hiện và đưa ra 2 cách khác nhau để sửa cho đoạn mã này chạy thành công.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Khai báo bốn biến đúng kiểu, rồi in kèm `size_of_val(&bien)` để đo kích thước từng cái.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+fn main() {
+    let ten_may: &str = "Galaxy S24";     // chuỗi ký tự
+    let dung_luong_pin: u32 = 4000;        // mAh, số nguyên không âm
+    let trong_luong: f64 = 168.5;          // gam, số thực
+    let dang_bat_wifi: bool = true;        // logic đúng/sai
+
+    // size_of_val đo số byte một GIÁ TRỊ cụ thể chiếm trên RAM.
+    println!("Tên máy      : {ten_may} ({} byte)", std::mem::size_of_val(&ten_may));
+    println!("Pin          : {dung_luong_pin} mAh ({} byte)", std::mem::size_of_val(&dung_luong_pin));
+    println!("Trọng lượng  : {trong_luong} g ({} byte)", std::mem::size_of_val(&trong_luong));
+    println!("Bật Wifi     : {dang_bat_wifi} ({} byte)", std::mem::size_of_val(&dang_bat_wifi));
+}
+
+#[test]
+fn kich_thuoc_tung_kieu() {
+    assert_eq!(std::mem::size_of::<u32>(), 4);   // số nguyên 32 bit
+    assert_eq!(std::mem::size_of::<f64>(), 8);   // số thực 64 bit
+    assert_eq!(std::mem::size_of::<bool>(), 1);  // chỉ cần 1 byte cho đúng/sai
+    // &str là "con trỏ béo": địa chỉ + độ dài = 2 word = 16 byte trên máy 64-bit.
+    assert_eq!(std::mem::size_of::<&str>(), 16);
+}
+```
+
+Điểm bất ngờ đáng học: `bool` chỉ cần biểu diễn hai trạng thái nên về lý thuyết chỉ cần **1 bit**, nhưng Rust cấp cho nó **1 byte** — vì CPU đánh địa chỉ theo byte, không lấy lẻ từng bit được. Và `&str` chiếm tới 16 byte dù chỉ trỏ tới chuỗi, vì nó là **con trỏ béo**: mang theo cả địa chỉ *lẫn* độ dài.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Lớp tối đa 50 em: cần một kiểu chứa được số 50 và tiết kiệm nhất. So dải giá trị của từng kiểu.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Chọn `u8`.**
+
+Lý do, xét lần lượt:
+
+| Kiểu | Dải chứa được | Có hợp không? |
+|---|---|---|
+| `i8` | −128 … 127 | Chứa được 50, nhưng phí một nửa dải cho số âm — mà sĩ số không bao giờ âm |
+| **`u8`** | **0 … 255** | **Vừa khít: không âm, chứa thừa sức 50, chỉ tốn 1 byte** |
+| `i32` | ≈ ±2 tỷ | Chứa được nhưng tốn **4 byte** — phí gấp bốn lần |
+| `f64` | số thực | Sai bản chất: sĩ số là số nguyên, không có "37,5 học sinh"; lại tốn 8 byte |
+
+`u8` thắng vì hai lẽ khớp đúng bản chất dữ liệu: sĩ số **không bao giờ âm** (nên chọn `u` — unsigned), và **luôn nhỏ** (50 ≪ 255, nên 1 byte là đủ). Chọn kiểu là việc **mô tả đúng thế giới thật bằng kiểu hẹp nhất còn vừa** — vừa tiết kiệm RAM, vừa để trình biên dịch bắt lỗi giúp (gán 300 vào `u8` sẽ bị báo lỗi ngay, đúng như mong muốn với một sĩ số).
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Lỗi nằm ở tính **bất biến mặc định** của Rust: biến khai báo bằng `let` không cho gán lại.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Lỗi:** `cannot assign twice to immutable variable `diem_so`` — không được gán lại biến bất biến.
+
+Trong Rust, `let diem_so = 10;` tạo ra một biến **bất biến (immutable)** — đây là *mặc định*, khác hầu hết ngôn ngữ khác. Dòng `diem_so = diem_so + 5;` cố gán lại nên trình biên dịch chặn.
+
+**Cách sửa 1 — cho phép thay đổi bằng `mut`:**
+```text
+let mut diem_so = 10;   // mut = biến này sẽ đổi giá trị
+diem_so = diem_so + 5;  // giờ hợp lệ
+println!("Điểm mới: {diem_so}");   // in ra 15
+```
+
+**Cách sửa 2 — che biến (shadowing), tạo biến mới cùng tên:**
+```text
+let diem_so = 10;
+let diem_so = diem_so + 5;   // biến MỚI, che biến cũ; không cần mut
+println!("Điểm mới: {diem_so}");   // in ra 15
+```
+
+Khác biệt tinh tế đáng nhớ: cách 1 **sửa cùng một ô nhớ**; cách 2 **tạo ô nhớ mới** che tên cũ đi — nhờ vậy shadowing còn đổi được cả kiểu (ví dụ `let x = "10"; let x = x.len();`), điều mà `mut` không làm được. Việc Rust bắt bất biến làm mặc định là có chủ đích: phần lớn biến trong chương trình đúng đắn *không* cần thay đổi, và nói rõ điều đó giúp bắt lỗi sửa nhầm.
+</details>

@@ -62,10 +62,10 @@ Trong công viên có một phiến đá hoa cương ngàn năm tuổi khắc d�
 Hãy xem xét đoạn mã bị cấm sau đây để hiểu vì sao Rust lại cần cơ chế Lifetime:
 ```rust
 // RUST CHẶN ĐỨNG HÀM NÀY NGAY TỪ BƯỚC KIỂM TRA KIỂU VỚI LỖI E0106:
-fn tao_loi_chao_nguy_hiem() -> &String {
+fn make_greeting_unsafe() -> &String {
     let s = String::from("Chào bạn"); // s sinh ra trên Stack Frame của hàm này
     &s // Cố tình trả về địa chỉ của biến cục bộ s
-} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị thu hồi!
+} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị attempt hồi!
 ```
 Trong các ngôn ngữ như C/C++, trình biên dịch vẫn để bạn chạy đoạn mã trên, dẫn đến con trỏ trỏ vào vùng nhớ rác (Dangling Pointer) gây sập chương trình ngẫu nhiên.
 Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
@@ -80,7 +80,7 @@ Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
 
 Khi một hàm nhận vào **từ hai tham chiếu trở lên** và trả về một tham chiếu, trình biên dịch sẽ bối rối:
 ```rust
-fn tim_chuoi_dai_hon(x: &str, y: &str) -> &str {
+fn longer_of(x: &str, y: &str) -> &str {
     if x.len() > y.len() { x } else { y }
 }
 ```
@@ -88,7 +88,7 @@ Trình biên dịch không thể biết trước lúc chạy xem hàm sẽ trả
 
 Chúng ta giải quyết bằng cách thêm chú thích vòng đời `'a`:
 ```rust
-fn tim_chuoi_dai_hon<'a>(x: &'a str, y: &'a str) -> &'a str {
+fn longer_of<'a>(x: &'a str, y: &'a str) -> &'a str {
     if x.len() > y.len() { x } else { y }
 }
 ```
@@ -110,7 +110,7 @@ Chỉ khi nào hàm có **nhiều tham chiếu đầu vào** và **trả về m�
 
 Nếu bạn muốn tạo một `struct` không tự sở hữu dữ liệu mà chỉ mượn một phần dữ liệu từ nơi khác, bạn bắt buộc phải khai báo vòng đời cho struct đó:
 ```rust
-struct TrinhPhanTich<'a> {
+struct Parser<'a> {
     du_lieu_nguon: &'a str, // Struct này cam kết không sống lâu hơn du_lieu_nguon
 }
 ```
@@ -126,7 +126,7 @@ Chương trình dưới đây là một "Bộ phân tích cấu hình hệ thố
 // Ứng dụng thực chiến làm chủ Vòng đời (Lifetimes) trong Rust
 
 // 1. Hàm so sánh hai chuỗi và trả về chuỗi dài hơn
-// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng giao nhau giữa x và y
+// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng deliver nhau giữa x và y
 fn pick_longer_message<'a>(x: &'a str, y: &'a str) -> &'a str {
     if x.len() > y.len() {
         x
@@ -174,10 +174,10 @@ fn main() {
 
     // --- PHẦN 2: CHỨNG MINH TÍNH AN TOÀN TRƯỚC VÒNG ĐỜI NGẮN HƠN ---
     println!("\n2. Kiểm soát phạm vi sống lồng nhau an toàn:");
-    let chuoi_me = String::from("Dữ liệu bền vững của công ty");
+    let parent_string = String::from("Dữ liệu bền vững của công ty");
     {
         let series_con = String::from("Dữ liệu tạm");
-        let ket_qua_tam = pick_longer_message(chuoi_me.as_str(), series_con.as_str());
+        let ket_qua_tam = pick_longer_message(parent_string.as_str(), series_con.as_str());
         println!("- [Bên trong phạm vi con]: Kết quả chọn là: '{}'", ket_qua_tam);
         // ket_qua_tam chỉ được phép dùng bên trong dấu ngoặc nhọn này!
         // Nếu cố tình mang ket_qua_tam ra ngoài phạm vi con, compiler sẽ chặn đứng ngay!
@@ -185,18 +185,18 @@ fn main() {
 
     // --- PHẦN 3: STRUCT CHỨA THAM CHIẾU (ZERO-COPY) ---
     println!("\n3. Khởi tạo Struct chứa tham chiếu mượn không tốn RAM:");
-    let tap_tin_cau_hinh = String::from("TenUngDung: RustCloudServer, Phi: 49.99");
+    let config_file = String::from("TenUngDung: RustCloudServer, Phi: 49.99");
 
     // Lát cắt trích xuất tên ứng dụng trực tiếp từ chuỗi nguồn:
-    let name_cut_can = &tap_tin_cau_hinh[12..27];
+    let name_cut_can = &config_file[12..27];
 
-    let cau_hinh = SystemConfig {
+    let config = SystemConfig {
         name_resp_use: name_cut_can,
         phi_dich_vu: 49.99,
     };
 
-    cau_hinh.print_info();
-    println!("- Tên ứng dụng trích xuất qua getter: '{}'", cau_hinh.lay_ten());
+    config.print_info();
+    println!("- Tên ứng dụng trích xuất qua getter: '{}'", config.lay_ten());
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");
@@ -235,9 +235,96 @@ Dưới đây là các thông báo lỗi kinh điển về Lifetimes và cách k
 2. **Bài tập thực hành 2**: Viết một hàm mang tên `chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str` nhận vào hai tham chiếu lát cắt chuỗi (`&str`) và trả về tham chiếu của chuỗi có độ dài ngắn hơn (sử dụng phương thức `.len()`). Trong hàm `main`: tạo hai biến `String` có độ dài khác nhau, gọi hàm và in chuỗi ngắn hơn ra màn hình. Thử giải thích tại sao tham số vòng đời `<'a>` là bắt buộc trong chữ ký hàm này.
 3. **Bài tập sửa lỗi (Compiler fix)**: Đoạn mã sau bị lỗi biên dịch:
    ```rust
-   fn tao_chuoi() -> &str {
+   fn make_string() -> &str {
        let s = "Rustacean".to_string();
        &s
    }
    ```
    Hãy giải thích tại sao đoạn mã trên bị lỗi và đưa ra cách sửa tối ưu nhất.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Quy tắc rút gọn vòng đời (lifetime elision) tự lo được khi **chỉ có một tham chiếu đầu vào**. Rắc rối xuất hiện khi có **nhiều tham chiếu đầu vào mà lại trả về tham chiếu** — Rust không đoán được trả về mượn từ cái nào.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Xét từng hàm:
+
+**`fn in_loi_chao(ten: &str);` — Rust tự lo, KHÔNG cần viết `'a`.**
+Chỉ nhận một tham chiếu và *không trả về* tham chiếu nào. Không có gì để gắn vòng đời đầu ra vào, nên chẳng có mơ hồ.
+
+**`fn lay_ky_tu_dau(van_ban: &str) -> &str;` — Rust tự lo, KHÔNG cần viết `'a`.**
+Đúng một tham chiếu vào, một tham chiếu ra. Quy tắc rút gọn nói: đầu ra *phải* mượn từ đầu vào duy nhất đó. Không mơ hồ, Rust tự điền `'a` ngầm.
+
+**`fn ghep_ten(ho: &str, ten: &str) -> &str;` — BẮT BUỘC tự viết `'a`.**
+Hai tham chiếu vào, một tham chiếu ra. Rust không biết kết quả mượn từ `ho` hay từ `ten`, nên **từ chối đoán** và báo lỗi. Bạn phải nói rõ, ví dụ `fn ghep_ten<'a>(ho: &'a str, ten: &'a str) -> &'a str` — buộc cả hai đầu vào và đầu ra sống cùng một vòng đời.
+
+Nguyên tắc gọn: **rút gọn vòng đời chỉ hoạt động khi không có mơ hồ.** Một tham chiếu vào thì đầu ra chỉ có thể mượn từ nó; nhiều tham chiếu vào thì bạn phải tự chỉ định.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Vì trả về tham chiếu mượn từ *một trong hai* đầu vào, Rust cần bạn hứa cả hai đầu vào và đầu ra sống đủ lâu như nhau — đó là việc của `<'a>`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+// <'a> hứa: kết quả sống không lâu hơn ĐẦU VÀO NGẮN TUỔI NHẤT trong s1, s2.
+// Bắt buộc phải có, vì Rust không tự biết kết quả mượn từ s1 hay s2.
+fn chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str {
+    if s1.len() <= s2.len() { s1 } else { s2 }
+}
+
+fn main() {
+    let a = String::from("Rust");
+    let b = String::from("Ngôn ngữ lập trình");
+    println!("Ngắn hơn: {}", chon_chuoi_ngan_hon(&a, &b));
+}
+
+#[test]
+fn chon_dung_chuoi_ngan() {
+    assert_eq!(chon_chuoi_ngan_hon("Rust", "Programming"), "Rust");
+    assert_eq!(chon_chuoi_ngan_hon("abcdef", "xy"), "xy");
+}
+```
+
+**Vì sao `<'a>` bắt buộc ở đây:** hàm trả về một tham chiếu, nhưng nó có thể là `s1` *hoặc* `s2` — quyết định lúc chạy, tùy độ dài. Trình biên dịch cần một lời hứa ở *biên dịch* rằng tham chiếu trả về không sống lâu hơn dữ liệu nó trỏ tới. `<'a>` buộc cả hai đầu vào và đầu ra chung một vòng đời, nên kết quả bị ràng buộc sống không quá cái đầu vào chết sớm hơn. Không có nó, bạn có thể trả về tham chiếu tới một chuỗi đã bị hủy — đúng loại lỗi mà chương này dạy cách chặn.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Lỗi kinh điển: trả về tham chiếu tới một biến **cục bộ** sẽ bị hủy ngay khi hàm kết thúc. Sửa bằng cách **trả về giá trị sở hữu** (`String`) thay vì tham chiếu.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao lỗi:** `s` là biến cục bộ, bị **hủy khi hàm kết thúc**. Trả về `&s` là trả về tham chiếu tới vùng nhớ vừa bị giải phóng — một con trỏ treo (dangling reference). Rust chặn ngay với lỗi `cannot return reference to local variable `s``.
+
+```text
+fn make_string() -> &str {        // trả về &str, nhưng mượn từ đâu?
+    let s = "Rustacean".to_string();  // s sinh ra trong hàm...
+    &s                                 // ...và CHẾT ở dấu } cuối hàm -> treo
+}
+```
+
+**Cách sửa tối ưu — trả về `String` sở hữu, không phải tham chiếu:**
+```rust
+fn make_string() -> String {
+    "Rustacean".to_string()   // chuyển quyền sở hữu RA NGOÀI cho người gọi
+}
+```
+
+Giờ chuỗi không chết cùng hàm — **quyền sở hữu của nó được chuyển ra** cho người gọi, và nó sống tiếp bao lâu người gọi cần. Đây là hướng giải quyết đúng: khi dữ liệu được *tạo ra bên trong hàm*, hàm nên **trả nó đi** (sở hữu), chứ không cho mượn thứ mình sắp hủy. Chỉ trả về tham chiếu khi dữ liệu *đã tồn tại từ trước* ở một trong các đầu vào.
+</details>
