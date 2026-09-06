@@ -17,7 +17,7 @@ fn main() {
     let level_spend = "Làm chủ bộ nhớ và hệ thống";
     println!("Học viên [{}] đặt mục tiêu: [{}]", nguoi_hoc, level_spend);
 
-    // 4. Các kỹ thuật định dạng văn bản nâng high với println!
+    // 4. Các kỹ thuật định dạng văn bản nâng cao với println!
     // In số với khoảng cách căn lề cố định (rất hữu ích khi in bảng biểu dữ liệu)
     println!("------------------------------------------------------------");
     println!("| {:<15} | {:<20} | {:>10} |", "MÃ CHƯƠNG", "CHỦ ĐỀ HỌC", "TRẠNG THÁI");

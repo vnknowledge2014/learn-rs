@@ -195,7 +195,7 @@ pub fn sang_nguyen_to(n: usize) -> Vec<usize> {
     (2..=n).filter(|&k| la_nt[k]).collect()
 }
 
-/// Lũy thừa modulo fast (fast modular exponentiation) — nền của mật mã RSA.
+/// Lũy thừa modulo nhanh (fast modular exponentiation) — nền của mật mã RSA.
 /// Tính (has_num^so_mu) % modulo trong O(log so_mu).
 pub fn mod_pow(mut has_num: u64, mut so_mu: u64, modulo: u64) -> u64 {
     if modulo == 1 { return 0; }

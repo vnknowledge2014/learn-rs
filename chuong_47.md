@@ -390,3 +390,108 @@ fn parse_response_time(raw_text: &str) -> u32 {
 ```
 Hãy viết lại hàm trên theo phong cách an toàn, trả về kiểu `Option<u32>` hoặc `Result<u32, &'static str>` để bảo vệ công cụ CLI không bao giờ bị dừng đột ngột.
 *(Gợi ý: Dùng `raw_text.parse::<u32>().ok()`)*.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Bước triển khai một cờ mới đi theo trình tự: thêm trường vào struct cấu hình, phân tích cờ trong hàm parse, rồi áp bộ lọc vào luồng phân tích. Nêu rõ từng bước cho AI.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**Các bước yêu cầu AI triển khai cờ `--ip-filter <IP_ADDRESS>`:**
+
+Chia thành các bước nhỏ, kiểm chứng được từng bước — thay vì một câu lệnh mơ hồ "thêm lọc theo IP":
+
+1. **Mở rộng `struct CliConfig`.** Thêm trường `pub ip_filter: Option<String>` (dùng `Option` vì cờ này *không bắt buộc* — không có cờ nghĩa là không lọc). Yêu cầu AI: "thêm đúng một trường, không đổi các trường khác".
+
+2. **Cập nhật `parse_from_args`.** Khi gặp chuỗi `--ip-filter`, đọc *đối số kế tiếp* làm giá trị IP và gán vào `ip_filter = Some(...)`. Xử lý ca lỗi: nếu `--ip-filter` là đối số cuối cùng (thiếu giá trị đi kèm) -> trả `Err("--ip-filter cần một địa chỉ IP")`. Nhấn mạnh: "không dùng `.unwrap()` khi lấy đối số kế tiếp".
+
+3. **Áp bộ lọc trong luồng phân tích.** Tại nơi duyệt các `LogEntry`, nếu `config.ip_filter` là `Some(ip)` thì chỉ giữ các mục có địa chỉ IP khớp; nếu là `None` thì giữ tất cả (giữ nguyên hành vi cũ). Yêu cầu AI: "khi ip_filter là None, kết quả phải y hệt như trước khi thêm tính năng" — đây là ràng buộc *không phá vỡ hành vi cũ*.
+
+4. **Thêm test.** Ít nhất hai: một có `--ip-filter` (chỉ mục khớp IP được đếm) và một không có cờ (mọi mục được đếm, như cũ).
+
+**Vì sao mô tả theo bước lại quan trọng khi làm với AI:** một câu "thêm lọc theo IP" để AI tự đoán cả bốn quyết định trên — kiểu trường (`String` hay `Option<String>`?), xử lý cờ thiếu giá trị (unwrap hay Err?), hành vi khi không có cờ (lọc rỗng hay giữ tất cả?). Mỗi chỗ đoán sai là một lỗi. Chia nhỏ và nêu rõ ràng buộc ở từng bước biến việc "hy vọng AI đoán đúng" thành "kiểm tra AI làm đúng từng phần".
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+JSON thủ công chỉ là ghép chuỗi đúng cú pháp: dấu ngoặc nhọn, khóa trong nháy kép, dấu phẩy giữa các cặp, số không cần nháy. Cẩn thận thoát ký tự đặc biệt trong chuỗi.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+pub struct LogSummary {
+    pub total_requests: usize,
+    pub server_errors: usize,
+    pub client_errors: usize,
+    pub total_bytes: u64,
+}
+
+impl LogSummary {
+    /// Xuất JSON hợp lệ THỦ CÔNG (không dùng serde) bằng cách ghép chuỗi đúng cú pháp.
+    pub fn to_json_string(&self) -> String {
+        // Số KHÔNG bọc nháy; khóa LUÔN bọc nháy kép; dấu phẩy giữa các cặp,
+        // KHÔNG có dấu phẩy sau cặp cuối (JSON không cho phép phẩy thừa).
+        format!(
+            "{{\"total_requests\":{},\"server_errors\":{},\"client_errors\":{},\"total_bytes\":{}}}",
+            self.total_requests, self.server_errors, self.client_errors, self.total_bytes
+        )
+    }
+}
+
+#[test]
+fn xuat_json_hop_le() {
+    let s = LogSummary { total_requests: 100, server_errors: 3, client_errors: 12, total_bytes: 2048 };
+    assert_eq!(
+        s.to_json_string(),
+        r#"{"total_requests":100,"server_errors":3,"client_errors":12,"total_bytes":2048}"#
+    );
+}
+```
+
+Mấy quy tắc cú pháp JSON mà việc ghép tay buộc bạn nhớ chính xác: **`{` và `}` phải nhân đôi trong `format!`** (`{{` `}}`) vì chúng là ký tự đặc biệt của macro; **khóa luôn bọc nháy kép**, còn **số thì không**; **dấu phẩy nằm *giữa* các cặp, không có phẩy sau cặp cuối** — lỗi "phẩy thừa" (trailing comma) là lỗi JSON thủ công phổ biến nhất.
+
+Một cảnh báo thực tế quan trọng: cách ghép chuỗi này **chỉ an toàn khi giá trị là số** (như ở đây). Nếu một trường là **chuỗi do người dùng nhập**, bạn *bắt buộc* phải thoát các ký tự đặc biệt (`"`, `\`, xuống dòng) trước khi nhét vào — nếu không, một giá trị chứa dấu `"` sẽ phá vỡ cú pháp JSON, thậm chí mở đường cho tiêm dữ liệu. Đây chính là lý do ngoài đời người ta dùng `serde_json`: nó lo phần thoát ký tự đúng đắn. Ghép tay chỉ nên dùng cho đầu ra toàn số, có kiểm soát như báo cáo này.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+`.unwrap()` trên `parse` làm sập khi gặp chuỗi không phải số. Gợi ý của đề: `.parse().ok()` biến `Result` thành `Option` — hỏng thì thành `None`, không sập.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Nguyên nhân sập:** `.parse::<u32>()` trả về `Result`. Với đầu vào như `"N/A"` hay chuỗi rỗng, nó trả `Err`, và `.unwrap()` trên `Err` **gây hoảng loạn (panic)** — cả công cụ CLI dừng đột ngột chỉ vì một dòng log dị dạng.
+
+**Cách sửa an toàn — trả `Option<u32>`, hỏng thì `None`:**
+```rust
+fn parse_response_time(raw_text: &str) -> Option<u32> {
+    // .ok() biến Result thành Option: Ok(n) -> Some(n), Err(_) -> None.
+    // Không bao giờ sập, dù đầu vào là "N/A", rỗng, hay rác.
+    raw_text.trim().parse::<u32>().ok()
+}
+
+#[test]
+fn phan_tich_an_toan_khong_sap() {
+    assert_eq!(parse_response_time("120"), Some(120));
+    assert_eq!(parse_response_time("N/A"), None);    // không sập
+    assert_eq!(parse_response_time(""), None);       // không sập
+    assert_eq!(parse_response_time("  55  "), Some(55)); // trim khoảng trắng
+}
+```
+
+`.ok()` là cây cầu gọn nhất từ `Result` sang `Option` khi bạn **không quan tâm *lý do* hỏng, chỉ cần biết có giá trị hay không**. Ở đây điều đó hợp lý: một dòng log ghi `"N/A"` không phải lỗi cần báo cáo, chỉ là "dòng này không có thời gian phản hồi" — bỏ qua là đúng.
+
+Người gọi giờ nhận `Option<u32>` và *buộc* phải xử lý ca `None` (ví dụ bỏ qua dòng đó khi tính trung bình), thay vì bị sập bất ngờ. Đây là nguyên tắc vàng cho công cụ xử lý **dữ liệu bên ngoài không tin được** (log, đầu vào người dùng, phản hồi mạng): **không bao giờ `.unwrap()` trên dữ liệu bạn không kiểm soát** — luôn biến khả năng hỏng thành `Option`/`Result` để chương trình *chọn cách* phản ứng thay vì chết. Đây cũng là lỗi AI sinh mã hay mắc nhất: `.unwrap()` rải khắp nơi vì nó "cho code ngắn", cho tới khi gặp dữ liệu thật.
+</details>

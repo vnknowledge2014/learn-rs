@@ -284,8 +284,8 @@ fn main() {
     println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
     assert_eq!(distance_to_c, None);
 
-    // 3. Kiểm thử Thuật toán Sắp xếp fast Quicksort
-    println!("\n[3] Kiểm thử Thuật toán Sắp xếp fast Quicksort tại chỗ:");
+    // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
+    println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
     let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
     println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
     quicksort(&mut mang_so);
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn word_frequency_count() {
-        let bang = thong_ke_from_region("rust rust an total rust");
+        let bang = thong_ke_from_region("rust rust an toan rust");
         assert_eq!(bang.get("rust"), Some(&3));
         assert_eq!(bang.get("an"), Some(&1));
         assert_eq!(bang.get("khong-co"), None);

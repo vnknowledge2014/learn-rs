@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 //! Chương 76 — Ghi & Phát lại phiên giao dịch: định dạng bản ghi, đồng hồ ảo,
-//! phát lại đúng dòng thời gian hoặc tua fast, mô hình độ trễ, và mô phỏng
+//! phát lại đúng dòng thời gian hoặc tua nhanh, mô hình độ trễ, và mô phỏng
 //! khớp lệnh có xét vị trí hàng đợi.
 //!
 //! Đây là "phòng thí nghiệm" của mọi đội giao dịch nghiêm túc: ghi lại phiên
@@ -150,7 +150,7 @@ fn decode_event(b: &[u8]) -> Result<EventMarket, ErrorRead> {
 // ============================================================================
 // Điều kiện sống còn: chiến lược KHÔNG ĐƯỢC gọi đồng hồ hệ thống. Nó chỉ được
 // hỏi đồng hồ ảo do bộ phát lại điều khiển. Nhờ vậy hai lần chạy trên cùng dữ
-// liệu cho ra kết quả giống hệt nhau, bất kể máy fast hay chậm.
+// liệu cho ra kết quả giống hệt nhau, bất kể máy nhanh hay chậm.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VirtualClock { pub bay_gio_ns: u64 }
@@ -166,7 +166,7 @@ impl VirtualClock {
 pub enum ReplaySpeed {
     /// Đúng nhịp thật: giữ nguyên khoảng cách giữa các sự kiện.
     RealTime,
-    /// Nhân tốc độ: 2.0 = fast gấp đôi, 0.5 = chậm một nửa (để quan sát kỹ).
+    /// Nhân tốc độ: 2.0 = nhanh gấp đôi, 0.5 = chậm một nửa (để quan sát kỹ).
     HeSo(f64),
     /// Bỏ hẳn thời gian chờ — dùng khi quét tham số hàng nghìn lần.
     AsFastAsPossible,
@@ -186,7 +186,7 @@ impl ReplaySpeed {
 // ============================================================================
 // 3. MÔ HÌNH ĐỘ TRỄ — lệnh của ta KHÔNG tới nơi tức thì
 // ============================================================================
-// Bỏ qua độ trễ là cách fast nhất để dựng ra một chiến lược "thắng" trên
+// Bỏ qua độ trễ là cách nhanh nhất để dựng ra một chiến lược "thắng" trên
 // giấy rồi thua tiền thật. Ở tốc độ HFT, 50 µs là đủ để cơ hội biến mất.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -225,7 +225,7 @@ impl LatencyModel {
 
 #[derive(Debug, Default, Clone)]
 pub struct ReducedBook {
-    buy: BTreeMap<Price, u64>, // khoá ÂM → giá high nhất trước
+    buy: BTreeMap<Price, u64>, // khoá ÂM → giá cao nhất trước
     ban: BTreeMap<Price, u64>,
 }
 
@@ -648,16 +648,16 @@ fn main() {
     println!("\n3. TỐC ĐỘ PHÁT LẠI");
     let mut cl = UseOut;
     for (name, td) in [("thời gian thực", ReplaySpeed::RealTime),
-                      ("fast 10 lần  ", ReplaySpeed::HeSo(10.0)),
-                      ("fast 1000 lần", ReplaySpeed::HeSo(1000.0)),
-                      ("fast nhất    ", ReplaySpeed::AsFastAsPossible)] {
+                      ("nhanh 10 lần  ", ReplaySpeed::HeSo(10.0)),
+                      ("nhanh 1000 lần", ReplaySpeed::HeSo(1000.0)),
+                      ("nhanh nhất    ", ReplaySpeed::AsFastAsPossible)] {
         let kq = Replayer::new(LatencyModel::no_latency(), td).run(&session, &mut cl);
         println!("   {} → thời gian ảo {:.2}s · phải chờ thật {:.4}s",
                  name, kq.time_time_ao_nanos as f64 / 1e9, kq.real_wait_nanos as f64 / 1e9);
     }
     println!("   → Quét 1000 tổ hợp tham số: chạy đúng nhịp mất ~{:.0} phút,",
              record.time_amount_nanos() as f64 / 1e9 * 1000.0 / 60.0);
-    println!("     chạy ở chế độ fast nhất chỉ mất vài giây.");
+    println!("     chạy ở chế độ nhanh nhất chỉ mất vài giây.");
 
     println!("\n4. ĐỘ TRỄ ĂN MẤT LỢI NHUẬN NHƯ THẾ NÀO");
     for (name, dt) in [("không độ trễ  ", LatencyModel::no_latency()),
@@ -823,7 +823,7 @@ mod tests {
 
     #[test]
     fn fast_forward_must_not_change_results() {
-        // Tua fast chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
+        // Tua nhanh chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
         let p = gen_session_record(3_000, 5);
         let mut kq: Vec<ResultReplay> = Vec::new();
         for td in [ReplaySpeed::RealTime, ReplaySpeed::HeSo(100.0), ReplaySpeed::AsFastAsPossible] {
@@ -863,7 +863,7 @@ mod tests {
     fn a_leased_line_beats_the_internet_by_orders_of_magnitude() {
         let a = LatencyModel::set_custom_tax().round_trip_ns(0);
         let b = LatencyModel::qua_internet().round_trip_ns(0);
-        assert!(b > a * 100, "ngồi cạnh sàn fast hơn {} lần", b / a.max(1));
+        assert!(b > a * 100, "ngồi cạnh sàn nhanh hơn {} lần", b / a.max(1));
     }
 
     // ---------- Sổ rút gọn ----------

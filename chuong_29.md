@@ -264,7 +264,7 @@ impl<T: Ord> BinarySearchTree<T> {
         }
     }
 
-    /// Tính chiều high của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
+    /// Tính chiều cao của cây (Độ sâu tối đa từ gốc đến lá xa nhất)
     pub fn height(&self) -> usize {
         Self::recursive_height(&self.root)
     }
@@ -318,9 +318,9 @@ fn main() {
     println!("\n    - Tổng số nút trong cây: {}", cay_bst.len());
     assert_eq!(cay_bst.len(), 7);
 
-    // 2. Kiểm tra chiều high của cây
+    // 2. Kiểm tra chiều cao của cây
     let height = cay_bst.height();
-    println!("\n[2] Chiều high của cây: {}", height);
+    println!("\n[2] Chiều cao của cây: {}", height);
     assert_eq!(height, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
 
     // 3. Kiểm tra tính năng tìm kiếm O(log N)

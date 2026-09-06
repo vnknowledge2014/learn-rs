@@ -347,7 +347,7 @@ Phương thức nhận `self` (không phải `&self`) **nuốt** đối tượng
 Rust hỗ trợ phương thức tiêu thụ `self` để mô hình hóa những hành động **dùng một lần rồi hết** — biến quy tắc nghiệp vụ thành thứ trình biên dịch ép được.
 
 **Ví dụ que diêm:**
-```rust
+```text
 struct QueDiem { con_dau: bool }
 impl QueDiem {
     fn dot(self) -> String {   // self, KHÔNG phải &self -> nuốt luôn que diêm

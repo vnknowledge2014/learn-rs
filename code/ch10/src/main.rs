@@ -102,7 +102,7 @@ fn main() {
         13..=17 if co_the_can_cuoc => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
         13..=17 => println!("Lứa tuổi vị thành niên (chưa làm thẻ CCCD)"),
         18..=60 => println!("Khách hàng trong độ tuổi lao động trưởng thành"),
-        _ => println!("Khách hàng high tuổi ưu tiên"),
+        _ => println!("Khách hàng cao tuổi ưu tiên"),
     }
 
     // --- PHẦN 4: CÚ PHÁP RÚT GỌN 'if let' ---

@@ -201,7 +201,7 @@ fn main() {
     println!("    - Thu doc ky tu tai chi so index = 99:");
     match manager.safe_read(99) {
         Some(val) => println!("    - Gia tri: {}", val),
-        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an total!"),
+        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an toan!"),
     }
 
     // -------------------------------------------------------------
@@ -228,7 +228,7 @@ fn main() {
     let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
     println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
 
-    // Trong C: printf(malicious_user_input) se lam ro ri total bo Stack.
+    // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
     // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
     println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
     println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
@@ -426,7 +426,7 @@ Trong bộ nhớ: `free(p)` hai lần khiến trình cấp phát đưa cùng m�
 
 **Vì sao Rust không thể mắc lỗi này:**
 
-```rust
+```text
 let a = String::from("xin chào");
 let b = a;              // QUYỀN SỞ HỮU chuyển sang b; a không còn dùng được
 // println!("{a}");     // E0382: borrow of moved value

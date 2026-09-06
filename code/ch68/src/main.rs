@@ -47,7 +47,7 @@ impl Vec2 {
 // ============================================================================
 
 /// Nếu để bước vật lý phụ thuộc tốc độ khung hình, cùng một trò chơi sẽ chạy
-/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ high.
+/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ cao.
 /// Giải pháp: tích lũy thời gian rồi chạy vật lý theo bước CỐ ĐỊNH.
 pub struct AccumulatorUnit {
     pub step_has_peak: f32,
@@ -658,7 +658,7 @@ mod tests {
 
     // ---------- Băm không gian ----------
     #[test]
-    fn luoi_bam_cho_ket_qua_y_HET_vet_can() {
+    fn luoi_bam_cho_ket_qua_y_het_vet_can() {
         let hop: Vec<HopReport> = (0..200).map(|i| {
             let x = ((i * 37) % 100) as f32;
             let y = ((i * 53) % 100) as f32;

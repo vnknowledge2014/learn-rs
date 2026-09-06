@@ -281,7 +281,7 @@ fn main() {
     println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
     println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
     println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu attempt RAM it hon ~7,000 LAN!");
-    println!("    ==> Cho phep 1 may owner duy tri hang trieu ket noi ma khong bao gio het RAM!");
+    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
 
     println!("\n==================================================================");
     println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");
@@ -349,3 +349,198 @@ fn run_correct() {
    Viết một hàm nhận vào hai Future độc lập `fut_a` và `fut_b`. Hãy thực thi thăm dò cả hai luồng sao cho khi cả hai đều trả về `Poll::Ready` thì hàm mới trả về kết quả gộp `(OutputA, OutputB)`.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao không dùng `std::sync::Mutex` trong mã Async?)**:  
    Tại sao các chuyên gia Tokio luôn khuyến cáo tuyệt đối không giữ khóa `std::sync::Mutex` qua các điểm gọi chờ I/O? Nếu một luồng bị dừng trong khi vẫn đang giữ khóa, hiện tượng nghẽn luồng (Thread Starvation / Deadlock) sẽ bùng phát như thế nào trong toàn bộ hệ thống?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Một Future tự cài là một máy trạng thái: mỗi lần bị `poll`, nó hoặc trả `Ready(giá trị)` hoặc `Pending`. Bộ đếm nhịp giữ số nhịp còn lại và mốc thời gian nhịp kế tiếp.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll, Wake, Waker};
+use std::time::{Duration, Instant};
+
+/// Future phát ra 5 nhịp, mỗi nhịp cách nhau `chu_ky`, rồi kết thúc.
+/// Trả về tổng số nhịp đã phát.
+pub struct AsyncInterval {
+    con_lai: u32,
+    chu_ky: Duration,
+    nhip_ke: Instant,
+    da_phat: u32,
+}
+
+impl AsyncInterval {
+    pub fn new(chu_ky: Duration, so_nhip: u32) -> Self {
+        Self { con_lai: so_nhip, chu_ky, nhip_ke: Instant::now() + chu_ky, da_phat: 0 }
+    }
+}
+
+impl Future for AsyncInterval {
+    type Output = u32;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u32> {
+        loop {
+            if self.con_lai == 0 {
+                return Poll::Ready(self.da_phat); // hết nhịp -> xong
+            }
+            if Instant::now() >= self.nhip_ke {
+                // Tới giờ một nhịp: cập nhật trạng thái rồi vòng lại kiểm nhịp kế.
+                self.da_phat += 1;
+                self.con_lai -= 1;
+                let ck = self.chu_ky;
+                self.nhip_ke = Instant::now() + ck;
+            } else {
+                // Chưa tới giờ: đánh thức lại rồi nhường quyền (Pending).
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        }
+    }
+}
+
+// Bộ chạy tối giản để thử: quay vòng poll cho tới khi Ready.
+struct NoopWake;
+impl Wake for NoopWake { fn wake(self: Arc<Self>) {} }
+fn block_on<F: Future>(mut f: F) -> F::Output {
+    let waker = Waker::from(Arc::new(NoopWake));
+    let mut cx = Context::from_waker(&waker);
+    let mut f = unsafe { Pin::new_unchecked(&mut f) };
+    loop {
+        if let Poll::Ready(v) = f.as_mut().poll(&mut cx) { return v; }
+    }
+}
+
+#[test]
+fn phat_dung_5_nhip() {
+    // Dùng chu kỳ ngắn để test chạy nhanh; logic không đổi so với 100ms.
+    let ket_qua = block_on(AsyncInterval::new(Duration::from_millis(1), 5));
+    assert_eq!(ket_qua, 5);
+}
+```
+
+Điểm cốt lõi của `Future` tự cài: nó là **một máy trạng thái bị hỏi đi hỏi lại**. Mỗi lần `poll`, nó nhìn trạng thái hiện tại (còn mấy nhịp, đã tới giờ chưa) và trả lời *"xong rồi"* (`Ready`) hoặc *"chưa, hỏi lại sau"* (`Pending`). Điểm mấu chốt bạn phải làm đúng: khi trả `Pending`, phải **đăng ký đánh thức** qua `cx.waker()` — nếu không, bộ chạy không biết khi nào nên `poll` lại, và future treo vĩnh viễn. (Ở đây ta `wake_by_ref` ngay để bộ chạy quay lại liền; runtime thật như Tokio sẽ đăng ký hẹn giờ và chỉ đánh thức đúng lúc, không quay bận.)
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Ghép hai Future: `poll` cả hai mỗi vòng, giữ lại kết quả của cái nào xong trước. Chỉ trả `Ready((a,b))` khi CẢ HAI đều đã xong.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+/// Ghép hai Future độc lập: chạy song song (thăm dò xen kẽ), trả kết quả gộp
+/// (OutputA, OutputB) khi CẢ HAI cùng xong. Đây là phiên bản thu nhỏ của join!.
+pub struct JoinTwo<A: Future, B: Future> {
+    fut_a: Pin<Box<A>>, kq_a: Option<A::Output>,
+    fut_b: Pin<Box<B>>, kq_b: Option<B::Output>,
+}
+
+impl<A: Future, B: Future> JoinTwo<A, B> {
+    pub fn new(fut_a: A, fut_b: B) -> Self {
+        Self { fut_a: Box::pin(fut_a), kq_a: None, fut_b: Box::pin(fut_b), kq_b: None }
+    }
+}
+
+impl<A: Future, B: Future> Future for JoinTwo<A, B>
+where
+    A::Output: Unpin,
+    B::Output: Unpin, // đầu ra Unpin (u32, String... hầu như luôn thế) -> JoinTwo Unpin
+{
+    type Output = (A::Output, B::Output);
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // JoinTwo là Unpin (future con đã Box::pin, đầu ra Unpin) -> lấy &mut an toàn.
+        let this = self.get_mut();
+        // Thăm dò A nếu nó CHƯA xong; lưu kết quả lại khi Ready.
+        if this.kq_a.is_none() {
+            if let Poll::Ready(v) = this.fut_a.as_mut().poll(cx) { this.kq_a = Some(v); }
+        }
+        // Thăm dò B tương tự — độc lập với A.
+        if this.kq_b.is_none() {
+            if let Poll::Ready(v) = this.fut_b.as_mut().poll(cx) { this.kq_b = Some(v); }
+        }
+        // Chỉ xong khi CẢ HAI đều có kết quả.
+        if this.kq_a.is_some() && this.kq_b.is_some() {
+            Poll::Ready((this.kq_a.take().unwrap(), this.kq_b.take().unwrap()))
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+#[test]
+fn ghep_hai_future_san_sang() {
+    use std::sync::Arc;
+    use std::task::{Wake, Waker};
+    struct W; impl Wake for W { fn wake(self: Arc<Self>) {} }
+
+    // Hai future tức thì sẵn sàng (async block là Future).
+    let j = JoinTwo::new(async { 10u32 }, async { "hai" });
+    let waker = Waker::from(Arc::new(W));
+    let mut cx = Context::from_waker(&waker);
+    let mut j = Box::pin(j);
+    match j.as_mut().poll(&mut cx) {
+        Poll::Ready((a, b)) => { assert_eq!(a, 10); assert_eq!(b, "hai"); }
+        Poll::Pending => panic!("cả hai đều sẵn sàng, phải Ready"),
+    }
+}
+```
+
+Đây là hạt nhân của tổ hợp `join!` mà mọi runtime async cung cấp. Ý tưởng cốt lõi: **thăm dò cả hai future mỗi vòng, ghi nhớ cái nào xong trước, và chỉ hoàn tất khi cả hai cùng xong.** Khác biệt then chốt so với chạy *tuần tự* (`.await` cái này rồi `.await` cái kia): join **xen kẽ** — trong lúc future A đang chờ I/O (`Pending`), ta vẫn thăm dò B, nên hai việc chờ *chồng lấn* thời gian thay vì cộng dồn. Nếu A chờ 2 giây và B chờ 3 giây, join xong sau ~3 giây (max), còn tuần tự mất ~5 giây (tổng).
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Điểm chết người: `std::sync::Mutex` khóa cả *luồng hệ điều hành*. Nếu giữ khóa đó qua một điểm `.await`, luồng bị treo *trong khi vẫn cầm khóa* — và một luồng chạy nhiều tác vụ async.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+Không được giữ `std::sync::Mutex` qua điểm `.await` vì nó có thể gây **deadlock hoặc nghẽn luồng toàn hệ thống** — bắt nguồn từ sự khác biệt căn bản giữa mô hình luồng và mô hình tác vụ async.
+
+**Gốc rễ:** trong runtime async như Tokio, **một luồng hệ điều hành chạy RẤT NHIỀU tác vụ async** bằng cách xen kẽ chúng. Khi một tác vụ chạm `.await` và phải chờ (I/O chưa xong), runtime **cất tác vụ đó đi và cho luồng chạy tác vụ khác**. Đây là toàn bộ điểm mạnh của async: ít luồng phục vụ nhiều việc.
+
+**Điều gì hỏng khi giữ `std::sync::Mutex` qua `.await`:**
+
+`std::sync::Mutex` khóa ở tầng *luồng hệ điều hành* — nó không biết gì về tác vụ async. Xét kịch bản:
+```text
+Tác vụ 1: khóa mutex M
+          .await một thao tác mạng   <- runtime CẤT tác vụ 1 đi (vẫn đang GIỮ M!)
+                                         cho luồng chạy tác vụ 2
+Tác vụ 2 (cùng luồng): cố khóa M
+          -> M đang bị tác vụ 1 giữ -> tác vụ 2 CHẶN CẢ LUỒNG chờ M
+          -> nhưng tác vụ 1 chỉ nhả M khi nó chạy tiếp
+          -> mà nó chỉ chạy tiếp khi luồng rảnh
+          -> mà luồng đang bị tác vụ 2 chặn  ->  DEADLOCK
+```
+Tác vụ 1 giữ khóa nhưng bị treo chờ I/O; tác vụ 2 trên cùng luồng chặn cả luồng để chờ khóa đó. Luồng không tiến được, và nếu runtime chỉ có vài luồng, **vài deadlock kiểu này làm đơ toàn bộ hệ thống** — nghẽn luồng (thread starvation).
+
+Ngay cả khi không deadlock hẳn, giữ khóa qua `.await` cũng **phá tính đồng thời**: khóa lẽ ra chỉ giữ vài micro-giây thì nay bị giữ suốt cả một thao tác mạng dài (hàng chục mili-giây), chặn mọi tác vụ khác cần khóa đó.
+
+**Cách đúng:**
+1. **Thu hẹp phạm vi khóa để KHÔNG bắc qua `.await`** — khóa, đọc/ghi thật nhanh, nhả khóa *trước* khi `.await`:
+   ```text
+   let gia_tri = { let g = m.lock().unwrap(); g.doc() };  // nhả khóa ở đây
+   xu_ly_mang(gia_tri).await;                              // await KHÔNG giữ khóa
+   ```
+2. **Hoặc dùng `tokio::sync::Mutex`** — khóa *async-aware*: khi chờ khóa nó `.await` (nhường luồng) thay vì chặn luồng, và được thiết kế để giữ an toàn qua `.await`. Đổi lại nó chậm hơn `std::sync::Mutex`, nên chỉ dùng khi *thật sự* cần giữ khóa qua điểm chờ.
+
+Quy tắc thực dụng của dân Tokio: **mặc định vẫn dùng `std::sync::Mutex` cho dữ liệu chung, nhưng tuyệt đối nhả nó trước mọi `.await`.** Chỉ khi logic buộc phải giữ khóa xuyên qua thao tác async mới đổi sang `tokio::sync::Mutex`.
+</details>

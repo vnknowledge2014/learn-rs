@@ -215,7 +215,7 @@ pub enum SellAnd {
 }
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
-/// Đây là điều khiến React/Leptos fast: không dựng lại cả DOM, chỉ vá chỗ đổi.
+/// Đây là điều khiến React/Leptos nhanh: không dựng lại cả DOM, chỉ vá chỗ đổi.
 pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAnd> {
     match (cu, new) {
         // Hai văn bản khác nội dung -> vá văn bản

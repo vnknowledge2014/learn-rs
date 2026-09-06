@@ -93,7 +93,7 @@ fn main() {
 
     // 5. Tổng kết so sánh khoảng cách địa chỉ ảo
     println!("\n[5] So sanh tuong quan ban do dia chi ao:");
-    println!("    - Dinh high nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
+    println!("    - Dinh cao nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
     println!("    - Vung trung tam (Heap)   : ~0x{:012x}", heap_addr_1);
     println!("    - Vung thap (Data)        : ~0x{:012x}", data_addr);
     println!("    - Vung day co so (Text)   : ~0x{:012x}", text_addr);

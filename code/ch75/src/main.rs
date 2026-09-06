@@ -129,7 +129,7 @@ pub fn encode(g: &FieldPacket) -> Vec<u8> {
 // ============================================================================
 // 2. PHÁT HIỆN KHE SỐ THỨ TỰ
 // ============================================================================
-// Dữ liệu thị trường thường đi qua UDP multicast: fast, nhưng KHÔNG bảo đảm
+// Dữ liệu thị trường thường đi qua UDP multicast: nhanh, nhưng KHÔNG bảo đảm
 // tới nơi và KHÔNG bảo đảm đúng thứ tự. Số thứ tự là thứ duy nhất cho ta biết
 // mình có đang nhìn bức tranh đầy đủ hay không.
 
@@ -225,14 +225,14 @@ impl GapDetector {
 // 3. SỔ LỆNH L2 — tổng hợp theo MỨC GIÁ
 // ============================================================================
 // L2 là thứ 95% chiến lược thật sự cần: mỗi mức giá còn bao nhiêu khối lượng.
-// Nhẹ hơn L3 rất nhiều, và cập nhật fast hơn.
+// Nhẹ hơn L3 rất nhiều, và cập nhật nhanh hơn.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PriceLevel { pub price: Price, pub quantity: u64, pub so_lenh: u32 }
 
 #[derive(Debug, Default)]
 pub struct L2Book {
-    /// Bên bid lưu khoá ÂM để `BTreeMap` trả giá high nhất trước.
+    /// Bên bid lưu khoá ÂM để `BTreeMap` trả giá cao nhất trước.
     buy: BTreeMap<Price, (u64, u32)>,
     ban: BTreeMap<Price, (u64, u32)>,
 }
@@ -598,7 +598,7 @@ mod tests {
         let g = FieldPacket { nonce: 0x0102030405060708, timestamp_nanos: 0,
             ban_tin: BanTin::CancelOrder { id: 1, cancel_quantity: 1 } };
         let b = encode(&g);
-        assert_eq!(&b[1..9], &[1, 2, 3, 4, 5, 6, 7, 8], "byte high đứng TRƯỚC");
+        assert_eq!(&b[1..9], &[1, 2, 3, 4, 5, 6, 7, 8], "byte cao đứng TRƯỚC");
     }
 
     // ---------- Phát hiện khe ----------
@@ -710,7 +710,7 @@ mod tests {
     fn l2_reports_best_on_both_sides() {
         let mut s = L2Book::new();
         s.them(Side::Buy, 8_390, 100);
-        s.them(Side::Buy, 8_400, 200); // high hơn = tốt hơn cho bên bid
+        s.them(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên bid
         s.them(Side::Sell, 8_420, 150);
         s.them(Side::Sell, 8_410, 50);  // thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(8_400));
@@ -792,9 +792,9 @@ mod tests {
         for g in [8_430, 8_420, 8_410] { s.them(Side::Sell, g, 100); }
         let (m, b) = s.peak_num(3);
         assert_eq!(m.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_400, 8_390, 8_380],
-                   "bên bid: giá high xuống thấp");
+                   "bên bid: giá cao xuống thấp");
         assert_eq!(b.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_410, 8_420, 8_430],
-                   "bên bán: giá thấp lên high");
+                   "bên bán: giá thấp lên cao");
     }
 
     // ---------- Sổ L3 ----------

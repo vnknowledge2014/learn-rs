@@ -1065,7 +1065,7 @@ pub fn check_all(
 
 Với Anchor thật, toàn bộ đoạn trên được sinh ra từ vài dòng khai báo:
 
-```rust
+```text
 #[derive(Accounts)]
 pub struct RutTien<'info> {
     #[account(mut)]                  pub sender: Signer<'info>,

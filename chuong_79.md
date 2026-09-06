@@ -138,7 +138,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 // Phần mềm giỏi nhất đạt tick-to-trade khoảng 1–5 µs, nhưng có ĐUÔI DÀI: hệ
 // điều hành xen vào, trượt cache, một cú dừng bất chợt. FPGA đạt 20–100 ns và
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
-// tới, người ổn định thắng người fast-nhưng-thất-thường.
+// tới, người ổn định thắng người nhanh-nhưng-thất-thường.
 
 /// Chu kỳ xung nhịp của FPGA deliver dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
@@ -239,7 +239,7 @@ pub const SO_MUC_PHAN_CUNG: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HwPriceLevel { pub price: i64, pub quantity: u32 }
 
-/// Sổ lệnh "nông nhưng fast": chỉ giữ 8 mức tốt nhất mỗi bên. Đủ cho gần
+/// Sổ lệnh "nông nhưng nhanh": chỉ giữ 8 mức tốt nhất mỗi bên. Đủ cho gần
 /// như mọi chiến lược, và vừa trọn trong thanh ghi FPGA.
 #[derive(Debug, Clone, Copy)]
 pub struct OrderBookHardware {
@@ -343,7 +343,7 @@ pub struct RiskCircuit {
 impl RiskCircuit {
     /// TẤT CẢ điều kiện tính song song. Đây là điểm khác biệt cốt lõi so với
     /// phần mềm: dù lệnh hợp lệ hay bị chặn, mạch vẫn tốn đúng một chu kỳ.
-    /// Không có "đường fast" và "đường chậm" → độ trễ không dao động, và
+    /// Không có "đường nhanh" và "đường chậm" → độ trễ không dao động, và
     /// thời gian phản hồi không tiết lộ điều gì về nội dung lệnh.
     pub fn check(&self, la_mua: bool, price: i64, quantity: i64) -> HasReject {
         let first = if la_mua { 1i64 } else { -1 };
@@ -414,7 +414,7 @@ pub fn software_latency_ns() -> f64 { 3_400.0 }
 // ============================================================================
 // 6. VÌ SAO VẪN CẦN PHẦN MỀM — kiến trúc lai
 // ============================================================================
-// FPGA rất fast nhưng rất khó sửa: một thay đổi nhỏ tốn hàng chục phút tổng
+// FPGA rất nhanh nhưng rất khó sửa: một thay đổi nhỏ tốn hàng chục phút tổng
 // hợp mạch. Thực tế người ta chia đôi: đường CỰC NÓNG nằm trên FPGA, còn
 // logic hay đổi thì nằm trên CPU.
 
@@ -500,7 +500,7 @@ fn main() {
     println!("   Độ trễ     : {} chu kỳ = {:.0} ns", pipeline.latency_period(), pipeline.latency_nanos());
     println!("   Thông lượng: 1 gói mỗi {} chu kỳ = {:.0} triệu gói/giây",
              pipeline.first_period_block(), pipeline.packets_per_second() / 1e6);
-    println!("   So với phần mềm ({} ns) → fast gấp {:.0} lần",
+    println!("   So với phần mềm ({} ns) → nhanh gấp {:.0} lần",
              software_latency_ns(), software_latency_ns() / pipeline.latency_nanos());
 
     println!("\n6. ĐƯỜNG ỐNG SO VỚI KHÔNG ĐƯỜNG ỐNG (1000 gói)");
@@ -524,7 +524,7 @@ fn main() {
                  c.name, c.rate_swap, c.on_hot_path, partial_sum(c));
     }
     println!("   → Chiến lược ở lại phần mềm dù rất nóng: một chiến lược không");
-    println!("     thử nghiệm được là chiến lược chết, dù nó fast tới đâu.");
+    println!("     thử nghiệm được là chiến lược chết, dù nó nhanh tới đâu.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   PHẦN CỨNG THẮNG Ở SỰ ỔN ĐỊNH, KHÔNG CHỈ Ở TỐC ĐỘ         ");
@@ -816,7 +816,7 @@ mod tests {
     fn hardware_beats_software_by_an_order_of_magnitude() {
         let o = HwPipeline::typical();
         let ratio = software_latency_ns() / o.latency_nanos();
-        assert!(ratio > 50.0, "phải fast hơn ít nhất 50 lần, thực tế {:.0}", ratio);
+        assert!(ratio > 50.0, "phải nhanh hơn ít nhất 50 lần, thực tế {:.0}", ratio);
         assert!(o.latency_nanos() < 100.0, "tick-to-trade phải dưới 100 ns");
     }
 

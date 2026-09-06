@@ -306,7 +306,7 @@ println!("... {}", doc);    // (3) doc còn được dùng ở đây -> nên (1)
 Vì `doc` còn được dùng ở dòng (3), phép mượn đọc ở (1) vẫn **còn sống** khi tới (2). Rust cấm mượn-sửa trong lúc một mượn-đọc đang sống, nên chặn ngay.
 
 **Viết lại cho biên dịch được — dùng xong `doc` rồi mới sửa:**
-```rust
+```text
 let mut list = String::from("Táo, Cam");
 let doc = &list;
 println!("Trước khi thêm: {doc}");   // dùng doc XONG ở đây

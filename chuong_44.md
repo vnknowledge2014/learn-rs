@@ -106,7 +106,7 @@ use std::collections::VecDeque;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PriorityTier {
     Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits deliver ước
-    High,       // Ưu tiên high: Kiểu dữ liệu trực tiếp, Chữ ký hàm
+    High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
     Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
     Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
 }
@@ -186,7 +186,7 @@ impl ContextEngine {
             }
         };
 
-        // Ưu tiên high nạp trước, ưu tiên thấp nạp sau
+        // Ưu tiên cao nạp trước, ưu tiên thấp nạp sau
         try_include(&critical);
         try_include(&high);
         try_include(&medium);
@@ -299,3 +299,110 @@ fn save_data_to_file(path: &str, content: &[u8]) -> Result<(), std::io::Error> {
 ```
 Hãy giải thích vì sao lỗi xảy ra và thêm đúng dòng lệnh `use` còn thiếu để mã nguồn biên dịch thành công.
 *(Gợi ý: Phương thức `write_all` nằm trong Trait `std::io::Write`)*.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+System Prompt tốt phải nêu rõ: vai trò, ràng buộc cứng (cấm gì), cách xử lý ca lỗi, và định dạng đầu ra chính xác. Câu lệnh gốc thiếu tất cả những thứ đó.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+Câu lệnh gốc *"Viết cho tôi một hàm đọc file config.txt rồi trả về danh sách cổng mạng"* mơ hồ ở mọi khía cạnh quan trọng. Viết lại thành một System Prompt kỹ thuật hoàn chỉnh:
+
+```text
+VAI TRÒ: Bạn là một kỹ sư Rust cấp cao, viết mã sản xuất an toàn.
+
+NHIỆM VỤ: Viết hàm đọc tệp cấu hình và trả về danh sách cổng mạng.
+
+CHỮ KÝ HÀM BẮT BUỘC:
+    fn doc_danh_sach_cong(path: &str) -> Result<Vec<u16>, std::io::Error>
+
+RÀNG BUỘC CỨNG:
+- TUYỆT ĐỐI KHÔNG dùng .unwrap() hay .expect(). Mọi lỗi phải lan qua toán tử `?`.
+- Cổng mạng là u16 (0-65535). Bỏ qua dòng trống và dòng bắt đầu bằng '#' (chú thích).
+- Dòng không phân tích được thành số hợp lệ: bỏ qua, không làm sập hàm.
+
+XỬ LÝ KHI TỆP KHÔNG TỒN TẠI:
+- Không tự tạo tệp. Trả về Err(io::Error) để người gọi quyết định.
+
+ĐỊNH DẠNG ĐẦU RA:
+- Chỉ trả về mã Rust trong một khối ```rust, kèm 3 test đơn vị:
+  tệp hợp lệ, tệp không tồn tại, và tệp chứa dòng rác.
+```
+
+Đối chiếu với **5 thành phần của một System Prompt tốt**, câu gốc thiếu cả năm:
+
+| Thành phần | Câu gốc | Bản nâng cấp |
+|---|---|---|
+| **Vai trò** (persona) | không | "kỹ sư Rust cấp cao, mã sản xuất" |
+| **Nhiệm vụ** rõ ràng | mơ hồ | chữ ký hàm chính xác |
+| **Ràng buộc** cứng | không | cấm unwrap, u16, bỏ qua chú thích |
+| **Xử lý ca biên** | không | tệp thiếu -> trả Err |
+| **Định dạng đầu ra** | không | kiểu trả về + test bắt buộc |
+
+Bài học: chất lượng đầu ra của AI **tỉ lệ thuận với độ rõ của ràng buộc bạn đặt ra**. Câu mơ hồ "đọc file trả về cổng" để AI tự đoán kiểu trả về (Vec<String>? Vec<i32>?), tự đoán cách xử lý lỗi (thường là rải `.unwrap()` — đúng thứ ta muốn cấm). Một System Prompt chặt biến AI từ "đoán ý" thành "thực thi đặc tả".
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Cửa sổ ngữ cảnh là bộ nhớ làm việc hữu hạn của mô hình. Chiến lược đúng: chỉ đưa vào những gì *liên quan trực tiếp* tới việc sửa, cố tình bỏ 49 tệp còn lại.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+**Chiến lược chọn ngữ cảnh cho việc "thêm phương thức mới cho `struct UserSession`":**
+
+**ĐƯA VÀO cửa sổ ngữ cảnh (liên quan trực tiếp):**
+1. **Tệp định nghĩa `struct UserSession`** — bắt buộc. AI cần thấy các trường và khối `impl` hiện có để phương thức mới khớp kiểu và quy ước.
+2. **Định nghĩa các kiểu mà `UserSession` phụ thuộc** — nếu nó chứa trường kiểu `User`, `Token`, `Permission`, thì đưa *định nghĩa* của những kiểu đó (không phải toàn bộ tệp chứa chúng).
+3. **1-2 phương thức mẫu đã có trong `impl UserSession`** — để AI bắt chước phong cách xử lý lỗi, đặt tên, quy ước của dự án.
+4. **Đặc tả ngắn của phương thức mới** — nó làm gì, chữ ký, ca lỗi.
+
+**CỐ TÌNH BỎ LẠI (nhiễu, gây quá tải):**
+- **47 tệp còn lại không liên quan** — tầng giao diện, cấu hình build, các module nghiệp vụ khác. Chúng không ảnh hưởng tới một phương thức của `UserSession`.
+- **Thân các hàm dài không liên quan** — kể cả trong tệp đúng, những hàm khác chỉ cần *chữ ký* là đủ, không cần cả thân.
+- **Tệp test, tài liệu, lịch sử git** — trừ khi việc này đụng tới chúng.
+
+**Vì sao cố tình bỏ bớt lại tốt hơn "đưa hết cho chắc":**
+- Cửa sổ ngữ cảnh **hữu hạn**: nhồi 80.000 dòng thì hoặc tràn, hoặc đẩy mất phần *thực sự quan trọng* ra ngoài.
+- **Nhiễu làm loãng tín hiệu.** Mô hình chú ý kém đi khi 95% ngữ cảnh không liên quan — hiện tượng "lạc giữa đống thông tin" (lost in the middle): chi tiết ở giữa một ngữ cảnh dài dễ bị bỏ sót.
+- **Tốn kém và chậm** tỉ lệ với lượng ngữ cảnh, mà chẳng đổi lại chất lượng.
+
+Nguyên tắc: **ngữ cảnh là dao mổ, không phải xẻng xúc.** Đưa đúng cái liên quan giúp mô hình tập trung; đưa cả kho buộc nó tự lọc — và nó lọc kém hơn bạn. Kỹ năng "quản lý ngữ cảnh" chính là biết *bỏ đi cái gì*.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Lỗi E0599 (`no method named write_all`) không phải vì thiếu phương thức, mà vì **trait chứa phương thức đó chưa được kéo vào phạm vi**. Phải `use std::io::Write`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Nguyên nhân E0599:** `write_all` *có tồn tại* cho `File`, nhưng nó được cung cấp qua **trait `std::io::Write`**, không phải phương thức vốn có của `File`. Trong Rust, **phương thức của một trait chỉ dùng được khi trait đó đang trong phạm vi (`use`)**. Thiếu `use std::io::Write;` thì trình biên dịch không "nhìn thấy" `write_all`, dù `File` có triển khai nó.
+
+**Cách sửa — thêm đúng một dòng `use`:**
+```rust
+use std::fs::File;
+use std::io::Write;   // <-- DÒNG CÒN THIẾU: kéo trait Write vào phạm vi
+
+fn save_data_to_file(path: &str, content: &[u8]) -> Result<(), std::io::Error> {
+    let mut file = File::create(path)?;
+    file.write_all(content)?;   // giờ thấy write_all vì Write đã trong phạm vi
+    Ok(())
+}
+```
+
+**Vì sao Rust thiết kế "phải import trait mới gọi được phương thức":** đây là cơ chế **coherence** giữ cho không gian tên phương thức sạch sẽ. Nhiều trait khác nhau có thể cùng đặt một phương thức tên `write` cho cùng một kiểu; nếu mọi phương thức trait đều tự động hiện diện, sẽ có xung đột tên khắp nơi. Buộc `use` trait làm cho *nguồn gốc* mỗi phương thức trở nên tường minh — đọc phần `use` đầu tệp là biết những khả năng nào đang được kích hoạt.
+
+Đây là lỗi AI mắc rất thường xuyên: nó sinh mã gọi `write_all`, `read_to_string`, `flush`... nhưng quên dòng `use` cho trait tương ứng (`Write`, `Read`). Mẹo nhận diện: khi thấy `no method named X found for struct Y` mà bạn *biết* phương thức đó tồn tại, gần như chắc chắn là **thiếu `use` trait** — trình biên dịch Rust thường gợi ý ngay dòng `use` cần thêm ở cuối thông báo lỗi.
+</details>

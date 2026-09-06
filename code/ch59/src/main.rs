@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 pub struct Server {
     pub name: String,
     pub current_connect: u32,
-    pub weight: u32, // máy mạnh hơn có trọng số high hơn
+    pub weight: u32, // máy mạnh hơn có trọng số cao hơn
 }
 
 pub trait StrategyCanTable {
@@ -151,7 +151,7 @@ pub enum KetQuaNhan {
 }
 
 /// Hàng đợi có giới hạn: khi đầy, TỪ CHỐI thay vì phình vô hạn.
-/// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống fast
+/// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống nhanh
 /// biết mà giảm tốc, thay vì âm thầm chất đống đến khi hết RAM.
 pub struct QueueLimit<T> {
     queue: VecDeque<T>,

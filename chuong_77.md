@@ -148,7 +148,7 @@ impl Side {
 // 1. CỔNG RỦI RO TRƯỚC GIAO DỊCH
 // ============================================================================
 // Mọi lệnh đều phải qua đây. Không có đường vòng, không có cờ "bỏ qua kiểm
-// tra cho fast". Lịch sử ngành đầy những vụ sập vì ai đó mở một đường vòng.
+// tra cho nhanh". Lịch sử ngành đầy những vụ sập vì ai đó mở một đường vòng.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RejectReason {
@@ -479,7 +479,7 @@ pub struct RiskOwned {
     pub ratio_drawdown: f64,
     pub num_session_lai: usize,
     pub num_session_lo: usize,
-    /// Tỉ số lợi nhuận trên độ dao động — càng high càng "êm".
+    /// Tỉ số lợi nhuận trên độ dao động — càng cao càng "êm".
     pub sharpe_ratio: f64,
 }
 
@@ -1055,7 +1055,7 @@ mod tests {
         for i in 0..100 { v += if i % 3 == 0 { -8_000 } else { 5_750 }; xoc.push(v); }
         let (a, b) = (risk_level(&em), risk_level(&xoc));
         assert!(a.sharpe_ratio > b.sharpe_ratio,
-                "êm {:.2} phải high hơn xóc {:.2}", a.sharpe_ratio, b.sharpe_ratio);
+                "êm {:.2} phải cao hơn xóc {:.2}", a.sharpe_ratio, b.sharpe_ratio);
         assert!(b.max_drawdown > a.max_drawdown);
     }
 
@@ -1086,7 +1086,7 @@ mod tests {
             tu += da * db; sa += da * da; sb += db * db;
         }
         let correlation = tu / (sa.sqrt() * sb.sqrt());
-        assert!(correlation > 0.8, "tương quan {:.3} phải high", correlation);
+        assert!(correlation > 0.8, "tương quan {:.3} phải cao", correlation);
     }
 }
 ```

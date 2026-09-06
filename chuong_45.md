@@ -347,3 +347,139 @@ fn test_order_id_equality() {
 ```
 Hãy giải thích vì sao macro `assert_eq!` đòi hỏi những trait nào, và bổ sung dòng lệnh chính xác để đoạn mã trên vượt qua kỳ kiểm thử.
 *(Gợi ý: Dẫn xuất `#[derive(Debug, PartialEq)]` cho cấu trúc tuple struct `OrderId`)*.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Đặc tả tốt biến yêu cầu mơ hồ thành các quy tắc *kiểm chứng được*: giới hạn cụ thể bằng số, và một enum liệt kê đủ mọi lý do thất bại.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**SPEC.md — Trình xác thực độ mạnh mật khẩu (Password Strength Validator)**
+
+```text
+# ĐẶC TẢ: Xác thực độ mạnh mật khẩu
+
+## Đầu vào / Đầu ra
+- Hàm: fn validate(pw: &str) -> Result<(), PasswordError>
+- Ok(())  = mật khẩu hợp lệ.
+- Err(..) = trả về LÝ DO ĐẦU TIÊN vi phạm.
+
+## Quy tắc độ dài
+- Tối thiểu 8 ký tự.
+- Tối đa 64 ký tự (chặn tấn công từ chối dịch vụ bằng chuỗi khổng lồ).
+
+## Quy tắc thành phần ký tự (bắt buộc có đủ cả bốn)
+- Ít nhất 1 chữ HOA (A-Z).
+- Ít nhất 1 chữ thường (a-z).
+- Ít nhất 1 chữ số (0-9).
+- Ít nhất 1 ký tự đặc biệt (không phải chữ và số).
+
+## Mã lỗi
+enum PasswordError {
+    TooShort,          // < 8 ký tự
+    TooLong,           // > 64 ký tự
+    MissingUppercase,
+    MissingLowercase,
+    MissingDigit,
+    MissingSpecialChar,
+}
+```
+
+```rust
+#[derive(Debug, PartialEq)]
+pub enum PasswordError {
+    TooShort, TooLong,
+    MissingUppercase, MissingLowercase, MissingDigit, MissingSpecialChar,
+}
+```
+
+Giá trị của một đặc tả nằm ở chỗ nó **biến mọi từ mơ hồ thành con số và danh sách kiểm chứng được**. "Mật khẩu đủ mạnh" là vô nghĩa với máy; "≥ 8 ký tự, có đủ 4 loại ký tự, mỗi vi phạm ánh xạ tới một biến thể `enum`" thì viết test được, giao cho AI cài được, và đối chiếu được. `enum PasswordError` đặc biệt quan trọng: nó liệt kê *cạn kiệt* các cách thất bại — khi cài đặt, `match` trên nó sẽ báo lỗi nếu bạn quên xử lý một ca. Đặc tả này chính là đầu vào cho bài tập TDD tiếp theo.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+TDD: viết test TRƯỚC, dựa thẳng vào các mã lỗi trong đặc tả. Mỗi test cố tình vi phạm đúng một quy tắc và khẳng định đúng biến thể lỗi.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+#[derive(Debug, PartialEq)]
+pub enum PasswordError {
+    TooShort, TooLong,
+    MissingUppercase, MissingLowercase, MissingDigit, MissingSpecialChar,
+}
+
+// Cài đặt bám sát đặc tả — trả về LÝ DO ĐẦU TIÊN vi phạm.
+pub fn validate(pw: &str) -> Result<(), PasswordError> {
+    if pw.chars().count() < 8 { return Err(PasswordError::TooShort); }
+    if pw.chars().count() > 64 { return Err(PasswordError::TooLong); }
+    if !pw.chars().any(|c| c.is_ascii_uppercase()) { return Err(PasswordError::MissingUppercase); }
+    if !pw.chars().any(|c| c.is_ascii_lowercase()) { return Err(PasswordError::MissingLowercase); }
+    if !pw.chars().any(|c| c.is_ascii_digit()) { return Err(PasswordError::MissingDigit); }
+    if !pw.chars().any(|c| !c.is_alphanumeric()) { return Err(PasswordError::MissingSpecialChar); }
+    Ok(())
+}
+
+#[test]
+fn mat_khau_qua_ngan() {
+    assert_eq!(validate("Ab1!"), Err(PasswordError::TooShort));  // 4 ký tự
+}
+#[test]
+fn thieu_chu_hoa() {
+    assert_eq!(validate("abcdef1!"), Err(PasswordError::MissingUppercase));
+}
+#[test]
+fn thieu_chu_so() {
+    assert_eq!(validate("Abcdefg!"), Err(PasswordError::MissingDigit));
+}
+#[test]
+fn mat_khau_hoan_hao() {
+    assert_eq!(validate("Abcdef1!"), Ok(()));  // đủ dài, đủ 4 loại ký tự
+}
+```
+
+Điểm cốt lõi của TDD *trước khi viết code*: bốn test này là **đặc tả biến thành mã chạy được**. Chúng được viết ra *trước* (hoặc song song với) phần cài đặt, và mỗi test cô lập đúng một quy tắc — mật khẩu trong `thieu_chu_hoa` đủ mọi thứ *trừ* chữ hoa, nên nếu test đỏ thì bạn biết chính xác quy tắc nào hỏng. Khi giao cho AI viết `validate`, bộ test này là **lưới an toàn**: AI cài xong, bạn chạy test, xanh hết mới tin. Thứ tự kiểm trong hàm cũng có chủ đích — kiểm độ dài trước, vì báo "quá ngắn" hữu ích hơn báo "thiếu ký tự đặc biệt" cho một chuỗi 2 ký tự.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+E0277 nghĩa là kiểu chưa cài trait mà thao tác đòi hỏi. `assert_eq!` cần so sánh (`PartialEq`) VÀ in ra khi lệch (`Debug`). Thêm `#[derive(...)]` là xong.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Nguyên nhân E0277 (`binary operation == cannot be applied`):** `assert_eq!(id1, id2)` cần làm hai việc với `OrderId`, mỗi việc đòi một trait mà `struct OrderId(u64)` **chưa có**:
+1. **So sánh bằng** `==` -> đòi trait **`PartialEq`**.
+2. **In giá trị ra** khi khẳng định thất bại (để báo "left = ..., right = ...") -> đòi trait **`Debug`**.
+
+Mặc định một struct tự định nghĩa *không* có sẵn hai trait này, nên macro không dùng được -> E0277.
+
+**Cách sửa — dẫn xuất (derive) cả hai trait:**
+```rust
+#[derive(PartialEq, Debug)]   // <-- bổ sung: cho phép == và in bằng {:?}
+struct OrderId(u64);
+
+#[test]
+fn test_order_id_equality() {
+    let id1 = OrderId(100);
+    let id2 = OrderId(100);
+    assert_eq!(id1, id2);   // giờ hợp lệ: PartialEq cho ==, Debug để in khi lệch
+}
+```
+
+**Vì sao Rust bắt phải khai báo rõ thay vì cho sẵn:** trong nhiều ngôn ngữ, so sánh bằng "cho không" với mọi đối tượng — nhưng điều đó ngầm giả định "bằng nghĩa là gì" luôn hiển nhiên. Với Rust thì không: hai `OrderId` bằng nhau khi *số bên trong* bằng nhau? Hay còn điều kiện khác? `#[derive(PartialEq)]` nói rõ "so sánh từng trường" — và bạn *có quyền* tự viết `impl PartialEq` khác đi nếu định nghĩa "bằng" của bạn phức tạp hơn. `Debug` cũng vậy: in ra sao là quyết định, không phải mặc nhiên. `#[derive(...)]` là cách nói "hãy sinh cài đặt hiển nhiên nhất giúp tôi" — nhanh gọn, nhưng vẫn là một lựa chọn *tường minh*.
+
+Đây là bộ đôi trait AI hay quên khi sinh struct dùng trong test — nhớ quy tắc: **`assert_eq!` luôn đòi `PartialEq + Debug`.**
+</details>

@@ -55,7 +55,7 @@ pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
     false
 }
 
-/// Động cơ quét cổng mạng đa luồng tốc độ high
+/// Động cơ quét cổng mạng đa luồng tốc độ cao
 pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
     let (tx, rx) = channel::<PortResult>();
     let mut thread_handles = Vec::new();
@@ -116,7 +116,7 @@ fn main() {
         target_ip: "127.0.0.1".to_string(),
         start_port: 75,
         end_port: 85,
-        timeout_ms: 100, // 100ms timeout cực fast cho mạng nội bộ
+        timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
         thread_count: 4,  // 4 luồng quét song song
     };
 

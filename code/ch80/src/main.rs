@@ -415,7 +415,7 @@ fn main() {
     }
     println!("   → CÙNG số phép nhân. Chỉ đổi thứ tự truy cập bộ nhớ.");
 
-    println!("\n4. DỰ ĐOÁN NHÁNH — vì sao sắp xếp trước lại fast hơn");
+    println!("\n4. DỰ ĐOÁN NHÁNH — vì sao sắp xếp trước lại nhanh hơn");
     let lon_xon = gen_data(100_000, 42);
     let mut da_sap = lon_xon.clone();
     da_sap.sort_unstable();
@@ -427,7 +427,7 @@ fn main() {
     }
     println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
              branch_not_taken_count(&da_sap, 128));
-    println!("   → Sắp xếp trước không làm phép đếm fast hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
+    println!("   → Sắp xếp trước không làm phép đếm nhanh hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
 
     println!("\n5. SONG SONG MỨC LỆNH");
     let n = 1_000_000u64;
@@ -472,7 +472,7 @@ mod tests {
         let t = UpMemory::all();
         for w in t.windows(2) {
             assert!(w[0].period() < w[1].period(),
-                    "{} phải fast hơn {}", w[0].name(), w[1].name());
+                    "{} phải nhanh hơn {}", w[0].name(), w[1].name());
         }
     }
 
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn a_whole_cache_line_arrives_at_once() {
         // Chạm byte 0 thì byte 1..63 cũng vào cache theo — đó chính là lý do
-        // duyệt tuần tự fast hơn duyệt nhảy cóc.
+        // duyệt tuần tự nhanh hơn duyệt nhảy cóc.
         let mut mp = CacheSim::new(32 * 1024, 8);
         mp.access_cap(0);
         for b in 1..BYTE_MOI_DONG_CACHE {
@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn sorted_data_mispredicts_far_less() {
         // Câu hỏi phỏng vấn kinh điển: "vì sao sắp xếp mảng trước lại làm
-        // vòng lặp đếm chạy fast hơn?" — không phải vì phép đếm fast hơn,
+        // vòng lặp đếm chạy nhanh hơn?" — không phải vì phép đếm nhanh hơn,
         // mà vì CPU đoán nhánh đúng hơn.
         let lon_xon = gen_data(50_000, 42);
         let mut da_sap = lon_xon.clone();
@@ -688,7 +688,7 @@ mod tests {
         let mut ilp_truoc = 0.0;
         for k in [1u64, 2, 4, 8] {
             let b = analyze_total_many_bien(1_000_000, k, 4);
-            assert!(b.ilp > ilp_truoc, "k={} phải cho ILP high hơn", k);
+            assert!(b.ilp > ilp_truoc, "k={} phải cho ILP cao hơn", k);
             ilp_truoc = b.ilp;
         }
         let b4 = analyze_total_many_bien(1_000_000, 4, 4);
@@ -700,7 +700,7 @@ mod tests {
         // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi chu kỳ.
         let b = analyze_total_many_bien(1_000_000, 64, 4);
         assert!(b.estimated_cycles >= 1_000_000 / 4,
-                "không thể fast hơn giới hạn độ rộng CPU");
+                "không thể nhanh hơn giới hạn độ rộng CPU");
     }
 
     #[test]

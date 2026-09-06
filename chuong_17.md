@@ -77,12 +77,12 @@ Trong Rust, có sự khác biệt tinh tế giữa con trỏ hàm thuần túy v
 ```rust
 fn doubled(x: i32) -> i32 { x * 2 }
 
-// Hàm bậc high nhận con trỏ hàm fn thuần túy
+// Hàm bậc cao nhận con trỏ hàm fn thuần túy
 fn ap_dung_fn(pointer: fn(i32) -> i32, value: i32) -> i32 {
     pointer(value)
 }
 
-// Hàm bậc high nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
+// Hàm bậc cao nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
 fn ap_dung_generic<F: Fn(i32) -> i32>(hanh_dong: F, value: i32) -> i32 {
     hanh_dong(value)
 }
@@ -262,7 +262,7 @@ pub struct ValidProxy {
 // 1. HÀM BẬC CAO: ĐO LƯỜNG THỜI GIAN VÀ GHI NHẬT KÝ KIỂM TOÁN (WRAPPER PATTERN)
 // ============================================================================
 
-/// Hàm bậc high nhận vào tên tác vụ và một hành động F bất kỳ
+/// Hàm bậc cao nhận vào tên tác vụ và một hành động F bất kỳ
 /// Thực hiện đo thời gian thực thi của hành động đó và trả về kết quả nguyên bản
 ///
 /// LƯU Ý VỀ TÍNH THUẦN TÚY: bản thân hàm này KHÔNG thuần túy — nó đọc đồng hồ
@@ -379,7 +379,7 @@ fn main() {
         age_series: Some(String::from("12")),             // Dưới 16 tuổi
     };
 
-    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc high đo thời gian
+    // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
     let ket_qua_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
         auth_proxy_num(&proxy_num_standard, &check_do_long_name, &check_banned_words)
@@ -485,7 +485,7 @@ fn correct_closure(condition: bool) {
    }
 
    fn main() {
-       let tu = ["Rust", "an toàn", "fast", "đồng thời", "bộ nhớ"];
+       let tu = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
 
        // Đếm theo SỐ CHỮ CÁI, không phải số byte
        let long = count_matching(&tu, |s: &&str| s.chars().count() > 5);

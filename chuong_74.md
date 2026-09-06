@@ -295,7 +295,7 @@ impl<T, const N: usize> DisruptorRing<T, N> {
         gt
     }
 
-    /// Lấy cả LÔ — mấu chốt của thông lượng high: một lần đồng bộ cho nhiều
+    /// Lấy cả LÔ — mấu chốt của thông lượng cao: một lần đồng bộ cho nhiều
     /// phần tử, nên chi phí hàng rào bộ nhớ được chia đều cho cả lô.
     pub fn lay_lo(&self, toi_da: usize, ra: &mut Vec<T>) -> usize {
         let doc = self.pos_value_read.load(Ordering::Relaxed);
@@ -439,7 +439,7 @@ impl LatencyBudget {
 }
 
 /// Sinh mẫu độ trễ tất định có ĐUÔI DÀI — giống hệt hệ thống thật:
-/// phần lớn fast, thỉnh thoảng một cú chậm gấp hàng trăm lần.
+/// phần lớn nhanh, thỉnh thoảng một cú chậm gấp hàng trăm lần.
 pub fn gen_mau_latency(n: usize, hat_giong: u64) -> Vec<u64> {
     let mut s = hat_giong;
     (0..n).map(|_| {
@@ -525,7 +525,7 @@ fn main() {
     }
     println!("   Tổng {} ns / trần {} ns → {}",
              ns.tong(), ns.tran_ns, if ns.set_level_spend() { "ĐẠT" } else { "TRƯỢT" });
-    println!("   Nút thắt: {} · xoá hẳn nó cũng chỉ fast được {:.2}×",
+    println!("   Nút thắt: {} · xoá hẳn nó cũng chỉ nhanh được {:.2}×",
              ns.nut_that_co_chai().unwrap().name, ns.max_speedup_if_node_removed());
     println!("   → Đó là lý do HFT thật dùng kernel bypass: gọi hệ thống là chặng đắt nhất.");
 
@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn percentiles_bracket_the_true_value() {
         // Cận trên của xô phải THỰC SỰ là cận trên: không được báo thấp hơn
-        // giá trị thật, nếu không ta sẽ tưởng hệ thống fast hơn thực tế.
+        // giá trị thật, nếu không ta sẽ tưởng hệ thống nhanh hơn thực tế.
         let mut b = LatencyHistogram::new();
         for x in [1u64, 2, 3, 100, 1000] { b.record(x); }
         assert!(b.percentile(1.0) >= 1000);
@@ -588,8 +588,8 @@ mod tests {
         // Phân bố thật: p50 ≈ 250 ns, p99 ≈ 299 ns, p99.9 ≈ 2.5 µs, max ≈ 60 µs.
         // Chú ý p99 vẫn NHANH — phải soi tới p99.9 mới thấy dấu vết đuôi,
         // và tới giá trị lớn nhất mới thấy hết mức độ.
-        assert!(b.percentile(0.5) < 512, "phân vị 50 phải nằm ở vùng fast");
-        assert!(b.percentile(0.99) < 512, "ngay cả p99 vẫn fast — đuôi còn ẩn kỹ hơn thế");
+        assert!(b.percentile(0.5) < 512, "phân vị 50 phải nằm ở vùng nhanh");
+        assert!(b.percentile(0.99) < 512, "ngay cả p99 vẫn nhanh — đuôi còn ẩn kỹ hơn thế");
         assert!(b.percentile(0.999) > 2_000,
                 "tới p99.9 mới lộ ra đuôi, thực tế {}", b.percentile(0.999));
         assert!(b.max > 50_000, "giá trị lớn nhất mới cho thấy hết mức độ");
@@ -802,7 +802,7 @@ mod tests {
         let expected = 2_450.0 / 950.0;
         assert!((ns.max_speedup_if_node_removed() - expected).abs() < 1e-9);
         assert!(ns.max_speedup_if_node_removed() < 3.0,
-                "kể cả xoá sạch nút thắt cũng chỉ fast được ~2.6× — đó là định luật Amdahl");
+                "kể cả xoá sạch nút thắt cũng chỉ nhanh được ~2.6× — đó là định luật Amdahl");
     }
 
     #[test]
@@ -837,7 +837,7 @@ mod tests {
         let fast = m.iter().filter(|&&x| x < 1_000).count();
         let vua = m.iter().filter(|&&x| (1_000..10_000).contains(&x)).count();
         let cham = m.iter().filter(|&&x| x >= 10_000).count();
-        assert!(fast > 95_000, "~99% phải fast, thực tế {}", fast);
+        assert!(fast > 95_000, "~99% phải nhanh, thực tế {}", fast);
         assert!(vua > 0 && cham > 0, "phải có cả đuôi vừa và đuôi dài");
         assert_eq!(fast + vua + cham, m.len());
     }

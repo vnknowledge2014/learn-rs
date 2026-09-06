@@ -93,7 +93,7 @@ cargo test -p ch58
 use std::collections::HashMap;
 
 // ============================================================================
-// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao fast hơn dạng hàng
+// 1. MÔ HÌNH DỮ LIỆU DẠNG CỘT (Columnar) — vì sao nhanh hơn dạng hàng
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,7 +113,7 @@ impl Value {
 }
 
 /// Bảng dữ liệu lưu theo CỘT: mỗi cột là một Vec cùng kiểu, nằm liền nhau
-/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh attempt) cực fast —
+/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh attempt) cực nhanh —
 /// CPU quét một vùng nhớ liên tục, thân thiện với cache (Chương 25).
 #[derive(Debug, Clone)]
 pub struct Bang {

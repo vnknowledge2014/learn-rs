@@ -322,7 +322,7 @@ fn main() {
         println!("     [{:>4} tok · lq {:.2}{}] {}", m.token, m.lien_quan,
                  if m.ghim { " · GHIM" } else { "" }, m.nhan);
     }
-    println!("   → tai_lieu_C (2000 tok) bị loại dù liên quan high nhất: KHÔNG VỪA ngân sách.");
+    println!("   → tai_lieu_C (2000 tok) bị loại dù liên quan cao nhất: KHÔNG VỪA ngân sách.");
     println!("   → Thứ tự đã đảo để mẩu quan trọng nằm ở ĐẦU và CUỐI (chống Lost-in-the-Middle).");
 
     // ---- 2 & 3. HARNESS + LOOP ----
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn ranks_by_value_density_not_raw_score() {
-        // "nho" có điểm thấp hơn nhưng mật độ (lq/token) high hơn nhiều
+        // "nho" có điểm thấp hơn nhưng mật độ (lq/token) cao hơn nhiều
         let list = vec![mau("to", 900, 0.9, false), mau("nho", 90, 0.5, false)];
         let g = close_edge_call(list, 500);
         assert_eq!(g.all_mau.len(), 1);

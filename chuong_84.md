@@ -145,7 +145,7 @@ Chạy bằng `cargo run -p ch84`, kiểm thử bằng `cargo test -p ch84`.
 //! (Quantitative Trading + Statistical Arbitrage + Risk Management).
 //!
 //! Thông điệp xuyên suốt: **thống kê trên dữ liệu tài chính rất dễ nói dối**.
-//! Tương quan high không có nghĩa quan hệ bền; kết quả đẹp trong mẫu không có
+//! Tương quan cao không có nghĩa quan hệ bền; kết quả đẹp trong mẫu không có
 //! nghĩa chiến lược tốt. Mỗi công cụ ở đây đều đi kèm cách nó phản bội bạn.
 //!
 //! ⚠️ Tài liệu KỸ THUẬT, không phải lời khuyên đầu tư.
@@ -227,7 +227,7 @@ pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
 // ============================================================================
 // 3. KIỂM ĐỊNH ĐỒNG LIÊN KẾT
 // ============================================================================
-// Hai chuỗi giá có thể tương quan high mà KHÔNG đồng liên kết: chúng cùng đi
+// Hai chuỗi giá có thể tương quan cao mà KHÔNG đồng liên kết: chúng cùng đi
 // lên nhưng chênh lệch giữa chúng ngày càng giãn. Giao dịch cặp trên quan hệ
 // như vậy là thua chắc.
 //
@@ -237,7 +237,7 @@ pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KetQuaDongLienKet {
-    /// Hệ số kéo về. Càng âm càng quay về trung bình fast.
+    /// Hệ số kéo về. Càng âm càng quay về trung bình nhanh.
     pub reversion_coef: f64,
     /// Nửa chu kỳ: bao nhiêu bước để chênh lệch co lại một nửa.
     pub half_life: f64,
@@ -468,7 +468,7 @@ pub fn sinh_cap_dong_lien_ket(n: usize, hat_giong: u64, beta: f64)
     (a, b)
 }
 
-/// Hai chuỗi tương quan high nhưng KHÔNG đồng liên kết: cả hai cùng đi lên,
+/// Hai chuỗi tương quan cao nhưng KHÔNG đồng liên kết: cả hai cùng đi lên,
 /// nhưng chênh lệch tự nó cũng là bước ngẫu nhiên và giãn mãi.
 pub fn gen_cap_price_cointegration(n: usize, hat_giong: u64) -> (Vec<f64>, Vec<f64>) {
     let mut s = hat_giong;
@@ -515,14 +515,14 @@ fn main() {
     println!("   {:<24} {:>12} {:>16} {:>14}",
              "cặp", "tương quan", "hệ số kéo về", "nửa chu kỳ");
     for (name, x, y) in [("đồng liên kết thật", &a, &b),
-                        ("chỉ tương quan high", &c, &d)] {
+                        ("chỉ tương quan cao", &c, &d)] {
         let h = regression(x, y).unwrap();
         let e = part_data(x, y, &h);
         let dlk = cointegration_test(&e, -0.05).unwrap();
         println!("   {:<24} {:>12.4} {:>16.4} {:>14.1}",
                  name, correlation(x, y).unwrap(), dlk.reversion_coef, dlk.half_life);
     }
-    println!("   → CẢ HAI đều tương quan rất high. Nhưng chỉ cặp đầu có chênh lệch");
+    println!("   → CẢ HAI đều tương quan rất cao. Nhưng chỉ cặp đầu có chênh lệch");
     println!("     quay về trung bình. Giao dịch cặp thứ hai là thua chắc.");
 
     println!("\n3. LỌC KALMAN — beta trôi theo thời gian");
@@ -699,7 +699,7 @@ mod tests {
         // BÀI HỌC TRUNG TÂM: tương quan gần 1 nhưng chênh lệch giãn mãi.
         let (c, d) = gen_cap_price_cointegration(1_000, 7);
         let r = correlation(&c, &d).unwrap();
-        assert!(r > 0.8, "hai chuỗi này TƯƠNG QUAN rất high: {:.3}", r);
+        assert!(r > 0.8, "hai chuỗi này TƯƠNG QUAN rất cao: {:.3}", r);
         let h = regression(&c, &d).unwrap();
         let e = part_data(&c, &d, &h);
         let k = cointegration_test(&e, -0.05).unwrap();
@@ -775,7 +775,7 @@ mod tests {
         assert!(two.stddev < mot.stddev,
                 "rủi ro danh mục {:.6} phải nhỏ hơn một mã {:.6}",
                 two.stddev, mot.stddev);
-        assert!(two.sharpe_ratio > mot.sharpe_ratio, "và Sharpe phải high hơn");
+        assert!(two.sharpe_ratio > mot.sharpe_ratio, "và Sharpe phải cao hơn");
     }
 
     #[test]
@@ -827,7 +827,7 @@ mod tests {
         let mut prev = f64::MIN;
         for mtc in [0.80f64, 0.90, 0.95, 0.99] {
             let v = value_at_risk(&ls, mtc).unwrap();
-            assert!(v >= prev, "mức tin cậy high hơn phải cho VaR lớn hơn");
+            assert!(v >= prev, "mức tin cậy cao hơn phải cho VaR lớn hơn");
             prev = v;
         }
     }

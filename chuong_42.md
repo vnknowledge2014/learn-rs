@@ -239,7 +239,7 @@ fn main() {
 
     let safe_input = "get_system_status";
     match security_gate.sanitize_command_input(safe_input) {
-        Ok(clean) => println!("    - Lenh an total duoc chap nhan: '{}'", clean),
+        Ok(clean) => println!("    - Lenh an toan duoc chap nhan: '{}'", clean),
         Err(err) => println!("    [!] Tu choi: {}", err),
     }
 
@@ -337,3 +337,155 @@ fn authz_correct(cap: CapBacDung) {
    Viết hàm sinh một chuỗi khóa bí mật 32 bytes ngẫu nhiên chuẩn an toàn mật mã (Cryptographically Secure Pseudo-Random Number) mà không sử dụng thuật toán giả ngẫu nhiên yếu như `rand::random()`. Giải thích vì sao việc dùng hàm ngẫu nhiên yếu lại là lỗ hổng nghiêm trọng trong các bài thi OSCP.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao `panic = "abort"` lại tăng tính bảo mật?)**:  
    Khi một chương trình Rust gặp lỗi `panic!`, mặc định nó sẽ thực hiện quy trình "Cuộn ngược ngăn xếp (Stack Unwinding)" để dọn dẹp các biến. Tại sao việc chuyển sang `panic = "abort"` (tắt tiến trình ngay lập tức) lại giúp thu nhỏ kích thước nhị phân và loại bỏ các đoạn mã máy thừa thãi (gadgets) mà kẻ tấn công có thể lợi dụng để xây dựng chuỗi ROP (Return-Oriented Programming)?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Bộ hạn chế tần suất theo dõi mỗi IP: số lần sai + mốc thời gian bắt đầu cửa sổ. Quá 5 lần trong 60 giây thì đặt mốc khóa 5 phút. Dùng `Instant` cho thời gian đơn điệu.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+pub struct LoginRateLimiter {
+    // Mỗi IP: (số lần sai trong cửa sổ, thời điểm bắt đầu cửa sổ, thời điểm hết khóa nếu có)
+    theo_doi: HashMap<String, (u32, Instant, Option<Instant>)>,
+}
+
+impl LoginRateLimiter {
+    pub fn new() -> Self {
+        Self { theo_doi: HashMap::new() }
+    }
+
+    /// Gọi khi có lần thử SAI. Trả về true nếu IP hiện đang bị khóa.
+    pub fn ghi_nhan_that_bai(&mut self, ip: &str, bay_gio: Instant) -> bool {
+        let e = self.theo_doi.entry(ip.to_string())
+            .or_insert((0, bay_gio, None));
+
+        // Đang trong thời gian khóa? -> vẫn khóa.
+        if let Some(het_khoa) = e.2 {
+            if bay_gio < het_khoa { return true; }
+            *e = (0, bay_gio, None); // hết hạn khóa -> làm mới
+        }
+
+        // Cửa sổ 60s trôi qua -> đếm lại từ đầu.
+        if bay_gio.duration_since(e.1) > Duration::from_secs(60) {
+            *e = (1, bay_gio, None);
+            return false;
+        }
+
+        e.0 += 1;
+        if e.0 > 5 {
+            // Quá 5 lần sai trong 60s -> khóa 5 phút.
+            e.2 = Some(bay_gio + Duration::from_secs(5 * 60));
+            return true;
+        }
+        false
+    }
+
+    pub fn dang_bi_khoa(&self, ip: &str, bay_gio: Instant) -> bool {
+        matches!(self.theo_doi.get(ip), Some((_, _, Some(het))) if bay_gio < *het)
+    }
+}
+
+#[test]
+fn khoa_sau_qua_5_lan_sai() {
+    let mut rl = LoginRateLimiter::new();
+    let t0 = Instant::now();
+    // 5 lần sai đầu: chưa khóa.
+    for _ in 0..5 { assert!(!rl.ghi_nhan_that_bai("1.2.3.4", t0)); }
+    // Lần thứ 6 trong cửa sổ 60s -> khóa.
+    assert!(rl.ghi_nhan_that_bai("1.2.3.4", t0));
+    assert!(rl.dang_bi_khoa("1.2.3.4", t0));
+    // IP khác không bị ảnh hưởng.
+    assert!(!rl.dang_bi_khoa("9.9.9.9", t0));
+}
+```
+
+Vì sao thiết kế này chặn brute-force: tấn công dò mật khẩu dựa vào **thử thật nhiều lần thật nhanh**. Giới hạn 5 lần/60 giây rồi khóa 5 phút biến một cuộc dò hàng triệu mật khẩu/giây thành vài lần mỗi 5 phút — chậm tới mức vô dụng. Chi tiết đúng đắn: dùng `Instant` (đồng hồ *đơn điệu*, không bao giờ chạy lùi) chứ không dùng `SystemTime` (giờ hệ thống có thể bị chỉnh, kẻ tấn công lợi dụng để lách khóa). Truyền `bay_gio` vào làm tham số giúp *kiểm thử được* — không phụ thuộc đồng hồ thật.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Ngẫu nhiên an toàn mật mã KHÔNG lấy từ thuật toán giả ngẫu nhiên, mà lấy từ **nguồn entropy của hệ điều hành**. Trên Unix đó là `/dev/urandom`; std đọc được trực tiếp.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::fs::File;
+use std::io::Read;
+
+/// Sinh 32 byte ngẫu nhiên AN TOÀN MẬT MÃ, lấy từ nguồn entropy của HĐH.
+/// KHÔNG dùng thuật toán giả ngẫu nhiên (rand::random) — xem giải thích bên dưới.
+fn sinh_token_bi_mat() -> std::io::Result<[u8; 32]> {
+    let mut token = [0u8; 32];
+    // /dev/urandom là nguồn ngẫu nhiên mật mã do nhân HĐH nuôi bằng entropy
+    // phần cứng (nhiễu nhiệt, thời điểm ngắt...). Không thể đoán trước.
+    let mut f = File::open("/dev/urandom")?;
+    f.read_exact(&mut token)?; // đọc đúng 32 byte
+    Ok(token)
+}
+
+#[test]
+fn token_dung_32_byte_va_khac_nhau() {
+    let a = sinh_token_bi_mat().unwrap();
+    let b = sinh_token_bi_mat().unwrap();
+    assert_eq!(a.len(), 32);
+    // Hai lần sinh gần như chắc chắn khác nhau (xác suất trùng ~ 1/2^256).
+    assert_ne!(a, b);
+}
+```
+
+*(Trong dự án thật, dùng crate `getrandom` để lấy cùng nguồn này một cách đa nền tảng — nó gọi `getrandom(2)` trên Linux, `BCryptGenRandom` trên Windows. Ở đây ta đọc thẳng `/dev/urandom` để thấy rõ bản chất.)*
+
+**Vì sao dùng ngẫu nhiên yếu là lỗ hổng nghiêm trọng (bối cảnh OSCP):**
+
+Một bộ sinh giả ngẫu nhiên thường (như `rand::random` cấu hình mặc định, hay `rand()` của C) là **thuật toán tất định**: từ một "hạt giống" (seed), nó sinh ra một chuỗi số *hoàn toàn xác định*. Nếu kẻ tấn công đoán được seed, chúng tái tạo được **toàn bộ** chuỗi token.
+
+Điều chết người là seed thường lấy từ những nguồn **đoán được**:
+- Thời gian hệ thống (giây kể từ 1970) — không gian tìm kiếm rất nhỏ.
+- ID tiến trình — vài chục nghìn khả năng.
+
+Trong một bài OSCP, nếu máy chủ sinh token phiên (session token) hay token đặt-lại-mật-khẩu bằng bộ giả ngẫu nhiên seed theo thời gian, kẻ tấn công chỉ cần **dò seed quanh thời điểm đăng nhập** để tái tạo token phiên của quản trị viên — chiếm phiên mà *không cần biết mật khẩu*. Đây là một lớp lỗ hổng có thật, được xếp hạng CWE-338 (dùng PRNG yếu về mật mã).
+
+Nguồn mật mã (`/dev/urandom`) khác về bản chất: nhân HĐH nuôi nó bằng **entropy phần cứng** (nhiễu nhiệt, thời điểm các ngắt) mà không ai đoán hay tái tạo được — kể cả khi biết mọi token đã sinh trước đó, cũng không suy ra được token tiếp theo. Quy tắc sắt: **bất cứ thứ gì làm bí mật — khóa, token, salt, IV — phải sinh từ nguồn mật mã, không bao giờ từ PRNG thường.**
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Cuộn ngược ngăn xếp (stack unwinding) đòi trình biên dịch chèn mã dọn dẹp tại mỗi khung hàm. `panic = "abort"` bỏ hết phần đó — nhỏ hơn và ít 'nguyên liệu' cho kẻ tấn công.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+`panic = "abort"` cải thiện bảo mật (và kích thước) bằng cách **loại bỏ toàn bộ cơ chế cuộn ngược ngăn xếp**.
+
+**Mặc định — cuộn ngược (unwinding):** khi `panic!` xảy ra, Rust đi ngược ngăn xếp lời gọi, chạy `Drop` để dọn dẹp từng biến (đóng tệp, giải phóng bộ nhớ...) cho tới khi tới đỉnh luồng. Để làm được, trình biên dịch phải **chèn mã và bảng dọn dẹp (landing pads) tại mỗi khung hàm** có gì đó cần dọn.
+
+**`panic = "abort"`:** khi `panic!` xảy ra, tiến trình **dừng ngay lập tức** (gọi `abort`), không dọn dẹp gì cả — giao lại toàn bộ cho hệ điều hành thu hồi.
+
+**Lợi ích 1 — thu nhỏ nhị phân:** bỏ cuộn ngược nghĩa là bỏ hết mã dọn dẹp và bảng unwind rải khắp mọi hàm. Với nhị phân nhỏ, phần này có thể chiếm 10% trở lên. Đây là lý do nhị phân nhúng và WebAssembly gần như luôn bật `panic = "abort"`.
+
+**Lợi ích 2 — bớt 'nguyên liệu' cho kẻ tấn công (giảm bề mặt tấn công):**
+
+Đây là ý sâu hơn. Trong kỹ thuật khai thác **ROP (Return-Oriented Programming)**, kẻ tấn công không tiêm mã mới (bộ nhớ thường đánh dấu không-thực-thi), mà **xâu chuỗi lại những mẩu mã máy có sẵn** trong nhị phân — gọi là *gadget*, thường là các đoạn kết thúc bằng lệnh `ret`. Càng nhiều mã trong nhị phân, càng nhiều gadget để ghép thành chuỗi tấn công.
+
+Mã cuộn ngược chính là **một kho gadget dồi dào**: nó đầy những đoạn dọn dẹp, gọi hủy, thao tác con trỏ khung — rải rác khắp nơi và kết thúc bằng `ret`. Bỏ nó đi (`panic = "abort"`):
+- **Nhị phân nhỏ hơn -> ít gadget hơn** để kẻ tấn công lựa chọn.
+- **Xóa hẳn một lớp đường thực thi phức tạp** (bộ máy unwinding) mà bản thân nó từng là nguồn của lỗi bảo mật.
+
+Nói gọn: cuộn ngược cho ta dọn dẹp *duyên dáng* khi panic, nhưng đổi lại phình nhị phân và tặng kẻ tấn công thêm nguyên liệu. Với dịch vụ mà chiến lược xử lý panic là "chết ngay và để bộ giám sát khởi động lại" (triết lý phổ biến cho máy chủ), thì `panic = "abort"` vừa nhẹ hơn vừa an toàn hơn — một đánh đổi hời.
+</details>

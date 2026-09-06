@@ -261,7 +261,7 @@ fn main() {
         for i in 1..=4 {
             let msg = format!("DonHang_#{}", i);
             producer_q.push(msg.clone()).unwrap();
-            println!("    [Producer] Da day '{}' vao hang doi an total.", msg);
+            println!("    [Producer] Da day '{}' vao hang doi an toan.", msg);
         }
     });
 
@@ -341,3 +341,176 @@ fn delete_correct(map: &mut HashMap<String, u64>) {
    Trong `DistributedMessageQueue`, nếu một thông điệp bị xử lý thất bại quá 3 lần liên tiếp, thay vì vứt bỏ, hãy tự động chuyển thông điệp đó sang một hàng đợi riêng biệt mang tên `DeadLetterQueue` để các kỹ sư quản trị có thể kiểm tra và gỡ lỗi thủ công.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Cache Invalidation là một trong hai bài toán khó nhất?)**:  
    Chuyên gia Martin Fowler từng nói: *"Chỉ có hai thứ khó trong khoa học máy tính: Đặt tên biến và Hủy tính hợp lệ của Cache (Cache Invalidation)"*. Hãy phân tích một tình huống cụ thể: Khi người dùng đổi mật khẩu, làm thế nào để đảm bảo 10 máy chủ Cache phân tán trên toàn cầu cùng hủy bỏ phiên đăng nhập cũ ngay lập tức mà không để xảy ra kẽ hở bảo mật?
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+LRU đào thải mục 'lâu nhất chưa dùng'. Cần theo dõi thứ tự truy cập: mỗi lần get/set một khóa, đánh dấu nó vừa được dùng. Khi đầy, bỏ mục có dấu thời gian cũ nhất.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+use std::collections::HashMap;
+
+/// Cache có đào thải LRU (Least Recently Used): đầy thì bỏ mục lâu nhất chưa dùng.
+pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
+    map: HashMap<K, (V, u64)>, // khóa -> (giá trị, dấu thời gian truy cập gần nhất)
+    suc_chua: usize,
+    dong_ho: u64,              // bộ đếm logic, tăng mỗi lần truy cập
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
+    pub fn new(suc_chua: usize) -> Self {
+        Self { map: HashMap::new(), suc_chua, dong_ho: 0 }
+    }
+
+    fn tick(&mut self) -> u64 { self.dong_ho += 1; self.dong_ho }
+
+    pub fn get(&mut self, key: &K) -> Option<V> {
+        let now = self.tick();
+        if let Some(e) = self.map.get_mut(key) {
+            e.1 = now;              // đánh dấu VỪA DÙNG -> lùi thời điểm bị đào thải
+            Some(e.0.clone())
+        } else { None }
+    }
+
+    pub fn set(&mut self, key: K, value: V) {
+        let now = self.tick();
+        if !self.map.contains_key(&key) && self.map.len() >= self.suc_chua {
+            // Đầy chỗ -> tìm khóa có dấu thời gian NHỎ NHẤT (lâu nhất chưa dùng) và bỏ.
+            if let Some(lru_key) = self.map.iter()
+                .min_by_key(|(_, (_, ts))| *ts)
+                .map(|(k, _)| k.clone())
+            {
+                self.map.remove(&lru_key);
+            }
+        }
+        self.map.insert(key, (value, now));
+    }
+
+    pub fn len(&self) -> usize { self.map.len() }
+}
+
+#[test]
+fn dao_thai_muc_lau_nhat_chua_dung() {
+    let mut c = LruCache::new(2);
+    c.set("a", 1);
+    c.set("b", 2);
+    // Truy cập "a" -> "a" thành mới dùng, "b" thành cũ nhất.
+    assert_eq!(c.get(&"a"), Some(1));
+    // Thêm "c" khi đã đầy -> "b" (cũ nhất chưa dùng) bị đào thải, KHÔNG phải "a".
+    c.set("c", 3);
+    assert_eq!(c.len(), 2);
+    assert_eq!(c.get(&"b"), None);      // b đã bị bỏ
+    assert_eq!(c.get(&"a"), Some(1));   // a còn vì vừa được dùng
+    assert_eq!(c.get(&"c"), Some(3));
+}
+```
+
+Ý tưởng LRU: **thứ lâu nhất không được đụng tới là thứ đáng bỏ nhất** — vì theo *tính cục bộ thời gian* (temporal locality), dữ liệu vừa dùng có xác suất cao sẽ được dùng lại sớm. Mấu chốt là mỗi lần `get` cũng phải **cập nhật dấu thời gian** (không chỉ `set`), nếu không "vừa dùng" sẽ không được ghi nhận và bạn có thể đào thải nhầm mục đang nóng. Bản ở đây dùng quét tuyến tính tìm mục cũ nhất (`O(n)` mỗi lần đào thải) cho dễ hiểu; cache thật dùng danh sách liên kết đôi + HashMap để đào thải trong `O(1)` — đó chính là cấu trúc bên trong `lru` crate hay `LinkedHashMap`.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Hàng đợi thư chết (Dead-Letter Queue): thông điệp thất bại quá 3 lần không vứt đi mà chuyển sang một hàng riêng để người quản trị kiểm tra. Cần theo dõi số lần thử mỗi thông điệp.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+use std::collections::VecDeque;
+
+/// Thông điệp kèm bộ đếm số lần đã thử xử lý.
+pub struct Message { pub payload: String, pub so_lan_thu: u32 }
+
+/// Hàng đợi có DLQ: thất bại > 3 lần thì chuyển sang hàng thư chết thay vì vứt bỏ.
+pub struct QueueWithDlq {
+    main: VecDeque<Message>,
+    pub dead_letter: Vec<Message>, // nơi kỹ sư kiểm tra thủ công về sau
+}
+
+impl QueueWithDlq {
+    pub fn new() -> Self { Self { main: VecDeque::new(), dead_letter: Vec::new() } }
+
+    pub fn push(&mut self, payload: &str) {
+        self.main.push_back(Message { payload: payload.to_string(), so_lan_thu: 0 });
+    }
+
+    /// Xử lý thông điệp kế tiếp. `thanh_cong` mô phỏng kết quả xử lý.
+    /// Nếu thất bại: tăng bộ đếm, đưa lại hàng chính; quá 3 lần -> chuyển DLQ.
+    pub fn process_next(&mut self, thanh_cong: bool) {
+        if let Some(mut msg) = self.main.pop_front() {
+            if thanh_cong { return; } // xử lý xong, biến mất khỏi hàng
+            msg.so_lan_thu += 1;
+            if msg.so_lan_thu >= 3 {
+                // Thất bại 3 lần liên tiếp -> KHÔNG vứt, chuyển sang hàng thư chết.
+                self.dead_letter.push(msg);
+            } else {
+                self.main.push_back(msg); // thử lại sau
+            }
+        }
+    }
+
+    pub fn main_len(&self) -> usize { self.main.len() }
+}
+
+#[test]
+fn chuyen_dlq_sau_3_lan_that_bai() {
+    let mut q = QueueWithDlq::new();
+    q.push("gửi email lỗi");
+    // Ba lần xử lý đều thất bại.
+    q.process_next(false); // lần 1 -> đưa lại hàng
+    q.process_next(false); // lần 2 -> đưa lại hàng
+    q.process_next(false); // lần 3 -> chuyển DLQ
+    assert_eq!(q.main_len(), 0);              // không còn ở hàng chính
+    assert_eq!(q.dead_letter.len(), 1);       // đã vào hàng thư chết
+    assert_eq!(q.dead_letter[0].so_lan_thu, 3);
+}
+```
+
+Hàng đợi thư chết giải quyết một tình thế tiến thoái lưỡng nan: một thông điệp *cứ thất bại mãi* (dữ liệu dị dạng, dịch vụ đích hỏng vĩnh viễn) thì làm gì? **Thử lại vô hạn** làm nghẽn hàng đợi, chặn mọi thông điệp tốt phía sau — gọi là "thông điệp độc" (poison message). **Vứt bỏ luôn** thì mất dữ liệu âm thầm, không ai biết. DLQ là lối thoát thứ ba: sau vài lần thử, **tách riêng thông điệp hỏng ra một chỗ an toàn** để hàng chính chảy tiếp, đồng thời *giữ lại* thông điệp đó cho kỹ sư điều tra nguyên nhân. Đây là thành phần chuẩn của mọi hệ thống hàng đợi nghiêm túc (RabbitMQ, AWS SQS, Kafka) — một van an toàn giữa "thử mãi" và "mất dữ liệu".
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Tình huống đổi mật khẩu: phiên cũ trên 10 cache toàn cầu phải bị vô hiệu NGAY, nếu không kẻ trộm mật khẩu cũ vẫn vào được. Vấn đề là độ trễ lan truyền giữa các cache.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao hủy hiệu lực cache (cache invalidation) khó — qua tình huống đổi mật khẩu:**
+
+Khi người dùng đổi mật khẩu, mục đích an ninh là: **mọi phiên đăng nhập cũ phải chết ngay lập tức** — để nếu kẻ tấn công đã đánh cắp mật khẩu cũ (hoặc token phiên cũ), chúng bị đá ra tức thì. Nhưng phiên được lưu đệm trên **10 máy chủ cache rải khắp toàn cầu** để đăng nhập nhanh. Đó là nơi cái khó lộ ra.
+
+**Kẽ hở bảo mật cốt lõi — cửa sổ không nhất quán:**
+```text
+t=0:   Người dùng đổi mật khẩu ở máy chủ khu vực Mỹ.
+t=0:   Cache Mỹ hủy phiên cũ ngay.       -> Mỹ: phiên cũ đã chết
+t=0:   Nhưng lệnh hủy còn ĐANG LAN sang cache Âu, Á (mất 50-500ms).
+t=0.2: Kẻ tấn công dùng token phiên CŨ, kết nối vào cache CHÂU Á.
+       -> Châu Á CHƯA nhận lệnh hủy -> phiên cũ vẫn còn hiệu lực
+       -> KẺ TẤN CÔNG VÀO ĐƯỢC trong cửa sổ 0.2 giây đó
+```
+Chính khoảng trễ lan truyền giữa các cache tạo ra một **cửa sổ tấn công**. Với dữ liệu thường (tên hiển thị cũ vài trăm mili-giây), cửa sổ này vô hại. Với **phiên đăng nhập**, nó là lỗ hổng thật.
+
+**Các hướng xử lý — và đánh đổi của từng hướng:**
+
+| Chiến lược | Cách làm | Đánh đổi |
+|---|---|---|
+| **Hủy chủ động (push/fan-out)** | Máy đổi mật khẩu chủ động phát lệnh xóa tới cả 10 cache và *chờ xác nhận* | Chậm hơn (chờ nơi xa nhất), nhưng đóng cửa sổ |
+| **TTL ngắn** | Phiên trong cache tự hết hạn sau 30-60 giây, buộc kiểm lại nguồn thật | Đơn giản, nhưng vẫn có cửa sổ = TTL; tăng tải nguồn thật |
+| **Danh sách thu hồi tập trung** | Mỗi yêu cầu kiểm nhanh một "sổ đen" phiên bị thu hồi (nguồn duy nhất, sao chép nhanh) | Thêm một lần tra mỗi yêu cầu; nhưng nhất quán tức thì |
+| **Cặp token + phiên bản mật khẩu** | Token nhúng "phiên bản mật khẩu"; đổi mật khẩu tăng phiên bản -> mọi token cũ tự sai | Sạch, nhưng cần thiết kế token từ đầu |
+
+Trong thực tế, hệ thống nghiêm túc **kết hợp**: TTL ngắn cho phiên + một sổ đen thu hồi tập trung cho các sự kiện nhạy cảm (đổi mật khẩu, đăng xuất). Câu nói của Martin Fowler đúng ở chỗ: **không có lời giải hoàn hảo** — mọi phương án đều đánh đổi giữa *tốc độ* (đệm để nhanh), *tính nhất quán* (dữ liệu mới nhất ở mọi nơi), và *tải hệ thống*. Chọn điểm cân bằng nào là tùy dữ liệu: "hơi cũ" chấp nhận được thì ưu tiên tốc độ; dữ liệu an ninh thì phải trả giá tốc độ để đóng cửa sổ tấn công.
+</details>

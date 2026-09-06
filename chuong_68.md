@@ -204,7 +204,7 @@ impl Vec2 {
 // ============================================================================
 
 /// Nếu để bước vật lý phụ thuộc tốc độ khung hình, cùng một trò chơi sẽ chạy
-/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ high.
+/// KHÁC NHAU trên máy mạnh và máy yếu — nhân vật xuyên tường, nhảy khác độ cao.
 /// Giải pháp: tích lũy thời gian rồi chạy vật lý theo bước CỐ ĐỊNH.
 pub struct AccumulatorUnit {
     pub step_has_peak: f32,

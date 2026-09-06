@@ -684,7 +684,7 @@ fn main() {
     // 9. flat_map / flatten
     // ------------------------------------------------------------------
     println!("\n9. flat_map / flatten");
-    let sentence = ["Rust rất fast", "và an toàn"];
+    let sentence = ["Rust rất nhanh", "và an toàn"];
     let tu: Vec<&str> = sentence.iter().flat_map(|c| c.split_whitespace()).collect();
     println!("   flat_map tách từ: {:?}", tu);
 

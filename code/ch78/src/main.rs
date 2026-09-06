@@ -5,7 +5,7 @@
 //!
 //! Khác biệt cốt lõi so với thị trường truyền thống (Chương 75–77): ở đây
 //! **mọi giao dịch đều công khai TRƯỚC khi được thực thi**. Ai cũng đọc được
-//! hàng chờ, và ai trả phí high hơn thì được xếp trước. Đó là mảnh đất của MEV.
+//! hàng chờ, và ai trả phí cao hơn thì được xếp trước. Đó là mảnh đất của MEV.
 //!
 //! ⚠️ Đây là tài liệu KỸ THUẬT nhằm giúp người đọc TỰ BẢO VỆ và hiểu rủi ro,
 //! không phải hướng dẫn khai thác người dùng khác.
@@ -131,7 +131,7 @@ pub fn impermanent_loss(ty_le_gia: f64) -> f64 {
 // 3. HÀNG CHỜ CÔNG KHAI & TẤN CÔNG KẸP
 // ============================================================================
 // Trên blockchain, giao dịch nằm trong hàng chờ CÔNG KHAI trước khi vào khối,
-// và người xây khối sắp xếp theo phí ưu tiên. Ai trả high hơn được xếp trước.
+// và người xây khối sắp xếp theo phí ưu tiên. Ai trả cao hơn được xếp trước.
 // Hệ quả: bất kỳ ai cũng thấy trước bạn định làm gì, và chen lên trước được.
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,7 +166,7 @@ pub struct KetQuaKep {
 /// Mô phỏng một cú kẹp để thấy **vì sao phải đặt sàn nhận tối thiểu chặt**.
 ///
 /// Kịch bản: kẻ tấn công thấy giao dịch của nạn nhân trong hàng chờ, trả phí
-/// high hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
+/// cao hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
 /// NGAY SAU đó ăn chênh lệch.
 pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity)
     -> KetQuaKep
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn the_optimal_size_really_is_optimal() {
-        // So với các khối lượng lân cận, khối lượng tìm được phải cho lãi high nhất.
+        // So với các khối lượng lân cận, khối lượng tìm được phải cho lãi cao nhất.
         let b = Pool::new(1_000_000, 1_900_000_000, 30);
         let gia_cex = 2_000.0;
         let ch = find_arb(&b, gia_cex, 500_000_000);

@@ -510,8 +510,8 @@ fn main() {
 
     println!("\n6. DNS");
     let dns = DnsServer { sell_record: vec![
-        ("www.vidu.vn".into(), SellRecord::CNAME("may-owner.vidu.vn".into())),
-        ("may-owner.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
+        ("www.vidu.vn".into(), SellRecord::CNAME("may-chu.vidu.vn".into())),
+        ("may-chu.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
     ]};
     println!("   www.vidu.vn  → {:?}", dns.part_solve("www.vidu.vn"));
     println!("   khong-co.vn  → {:?}", dns.part_solve("khong-co.vn"));

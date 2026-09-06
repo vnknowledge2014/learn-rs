@@ -193,7 +193,7 @@ impl RaftNode {
             return false;
         }
 
-        // 2. Nếu nhiệm kỳ của ứng viên high hơn: Cập nhật nhiệm kỳ và quay về làm Follower
+        // 2. Nếu nhiệm kỳ của ứng viên cao hơn: Cập nhật nhiệm kỳ và quay về làm Follower
         if candidate_term > self.current_term {
             self.current_term = candidate_term;
             self.role = RaftRole::Follower;
@@ -360,3 +360,135 @@ fn update_correct(node: &mut ViDuNode) {
    Giả sử Node 3 bị sập nguồn trong 1 tiếng và bị thiếu mất 10 bản ghi nhật ký. Hãy viết hàm `sync_follower_log` cho phép Leader tự động phát hiện vị trí bản ghi không khớp và gửi lại các bản ghi còn thiếu để đưa Node 3 về trạng thái nhất quán với toàn cụm.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Raft lại thay thế Paxos?)**:  
    Trước khi Raft ra đời vào năm 2014, Paxos là thuật toán đồng thuận thống trị thế giới. Tại sao tác giả Diego Ongaro lại sáng tạo ra Raft với mục tiêu hàng đầu là "Tính dễ hiểu (Understandability)"? Hãy phân tích sự khác biệt giữa cấu trúc có Leader độc tôn của Raft so với tính đối xứng phức tạp của Multi-Paxos.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Quorum = quá bán: với 5 nút cần floor(5/2)+1 = 3 phiếu để bầu Leader. Cụm A chỉ có 2 nút -> tối đa 2 phiếu -> không bao giờ đủ. Đây là cách Raft chặn 'não đôi'.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+```rust
+/// Kiểm một cụm con có đủ quorum để bầu Leader không.
+/// Quorum của cụm n nút = n/2 + 1 (quá bán).
+fn co_du_quorum(so_phieu: usize, tong_cum: usize) -> bool {
+    so_phieu >= tong_cum / 2 + 1
+}
+
+/// Mô phỏng: cụm 5 nút bị chia thành A (2 nút) và B (3 nút).
+/// Chứng minh chỉ cụm B bầu được Leader.
+#[test]
+fn chong_nao_doi_split_brain() {
+    let tong = 5;
+    let quorum_can = tong / 2 + 1; // = 3
+    assert_eq!(quorum_can, 3);
+
+    // Cụm A: Node 1, 2 -> tối đa 2 phiếu (tự bầu cho nhau).
+    let phieu_cum_a = 2;
+    assert!(!co_du_quorum(phieu_cum_a, tong),
+        "Cụm A chỉ 2 phiếu < 3 -> KHÔNG được bầu Leader");
+
+    // Cụm B: Node 3, 4, 5 -> 3 phiếu.
+    let phieu_cum_b = 3;
+    assert!(co_du_quorum(phieu_cum_b, tong),
+        "Cụm B đủ 3 phiếu >= 3 -> ĐƯỢC bầu Leader");
+
+    // Điểm mấu chốt: hai cụm KHÔNG THỂ cùng đạt quorum.
+    // Vì nếu cả hai cùng đủ quá bán thì tổng phiếu > tổng nút — vô lý.
+    assert!(!(co_du_quorum(phieu_cum_a, tong) && co_du_quorum(phieu_cum_b, tong)),
+        "Không bao giờ có HAI Leader cùng lúc");
+}
+```
+
+**"Não đôi" (split-brain)** là ác mộng của hệ phân tán: mạng bị chia cắt, mỗi phía tưởng phía kia đã chết và **tự bầu Leader riêng** — giờ có *hai* Leader cùng nhận lệnh ghi, dữ liệu phân kỳ không thể hòa giải. Raft chặn triệt để bằng luật quorum quá bán: một Leader chỉ hợp lệ khi được **hơn một nửa toàn cụm** bầu. Chứng minh toán học vì sao điều này an toàn: nếu cụm A và cụm B *cùng* đạt quá bán, thì tổng số phiếu >= (n/2+1) × 2 > n — nhưng mỗi nút chỉ bầu một lần, nên tổng phiếu <= n. Mâu thuẫn. Do đó **tối đa một cụm con đạt quorum** — phía thiểu số (cụm A) tự động mất khả năng bầu Leader và chỉ chờ, còn phía đa số (cụm B) tiếp tục hoạt động. Đây là lý do các cụm đồng thuận luôn dùng **số nút lẻ** (3, 5, 7): để một lần chia cắt luôn tạo ra một phía đa số rõ ràng.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Leader so nhật ký của mình với follower, lùi dần tìm điểm bắt đầu khớp, rồi gửi lại mọi bản ghi từ đó trở đi. Follower cắt bỏ phần lệch và nối phần Leader gửi.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+#[derive(Clone, PartialEq, Debug)]
+pub struct LogEntry { pub term: u64, pub command: String }
+
+/// Leader đồng bộ nhật ký cho một follower bị tụt lại.
+/// Trả về các bản ghi follower CÒN THIẾU (từ điểm khớp cuối trở đi).
+pub fn sync_follower_log(leader_log: &[LogEntry], follower_log: &[LogEntry]) -> Vec<LogEntry> {
+    // Tìm điểm khớp cuối cùng: quét tới khi hai nhật ký bắt đầu lệch.
+    let mut match_len = 0;
+    while match_len < leader_log.len()
+        && match_len < follower_log.len()
+        && leader_log[match_len] == follower_log[match_len]
+    {
+        match_len += 1;
+    }
+    // Mọi bản ghi của Leader từ điểm lệch trở đi là phần cần gửi bù.
+    leader_log[match_len..].to_vec()
+}
+
+/// Follower áp bản vá: cắt phần lệch của mình, nối phần Leader gửi.
+pub fn apply_sync(follower_log: &mut Vec<LogEntry>, tu_vi_tri: usize, bu: &[LogEntry]) {
+    follower_log.truncate(tu_vi_tri); // bỏ phần lệch (nếu có)
+    follower_log.extend_from_slice(bu);
+}
+
+#[test]
+fn dong_bo_follower_bi_tut_lai() {
+    let e = |t, c: &str| LogEntry { term: t, command: c.to_string() };
+    // Leader có 5 bản ghi; follower (Node 3) mới có 2 -> thiếu 3 cái cuối.
+    let leader = vec![e(1,"a"), e(1,"b"), e(2,"c"), e(2,"d"), e(3,"e")];
+    let mut follower = vec![e(1,"a"), e(1,"b")];
+
+    let bu = sync_follower_log(&leader, &follower);
+    assert_eq!(bu.len(), 3); // c, d, e
+    apply_sync(&mut follower, 2, &bu);
+    assert_eq!(follower, leader); // đã nhất quán với Leader
+
+    // Follower có bản ghi LỆCH (term sai) phải bị cắt bỏ, không giữ lại.
+    let mut lech = vec![e(1,"a"), e(1,"b"), e(9,"X")]; // "X" ở term 9 là rác cần bỏ
+    let bu2 = sync_follower_log(&leader, &lech);
+    apply_sync(&mut lech, 2, &bu2); // cắt từ vị trí khớp cuối (2)
+    assert_eq!(lech, leader);
+}
+```
+
+Đây là trái tim của cơ chế **nhất quán nhật ký (log matching)** trong Raft. Nguyên tắc: Leader là **nguồn chân lý duy nhất** — mọi follower phải khớp nhật ký của Leader tới từng bản ghi. Khi một nút sống lại sau sự cố và bị thiếu (hoặc tệ hơn, có bản ghi *lệch* do từng nhận lệnh từ một Leader cũ đã bị lật đổ), Leader **lùi dần tìm điểm khớp cuối cùng**, rồi buộc follower **cắt bỏ mọi thứ sau điểm đó và chép lại từ Leader**. Chi tiết an toàn quan trọng: follower *không* được giữ lại bản ghi lệch của mình (bản ghi `X` ở term 9 trong test) — nó phải bị ghi đè, vì chỉ nhật ký của Leader mới được thừa nhận. Nhờ luật này, sau đồng bộ mọi nút hội tụ về *đúng một* lịch sử thống nhất, dù trước đó chúng phân kỳ thế nào.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Raft và Paxos giải cùng bài toán đồng thuận, nhưng Raft đặt 'tính dễ hiểu' làm mục tiêu số một. Khác biệt cốt lõi: Raft có một Leader độc tôn dẫn dắt, Paxos đối xứng và phi tập trung hơn.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Vì sao Diego Ongaro tạo Raft (2014) với mục tiêu hàng đầu là *tính dễ hiểu* — dù Paxos đã tồn tại và được chứng minh đúng:**
+
+Câu trả lời nằm ở một sự thật phũ phàng của ngành: **Paxos đúng về mặt toán học nhưng nổi tiếng là khó hiểu và khó cài đặt đúng.** Chính Leslie Lamport (tác giả Paxos) viết bài báo gốc dưới dạng một truyện ngụ ngôn về nghị viện Hy Lạp khiến nó càng khó nắm. Hệ quả thực tế: các kỹ sư đọc Paxos, gật gù rằng nó đúng, rồi *không cài nổi* — và những bản cài "Paxos" ngoài đời thường là các biến thể chắp vá (Multi-Paxos) mà không ai chắc còn đúng không. Ongaro lập luận: **một thuật toán đồng thuận mà con người không hiểu nổi thì không thể cài đúng, không thể vận hành, không thể dạy** — nên *tính dễ hiểu* tự nó là một mục tiêu kỹ thuật chính đáng, ngang hàng với tính đúng đắn.
+
+**Khác biệt cấu trúc cốt lõi — Leader độc tôn (Raft) so với đối xứng (Multi-Paxos):**
+
+| | Raft | Multi-Paxos |
+|---|---|---|
+| **Vai trò** | Leader độc tôn rõ ràng; mọi ghi đi qua Leader | Đối xứng — nút nào cũng có thể đề xuất, vai trò mờ |
+| **Luồng dữ liệu** | Một chiều: Leader -> follower | Nhiều bên thương lượng qua lại |
+| **Cách hiểu** | Tách thành 3 bài toán con rời: bầu Leader, sao chép nhật ký, an toàn | Trộn lẫn, khó tách để suy luận từng phần |
+| **Khi Leader chết** | Bầu lại rõ ràng theo term tăng dần | Có thể có nhiều đề xuất cạnh tranh, phức tạp hơn |
+
+**Raft đơn giản hóa bằng cách *áp đặt cấu trúc*:** thay vì để mọi nút bình đẳng thương lượng (như Paxos), Raft **bầu ra một Leader độc tôn** và quy định *mọi* thay đổi phải đi qua Leader theo một chiều. Điều này thu hẹp không gian trạng thái phải suy luận: bạn chỉ cần hiểu "Leader nói, follower nghe theo và khớp nhật ký". Ongaro còn cố ý **chia Raft thành ba bài toán con độc lập** — (1) bầu Leader, (2) sao chép nhật ký, (3) đảm bảo an toàn — để người học nắm từng mảnh riêng rồi ghép lại, thay vì nuốt cả khối như Paxos.
+
+Cái giá của sự đơn giản: Leader độc tôn là **điểm nghẽn** (mọi ghi qua một nút) và tạo một khoảng ngừng khi Leader chết (phải bầu lại). Paxos đối xứng về lý thuyết mềm dẻo hơn. Nhưng Ongaro đặt cược đúng: **với đa số hệ thống thực tế, một thuật toán *dễ hiểu và cài đúng* giá trị hơn một thuật toán *tối ưu lý thuyết nhưng không ai cài nổi*.** Kết quả lịch sử chứng minh điều đó — Raft nay là nền tảng của etcd, Consul, TiKV, CockroachDB và vô số hệ thống production, trong khi Paxos thuần phần lớn vẫn nằm trong các bài báo.
+</details>

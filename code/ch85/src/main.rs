@@ -1888,7 +1888,7 @@ mod tests {
         s.apply(&EventKind::AddOrder { id: 2, side: Side::Sell, price: 102, quantity: 100 });
         let mid = s.mid().unwrap();
         let vi = s.micro_price().unwrap();
-        assert!(vi > mid, "bên bid đông → vi giá phải high hơn giá giữa");
+        assert!(vi > mid, "bên bid đông → vi giá phải cao hơn giá giữa");
         assert!(vi < 102.0);
     }
 
@@ -2145,11 +2145,11 @@ mod tests {
     fn percentiles_catch_tail_that_mean_hides() {
         let mut h = LatencyHistogram::new();
         for i in 0..10_000 {
-            // 99,9% fast, 0,1% chậm 50 µs — đúng hình dạng độ trễ thật.
+            // 99,9% nhanh, 0,1% chậm 50 µs — đúng hình dạng độ trễ thật.
             h.record(if i % 1000 == 0 { 50_000 } else { 300 });
         }
         assert!(h.percentile(0.50) <= 512);
-        assert!(h.percentile(0.99) <= 512, "p99 vẫn fast — cái đuôi bị giấu");
+        assert!(h.percentile(0.99) <= 512, "p99 vẫn nhanh — cái đuôi bị giấu");
         assert_eq!(h.max, 50_000);
         assert!(h.max as f64 > h.mean() * 100.0, "max lớn hơn trung bình >100×");
     }

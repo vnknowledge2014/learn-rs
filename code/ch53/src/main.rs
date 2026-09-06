@@ -77,7 +77,7 @@ impl RaftNode {
             return false;
         }
 
-        // 2. Nếu nhiệm kỳ của ứng viên high hơn: Cập nhật nhiệm kỳ và quay về làm Follower
+        // 2. Nếu nhiệm kỳ của ứng viên cao hơn: Cập nhật nhiệm kỳ và quay về làm Follower
         if candidate_term > self.current_term {
             self.current_term = candidate_term;
             self.role = RaftRole::Follower;

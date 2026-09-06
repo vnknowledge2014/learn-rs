@@ -294,7 +294,7 @@ impl UnitOutPos {
 // ============================================================================
 
 /// Q16.16: 16 bit phần nguyên, 16 bit phần thập phân, đựng trong một `i32`.
-/// Nhân/chia bằng số nguyên → fast gấp hàng chục lần mô phỏng dấu phẩy động.
+/// Nhân/chia bằng số nguyên → nhanh gấp hàng chục lần mô phỏng dấu phẩy động.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Q16(pub i32);
 

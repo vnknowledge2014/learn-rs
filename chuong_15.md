@@ -416,7 +416,7 @@ fn main() {
     let greater_than_ten = filter_data(&so, |&x| x % 2 == 0 && x > 10);
     assert_eq!(greater_than_ten, vec![12, 20, 30, 16]);
 
-    // Cùng một hàm, đổi closure là đổi hẳn hành vi — đó là sức mạnh của hàm bậc high:
+    // Cùng một hàm, đổi closure là đổi hẳn hành vi — đó là sức mạnh của hàm bậc cao:
     let so_le = filter_data(&so, |&x| x % 2 != 0);
     println!("Chẵn > 10: {:?}\nLẻ      : {:?}", greater_than_ten, so_le);
 }

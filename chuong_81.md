@@ -300,7 +300,7 @@ pub fn coalescing_analysis(quantity: usize, byte_moi_phan_tu: usize, buoc_nhay: 
 // ============================================================================
 // 4. BỘ NHỚ CHIA SẺ & XUNG ĐỘT NGÂN HÀNG
 // ============================================================================
-// Bộ nhớ chia sẻ fast gần bằng thanh ghi, nhưng chia thành 32 NGÂN HÀNG.
+// Bộ nhớ chia sẻ nhanh gần bằng thanh ghi, nhưng chia thành 32 NGÂN HÀNG.
 // Hai luồng cùng warp chạm hai địa chỉ khác nhau trên CÙNG một ngân hàng thì
 // phải xếp hàng. Ngân hàng = chỉ_số % 32 (với phần tử 4 byte).
 
@@ -396,7 +396,7 @@ pub struct GemmAnalysis {
     pub read_global: u64,
     pub doc_chia_se: u64,
     pub num_op_recv: u64,
-    /// Số phép tính trên mỗi byte đọc từ bộ nhớ toàn cục. Càng high càng tốt —
+    /// Số phép tính trên mỗi byte đọc từ bộ nhớ toàn cục. Càng cao càng tốt —
     /// đây là con số quyết định bài toán bị chặn bởi TÍNH hay bởi BỘ NHỚ.
     pub arithmetic_intensity: f64,
 }
@@ -514,7 +514,7 @@ fn main() {
     let b = bank_analysis(&access_cap_col_lat_has_count(32));
     println!("   Lát 32x32, đọc theo cột  → xung đột {} lối", a.level_conflict);
     println!("   Lát 32x33 (đệm 1 cột)    → xung đột {} lối", b.level_conflict);
-    println!("   → Thêm 1/32 bộ nhớ, fast gấp {} lần. Thủ thuật rẻ nhất trong GPU.",
+    println!("   → Thêm 1/32 bộ nhớ, nhanh gấp {} lần. Thủ thuật rẻ nhất trong GPU.",
              a.level_conflict / b.level_conflict.max(1));
 
     println!("\n5. RÚT GỌN SONG SONG");
@@ -801,7 +801,7 @@ mod tests {
         let mut prev = gemm_naive(n).arithmetic_intensity;
         for lat in [8usize, 16, 32] {
             let c = tiled_gemm(n, lat).arithmetic_intensity;
-            assert!(c > prev, "lát {} phải cho cường độ high hơn", lat);
+            assert!(c > prev, "lát {} phải cho cường độ cao hơn", lat);
             prev = c;
         }
     }
@@ -818,7 +818,7 @@ mod tests {
     #[test]
     fn few_registers_gives_high_occupancy() {
         let m = occupancy(256, 32, 0);
-        assert!(m.ratio > 0.9, "32 thanh ghi/luồng phải cho chiếm dụng high, thực tế {:.2}",
+        assert!(m.ratio > 0.9, "32 thanh ghi/luồng phải cho chiếm dụng cao, thực tế {:.2}",
                 m.ratio);
     }
 

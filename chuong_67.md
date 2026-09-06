@@ -148,7 +148,7 @@ Chạy bằng `cargo run -p ch67`, kiểm thử bằng `cargo test -p ch67`.
 ```rust
 #![allow(dead_code)]
 //! Chương 67 — FPGA & Thiết kế phần cứng số bằng Rust: cổng logic, mạch tổ hợp,
-//! mạch tuần tự có xung nhịp, đường ống, và vì sao phần cứng fast hơn phần mềm.
+//! mạch tuần tự có xung nhịp, đường ống, và vì sao phần cứng nhanh hơn phần mềm.
 //!
 //! Tinh thần lấy từ rust-hdl (nay đang được tác giả viết lại thành `rhdl`):
 //! mô tả phần cứng bằng KIỂU của Rust, mô phỏng ngay trong `cargo test`,
@@ -162,7 +162,7 @@ use std::collections::HashMap;
 // ============================================================================
 
 /// Trong FPGA thật, tín hiệu còn có trạng thái 'X' (không xác định) và 'Z'
-/// (trở kháng high). Ta mô hình hóa cả 'X' vì nó là nguồn lỗi kinh điển:
+/// (trở kháng cao). Ta mô hình hóa cả 'X' vì nó là nguồn lỗi kinh điển:
 /// quên khởi tạo thanh ghi → mạch chạy đúng trong mô phỏng, sai trên chip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal { Low, Cao, KhongXacDinh }
@@ -477,7 +477,7 @@ fn main() {
                  a, b, nt.tong, nt.tran, nt.gate_depth, lt.gate_depth);
         assert_eq!(nt.tong, lt.tong);
     }
-    println!("   → Cùng đáp số, nhưng mạch nhìn trước chạy fast hơn ~{}×",
+    println!("   → Cùng đáp số, nhưng mạch nhìn trước chạy nhanh hơn ~{}×",
              ripple_adder_8bit(0,0).gate_depth / lookahead_adder_8bit(0,0).gate_depth);
 
     println!("\n3. THANH GHI DỊCH 4 BIT");
@@ -503,7 +503,7 @@ fn main() {
     let no = handle_without_pipeline(&input, 5, |x| x * x);
     let co = handle_with_pipeline(&input, 5, |x| x * x);
     println!("   Không ống: {} chu kỳ (độ trễ {})", no.num_period, no.latency);
-    println!("   Có ống   : {} chu kỳ (độ trễ {}) → fast gấp {:.1}×",
+    println!("   Có ống   : {} chu kỳ (độ trễ {}) → nhanh gấp {:.1}×",
              co.num_period, co.latency, no.num_period as f64 / co.num_period as f64);
     println!("   → Độ trễ KHÔNG giảm; chỉ THÔNG LƯỢNG tăng. Hai đại lượng khác nhau.");
 

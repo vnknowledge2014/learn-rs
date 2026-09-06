@@ -186,7 +186,7 @@ impl Trade {
     pub fn tao_tien(recipient: &str, value: u64, height: u64) -> Trade {
         Trade {
             input: vec![],
-            // Thêm chiều high vào tên chủ sở hữu để hai coinbase khác khối có mã khác nhau
+            // Thêm chiều cao vào tên chủ sở hữu để hai coinbase khác khối có mã khác nhau
             output: vec![Output { value, owner: format!("{recipient}#{height}") }],
         }
     }
@@ -299,7 +299,7 @@ impl Block {
     }
 
     /// Đào = thử từng số ngẫu nhiên tới khi giá trị băm đủ nhỏ.
-    /// KHÔNG có cách nào fast hơn thử. Đó chính là "công việc" được chứng minh.
+    /// KHÔNG có cách nào nhanh hơn thử. Đó chính là "công việc" được chứng minh.
     pub fn dao(&mut self, so_lan_thu_toi_da: u64) -> Option<u64> {
         for n in 0..so_lan_thu_toi_da {
             self.header.so_ngau_nhien = n;
@@ -327,7 +327,7 @@ pub enum ErrorBlock {
 pub struct Chain {
     pub all_block: HashMap<Bam, Block>,
     pub height: HashMap<Bam, u64>,
-    /// Tổng công việc tích luỹ — tiêu chí chọn nhánh THẬT, không phải chiều high.
+    /// Tổng công việc tích luỹ — tiêu chí chọn nhánh THẬT, không phải chiều cao.
     pub job: HashMap<Bam, u128>,
     pub peak: Bam,
     pub part_normal: u64,
@@ -419,7 +419,7 @@ impl Chain {
         self.job.insert(id, cv);
         self.all_block.insert(id, khoi);
 
-        // Chọn nhánh theo TỔNG CÔNG VIỆC, không phải chiều high. Một chuỗi ngắn
+        // Chọn nhánh theo TỔNG CÔNG VIỆC, không phải chiều cao. Một chuỗi ngắn
         // nhưng khó hơn vẫn thắng — đó là quy tắc thật của Bitcoin.
         if cv > self.job[&self.peak] {
             self.peak = id;
@@ -466,7 +466,7 @@ impl Chain {
         self.mine_block_above(self.peak, nguoi_dao, trade, timestamp)
     }
 
-    /// Mã của khối thuỷ (chiều high 0).
+    /// Mã của khối thuỷ (chiều cao 0).
     pub fn genesis(&self) -> Bam {
         *self.height.iter().find(|(_, &v)| v == 0).map(|(m, _)| m).unwrap()
     }
@@ -520,7 +520,7 @@ fn main() {
     let k2 = c.new_mine_block("An", vec![], 2).unwrap();
     c.them(k2).unwrap();
     let u = c.utxo_tai(c.peak);
-    println!("   Chiều high {} · số dư An = {} · số UTXO = {}",
+    println!("   Chiều cao {} · số dư An = {} · số UTXO = {}",
              c.height_peak(), u.balance("An"), u.o.len());
 
     let input = *u.o.keys().find(|k| u.o[k].owner.starts_with("An")).unwrap();
@@ -535,7 +535,7 @@ fn main() {
     println!("   Tiêu lại chính đồng đó → {:?}", u.check(&gd2, &da).unwrap_err());
 
     println!("\n6. TÁI TỔ CHỨC CHUỖI — nhánh nhiều CÔNG VIỆC hơn thắng");
-    println!("   Trước : đỉnh {} high {} · số dư An = {}",
+    println!("   Trước : đỉnh {} cao {} · số dư An = {}",
              c.peak.rut_gon(), c.height_peak(), c.utxo_tai(c.peak).balance("An"));
     // Kẻ tấn công đào lại từ khối thuỷ, xây nhánh riêng cho tới khi vượt
     let mut cha = c.genesis();
@@ -543,10 +543,10 @@ fn main() {
         let k = c.mine_block_above(cha, "KeTanCong", vec![], t + 10).unwrap();
         cha = k.id();
         let swap = c.them(k).unwrap();
-        println!("   Nhánh tấn công high {} → {}", t,
+        println!("   Nhánh tấn công cao {} → {}", t,
                  if swap { "ĐÃ CHIẾM ĐỈNH" } else { "chưa đủ công việc" });
     }
-    println!("   Sau  : đỉnh {} high {} · số dư An = {} (khối của An BỊ ĐẢO)",
+    println!("   Sau  : đỉnh {} cao {} · số dư An = {} (khối của An BỊ ĐẢO)",
              c.peak.rut_gon(), c.height_peak(), c.utxo_tai(c.peak).balance("An"));
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -827,7 +827,7 @@ mod tests {
         // Nhánh rẽ dựng từ khối thuỷ — KHÔNG đụng tới self.dinh
         let d1 = c.mine_block_above(thuy, "Doi", vec![], 10).unwrap();
         let ma_d1 = d1.id();
-        assert_eq!(c.them(d1), Ok(false), "high 1 < high 2 → chưa chiếm được đỉnh");
+        assert_eq!(c.them(d1), Ok(false), "cao 1 < cao 2 → chưa chiếm được đỉnh");
         assert_eq!(c.peak, peak_hidden, "đỉnh vẫn phải là nhánh nhiều công việc hơn");
 
         let d2 = c.mine_block_above(ma_d1, "Doi", vec![], 11).unwrap();
@@ -837,7 +837,7 @@ mod tests {
 
         // Khối thứ ba mới đủ vượt
         let d3 = c.mine_block_above(ma_d2, "Doi", vec![], 12).unwrap();
-        assert_eq!(c.them(d3), Ok(true), "high 3 > high 2 → TÁI TỔ CHỨC");
+        assert_eq!(c.them(d3), Ok(true), "cao 3 > cao 2 → TÁI TỔ CHỨC");
         assert_eq!(c.height_peak(), 3);
         assert_eq!(c.utxo_tai(c.peak).balance("Doi"), 150);
         assert_eq!(c.utxo_tai(c.peak).balance("An"), 0,

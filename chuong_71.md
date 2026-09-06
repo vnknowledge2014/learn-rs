@@ -131,7 +131,7 @@ impl MaNut {
     /// bảng định tuyến tự bồi đắp từ chính lưu lượng bình thường.
     pub fn distance(self, other: MaNut) -> u64 { self.0 ^ other.0 }
 
-    /// Chỉ số "xô" = vị trí bit khác nhau high nhất. Nút càng gần thì xô càng nhỏ.
+    /// Chỉ số "xô" = vị trí bit khác nhau cao nhất. Nút càng gần thì xô càng nhỏ.
     pub fn leading_bit_diff(self, other: MaNut) -> Option<u32> {
         let d = self.distance(other);
         if d == 0 { None } else { Some(63 - d.leading_zeros()) }
@@ -158,7 +158,7 @@ impl RoutingTable {
     }
 
     /// Trả `true` nếu nút được thêm mới. Nút đã biết được đẩy lên cuối hàng —
-    /// Kademlia ưu tiên giữ nút CŨ, vì nút sống lâu có xác suất sống tiếp high hơn.
+    /// Kademlia ưu tiên giữ nút CŨ, vì nút sống lâu có xác suất sống tiếp cao hơn.
     /// Đây cũng là biện pháp chống tấn công Sybil: kẻ tấn công không thể tràn
     /// bảng định tuyến bằng cách bơm nút mới.
     pub fn them(&mut self, nut: MaNut) -> bool {
@@ -458,7 +458,7 @@ fn main() {
         println!("   bậc {} → {:>2} vòng · phủ {:>2}/{} nút · {:>3} bản tin",
                  bac, r.num_round, r.so_nut_nhan, id.len(), r.so_ban_tin);
     }
-    println!("   → Bậc high phủ fast hơn nhưng tốn băng thông theo cấp số nhân.");
+    println!("   → Bậc cao phủ nhanh hơn nhưng tốn băng thông theo cấp số nhân.");
 
     println!("\n5. ĐỒNG THUẬN BYZANTINE — vì sao là 3f+1");
     for n in [4usize, 7, 10, 13, 100] {
@@ -669,7 +669,7 @@ mod tests {
         }
         let it = gossip_propagate(&lg, MaNut(id[0]), 1, 100);
         let many = gossip_propagate(&lg, MaNut(id[0]), 4, 100);
-        assert!(many.num_round < it.num_round, "bậc high phải phủ fast hơn");
+        assert!(many.num_round < it.num_round, "bậc cao phải phủ nhanh hơn");
         assert!(many.so_ban_tin > it.so_ban_tin, "và tốn nhiều băng thông hơn");
     }
 

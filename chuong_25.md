@@ -235,7 +235,7 @@ fn main() {
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
     if elapsed_ologn.as_nanos() > 0 {
         let ti_le = elapsed_on.as_nanos() as f64 / elapsed_ologn.as_nanos() as f64;
-        println!("\n=> ĐÁNH GIÁ: O(log N) chạy fast gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
+        println!("\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
     }
 
     // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian

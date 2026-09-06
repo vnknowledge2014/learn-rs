@@ -25,7 +25,7 @@ pub struct Process {
     pub arrives_at: u64,   // arrival time
     pub time_time_can: u64,   // burst time — tổng CPU cần
     pub remaining: u64,
-    pub uu_tien: u8,          // số nhỏ = ưu tiên high
+    pub uu_tien: u8,          // số nhỏ = ưu tiên cao
     pub state: StateProcess,
     pub start: Option<u64>,
     pub end: Option<u64>,

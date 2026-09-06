@@ -291,14 +291,14 @@ Lỗi nằm ở tính **bất biến mặc định** của Rust: biến khai bá
 Trong Rust, `let diem_so = 10;` tạo ra một biến **bất biến (immutable)** — đây là *mặc định*, khác hầu hết ngôn ngữ khác. Dòng `diem_so = diem_so + 5;` cố gán lại nên trình biên dịch chặn.
 
 **Cách sửa 1 — cho phép thay đổi bằng `mut`:**
-```rust
+```text
 let mut diem_so = 10;   // mut = biến này sẽ đổi giá trị
 diem_so = diem_so + 5;  // giờ hợp lệ
 println!("Điểm mới: {diem_so}");   // in ra 15
 ```
 
 **Cách sửa 2 — che biến (shadowing), tạo biến mới cùng tên:**
-```rust
+```text
 let diem_so = 10;
 let diem_so = diem_so + 5;   // biến MỚI, che biến cũ; không cần mut
 println!("Điểm mới: {diem_so}");   // in ra 15

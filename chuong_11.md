@@ -348,7 +348,7 @@ fn phan_biet_hop_le_va_loi() {
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 **Cách 1 — `unwrap_or` cấp giá trị mặc định khi hỏng:**
-```rust
+```text
 let s = "42";
 // Nếu parse hỏng thì dùng 0 thay vì sập. Gọn khi có sẵn giá trị dự phòng hợp lý.
 let so: i32 = s.parse().unwrap_or(0);
@@ -356,7 +356,7 @@ println!("Số nhận được: {so}");
 ```
 
 **Cách 2 — `match` để in thông báo thân thiện:**
-```rust
+```text
 let s = "42";
 match s.parse::<i32>() {
     Ok(n) => println!("Bạn đã nhập số: {n}"),
@@ -365,12 +365,12 @@ match s.parse::<i32>() {
 ```
 
 ```rust
-# fn kiem() {
-let a: i32 = "42".parse().unwrap_or(0);
-assert_eq!(a, 42);
-let b: i32 = "xyz".parse().unwrap_or(0);
-assert_eq!(b, 0);   // hỏng -> rơi về mặc định, KHÔNG sập
-# }
+fn kiem() {
+    let a: i32 = "42".parse().unwrap_or(0);
+    assert_eq!(a, 42);
+    let b: i32 = "xyz".parse().unwrap_or(0);
+    assert_eq!(b, 0);   // hỏng -> rơi về mặc định, KHÔNG sập
+}
 ```
 
 **Vì sao `.unwrap()` nguy hiểm:** nó nói "chắc chắn là `Ok`, sai thì cho sập luôn". Với dữ liệu *người dùng nhập* — thứ bạn không kiểm soát — điều này biến một lỗi gõ nhầm thành một cú sập toàn chương trình (`panic`). Chọn giữa hai cách sửa tùy tình huống: **`unwrap_or`** khi có một giá trị dự phòng hợp lý và bạn muốn chạy tiếp im lặng; **`match`** khi cần *phản hồi* cho người dùng biết họ sai ở đâu. `.unwrap()` chỉ nên dành cho mã nháp, test, hoặc chỗ mà bạn đã *chứng minh* được không thể hỏng.

@@ -274,3 +274,123 @@ fn main() {
 }
 ```
 *(Gợi ý: Hãy thay đổi chữ ký của hàm `print_message` để mượn lát cắt chuỗi `&str` thay vì chiếm đoạt quyền sở hữu toàn bộ `String`)*.
+
+---
+
+### Gợi ý & Lời giải
+
+<details>
+<summary><b>Bài tập 1 — Gợi ý</b></summary>
+
+Ranh giới nằm ở chỗ: việc nào có **đáp án đúng-sai kiểm chứng được ngay** thì ủy thác; việc nào là **đánh đổi không thể hoàn tác hoặc mang hậu quả hệ thống** thì tự quyết.
+</details>
+
+<details>
+<summary><b>Bài tập 1 — Lời giải</b></summary>
+
+**3 việc ủy thác 100% cho AI** — đặc điểm chung: cơ giới, có tiêu chí đúng-sai rõ ràng, sai thì test bắt được ngay:
+1. **Viết test đơn vị từ đặc tả có sẵn.** Đặc tả rõ -> test là dịch máy móc; lại còn tự kiểm bằng chính việc chạy.
+2. **Chuyển đổi/tái cấu trúc cú pháp cơ giới.** Đổi vòng `for` sang iterator, thêm dẫn xuất trait, sinh mã lặp khuôn (boilerplate). Hành vi phải giữ nguyên, và test hồi quy xác nhận.
+3. **Viết tài liệu và chú thích cho mã đã xong.** Rủi ro thấp, dễ soát, không đụng tới logic đang chạy.
+
+**3 việc BẮT BUỘC tự quyết với tư cách Kiến trúc sư** — đặc điểm chung: đánh đổi khó đảo ngược, hậu quả lan ra toàn hệ thống, không có test nào bắt được "quyết định sai":
+1. **Ranh giới và hợp đồng giữa các thành phần** (thiết kế API, lược đồ dữ liệu, mô hình sở hữu). Sai ở đây thấm vào mọi nơi và cực đắt để sửa về sau.
+2. **Đánh đổi an ninh và quyền riêng tư.** Lưu gì, mã hóa gì, tin ai. AI không gánh trách nhiệm pháp lý khi rò rỉ dữ liệu — bạn gánh.
+3. **Lựa chọn kiến trúc lớn** (một khối liền hay vi dịch vụ, đồng bộ hay bất đồng bộ, chọn CSDL nào). Ràng buộc cả dự án trong nhiều năm.
+
+Nguyên tắc gói gọn: **ủy thác việc có đáp án; tự giữ việc có đánh đổi.** AI là diễn viên xuất sắc thực thi cảnh quay; đạo diễn vẫn phải là người chịu trách nhiệm về bộ phim. Và dù ủy thác gì, khâu *rà soát* mã trước khi nhập vào nhánh chính luôn thuộc về bạn — ủy thác việc *viết* không có nghĩa ủy thác việc *chịu trách nhiệm*.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Gợi ý</b></summary>
+
+Hợp đồng nghĩa là định nghĩa *hình dạng* (struct, enum lỗi, chữ ký trait) mà không cần cài đặt thuật toán. Trait mô tả 'làm được gì', chưa nói 'làm thế nào'.
+</details>
+
+<details>
+<summary><b>Bài tập 2 — Lời giải</b></summary>
+
+```rust
+/// Một mặt hàng trong kho.
+pub struct Item {
+    pub sku: String,      // mã sản phẩm
+    pub name: String,
+    pub quantity: u32,    // số lượng còn trong kho
+}
+
+/// Các lỗi có thể xảy ra khi thao tác kho.
+#[derive(Debug, PartialEq)]
+pub enum InventoryError {
+    OutOfStock,    // trừ nhiều hơn tồn kho
+    ItemNotFound,  // không có SKU này
+}
+
+/// Hợp đồng cho một dịch vụ quản lý kho — CHỈ nêu hành vi, không nêu cách cài.
+pub trait InventoryService {
+    /// Nhập thêm hàng cho một SKU.
+    fn add_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError>;
+    /// Xuất bớt hàng; lỗi nếu không đủ tồn hoặc không tìm thấy SKU.
+    fn deduct_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError>;
+}
+
+// Một cài đặt tối giản để chứng minh hợp đồng dùng được.
+use std::collections::HashMap;
+struct MemoryInventory { kho: HashMap<String, u32> }
+impl InventoryService for MemoryInventory {
+    fn add_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError> {
+        *self.kho.entry(sku.to_string()).or_insert(0) += amount;
+        Ok(())
+    }
+    fn deduct_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError> {
+        let ton = self.kho.get_mut(sku).ok_or(InventoryError::ItemNotFound)?;
+        if *ton < amount { return Err(InventoryError::OutOfStock); }
+        *ton -= amount;
+        Ok(())
+    }
+}
+
+#[test]
+fn hop_dong_kho_hoat_dong() {
+    let mut kho = MemoryInventory { kho: HashMap::new() };
+    kho.add_stock("SKU1", 10).unwrap();
+    assert_eq!(kho.deduct_stock("SKU1", 4), Ok(()));
+    assert_eq!(kho.deduct_stock("SKU1", 100), Err(InventoryError::OutOfStock));
+    assert_eq!(kho.deduct_stock("SKU9", 1), Err(InventoryError::ItemNotFound));
+}
+```
+
+Đây là kỹ năng cốt lõi khi làm việc với AI: **định nghĩa hợp đồng trước, cài đặt sau.** `trait InventoryService` nói *dịch vụ kho phải làm được gì* mà không ràng buộc *làm thế nào* — dữ liệu để trong HashMap, trong CSDL, hay gọi qua mạng đều thỏa cùng hợp đồng. Khi bạn giao cho AI viết phần cài đặt, hợp đồng này là **bản đặc tả** để đối chiếu: `enum InventoryError` liệt kê đủ các ca hỏng, chữ ký `Result` buộc mọi cài đặt phải xử lý chúng. Bạn — kiến trúc sư — vẽ khung; AI tô màu bên trong.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Gợi ý</b></summary>
+
+Lỗi E0382 là *dùng-sau-khi-di-chuyển*: `print_message(greeting)` nuốt mất `greeting`, nên dòng sau không dùng lại được. Gợi ý của đề: đổi hàm sang mượn `&str`.
+</details>
+
+<details>
+<summary><b>Bài tập 3 — Lời giải</b></summary>
+
+**Nguyên nhân E0382 (`borrow of moved value`):** `print_message(msg: String)` nhận `String` **theo sở hữu**. Khi gọi `print_message(greeting)`, quyền sở hữu chuỗi **di chuyển vào hàm** rồi bị hủy khi hàm kết thúc. Dòng `greeting.len()` sau đó dùng một biến đã bị di chuyển — Rust chặn.
+
+```text
+print_message(greeting);              // greeting BỊ DI CHUYỂN vào hàm
+println!("{}", greeting.len());       // LỖI: greeting không còn nữa
+```
+
+**Cách sửa (theo gợi ý — mượn thay vì chiếm đoạt):** đổi hàm nhận `&str`. Hàm chỉ *đọc* chuỗi để in, nó không cần *sở hữu*:
+
+```rust
+fn print_message(msg: &str) {          // mượn lát cắt chuỗi, không lấy sở hữu
+    println!("Tin nhắn: {msg}");
+}
+
+fn main() {
+    let greeting = String::from("Chào mừng đến với Rust Vibe Coding!");
+    print_message(&greeting);          // CHO MƯỢN, greeting vẫn thuộc về main
+    println!("Độ dài tin nhắn ban đầu: {}", greeting.len());  // dùng lại thoải mái
+}
+```
+
+Vì sao đây là cách sửa *đúng* chứ không phải `greeting.clone()`: nhận `&str` là **nguyên tắc chung của Rust** — *hàm chỉ cần đọc thì mượn, đừng chiếm đoạt*. Nó vừa tránh sao chép thừa (`clone` cấp phát lại cả chuỗi), vừa linh hoạt hơn: `&str` nhận được cả `String` (qua `&`) lẫn chuỗi hằng `"..."`. Đây là lỗi kinh điển AI hay mắc khi sinh mã Rust — nhận `String` ở mọi nơi vì nó "đơn giản", rồi vấp move. Bạn cần nhận ra và sửa nó.
+</details>

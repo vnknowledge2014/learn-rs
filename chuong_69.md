@@ -310,7 +310,7 @@ pub struct OrderBook {
 impl OrderBook {
     pub fn new() -> Self { OrderBook { side_buy: BTreeMap::new(), ben_ban: BTreeMap::new() } }
 
-    /// Giá bid high nhất — cái giá tốt nhất mà người bán có thể nhận ngay.
+    /// Giá bid cao nhất — cái giá tốt nhất mà người bán có thể nhận ngay.
     pub fn best_bid(&self) -> Option<Price> {
         self.side_buy.keys().next().map(|k| -k)
     }
@@ -485,7 +485,7 @@ pub struct ResultTest {
 }
 
 /// Chạy kiểm định. Có mô hình TRƯỢT GIÁ và PHÍ — bỏ hai thứ này là cách
-/// fast nhất để tự lừa mình bằng một đường vốn đẹp nhưng không có thật.
+/// nhanh nhất để tự lừa mình bằng một đường vốn đẹp nhưng không có thật.
 pub fn run_test(
     data: &[Candle],
     strategy: &mut dyn Strategy,
@@ -689,7 +689,7 @@ mod tests {
     fn book_reports_best_on_both_sides() {
         let mut s = OrderBook::new();
         s.nap(order_sent(1, Side::Buy, 100, 10));
-        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá high hơn = tốt hơn cho bên bid
+        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên bid
         s.nap(order_sent(3, Side::Sell, 120, 10));
         s.nap(order_sent(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(105));
@@ -858,7 +858,7 @@ mod tests {
     #[test]
     fn data_gen_out_always_hop_le() {
         for candle in gen_data(500, 8_000, 99) {
-            assert!(candle.high >= candle.mo && candle.high >= candle.dong, "đỉnh phải high nhất");
+            assert!(candle.high >= candle.mo && candle.high >= candle.dong, "đỉnh phải cao nhất");
             assert!(candle.low <= candle.mo && candle.low <= candle.dong, "đáy phải thấp nhất");
             assert!(candle.low > 0, "giá không bao giờ âm");
         }

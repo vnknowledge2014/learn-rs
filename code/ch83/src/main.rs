@@ -205,7 +205,7 @@ pub fn greeks(t: &OptionParams, kind: OptionKind) -> Greeks {
 
 /// Tìm biến động ngụ ý bằng chia đôi. Chọn chia đôi thay vì Newton–Raphson
 /// vì nó LUÔN hội tụ khi hàm đơn điệu — mà giá quyền chọn thì đơn điệu tăng
-/// theo biến động. Newton fast hơn nhưng có thể phân kỳ ở vùng biên.
+/// theo biến động. Newton nhanh hơn nhưng có thể phân kỳ ở vùng biên.
 pub fn implied_volatility(t: &OptionParams, kind: OptionKind, gia_thi_truong: f64)
     -> Option<f64>
 {
@@ -337,7 +337,7 @@ pub fn strangle(price_sell: f64, price_buy: f64, phi_mua: f64, phi_ban: f64)
     }
 }
 
-/// Mua quyền bid giá thấp, bán quyền bid giá high: cược giá TĂNG VỪA PHẢI.
+/// Mua quyền bid giá thấp, bán quyền bid giá cao: cược giá TĂNG VỪA PHẢI.
 /// Cả lãi lẫn lỗ đều có trần — đây là điểm hấp dẫn của chênh lệch giá.
 pub fn spread_price_up(gia_thap: f64, gia_cao: f64, phi_thap: f64, phi_cao: f64)
     -> OptionStrategy
@@ -445,7 +445,7 @@ fn main() {
                  s, g.delta, g.gamma, gia_black_scholes(&x, OptionKind::Buy));
     }
     println!("   → Delta đi từ 0 tới 1. Gamma lớn nhất quanh giá thực hiện —");
-    println!("     đó là chỗ delta thay đổi fast nhất, và cũng nguy hiểm nhất.");
+    println!("     đó là chỗ delta thay đổi nhanh nhất, và cũng nguy hiểm nhất.");
 
     println!("\n6. THỜI GIAN TAN DẦN");
     println!("   {:>14} {:>16} {:>18}", "còn lại", "giá quyền bid", "giá trị thời gian");
@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn option_price_rises_with_volatility() {
         // Đây là lý do "bán biến động" là một chiến lược có thật: giá quyền
-        // đơn điệu tăng theo biến động, nên bán khi biến động high là bán đắt.
+        // đơn điệu tăng theo biến động, nên bán khi biến động cao là bán đắt.
         for kind in [OptionKind::Buy, OptionKind::Sell] {
             let mut prev = -1.0;
             for v in [0.05f64, 0.1, 0.2, 0.4, 0.8] {
@@ -715,8 +715,8 @@ mod tests {
 
     #[test]
     fn gamma_peaks_near_the_strike() {
-        // Gamma là chỗ nguy hiểm nhất: quanh giá thực hiện, delta đổi fast
-        // nhất, nên vị thế phòng hộ mất cân bằng fast nhất.
+        // Gamma là chỗ nguy hiểm nhất: quanh giá thực hiện, delta đổi nhanh
+        // nhất, nên vị thế phòng hộ mất cân bằng nhanh nhất.
         let g_giua = greeks(&ts(), OptionKind::Buy).gamma;
         for s in [60.0f64, 80.0, 130.0, 180.0] {
             let g = greeks(&OptionParams { spot: s, ..ts() },

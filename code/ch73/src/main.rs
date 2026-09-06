@@ -201,7 +201,7 @@ pub fn dung_calldata(period: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
 /// Giải mã ngược một tham số `uint256` ở vị trí `chi_so` (dùng để đọc kết quả).
 pub fn doc_uint(data: &[u8], chi_so: usize) -> Option<u128> {
     let d = data.get(chi_so * 32..chi_so * 32 + 32)?;
-    // 16 byte high phải bằng 0, nếu không thì giá trị vượt u128
+    // 16 byte cao phải bằng 0, nếu không thì giá trị vượt u128
     if d[..16].iter().any(|&b| b != 0) { return None; }
     Some(u128::from_be_bytes(d[16..].try_into().ok()?))
 }
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn decoding_rejects_uint_beyond_u128() {
         let mut d = [0u8; 32];
-        d[0] = 1; // bit high của uint256, vượt xa u128
+        d[0] = 1; // bit cao của uint256, vượt xa u128
         assert_eq!(doc_uint(&d, 0), None, "phải báo lỗi chứ không cắt cụt âm thầm");
     }
 
