@@ -20,7 +20,7 @@ Mục tiêu học tập của chương này:
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục thông qua hình ảnh một **Phòng khám chuyên khoa với Kính hiển vi và Cây bút lông id thuật**:
+Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục thông qua hình ảnh một **Phòng khám chuyên khoa với Kính hiển vi và Cây bút lông ma thuật**:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -30,7 +30,7 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
 │        (AST Parser & Traversal)        │          (Code Generation)              │
 │                                        │                                         │
 │ - Bác sĩ đặt mẫu sinh thiết (struct)   │ - Sau khi đã có hồ sơ bệnh án chi tiết: │
-│   lên kính hiển vi điện tử             │ - Cây bút lông id thuật tự động lướt    │
+│   lên kính hiển vi điện tử             │ - Cây bút lông ma thuật tự động lướt    │
 │ - Phóng đại nhìn rõ từng tế bào:       │   trên trang giấy trắng                 │
 │   + Đây là tên người bệnh: `User`      │ - Viết ra hàng trăm dòng điều lệ mới:   │
 │   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl DetailedDescription for User { ... }`   │
@@ -48,11 +48,11 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
     - Các cành cây: Có 2 nhánh trường dữ liệu (fields), nhánh 1 tên là `ten` có kiểu `String`, nhánh 2 tên là `tuoi` có kiểu `u32`.
   - Nhờ có kính hiển vi `syn`, bạn có thể duyệt qua từng cành cây để đọc dữ liệu một cách có trật tự!
 
-### 2. Cây bút lông id thuật (Thư viện `quote` - Code Generation)
+### 2. Cây bút lông ma thuật (Thư viện `quote` - Code Generation)
 - Sau khi bác sĩ đã ghi nhận các nhánh cây từ kính hiển vi:
-  - Thay vì phải tự tay ghép từng chuỗi ký tự rời rạc rất dễ thiếu dấu ngoặc, bạn cầm cây bút lông id thuật **`quote`**.
+  - Thay vì phải tự tay ghép từng chuỗi ký tự rời rạc rất dễ thiếu dấu ngoặc, bạn cầm cây bút lông ma thuật **`quote`**.
   - Bạn viết một đoạn mã mẫu: *"Với mỗi cành cây `#field_name`, hãy in ra dòng chữ: Trường `#field_name` có giá trị là `{}`"*.
-  - Cây bút lông id thuật `quote!` sẽ tự động mở rộng mẫu thiết kế đó, nhân bản nó cho toàn bộ các trường dữ liệu, và dập thành một văn bản mã Rust chuẩn mực để nạp ngược lại vào bộ não của trình biên dịch!
+  - Cây bút lông ma thuật `quote!` sẽ tự động mở rộng mẫu thiết kế đó, nhân bản nó cho toàn bộ các trường dữ liệu, và dập thành một văn bản mã Rust chuẩn mực để nạp ngược lại vào bộ não của trình biên dịch!
 
 ---
 
@@ -199,9 +199,9 @@ pub struct NetworkDevice {
 impl DetailedDescription for NetworkDevice {
     fn in_thong_tin_chi_tiet(&self) {
         println!("------------------------------------------------------------");
-        println!("THÔNG TIN THỰC THỂ: [NetworkDevice]");
-        println!("  - Trường `ip_address`      : {}", self.ip_address);
-        println!("  - Trường `service_port`    : {}", self.service_port);
+        println!("THÔNG TIN THỰC THỂ: [ThietBiMang]");
+        println!("  - Trường `dia_chi_ip`      : {}", self.ip_address);
+        println!("  - Trường `cong_dich_vu`    : {}", self.service_port);
         println!("  - Trường `dang_hoat_dong`  : {}", self.dang_hoat_dong);
         println!("------------------------------------------------------------");
     }
@@ -276,21 +276,21 @@ fn main() {
     println!("============================================================");
 
     // 1. Mô phỏng quá trình kính hiển vi `syn` phân tích AST của struct
-    let mo_hinh_ast = StructAST {
-        ten_struct: "NetworkDevice",
+    let ast_model = StructAST {
+        ten_struct: "ThietBiMang",
         field_list: vec![
-            AstDataField { field_name: "ip_address", kind_data: "String" },
-            AstDataField { field_name: "service_port", kind_data: "u16" },
+            AstDataField { field_name: "dia_chi_ip", kind_data: "String" },
+            AstDataField { field_name: "cong_dich_vu", kind_data: "u16" },
             AstDataField { field_name: "dang_hoat_dong", kind_data: "bool" },
         ],
     };
 
     println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
-    println!("- Tên cấu trúc được phát hiện: {}", mo_hinh_ast.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", mo_hinh_ast.get_list_name());
+    println!("- Tên cấu trúc được phát hiện: {}", ast_model.ten_struct);
+    println!("- Danh sách các cành trường dữ liệu: {:?}", ast_model.get_list_name());
 
     // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
-    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait DetailedDescription:");
+    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
     let router = NetworkDevice {
         ip_address: String::from("192.168.1.1"),
         service_port: 443,
@@ -343,7 +343,7 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
 2. **Quy tắc tổ chức Crate**: Luôn phải nằm trong một crate thư viện độc lập có `[lib] proc-macro = true`.
 3. **Bộ đôi song sát `syn` & `quote`**:
    - `syn`: Kính hiển vi bóc tách mã nguồn thô thành Cây cú pháp trừu tượng AST có kiểu rõ ràng.
-   - `quote`: Cây bút id thuật dập khuôn và sinh mã Rust mới một cách an toàn thông qua `#bien`.
+   - `quote`: Cây bút ma thuật dập khuôn và sinh mã Rust mới một cách an toàn thông qua `#bien`.
 4. **Báo lỗi có tâm**: Dùng `syn::Error::new_spanned` kết hợp `to_compile_error()` để định vị chính xác vị trí lỗi đỏ trên màn hình người dùng.
 
 ### Bài tập rèn luyện tự giải:

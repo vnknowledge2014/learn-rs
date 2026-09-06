@@ -76,7 +76,7 @@ Hãy quan sát hai câu chuyện đời thực vô cùng gần gũi để hình 
 - Khi có thông tin mới, bạn viết nhanh vào các tờ giấy nhớ dán trên mặt bàn làm việc (Bộ nhớ đệm **MemTable** trên RAM). Trên mặt bàn, bạn dễ dàng xếp các tờ giấy nhớ theo thứ tự chữ cái A-Z.
 - Khi giấy nhớ dán kín mặt bàn: Bạn gom toàn bộ giấy nhớ lại, đóng thành một tập hồ sơ ngăn nắp rồi đem cất vào thùng sắt dưới tầng hầm (**SSTable** trên đĩa cứng).
 - **Quy tắc vàng của SSTable**: Một khi thùng sắt đã đóng nắp cất vào kho, bạn **không bao giờ mở ra tẩy xóa hay sửa đổi** (Dữ liệu bất biến - Immutable). Nếu khách hàng muốn đổi số điện thoại, bạn viết một tờ giấy nhớ mới ghi đè lên ở trên bàn.
-- **Tiến trình nén gộp (Compaction)**: Định kỳ vào cuối tháng, người thủ kho đem 5 thùng sắt nhỏ ra, gộp lại thành 1 thùng sắt lớn, đồng thời xé bỏ các tờ giấy nợ cũ đã được thanh toán hoặc đã bị hủy (Tombstone). Kho tài liệu lại trở nên gọn gàng compute tươm!
+- **Tiến trình nén gộp (Compaction)**: Định kỳ vào cuối tháng, người thủ kho đem 5 thùng sắt nhỏ ra, gộp lại thành 1 thùng sắt lớn, đồng thời xé bỏ các tờ giấy nợ cũ đã được thanh toán hoặc đã bị hủy (Tombstone). Kho tài liệu lại trở nên gọn gàng tinh tươm!
 
 ---
 
@@ -110,7 +110,7 @@ LSM-Tree phân tách rạch ròi quy trình xử lý dữ liệu theo thời gia
    - SSTable gồm 2 phần: Dữ liệu đã sắp xếp và **Chỉ mục thưa (Sparse Index)** giúp nhảy cóc tìm nhanh dữ liệu trên đĩa.
 4. **Tầng 4: Tiến trình nén gộp (Compaction)**:
    - Sử dụng thuật toán sáp nhập nhiều danh sách (K-way Merge Sort) tương tự hàm merge của Merge Sort.
-   - Đọc tuần tự các tệp SSTable cũ, loại bỏ các bản ghi bị ghi đè nhiều lần hoặc các bản ghi bị đánh dấu cờ xóa (**Tombstone - Bia mộ**), và sinh ra tệp SSTable tầng cao hơn hoàn toàn compute gọn.
+   - Đọc tuần tự các tệp SSTable cũ, loại bỏ các bản ghi bị ghi đè nhiều lần hoặc các bản ghi bị đánh dấu cờ xóa (**Tombstone - Bia mộ**), và sinh ra tệp SSTable tầng cao hơn hoàn toàn tinh gọn.
 
 ---
 
@@ -250,18 +250,18 @@ fn main() -> io::Result<()> {
     // GIAI ĐOẠN 2: Khởi động lại sau sự cố và kiểm tra tính năng phục hồi
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
-        let engine_phuc_hoi = MiniLsmEngine::open(duong_dan_wal)?;
+        let recovered_engine = MiniLsmEngine::open(duong_dan_wal)?;
         
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
-        println!("      + 'user:1' = {:?}", engine_phuc_hoi.get("user:1"));
-        println!("      + 'user:2' = {:?}", engine_phuc_hoi.get("user:2"));
-        println!("      + 'user:3' = {:?}", engine_phuc_hoi.get("user:3"));
+        println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
+        println!("      + 'user:2' = {:?}", recovered_engine.get("user:2"));
+        println!("      + 'user:3' = {:?}", recovered_engine.get("user:3"));
 
         // Xác nhận dữ liệu được phục hồi chuẩn xác 100%
-        assert_eq!(engine_phuc_hoi.get("user:1"), Some(&"Alice Nguyen".to_string()));
-        assert_eq!(engine_phuc_hoi.get("user:2"), None);
-        assert_eq!(engine_phuc_hoi.get("user:3"), Some(&"Charlie".to_string()));
-        assert_eq!(engine_phuc_hoi.total_keys(), 2);
+        assert_eq!(recovered_engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
+        assert_eq!(recovered_engine.get("user:2"), None);
+        assert_eq!(recovered_engine.get("user:3"), Some(&"Charlie".to_string()));
+        assert_eq!(recovered_engine.total_keys(), 2);
         
         println!("    => Toàn bộ trạng thái dữ liệu đã được phục hồi hoàn hảo nhờ WAL!");
     }

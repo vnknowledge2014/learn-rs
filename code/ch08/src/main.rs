@@ -77,6 +77,6 @@ fn main() {
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");
-    let thong_diep_vinh_cuu: &'static str = "PHẦN MỀM ĐÃ ĐƯỢC CHỨNG NHẬN AN TOÀN TUYỆT ĐỐI";
-    println!("- Dòng chữ trên bia đá vĩnh cửu: '{}'", thong_diep_vinh_cuu);
+    let eternal_message: &'static str = "PHẦN MỀM ĐÃ ĐƯỢC CHỨNG NHẬN AN TOÀN TUYỆT ĐỐI";
+    println!("- Dòng chữ trên bia đá vĩnh cửu: '{}'", eternal_message);
 }

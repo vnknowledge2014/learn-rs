@@ -6,13 +6,13 @@ Chương này lấy cảm hứng từ thể loại bài tập của **leetcpu.co
 
 Điểm khởi đầu là một sự thật gây sốc:
 
-> **Một lần truy cập RAM tốn khoảng 300 owner kỳ. Trong 300 owner kỳ đó, CPU có thể làm hơn 1000 phép cộng.**
+> **Một lần truy cập RAM tốn khoảng 300 chu kỳ. Trong 300 chu kỳ đó, CPU có thể làm hơn 1000 phép cộng.**
 
 Nghĩa là **bố cục bộ nhớ quan trọng hơn số phép tính**. Một thuật toán "kém hơn" về big-O nhưng thân thiện với cache thường nhanh hơn nhiều lần trong thực tế.
 
 | Chủ đề | Bài học cốt lõi |
 |---|---|
-| Phân cấp bộ nhớ | L1 ~4 owner kỳ, RAM ~300 owner kỳ — chênh 75 lần |
+| Phân cấp bộ nhớ | L1 ~4 chu kỳ, RAM ~300 chu kỳ — chênh 75 lần |
 | Cục bộ | Duyệt theo hàng nhanh hơn theo cột hàng chục lần |
 | Chia khối | Cùng số phép tính, ít trượt cache hơn hàng chục lần |
 | Dự đoán rẽ nhánh | Dữ liệu đã sắp xếp chạy nhanh hơn dữ liệu ngẫu nhiên |
@@ -36,7 +36,7 @@ Nghĩa là **bố cục bộ nhớ quan trọng hơn số phép tính**. Một t
 │   Tỉ lệ L1 : RAM = 1 : 75.                                                  │
 │   Nếu L1 là "với tay lấy" (1 giây) thì RAM là "đi bộ 75 giây".              │
 │                                                                              │
-│  DUYỆT HÀNG vs DUYỆT CỘT (id trận 1024×1024 f64)                           │
+│  DUYỆT HÀNG vs DUYỆT CỘT (ma trận 1024×1024 f64)                           │
 │                                                                              │
 │    Theo hàng:  ████████░░░░░░░░  nạp 1 dòng cache = dùng được 8 phần tử     │
 │                → 1 lần trượt cho mỗi 8 phần tử                             │
@@ -82,23 +82,23 @@ Toàn bộ nghệ thuật tối ưu bộ nhớ nằm ở việc **dùng hết 56
 
 Cache không phải hoàn toàn liên kết — nó chia thành các **tập** (set), và mỗi địa chỉ chỉ vào được đúng một tập. Với cache 8-way, mỗi tập chứa 8 dòng.
 
-Hệ quả: nếu bạn truy cập nhiều địa chỉ cùng ánh xạ vào một tập, chúng đá nhau ra dù cache còn trống chỗ khác. Đây là **trượt do xung đột**, và nó xuất hiện đúng khi bước nhảy là luỹ thừa của 2 — tình huống rất hay gặp với id trận vuông.
+Hệ quả: nếu bạn truy cập nhiều địa chỉ cùng ánh xạ vào một tập, chúng đá nhau ra dù cache còn trống chỗ khác. Đây là **trượt do xung đột**, và nó xuất hiện đúng khi bước nhảy là luỹ thừa của 2 — tình huống rất hay gặp với ma trận vuông.
 
 Cách chữa kinh điển: **đệm** thêm một phần tử vào mỗi hàng, biến bước nhảy 1024 thành 1025. Một phần tử thừa, hết xung đột.
 
 ### 3. Chia khối: cùng phép tính, ít trượt hơn
 
-Nhân id trận ngây thơ có ba vòng lặp lồng nhau. Với id trận lớn hơn cache, id trận B bị nạp lại **hoàn toàn** cho mỗi hàng của A.
+Nhân ma trận ngây thơ có ba vòng lặp lồng nhau. Với ma trận lớn hơn cache, ma trận B bị nạp lại **hoàn toàn** cho mỗi hàng của A.
 
 Chia khối chia bài toán thành các khối con vừa với L1. Mỗi khối được nạp một lần rồi dùng hết trước khi bị đẩy ra.
 
-Con số quan trọng: cùng `2n³` phép tính, nhưng số lần trượt cache giảm từ `O(n³)` xuống `O(n³/√M)` với M là kích thước cache. Với id trận 512×512, đó là chênh lệch 5–10 lần thời gian chạy.
+Con số quan trọng: cùng `2n³` phép tính, nhưng số lần trượt cache giảm từ `O(n³)` xuống `O(n³/√M)` với M là kích thước cache. Với ma trận 512×512, đó là chênh lệch 5–10 lần thời gian chạy.
 
 ### 4. Dự đoán rẽ nhánh và mã không rẽ nhánh
 
 Bộ dự đoán 2-bit bão hoà có bốn trạng thái: chắc chắn không nhảy → có thể không → có thể nhảy → chắc chắn nhảy. Cần **hai** lần sai liên tiếp mới đổi hướng dự đoán, nên nó chịu được nhiễu tốt.
 
-Nhưng với dữ liệu ngẫu nhiên, không bộ dự đoán nào cứu được — tỉ lệ đúng về 50%, và mỗi lần sai mất khoảng 15 owner kỳ.
+Nhưng với dữ liệu ngẫu nhiên, không bộ dự đoán nào cứu được — tỉ lệ đúng về 50%, và mỗi lần sai mất khoảng 15 chu kỳ.
 
 Giải pháp là **mã không rẽ nhánh**: thay `if x > t { s += x }` bằng `s += x * (x > t) as i64`. Không có nhánh nên không có dự đoán sai. Với dữ liệu ngẫu nhiên, phiên bản không nhánh nhanh hơn rõ rệt; với dữ liệu đã sắp xếp thì phiên bản có nhánh lại thắng, vì dự đoán gần như luôn đúng.
 
@@ -106,7 +106,7 @@ Bài học: **không có phiên bản nào luôn tốt hơn**. Phải biết d�
 
 ### 5. ILP: vì sao 4 biến tích luỹ nhanh hơn 1
 
-CPU hiện đại thực thi ngoài thứ tự và có nhiều đơn vị tính toán. Nhưng chúng không thể phá vỡ **chuỗi phụ thuộc dữ liệu**: nếu `s += a[i]` phải chờ `s` từ lần trước, thì tốc độ bị chặn bởi độ trễ của phép cộng (khoảng 4 owner kỳ cho số thực).
+CPU hiện đại thực thi ngoài thứ tự và có nhiều đơn vị tính toán. Nhưng chúng không thể phá vỡ **chuỗi phụ thuộc dữ liệu**: nếu `s += a[i]` phải chờ `s` từ lần trước, thì tốc độ bị chặn bởi độ trễ của phép cộng (khoảng 4 chu kỳ cho số thực).
 
 Chia thành 4 biến tích luỹ tạo ra 4 chuỗi độc lập. CPU chạy cả 4 song song, và thông lượng tăng gần 4 lần.
 
@@ -126,7 +126,7 @@ Và luôn có **phần dư**: mảng 1000 phần tử với vector 4 phần tử
 
 ### Bản đồ 22 bài của LeetCPU sang chương này
 
-Danh sách dưới đây được **lấy trực tiếp từ leetcpu.com** (thu thập ngày 05/09/2026). Nền tảng đó chạy mã C của bạn trên **ChampSim** — bộ mô phỏng vi kiến trúc chính xác theo owner kỳ, 200 triệu lệnh — rồi trả về IPC, MPKI và số liệu bộ dự đoán rẽ nhánh. Chuỗi công cụ của họ là `gcc` → `objdump` → vết Intel PIN → ChampSim → bảng chỉ số.
+Danh sách dưới đây được **lấy trực tiếp từ leetcpu.com** (thu thập ngày 05/09/2026). Nền tảng đó chạy mã C của bạn trên **ChampSim** — bộ mô phỏng vi kiến trúc chính xác theo chu kỳ, 200 triệu lệnh — rồi trả về IPC, MPKI và số liệu bộ dự đoán rẽ nhánh. Chuỗi công cụ của họ là `gcc` → `objdump` → vết Intel PIN → ChampSim → bảng chỉ số.
 
 Chúng ta không mô phỏng vi kiến trúc ở đây; chúng ta cài **cùng những kỹ thuật đó bằng Rust** và đo bằng đồng hồ thật. Bốn nhóm của họ ánh xạ đúng vào bốn phần của chương này.
 
@@ -168,7 +168,7 @@ Chạy bằng `cargo run -p ch80`, kiểm thử bằng `cargo test -p ch80`.
 //! Chương 80 — Kỹ nghệ hiệu năng CPU: phân cấp bộ nhớ, cục bộ cache, dự đoán
 //! nhánh, song song mức lệnh, và mã không nhánh.
 //!
-//! Theo compute thần các bài tập của [LeetCPU](https://www.leetcpu.com/) — nền
+//! Theo tinh thần các bài tập của [LeetCPU](https://www.leetcpu.com/) — nền
 //! tảng luyện hiệu năng CPU có mô phỏng vi kiến trúc phản hồi. Ở đây ta ĐẾM
 //! số lần trượt cache và dự đoán sai bằng mô phỏng tất định, thay vì đo đồng
 //! hồ treo tường — nhờ vậy kết quả tái lập được và kiểm thử được.
@@ -308,7 +308,7 @@ impl CacheSim {
 // 3. CỤC BỘ CACHE — cùng phép tính, hai cách duyệt
 // ============================================================================
 
-/// Duyệt id trận THEO HÀNG. Rust lưu mảng theo hàng, nên hai phần tử kề nhau
+/// Duyệt ma trận THEO HÀNG. Rust lưu mảng theo hàng, nên hai phần tử kề nhau
 /// trong hàng cũng kề nhau trong bộ nhớ → mỗi dòng cache 64 byte nạp về được
 /// dùng cho 8 phần tử `f64`.
 pub fn row_major_scan(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
@@ -333,7 +333,7 @@ pub fn col_major_scan(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64
     mp.account.slip_count
 }
 
-/// Nhân id trận ngây thơ: vòng lặp i-j-k. Vòng trong quét CỘT của id trận B.
+/// Nhân ma trận ngây thơ: vòng lặp i-j-k. Vòng trong quét CỘT của ma trận B.
 pub fn matmul_naive(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
     mp.set_lai();
     let goc_a = 0usize;
@@ -349,7 +349,7 @@ pub fn matmul_naive(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
     mp.account.slip_count
 }
 
-/// Nhân id trận theo KHỐI: chia thành các khối vừa lọt cache, làm xong khối
+/// Nhân ma trận theo KHỐI: chia thành các khối vừa lọt cache, làm xong khối
 /// này mới sang khối khác. Cùng số phép nhân, nhưng dữ liệu được TÁI SỬ DỤNG
 /// khi còn nóng trong cache.
 pub fn blocked_matmul(mp: &mut CacheSim, n: usize, khoi: usize,
@@ -634,7 +634,7 @@ mod tests {
 
     // ---------- Phân cấp bộ nhớ ----------
     #[test]
-    fn latency_up_derive_theo_distance() {
+    fn latency_grows_with_distance() {
         let t = UpMemory::all();
         for w in t.windows(2) {
             assert!(w[0].period() < w[1].period(),
@@ -643,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn khoang_cach_giua_cac_tang_dung_bac_do_lon() {
+    fn the_gap_between_levels_is_an_order_of_magnitude() {
         assert_eq!(UpMemory::Ram.period() / UpMemory::L1.period(), 50,
                    "trượt xuống RAM tốn bằng 50 lần chạm L1");
         assert!(UpMemory::SsdNvme.period() > UpMemory::Ram.period() * 500,
@@ -652,7 +652,7 @@ mod tests {
 
     // ---------- Mô phỏng cache ----------
     #[test]
-    fn lan_first_slow_always_truot_lan_next_duplicate() {
+    fn first_touch_misses_then_hits() {
         let mut mp = CacheSim::new(32 * 1024, 8);
         assert!(!mp.access_cap(0), "lần đầu phải trượt");
         assert!(mp.access_cap(0), "lần hai phải trúng");
@@ -661,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn ca_dong_cache_duoc_nap_ve_cung_luc() {
+    fn a_whole_cache_line_arrives_at_once() {
         // Chạm byte 0 thì byte 1..63 cũng vào cache theo — đó chính là lý do
         // duyệt tuần tự nhanh hơn duyệt nhảy cóc.
         let mut mp = CacheSim::new(32 * 1024, 8);
@@ -673,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn buoc_nhay_bang_dong_cache_thi_lan_nao_cung_truot() {
+    fn a_cache_line_stride_misses_every_time() {
         let mut mp = CacheSim::new(32 * 1024, 8);
         for i in 0..100 { mp.access_cap(i * BYTE_MOI_DONG_CACHE); }
         assert_eq!(mp.account.slip_count, 100, "mỗi lần chạm một dòng mới");
@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn data_exceed_cache_thi_is_da_out() {
+    fn data_beyond_capacity_gets_evicted() {
         // Cache 1 KB = 16 dòng. Quét vòng qua 64 dòng thì lần nào cũng trượt.
         let mut mp = CacheSim::new(1024, 4);
         for _ in 0..3 {
@@ -692,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn du_lieu_vua_cache_thi_lan_hai_trung_het() {
+    fn data_that_fits_hits_on_the_second_pass() {
         let mut mp = CacheSim::new(32 * 1024, 8); // 512 dòng
         for _ in 0..5 {
             for i in 0..100 { mp.access_cap(i * BYTE_MOI_DONG_CACHE); }
@@ -703,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn thong_ke_always_can_table() {
+    fn the_counters_always_balance() {
         let mut mp = CacheSim::new(4096, 4);
         for i in 0..1000 { mp.access_cap(i * 7); }
         assert_eq!(mp.account.num_duplicate + mp.account.slip_count, mp.account.num_access_cap);
@@ -712,7 +712,7 @@ mod tests {
 
     // ---------- Cục bộ ----------
     #[test]
-    fn duyet_theo_hang_it_truot_hon_han_theo_cot() {
+    fn row_major_misses_far_less_than_column_major() {
         // Đây là bài học trung tâm của chương.
         let mut mp = CacheSim::new(32 * 1024, 8);
         let n = 256;
@@ -721,11 +721,11 @@ mod tests {
         assert!(cot > queue * 5,
                 "theo cột {} lần trượt phải nhiều hơn hẳn theo hàng {}", cot, queue);
         // Theo hàng: mỗi dòng cache 64 byte phục vụ 8 phần tử f64
-        assert_eq!(queue, (n * n / 8) as u64, "đúng bằng số dòng cache của cả id trận");
+        assert_eq!(queue, (n * n / 8) as u64, "đúng bằng số dòng cache của cả ma trận");
     }
 
     #[test]
-    fn traverse_two_kind_slow_use_same_num_cell_nho() {
+    fn both_orders_touch_the_same_number_of_cells() {
         let mut mp = CacheSim::new(32 * 1024, 8);
         let n = 64;
         row_major_scan(&mut mp, n, 8);
@@ -735,7 +735,7 @@ mod tests {
     }
 
     #[test]
-    fn o_nho_nho_hon_thi_moi_dong_cache_phuc_vu_nhieu_phan_tu_hon() {
+    fn smaller_elements_pack_more_per_line() {
         let mut mp = CacheSim::new(32 * 1024, 8);
         let n = 128;
         let f64_ = row_major_scan(&mut mp, n, 8);
@@ -744,9 +744,9 @@ mod tests {
         assert_eq!(f64_, f32_ * 2);
     }
 
-    // ---------- Nhân id trận ----------
+    // ---------- Nhân ma trận ----------
     #[test]
-    fn chia_khoi_giam_so_lan_truot() {
+    fn blocking_cuts_the_miss_count() {
         let n = 96;
         let mut a = CacheSim::new(32 * 1024, 8);
         let ngay_tho = matmul_naive(&mut a, n, 8);
@@ -757,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn chia_khoi_lam_dung_so_phep_truy_cap() {
+    fn blocking_performs_the_same_number_of_accesses() {
         // Bất biến: tối ưu không được đổi KHỐI LƯỢNG VIỆC, chỉ đổi thứ tự.
         let n = 48;
         let mut a = CacheSim::new(32 * 1024, 8);
@@ -771,7 +771,7 @@ mod tests {
 
     // ---------- Dự đoán nhánh ----------
     #[test]
-    fn buffer_report_hoa_can_sai_two_lan_new_swap_y() {
+    fn the_saturating_counter_needs_two_misses_to_flip() {
         // Đây là lý do bộ đếm 2 bit tốt hơn 1 bit: một lần chệch không làm
         // nó đổi ý, nên vòng lặp dài không bị phạt ở lần lặp bất thường.
         let mut d = BranchPredictor::new();
@@ -783,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn nhanh_luon_dung_thi_gan_nhu_khong_doan_sai() {
+    fn an_always_taken_branch_almost_never_mispredicts() {
         let mut d = BranchPredictor::new();
         for _ in 0..10_000 { d.segment_data(1, true); }
         assert!(d.wrong_guess_balance <= 2, "chỉ sai vài lần lúc học, thực tế {}", d.wrong_guess_balance);
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    fn nhanh_lat_lien_tuc_thi_doan_sai_gan_het() {
+    fn an_alternating_branch_mispredicts_almost_always() {
         // Trường hợp tệ nhất của bộ đếm 2 bit: mẫu luân phiên.
         let mut d = BranchPredictor::new();
         for i in 0..10_000 { d.segment_data(1, i % 2 == 0); }
@@ -799,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn du_lieu_da_sap_xep_it_doan_sai_hon_han() {
+    fn sorted_data_mispredicts_far_less() {
         // Câu hỏi phỏng vấn kinh điển: "vì sao sắp xếp mảng trước lại làm
         // vòng lặp đếm chạy nhanh hơn?" — không phải vì phép đếm nhanh hơn,
         // mà vì CPU đoán nhánh đúng hơn.
@@ -819,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn sell_no_nhanh_wait_same_result() {
+    fn the_branchless_version_gives_the_same_result() {
         for hat in [1u64, 42, 2024] {
             let d = gen_data(10_000, hat);
             let mut dd = BranchPredictor::new();
@@ -830,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn ban_khong_nhanh_khong_bao_gio_doan_sai() {
+    fn the_branchless_version_never_mispredicts() {
         // Không có nhánh thì không có gì để đoán — và không có gì để đoán sai.
         // Đây cũng là nền của mã mật mã chạy thời gian không đổi (Chương 57).
         let lon_xon = gen_data(10_000, 7);
@@ -842,7 +842,7 @@ mod tests {
 
     // ---------- ILP ----------
     #[test]
-    fn mot_bo_tich_luy_bi_chan_boi_chuoi_phu_thuoc() {
+    fn one_accumulator_is_bound_by_the_dependency_chain() {
         let a = analyze_total_one_bien(1_000_000, 4);
         assert_eq!(a.ilp, 1.0, "chuỗi phụ thuộc thuần → không song song được gì");
         assert_eq!(a.estimated_cycles, 1_000_000,
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn nhieu_bo_tich_luy_tang_ilp() {
+    fn multiple_accumulators_raise_ilp() {
         let mut ilp_truoc = 0.0;
         for k in [1u64, 2, 4, 8] {
             let b = analyze_total_many_bien(1_000_000, k, 4);
@@ -862,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn do_rong_cpu_chan_tren_toc_do() {
+    fn cpu_width_caps_the_speedup() {
         // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi owner kỳ.
         let b = analyze_total_many_bien(1_000_000, 64, 4);
         assert!(b.estimated_cycles >= 1_000_000 / 4,
@@ -870,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn many_unit_tich_accum_wait_same_result() {
+    fn multiple_accumulators_give_the_same_result() {
         // Cộng số nguyên có tính kết hợp nên đổi thứ tự vẫn đúng.
         // (Với f64 thì KHÔNG — đó là lý do trình biên dịch không tự làm việc
         // này cho số thực trừ khi bạn cho phép nới lỏng ngữ nghĩa dấu phẩy động.)
@@ -882,14 +882,14 @@ mod tests {
     }
 
     #[test]
-    fn total_array_empty_table_no() {
+    fn the_sum_of_an_empty_slice_is_zero() {
         assert_eq!(tong_mot_bien(&[]), 0);
         assert_eq!(total_many_bien(&[], 4), 0);
     }
 
     // ---------- SIMD ----------
     #[test]
-    fn simd_tang_toc_dung_be_rong_khi_chia_het() {
+    fn simd_speedup_equals_the_width_when_it_divides_evenly() {
         let p = simd_analysis(1024, 4);
         assert_eq!(p.so_lenh_vector, 256);
         assert_eq!(p.num_part_from_data, 0);
@@ -897,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_du_lam_giam_tang_toc() {
+    fn the_remainder_erodes_the_speedup() {
         let chia_het = simd_analysis(1024, 8);
         assert_eq!(chia_het.num_part_from_data, 0);
         let le = simd_analysis(1001, 8);
@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn mang_qua_ngan_thi_simd_vo_dung() {
+    fn simd_is_useless_on_a_tiny_slice() {
         // 7 phần tử với vector 8 làn: không lô nào đầy, mọi phần tử xử lý lẻ.
         let p = simd_analysis(7, 8);
         assert_eq!(p.so_lenh_vector, 0);
@@ -915,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn simd_be_rong_bat_thuong_khong_lam_hong_gi() {
+    fn an_unusual_simd_width_breaks_nothing() {
         let p = simd_analysis(100, 1);
         assert!((p.theoretical_speedup - 1.0).abs() < 1e-9);
         let p0 = simd_analysis(100, 0);
@@ -925,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn cong_array_theo_lo_wait_same_result_with_new_be_empty() {
+    fn batch_add_matches_scalar_add() {
         let a: Vec<f64> = (0..103).map(|i| i as f64).collect();
         let b: Vec<f64> = (0..103).map(|i| (i * 2) as f64).collect();
         let mong_doi: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
@@ -936,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn cong_array_do_long_other_each_get_part_chung() {
+    fn adding_unequal_slices_uses_the_common_prefix() {
         let a = vec![1.0, 2.0, 3.0];
         let b = vec![10.0, 20.0];
         assert_eq!(batch_add_array(&a, &b, 4), vec![11.0, 22.0]);
@@ -944,13 +944,13 @@ mod tests {
 
     // ---------- Sinh dữ liệu ----------
     #[test]
-    fn gen_data_all_peak() {
+    fn data_generation_is_deterministic() {
         assert_eq!(gen_data(100, 5), gen_data(100, 5));
         assert_ne!(gen_data(100, 5), gen_data(100, 6));
     }
 
     #[test]
-    fn du_lieu_sinh_ra_trai_deu_hai_phia_nguong() {
+    fn generated_data_straddles_the_threshold_evenly() {
         let d = gen_data(100_000, 42);
         let above = d.iter().filter(|&&x| x >= 128).count();
         assert!((above as f64 / d.len() as f64 - 0.5).abs() < 0.05,
@@ -985,7 +985,7 @@ mod tests {
 
 ### Bài tập rèn luyện
 
-**Bài 1.** Cài **chuyển vị id trận thân thiện cache** và so với bản ngây thơ.
+**Bài 1.** Cài **chuyển vị ma trận thân thiện cache** và so với bản ngây thơ.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -1031,7 +1031,7 @@ pub fn khoi_toi_uu(kich_thuoc_l1_byte: usize) -> usize {
 }
 ```
 
-Với L1 32 KB, `khoi_toi_uu` cho B = 45, nên thực tế dùng 32 hoặc 64 (luỹ thừa 2 cho phép tính chỉ số rẻ hơn). Với id trận 1024×1024, chuyển vị theo khối thường nhanh hơn 3–5 lần.
+Với L1 32 KB, `khoi_toi_uu` cho B = 45, nên thực tế dùng 32 hoặc 64 (luỹ thừa 2 cho phép tính chỉ số rẻ hơn). Với ma trận 1024×1024, chuyển vị theo khối thường nhanh hơn 3–5 lần.
 </details>
 
 **Bài 2.** Cài **tổng tiền tố (prefix sum) SIMD** — bài toán tưởng như không song song hoá được.

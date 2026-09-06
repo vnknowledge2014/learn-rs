@@ -26,7 +26,7 @@ Nếu bạn chỉ đặt tên "Vị nhóm" cho kiểu dữ liệu của mình m�
 Mục tiêu học tập của chương này:
 - Nắm được thang bậc **Magma → Nửa nhóm → Vị nhóm → Nhóm** và biết mỗi bậc đòi hỏi thêm điều gì.
 - Viết được `trait Semigroup` và `trait PosGroup` trong Rust, cài đặt cho `String`, `Vec<T>`, số, giá trị logic và các kiểu bọc (newtype).
-- Hiểu **vì sao `i64` có tận HAI vị nhóm** (`Tong` và `Product`) và vì sao Rust buộc phải dùng kiểu bọc để phân biệt.
+- Hiểu **vì sao `i64` có tận HAI vị nhóm** (`Tong` và `Tich`) và vì sao Rust buộc phải dùng kiểu bọc để phân biệt.
 - Nhận ra các vị nhóm **đã có sẵn trong thư viện chuẩn Rust**: `Default`, `Sum`, `Product`, `Extend`, `Ordering::then`, `Option::or`.
 - Hiểu **luật phản xạ** và lý do sâu xa vì sao `f64` chỉ có `PartialEq` chứ không có `Eq` — bài học sống động nhất về "luật có thật".
 - Biến luật thành **kiểm thử theo tính chất (property-based testing)** chạy được bằng `cargo test`.
@@ -131,7 +131,7 @@ pub trait PosGroup: Semigroup + Sized {
 ```
 
 Chú ý hai chi tiết thiết kế rất "Rust":
-- `fn ghep(self, khac: Self) -> Self` nhận `self` **theo giá trị**, không phải `&self`. Nhờ vậy, khi gộp hai `String` ta có thể *tái sử dụng* bộ đệm của chuỗi thứ nhất thay vì cấp phát mới — đúng compute thần zero-cost.
+- `fn ghep(self, khac: Self) -> Self` nhận `self` **theo giá trị**, không phải `&self`. Nhờ vậy, khi gộp hai `String` ta có thể *tái sử dụng* bộ đệm của chuỗi thứ nhất thay vì cấp phát mới — đúng tinh thần zero-cost.
 - `PosGroup: Semigroup` là quan hệ **siêu trait (supertrait)**: mọi vị nhóm bắt buộc trước hết phải là một nửa nhóm. Đây chính là cách Rust biểu diễn quan hệ "kế thừa" giữa các cấu trúc đại số. (Bạn đã gặp mẫu này ở Chương 15 với `Fn: FnMut: FnOnce`.)
 
 Có hai trait đó rồi, ta viết được **một hàm gộp duy nhất dùng chung cho mọi kiểu**:
@@ -556,9 +556,9 @@ fn main() {
     // 2. DANH SÁCH RỖNG — GIÁ TRỊ CỦA "HỘP RỖNG"
     // ------------------------------------------------------------------
     println!("\n2. VÌ SAO CẦN PHẦN TỬ ĐƠN VỊ?");
-    let empty_cong: Vec<Tong> = Vec::new();
+    let empty_sum: Vec<Tong> = Vec::new();
     let rong_nhan: Vec<Product> = Vec::new();
-    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_cong));
+    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_sum));
     println!(
         "   Tích của danh sách RỖNG: {:?}  (đúng: 1, KHÔNG phải 0!)",
         coalesce_all_all(rong_nhan)
@@ -605,11 +605,11 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n5. KIỂM THỬ THEO TÍNH CHẤT (1.000 bộ mẫu mỗi luật)");
     verify_link_hop("Tong   ", Tong, 1000);
-    verify_link_hop("Product   ", Product, 1000);
+    verify_link_hop("Tich   ", Product, 1000);
     verify_link_hop("LonNhat", Max, 1000);
     verify_link_hop("String ", |n: i64| n.to_string(), 1000);
     verify_don_pos("Tong   ", Tong, 1000);
-    verify_don_pos("Product   ", Product, 1000);
+    verify_don_pos("Tich   ", Product, 1000);
     verify_don_pos("LonNhat", Max, 1000);
 
     // ------------------------------------------------------------------
@@ -666,38 +666,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tong_tuan_thu_luat_ket_hop() {
+    fn sum_is_associative() {
         assert!(verify_link_hop("Tong", Tong, 500));
     }
 
     #[test]
-    fn tong_tuan_thu_luat_don_vi() {
+    fn sum_has_identity() {
         assert!(verify_don_pos("Tong", Tong, 500));
     }
 
     #[test]
-    fn tich_tuan_thu_ca_hai_luat() {
-        assert!(verify_link_hop("Product", Product, 500));
-        assert!(verify_don_pos("Product", Product, 500));
+    fn product_obeys_both_laws() {
+        assert!(verify_link_hop("Tich", Product, 500));
+        assert!(verify_don_pos("Tich", Product, 500));
     }
 
     #[test]
-    fn chuoi_tuan_thu_luat_ket_hop() {
+    fn string_concat_is_associative() {
         assert!(verify_link_hop("String", |n: i64| n.to_string(), 500));
     }
 
     #[test]
-    fn list_empty_return_ve_part_from_don_pos() {
-        let empty_cong: Vec<Tong> = Vec::new();
+    fn empty_list_folds_to_identity() {
+        let empty_sum: Vec<Tong> = Vec::new();
         let rong_nhan: Vec<Product> = Vec::new();
         let rong_max: Vec<Max> = Vec::new();
-        assert_eq!(coalesce_all_all(empty_cong), Tong(0));
+        assert_eq!(coalesce_all_all(empty_sum), Tong(0));
         assert_eq!(coalesce_all_all(rong_nhan), Product(1));
         assert_eq!(coalesce_all_all(rong_max), Max(i64::MIN));
     }
 
     #[test]
-    fn vi_nhom_tich_gop_dung_bon_chi_so() {
+    fn product_monoid_aggregates_four_metrics() {
         let order_log = vec![
             SellRecordAccessCap { path: "/a".into(), id_state: 200, time_ms: 10 },
             SellRecordAccessCap { path: "/b".into(), id_state: 503, time_ms: 40 },
@@ -714,7 +714,7 @@ mod tests {
     /// chia nhỏ dữ liệu rồi ghép lại luôn cho cùng kết quả —
     /// tức là thuật toán này SONG SONG HÓA ĐƯỢC một cách an toàn.
     #[test]
-    fn chia_nho_roi_ghep_lai_cho_cung_ket_qua() {
+    fn split_then_merge_gives_same_result() {
         let mut sinh = Generator::new(12345);
         let data: Vec<Tong> = (0..100).map(|_| Tong(sinh.num_cont())).collect();
 
@@ -727,13 +727,13 @@ mod tests {
     }
 
     #[test]
-    fn op_tru_no_must_nua_group() {
+    fn subtraction_is_not_a_semigroup() {
         // Phản ví dụ: chứng minh phép trừ VI PHẠM luật kết hợp.
         assert_ne!((10i64 - 3) - 2, 10i64 - (3 - 2));
     }
 
     #[test]
-    fn nan_pha_vo_luat_phan_xa() {
+    fn nan_breaks_reflexivity() {
         let nan = f64::NAN;
         assert!(!(nan == nan), "NaN phải KHÔNG bằng chính nó theo IEEE 754");
         // Còn số nguyên thì luôn thỏa luật phản xạ:
@@ -750,7 +750,7 @@ mod tests {
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0119** | `conflicting implementations of trait 'PosGroup' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Product(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
+| **E0119** | `conflicting implementations of trait 'PosGroup' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Tich(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
 | **E0117** | `only traits defined in the current crate can be implemented for types defined outside of the crate` | **Quy tắc mồ côi (orphan rule)**: bạn không được cài trait của người khác cho kiểu của người khác. | Hoặc trait phải là của bạn (như `Semigroup` trong chương này), hoặc kiểu phải là của bạn — lại là kiểu bọc! |
 | **E0277** | `the trait bound 'X: PosGroup' is not satisfied` | Bạn gọi `coalesce_all_all` với một kiểu chưa cài `PosGroup`, hoặc quên cài `Semigroup` (siêu trait bắt buộc). | Cài đủ **cả hai** trait. Nhớ rằng `PosGroup: Semigroup` nghĩa là muốn có vị nhóm thì phải có nửa nhóm trước. |
 | **E0507** | `cannot move out of ... which is behind a shared reference` | `fn ghep(self, ...)` nhận `self` theo giá trị, nhưng bạn đang cầm `&M`. | Gọi `.clone()` trước khi gộp, hoặc dùng `.iter().map(...)` để tạo giá trị mới thay vì mượn. |

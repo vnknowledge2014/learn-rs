@@ -459,7 +459,7 @@ fn main() {
     println!("16. Foldable     gấp cây [20,50,70] -> tổng= {}", cay.clone().gap(0i64, |a, x| a + x));
     println!("17. Traversable  Vec<Result> -> Result<Vec>= {:?}",
              traverse_vec_result(vec!["1", "2"], |s: &str| s.parse::<i32>()));
-    println!("18. Chain        Some(4).concat(|x| Some(x*5))= {:?}", Some(4i32).concat(|x| Some(x * 5)));
+    println!("18. Chain        Some(4).noi(|x| Some(x*5))= {:?}", Some(4i32).concat(|x| Some(x * 5)));
     println!("20. Monad        = Applicative + Chain (siêu trait đánh dấu)");
 
     let luy_thua = chain_rec_option(( 1u64, 20u32), |(acc, remaining)| {
@@ -661,7 +661,7 @@ mod luat {
     }
 
     #[test] // 19. CHAINREC: chạy 1 TRIỆU vòng mà KHÔNG tràn ngăn xếp
-    fn chainrec_no_stack_overflow() {
+    fn chainrec_does_not_overflow_the_stack() {
         let kq = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
             Some(if remaining == 0 { StepCont::Xong(acc) }
                  else { StepCont::TiepTuc((acc + 1, remaining - 1)) })

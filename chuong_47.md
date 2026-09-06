@@ -33,8 +33,8 @@ Mục tiêu học tập của chương:
 Hãy tưởng tượng bạn muốn tạo ra một chiếc **Dao đa năng Thụy Sĩ (Swiss Army Knife)** cao cấp gồm: Lưỡi dao sắc bén, kéo cắt tỉa, tuốc-nơ-vít, và đồ khui nút chai.
 
 #### Phương pháp thủ công (Trước kỷ nguyên Vibe Coding):
-- Bạn phải tự mình đi vào rừng đốn gỗ làm cán dao, đào quặng sắt, nung lò rèn đập từng chiếc lò xor, tự mài giũa từng con ốc vít.
-- Bạn mất 6 tháng ròng rã chỉ để chế tạo xong một chiếc dao đơn giản, và nếu một chiếc lò xor bị lệch 1 milimet, toàn bộ con dao sẽ bị kẹt không thể mở ra.
+- Bạn phải tự mình đi vào rừng đốn gỗ làm cán dao, đào quặng sắt, nung lò rèn đập từng chiếc lò xo, tự mài giũa từng con ốc vít.
+- Bạn mất 6 tháng ròng rã chỉ để chế tạo xong một chiếc dao đơn giản, và nếu một chiếc lò xo bị lệch 1 milimet, toàn bộ con dao sẽ bị kẹt không thể mở ra.
 
 #### Phương pháp Vibe Coding hiện đại:
 - Bạn là **Tổng công trình sư thiết kế**: Bạn có sẵn một bản thiết kế 3D chính xác đến từng micromet (Bản đặc tả `SPEC.md`).
@@ -45,7 +45,7 @@ Hãy tưởng tượng bạn muốn tạo ra một chiếc **Dao đa năng Thụ
   - Nếu có một khớp nối bị lỏng (lỗi an toàn bộ nhớ), thanh tra yêu cầu robot sửa lại ngay lập tức.
 - Kết quả: Sau 30 phút, bạn cầm trên tay một chiếc dao Thụy Sĩ hoàn mỹ, bóng bẩy, sắc bén phi thường và hoạt động bền bỉ suốt 50 năm!
 
-Công cụ CLI **LogPulse** của chúng ta cũng được tạo ra theo đúng compute thần đó: Bạn làm chủ thiết kế, AI tăng tốc triển khai, và Rust bảo chứng chất lượng!
+Công cụ CLI **LogPulse** của chúng ta cũng được tạo ra theo đúng tinh thần đó: Bạn làm chủ thiết kế, AI tăng tốc triển khai, và Rust bảo chứng chất lượng!
 
 ---
 

@@ -9,7 +9,7 @@ Tuy nhiên, khi bắt tay vào xử lý dữ liệu phức tạp trong thế gi�
 2. Vòng lặp lồng nhau sâu hoắm (`for`, `while`) khiến người đọc mất phương hướng khi lần theo dấu vết logic.
 3. Mã nguồn trở nên dài dòng, cồng kềnh và khó kiểm thử độc lập.
 
-Lập trình hàm (Functional Programming) là một trường phái tư duy lập trình đưa chúng ta tiếp cận bài toán theo một góc nhìn hoàn toàn mới: **Xem chương trình như một chuỗi các phép biến đổi toán học thuần túy trên dữ liệu bất biến (immutable data)**, thay vì chuỗi các mệnh lệnh xáo trộn trạng thái bộ nhớ. Rust không phải là một ngôn ngữ lập trình hàm thuần túy như Haskell, nhưng Rust được thiết kế để kế thừa những compute hoa tuyệt vời nhất của lập trình hàm, kết hợp hài hòa với tốc độ thực thi thần tốc và quyền kiểm soát tài nguyên phần cứng trực tiếp.
+Lập trình hàm (Functional Programming) là một trường phái tư duy lập trình đưa chúng ta tiếp cận bài toán theo một góc nhìn hoàn toàn mới: **Xem chương trình như một chuỗi các phép biến đổi toán học thuần túy trên dữ liệu bất biến (immutable data)**, thay vì chuỗi các mệnh lệnh xáo trộn trạng thái bộ nhớ. Rust không phải là một ngôn ngữ lập trình hàm thuần túy như Haskell, nhưng Rust được thiết kế để kế thừa những tinh hoa tuyệt vời nhất của lập trình hàm, kết hợp hài hòa với tốc độ thực thi thần tốc và quyền kiểm soát tài nguyên phần cứng trực tiếp.
 
 Mục tiêu học tập của chương này:
 - Nắm rõ sự khác biệt cốt lõi giữa **Lập trình mệnh lệnh (Imperative Programming)** và **Lập trình khai báo (Declarative Programming)**.
@@ -40,7 +40,7 @@ Mục tiêu học tập của chương này:
 │ -> Tự tay làm từng bước thủ công.      │     ▼ [Lõi lọc 3: Màng thẩm thấu RO]    │
 │    Sai một thao tác nhỏ là hỏng bánh!  │     │ (Chỉ cho phân tử nước đi qua)     │
 │                                        │     ▼                                   │
-│                                        │ [Ly nước khoáng compute khiết uống ngay]   │
+│                                        │ [Ly nước khoáng tinh khiết uống ngay]   │
 │                                        │ -> Nước chảy liên tục qua đường ống.    │
 │                                        │    Không làm bẩn phòng, không biến tạm! │
 └────────────────────────────────────────┴─────────────────────────────────────────┘
@@ -56,7 +56,7 @@ Mục tiêu học tập của chương này:
 
 ### 2. Dây chuyền hệ thống máy lọc nước gia đình (Data Pipeline)
 Hãy quan sát cách chiếc máy lọc nước RO trong ngôi nhà bạn vận hành:
-- Nước giếng khoan ban đầu đi vào từ đầu ống. Nó chảy qua **Lõi 1 (Lọc chặn thô)** để giữ lại cát sỏi. Nước chảy tiếp qua **Lõi 2 (Than hoạt tính)** để hút sạch hóa chất độc hại. Nước chảy tiếp qua **Lõi 3 (Màng siêu lọc RO)** để loại bỏ vi khuẩn. Cuối cùng, nước chảy ra vòi là nước khoáng compute khiết.
+- Nước giếng khoan ban đầu đi vào từ đầu ống. Nó chảy qua **Lõi 1 (Lọc chặn thô)** để giữ lại cát sỏi. Nước chảy tiếp qua **Lõi 2 (Than hoạt tính)** để hút sạch hóa chất độc hại. Nước chảy tiếp qua **Lõi 3 (Màng siêu lọc RO)** để loại bỏ vi khuẩn. Cuối cùng, nước chảy ra vòi là nước khoáng tinh khiết.
 - Điểm đặc biệt của dây chuyền này là:
   - Nguồn nước chảy tuần tự qua từng trạm xử lý chuyên biệt (tương đương các hàm trong chuỗi `pipeline`).
   - Mỗi lõi lọc chỉ tập trung làm đúng một việc duy nhất và không làm ảnh hưởng đến lõi lọc khác.

@@ -64,7 +64,7 @@ fn main() {
         ma_van_don: String::from("SPX-987654321"),
         ten_tai_xe: String::from("Bác Ba Giao Hàng"),
     };
-    let don_giao_into_cong = StateDonQueue::GiaoThanhCong {
+    let order_delivered = StateDonQueue::GiaoThanhCong {
         recipient: String::from("Trần Thị Bình"),
         time_time_recv: String::from("14:30 ngày 05/09/2026"),
     };
@@ -73,7 +73,7 @@ fn main() {
     update_process(&don_cho);
     update_process(&don_dong_goi);
     update_process(&don_van_transfer);
-    update_process(&don_giao_into_cong);
+    update_process(&order_delivered);
     update_process(&don_cancel);
 
     // --- PHẦN 2: LÀM VIỆC VỚI OPTION<T> VÀ TRIỆT TIÊU NULL ---

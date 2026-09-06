@@ -225,7 +225,7 @@ fn main() {
     println!("\n1. Khởi tạo Bản đồ thông số máy chủ bằng cú pháp trực quan:");
     let thong_num_server = tao_ban_do! {
         "cong_mang" => "8080",
-        "ip_address" => "192.168.1.100",
+        "dia_chi_ip" => "192.168.1.100",
         "moi_truong" => "SanXuat",
         "trang_thai" => "KichHoat", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
     };
@@ -253,7 +253,7 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n3. Đo lường hiệu năng của một khối thuật toán:");
     
-    let total_tich_accum = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
+    let total_accumulated = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
         let mut tong: u64 = 0;
         for i in 1..=1_000_000 {
             tong += i;
@@ -261,7 +261,7 @@ fn main() {
         tong // Giá trị trả về từ khối block
     });
 
-    println!("-> Kết quả tính được từ khối mã: {}", total_tich_accum);
+    println!("-> Kết quả tính được từ khối mã: {}", total_accumulated);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MACRO KHAI BÁO HOÀN THÀNH AN TOÀN TUYỆT ĐỐI");

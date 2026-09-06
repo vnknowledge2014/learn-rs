@@ -301,7 +301,7 @@ impl Position {
 pub trait StrategyReplay {
     fn name(&self) -> &str;
     /// Gọi sau MỖI sự kiện thị trường. Trả về các lệnh muốn gửi.
-    fn when_has_event(&mut self, clock: &VirtualClock, so: &ReducedBook,
+    fn on_event(&mut self, clock: &VirtualClock, so: &ReducedBook,
                       position: &Position) -> Vec<(Side, Price, Quantity)>;
     /// Gọi khi một lệnh của ta được khớp.
     fn when_can_fill(&mut self, _k: &OurFill) {}
@@ -355,12 +355,12 @@ impl Replayer {
         let mut position = Position::default();
         let mut id_ke = 1u64;
         let mut orders_sent = 0u64;
-        let mut wait_thuc = 0u64;
+        let mut real_wait = 0u64;
         let mut last_price: Price = 0;
         let mut prev_do = clock.bay_gio_ns;
 
         for (i, k) in cac_khung.iter().enumerate() {
-            wait_thuc += self.speed.wall_delay(k.timestamp_nanos.saturating_sub(prev_do));
+            real_wait += self.speed.wall_delay(k.timestamp_nanos.saturating_sub(prev_do));
             prev_do = k.timestamp_nanos;
             clock.advance(k.timestamp_nanos);
 
@@ -430,7 +430,7 @@ impl Replayer {
             }
 
             // --- Chiến lược quyết định ---
-            for (side, price, sl) in cl.when_has_event(&clock, &so, &position) {
+            for (side, price, sl) in cl.on_event(&clock, &so, &position) {
                 if sl == 0 { continue; }
                 order_wait.push(OurOrder {
                     id: id_ke, side, price, quantity: sl, filled: 0,
@@ -452,7 +452,7 @@ impl Replayer {
             all_fill,
             time_time_ao_nanos: cac_khung.last().map_or(0, |k| k.timestamp_nanos)
                              - cac_khung.first().map_or(0, |k| k.timestamp_nanos),
-            real_wait_nanos: wait_thuc,
+            real_wait_nanos: real_wait,
         }
     }
 }
@@ -473,7 +473,7 @@ pub struct NaiveMaker {
 impl StrategyReplay for NaiveMaker {
     fn name(&self) -> &str { "Tạo lập thị trường đơn giản" }
 
-    fn when_has_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
+    fn on_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
         -> Vec<(Side, Price, Quantity)>
     {
         self.step += 1;
@@ -523,7 +523,7 @@ impl ManagedMaker {
 impl StrategyReplay for ManagedMaker {
     fn name(&self) -> &str { "Tạo lập có kiểm soát tồn kho" }
 
-    fn when_has_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
+    fn on_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
         -> Vec<(Side, Price, Quantity)>
     {
         self.step += 1;
@@ -559,7 +559,7 @@ impl StrategyReplay for ManagedMaker {
 pub struct UseOut;
 impl StrategyReplay for UseOut {
     fn name(&self) -> &str { "Đứng ngoài" }
-    fn when_has_event(&mut self, _: &VirtualClock, _: &ReducedBook, _: &Position)
+    fn on_event(&mut self, _: &VirtualClock, _: &ReducedBook, _: &Position)
         -> Vec<(Side, Price, Quantity)> { vec![] }
 }
 
@@ -715,14 +715,14 @@ mod tests {
 
     // ---------- Định dạng bản ghi ----------
     #[test]
-    fn ghi_roi_doc_lai_khop_tung_bit() {
+    fn record_then_read_matches_bit_for_bit() {
         let (p, g) = record_session(2_000, 1);
         assert_eq!(g.doc_lai().unwrap(), p, "vòng ghi–đọc phải khép kín tuyệt đối");
         assert_eq!(g.num_frame, 2_000);
     }
 
     #[test]
-    fn ghi_moi_loai_su_kien_deu_khep_kin() {
+    fn every_event_kind_round_trips() {
         let all = vec![
             EventMarket::AddOrder { id: 1, side: Side::Buy, price: 8_450, quantity: 100 },
             EventMarket::AddOrder { id: 2, side: Side::Sell, price: -7, quantity: 1 },
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn ban_ghi_bi_cat_cut_bao_loi_chu_khong_panic() {
+    fn truncated_record_errors_instead_of_panicking() {
         // Tiến trình ghi bị giết giữa chừng là chuyện bình thường trong vận hành.
         let (_, g) = record_session(10, 2);
         for cat in 1..12usize {
@@ -750,14 +750,14 @@ mod tests {
     }
 
     #[test]
-    fn do_dai_khung_vo_ly_bi_tu_choi() {
+    fn absurd_frame_length_is_rejected() {
         let mut g = SessionRecorder::new();
         g.content = vec![0, 0, 0, 3, 1, 2, 3]; // độ dài 3 < 8 byte dấu thời gian
         assert_eq!(g.doc_lai(), Err(ErrorRead::DoDaiVoLy(3)));
     }
 
     #[test]
-    fn id_event_is_is_reject() {
+    fn unknown_event_code_is_rejected() {
         let mut g = SessionRecorder::new();
         g.content.extend_from_slice(&9u32.to_be_bytes());
         g.content.extend_from_slice(&0u64.to_be_bytes());
@@ -766,12 +766,12 @@ mod tests {
     }
 
     #[test]
-    fn sell_record_empty_read_out_list_empty() {
+    fn empty_recording_reads_back_empty() {
         assert_eq!(SessionRecorder::new().doc_lai(), Ok(vec![]));
     }
 
     #[test]
-    fn size_frame_use_table_total_all_truong() {
+    fn frame_size_equals_the_sum_of_its_fields() {
         // 4 byte độ dài + 8 byte dấu thời gian + thân.
         // Thân: A = 1+8+1+8+4 = 22 · X = 1+8 = 9 · T = 1+8+4+1 = 14
         let ktra = |sk: EventMarket, mong: usize| {
@@ -785,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn dinh_dang_nhi_phan_du_gon_de_ghi_ca_ngay() {
+    fn the_binary_format_is_compact_enough_for_a_full_day() {
         let (_, g) = record_session(10_000, 3);
         let byte_moi_su_kien = g.so_byte() as f64 / g.num_frame as f64;
         // Phiên trộn ~70% thêm lệnh (34 B), 15% huỷ (21 B), 15% khớp (26 B)
@@ -799,7 +799,7 @@ mod tests {
 
     // ---------- Đồng hồ ảo ----------
     #[test]
-    fn dong_ho_ao_khong_bao_gio_chay_lui() {
+    fn virtual_clock_never_runs_backwards() {
         let mut d = VirtualClock::new(1_000);
         d.advance(500); // sự kiện tới muộn, dấu thời gian cũ
         assert_eq!(d.bay_gio_ns, 1_000, "thời gian không được lùi");
@@ -811,7 +811,7 @@ mod tests {
 
     // ---------- Tốc độ phát ----------
     #[test]
-    fn replay_speed_tinh_use_time_time_wait() {
+    fn replay_speed_computes_the_right_wall_delay() {
         assert_eq!(ReplaySpeed::RealTime.wall_delay(1_000_000), 1_000_000);
         assert_eq!(ReplaySpeed::HeSo(2.0).wall_delay(1_000_000), 500_000);
         assert_eq!(ReplaySpeed::HeSo(0.5).wall_delay(1_000_000), 2_000_000,
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn tua_nhanh_khong_duoc_doi_ket_qua() {
+    fn fast_forward_must_not_change_results() {
         // Tua nhanh chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
         let p = gen_session_record(3_000, 5);
         let mut kq: Vec<ResultReplay> = Vec::new();
@@ -840,7 +840,7 @@ mod tests {
 
     // ---------- Mô hình độ trễ ----------
     #[test]
-    fn latency_all_peak_theo_nonce() {
+    fn latency_is_deterministic_per_sequence_number() {
         let d = LatencyModel::set_custom_tax();
         for i in 0..100u64 {
             assert_eq!(d.round_trip_ns(i), d.round_trip_ns(i), "cùng sự kiện → cùng độ trễ");
@@ -849,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn latency_always_in_range_hop_ly() {
+    fn latency_always_stays_in_a_sane_range() {
         let d = LatencyModel::set_custom_tax();
         let min = d.in_nanos + d.out_nanos;
         for i in 0..1_000u64 {
@@ -860,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn dat_thue_rieng_nhanh_hon_internet_hang_tram_lan() {
+    fn a_leased_line_beats_the_internet_by_orders_of_magnitude() {
         let a = LatencyModel::set_custom_tax().round_trip_ns(0);
         let b = LatencyModel::qua_internet().round_trip_ns(0);
         assert!(b > a * 100, "ngồi cạnh sàn nhanh hơn {} lần", b / a.max(1));
@@ -868,7 +868,7 @@ mod tests {
 
     // ---------- Sổ rút gọn ----------
     #[test]
-    fn num_reduce_return_use_price_good_nhat() {
+    fn reduced_book_reports_the_right_best_prices() {
         let mut s = ReducedBook::default();
         s.them(Side::Buy, 8_390, 100);
         s.them(Side::Buy, 8_400, 200);
@@ -882,7 +882,7 @@ mod tests {
 
     // ---------- Vị thế ----------
     #[test]
-    fn position_is_pos_group() {
+    fn position_is_a_monoid() {
         let a = Position::from_fill(Side::Buy, 100, 10);
         let b = Position::from_fill(Side::Sell, 110, 5);
         let c = Position::from_fill(Side::Buy, 90, 3);
@@ -891,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn mua_re_ban_dat_thi_co_lai() {
+    fn buy_low_sell_high_is_profitable() {
         let v = Position::from_fill(Side::Buy, 8_000, 100)
             .compose(Position::from_fill(Side::Sell, 8_500, 100));
         assert_eq!(v.quantity, 0);
@@ -900,7 +900,7 @@ mod tests {
 
     // ---------- Phát lại ----------
     #[test]
-    fn so_khong_bi_cheo_vinh_vien_vi_bo_qua_huy_lenh() {
+    fn skipping_cancels_leaves_the_book_permanently_crossed() {
         // Bài học mô hình: nếu bộ phát lại bỏ qua bản tin huỷ, sổ chỉ phình
         // ra, các mức giá cũ không bao giờ mất, và chỉ sau vài nghìn sự kiện
         // là sổ chéo vĩnh viễn — chiến lược đứng ngoài mà ta không hiểu vì sao.
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_order_thuc_su_rut_liquidity_block_num() {
+    fn cancels_actually_remove_liquidity() {
         let frame = vec![
             FrameRecord { timestamp_nanos: 1_000,
                 event: EventMarket::AddOrder { id: 1, side: Side::Buy,
@@ -931,7 +931,7 @@ mod tests {
         struct Soi { mua_cuoi: Option<Price>, ban_cuoi: Option<Price> }
         impl StrategyReplay for Soi {
             fn name(&self) -> &str { "soi sổ" }
-            fn when_has_event(&mut self, _: &VirtualClock, so: &ReducedBook, _: &Position)
+            fn on_event(&mut self, _: &VirtualClock, so: &ReducedBook, _: &Position)
                 -> Vec<(Side, Price, Quantity)> {
                 self.mua_cuoi = so.best_bid();
                 self.ban_cuoi = so.best_ask();
@@ -946,7 +946,7 @@ mod tests {
     }
 
     #[test]
-    fn phat_lai_tai_lap_tuyet_doi() {
+    fn replay_is_bit_exact_reproducible() {
         // BẤT BIẾN QUAN TRỌNG NHẤT của chương. Nếu bài này hỏng thì mọi kết
         // quả kiểm định đều vô nghĩa vì không so sánh được với nhau.
         let p = gen_session_record(5_000, 2024);
@@ -961,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn use_out_thi_no_order_no_lai_no_lo() {
+    fn standing_aside_means_no_orders_and_no_pnl() {
         let p = gen_session_record(2_000, 7);
         let kq = Replayer::new(LatencyModel::set_custom_tax(), ReplaySpeed::NhanhNhatCoThe)
             .run(&p, &mut UseOut);
@@ -972,9 +972,9 @@ mod tests {
     }
 
     #[test]
-    fn order_no_position_fill_prev_when_toi_venue() {
+    fn an_order_cannot_fill_before_it_reaches_the_venue() {
         // Nếu mô phỏng cho lệnh khớp ngay lúc quyết định, ta đã "nhìn trộm
-        // tương lai" ở mức compute vi nhất — và kết quả sẽ đẹp một cách giả tạo.
+        // tương lai" ở mức tinh vi nhất — và kết quả sẽ đẹp một cách giả tạo.
         let p = gen_session_record(3_000, 11);
         let mut c = NaiveMaker { tick_offset: 1, has_order: 100,
                                     max_position: 10_000, step: 0, every_n_events: 10 };
@@ -989,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn do_tre_cang_lon_thi_cang_kho_khop() {
+    fn more_latency_means_fewer_fills() {
         // Đây là lý do các hãng trả rất nhiều tiền để đặt máy cạnh sàn.
         let p = gen_session_record(8_000, 2024);
         let count_fill = |dt: LatencyModel| {
@@ -1004,7 +1004,7 @@ mod tests {
     }
 
     #[test]
-    fn position_last_table_use_total_all_lan_fill() {
+    fn final_position_equals_the_sum_of_fills() {
         // Kế toán phải khớp: vị thế = tổng mọi lần khớp, không thừa không thiếu.
         let p = gen_session_record(5_000, 17);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
@@ -1019,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn moi_lan_khop_deu_hop_le() {
+    fn every_fill_is_valid() {
         let p = gen_session_record(5_000, 13);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 1_000, step: 0, every_n_events: 20 };
@@ -1032,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn chi_nhin_vi_the_da_khop_thi_VUOT_TRAN() {
+    fn counting_only_filled_position_breaches_the_cap() {
         // Bài học đắt tiền, và bài kiểm thử này CỐ Ý ghi lại cái sai:
         // `NaiveMaker` chỉ kiểm tra vị thế ĐÃ KHỚP, nên cứ mỗi nhịp lại
         // chào thêm một lệnh nữa. Khi thị trường quét qua, tất cả khớp một
@@ -1049,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn dem_ca_lenh_dang_treo_thi_giu_duoc_tran() {
+    fn counting_resting_orders_keeps_the_cap() {
         // Bản đúng: phơi bày = vị thế đã khớp + khối lượng đang treo.
         let p = gen_session_record(10_000, 23);
         let tran = 300i64;
@@ -1062,7 +1062,7 @@ mod tests {
     }
 
     #[test]
-    fn kiem_soat_ton_kho_giu_tran_voi_moi_hat_giong() {
+    fn inventory_control_holds_for_every_seed() {
         for hat in [1u64, 7, 23, 42, 2024] {
             let p = gen_session_record(8_000, hat);
             let tran = 200i64;
@@ -1075,27 +1075,27 @@ mod tests {
     }
 
     #[test]
-    fn so_bi_cheo_thi_chien_luoc_dung_ngoai() {
+    fn strategy_stands_aside_on_a_crossed_book() {
         let mut s = ReducedBook::default();
         s.them(Side::Buy, 8_500, 100);
         s.them(Side::Sell, 8_400, 100);
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 500, step: 0, every_n_events: 1 };
-        let order = c.when_has_event(&VirtualClock::new(0), &s, &Position::default());
+        let order = c.on_event(&VirtualClock::new(0), &s, &Position::default());
         assert!(order.is_empty(), "sổ chéo → phải đứng ngoài, không được coi là cơ hội");
     }
 
     #[test]
-    fn num_empty_thi_strategy_no_send_order() {
+    fn strategy_sends_nothing_on_an_empty_book() {
         let mut c = NaiveMaker { tick_offset: 2, has_order: 100,
                                     max_position: 500, step: 0, every_n_events: 1 };
-        assert!(c.when_has_event(&VirtualClock::new(0), &ReducedBook::default(),
+        assert!(c.on_event(&VirtualClock::new(0), &ReducedBook::default(),
                                  &Position::default()).is_empty());
     }
 
     // ---------- Sinh phiên ----------
     #[test]
-    fn gen_session_all_peak_and_time_time_up() {
+    fn generated_session_is_deterministic_and_monotonic() {
         assert_eq!(gen_session_record(100, 5), gen_session_record(100, 5));
         assert_ne!(gen_session_record(100, 5), gen_session_record(100, 6));
         let p = gen_session_record(1_000, 1);
@@ -1105,7 +1105,7 @@ mod tests {
     }
 
     #[test]
-    fn session_gen_out_has_data_three_event_kind() {
+    fn generated_session_covers_all_three_event_kinds() {
         let p = gen_session_record(5_000, 3);
         let them = p.iter()
             .filter(|k| matches!(k.event, EventMarket::AddOrder { .. })).count();

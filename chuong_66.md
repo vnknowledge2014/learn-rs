@@ -454,7 +454,7 @@ mod tests {
 
     // ---------- MMIO ----------
     #[test]
-    fn thao_tac_bit_khong_dung_bit_khac() {
+    fn bit_ops_leave_other_bits_alone() {
         let tg = IntoRecordPrice::new(0b1010_0000);
         tg.set_bit(0);
         assert_eq!(tg.doc(), 0b1010_0001, "đặt bit 0 phải giữ nguyên bit 5 và 7");
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn ghi_truong_chi_dung_dung_so_bit() {
+    fn field_write_uses_exactly_its_width() {
         let tg = IntoRecordPrice::new(0xFFFF_FFFF);
         tg.record_field(4, 3, 0b010); // đặt 3 bit tại vị trí 4
         assert_eq!(tg.read_field(4, 3), 0b010);
@@ -473,14 +473,14 @@ mod tests {
     }
 
     #[test]
-    fn value_cap_is_cut_theo_do_empty_truong() {
+    fn values_are_truncated_to_the_field_width() {
         let tg = IntoRecordPrice::new(0);
         tg.record_field(0, 2, 0b1111); // chỉ 2 bit chứa được
         assert_eq!(tg.doc(), 0b11, "phần thừa bị mặt nạ chặn, không tràn sang bit 2");
     }
 
     #[test]
-    fn read_fix_record_ton_use_one_order_record() {
+    fn read_modify_write_issues_one_store() {
         let tg = IntoRecordPrice::new(0);
         tg.set_bit(3);
         assert_eq!(tg.count_record.get(), 1);
@@ -489,7 +489,7 @@ mod tests {
 
     // ---------- Typestate GPIO ----------
     #[test]
-    fn chuyen_che_do_ghi_dung_ma_moder() {
+    fn mode_switch_writes_correct_moder_bits() {
         let moder = IntoRecordPrice::new(0);
         let c = unsafe { Block::new(5) };
         let _ra = c.into_output(&moder);
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn output_enable_all_use_block() {
+    fn output_toggles_the_right_pin() {
         let moder = IntoRecordPrice::new(0);
         let odr = IntoRecordPrice::new(0);
         let mut c = unsafe { Block::new(3) }.into_output(&moder);
@@ -508,18 +508,18 @@ mod tests {
     }
 
     #[test]
-    fn vong_doi_chan_di_qua_nhieu_che_do() {
+    fn pin_lifecycle_moves_through_modes() {
         let moder = IntoRecordPrice::new(0);
         let c = unsafe { Block::new(2) };
         let ra = c.into_output(&moder);
-        let in_ = ra.into_input(&moder);      // tiêu thụ chân đầu ra
-        let tt = in_.into_wall(&moder);      // rồi thành analog
+        let input_pin = ra.into_input(&moder);      // tiêu thụ chân đầu ra
+        let tt = input_pin.into_wall(&moder);      // rồi thành analog
         assert_eq!(tt.serial(), 2, "số hiệu chân theo suốt mọi lần đổi kiểu");
         assert_eq!(moder.read_field(4, 2), 0b11);
     }
 
     #[test]
-    fn singleton_chi_giao_ngoai_vi_dung_mot_lan() {
+    fn singleton_hands_out_peripheral_once() {
         UnitOutPos::reset_for_test();
         assert!(UnitOutPos::lay().is_some(), "lần đầu phải thành công");
         assert!(UnitOutPos::lay().is_none(), "lần hai phải bị từ chối");
@@ -529,7 +529,7 @@ mod tests {
 
     // ---------- Q16.16 ----------
     #[test]
-    fn q16_cong_tru_chinh_xac_tuyet_doi() {
+    fn q16_add_sub_is_exact() {
         let a = Q16::tu_nguyen(7);
         let b = Q16::tu_nguyen(3);
         assert_eq!(a.gate(b), Q16::tu_nguyen(10));
@@ -537,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn q16_nhan_chia_sai_so_duoi_mot_phan_65536() {
+    fn q16_mul_div_error_below_one_lsb() {
         let a = Q16::from_real(3.5);
         let b = Q16::from_real(2.25);
         assert!((a.nhan(b).into_real() - 7.875).abs() < 1.0 / 65536.0);
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn q16_nhan_voi_mot_la_phep_dong_nhat() {
+    fn q16_multiply_by_one_is_identity() {
         for x in [0.0, 1.5, -3.25, 100.125] {
             let q = Q16::from_real(x);
             assert_eq!(q.nhan(Q16::MOT), q, "nhân với 1 phải trả lại chính nó");
@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn adc_sang_nhiet_do_dung_hai_dau_thang_do() {
+    fn adc_to_temp_is_exact_at_both_ends() {
         assert!((adc_sang_nhiet_do(0).into_real() - (-40.0)).abs() < 0.01);
         assert!((adc_sang_nhiet_do(4095).into_real() - 125.0).abs() < 0.05);
         // và đơn điệu tăng
@@ -567,7 +567,7 @@ mod tests {
 
     // ---------- Bộ đệm vòng ----------
     #[test]
-    fn prev_count_round_in_prev_out() {
+    fn ring_buffer_is_fifo() {
         let mut d: CountRound<4> = CountRound::new();
         for b in [1u8, 2, 3] { d.push(b).unwrap(); }
         assert_eq!(d.take(), Some(1));
@@ -576,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn count_round_report_error_thay_pos_cap_phat_add() {
+    fn ring_buffer_errors_instead_of_allocating() {
         let mut d: CountRound<2> = CountRound::new();
         d.push(1).unwrap();
         d.push(2).unwrap();
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn dem_vong_quay_vong_dung_sau_nhieu_luot() {
+    fn ring_buffer_wraps_correctly() {
         let mut d: CountRound<3> = CountRound::new();
         for i in 0..30u8 {
             d.push(i).unwrap();
@@ -595,7 +595,7 @@ mod tests {
     }
 
     #[test]
-    fn dem_vong_ghi_de_bo_phan_tu_cu_nhat() {
+    fn overwrite_mode_drops_oldest() {
         let mut d: CountRound<3> = CountRound::new();
         for b in [1u8, 2, 3] { d.push(b).unwrap(); }
         assert_eq!(d.overwrite_buffer(4), Some(1), "phần tử CŨ NHẤT bị hy sinh");
@@ -604,7 +604,7 @@ mod tests {
     }
 
     #[test]
-    fn dem_vong_rong_tra_none() {
+    fn empty_ring_returns_none() {
         let mut d: CountRound<4> = CountRound::new();
         assert_eq!(d.take(), None);
         assert!(d.rong() && !d.day());
@@ -612,7 +612,7 @@ mod tests {
 
     // ---------- Chống rung ----------
     #[test]
-    fn chong_rung_bo_qua_nhieu_ngan() {
+    fn debounce_ignores_short_noise() {
         let mut c = ChongRung::new(3);
         // nhiễu: bật-tắt liên tục, không mẫu nào đủ 3 lần liên tiếp
         for m in [true, false, true, false, true, false] {
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn chong_rung_chap_nhan_tin_hieu_on_dinh() {
+    fn debounce_accepts_stable_signal() {
         let mut c = ChongRung::new(3);
         assert_eq!(c.update(true), None);
         assert_eq!(c.update(true), None);
@@ -631,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn chong_rung_phat_dung_mot_su_kien_cho_mot_cu_bam() {
+    fn debounce_emits_one_event_per_press() {
         let mut c = ChongRung::new(2);
         let mau = [false, true, false, true, true, true, true, true];
         let event_count = mau.iter().filter(|&&m| c.update(m).is_some()).count();
@@ -853,5 +853,5 @@ impl<const N: usize> HangSpsc<N> {
 }
 ```
 
-Điểm compute tế nhất là **hy sinh một ô nhớ**: hàng đợi `N` ô chỉ chứa được `N-1` phần tử, vì `dau == duoi` phải chỉ nghĩa "rỗng". Nếu cho phép chứa đủ `N`, trạng thái đầy và rỗng trông giống hệt nhau và không cách nào phân biệt mà không thêm biến đếm — mà thêm biến đếm thì lại cần cả hai bên cùng ghi, phá vỡ tính không-khóa.
+Điểm tinh tế nhất là **hy sinh một ô nhớ**: hàng đợi `N` ô chỉ chứa được `N-1` phần tử, vì `dau == duoi` phải chỉ nghĩa "rỗng". Nếu cho phép chứa đủ `N`, trạng thái đầy và rỗng trông giống hệt nhau và không cách nào phân biệt mà không thêm biến đếm — mà thêm biến đếm thì lại cần cả hai bên cùng ghi, phá vỡ tính không-khóa.
 </details>

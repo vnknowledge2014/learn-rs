@@ -195,7 +195,7 @@ impl Cart {
     /// # Ví dụ (đây cũng là một DOCTEST — chạy khi `cargo test`)
     /// ```
     /// # use ch55::Cart;
-    /// let mut gio = Cart::moi();
+    /// let mut gio = Cart::new();
     /// gio.them("Sách", 45_000, 2).unwrap();
     /// gio.them("Bút", 5_000, 3).unwrap();
     /// assert_eq!(gio.tong_tien(), 105_000);
@@ -273,21 +273,21 @@ mod unit {
 
     #[test]
     fn new_cart_is_empty() {
-        let gio = Cart::moi();
+        let gio = Cart::new();
         assert_eq!(gio.so_dong(), 0);
         assert_eq!(gio.tong_tien(), 0);
     }
 
     #[test]
     fn add_item_totals_correctly() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("A", 10_000, 3).unwrap();
         assert_eq!(gio.tong_tien(), 30_000);
     }
 
     #[test]
     fn same_name_merges_quantity() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("A", 10_000, 1).unwrap();
         gio.them("A", 10_000, 2).unwrap();
         assert_eq!(gio.so_dong(), 1, "phải gộp thành 1 dòng");
@@ -296,14 +296,14 @@ mod unit {
 
     #[test]
     fn zero_quantity_is_error_not_panic() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         assert_eq!(gio.them("A", 10_000, 0), Err(CartError::SoLuongBangKhong));
         assert_eq!(gio.so_dong(), 0); // không thêm gì
     }
 
     #[test]
     fn discount_clamped_at_100() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
         assert_eq!(gio.after_discount(200), 0); // ghim ở 100%, không âm
     }
@@ -339,7 +339,7 @@ mod test_double {
 
     #[test]
     fn checkout_charges_discounted_total() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
         let spy = SpyGateway { called_with: RefCell::new(vec![]) };
 
@@ -350,14 +350,14 @@ mod test_double {
 
     #[test]
     fn checkout_propagates_gateway_error() {
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
         assert_eq!(checkout(&gio, &AlwaysFailGateway, 0), Err("Thẻ bị từ chối".to_string()));
     }
 
     #[test]
     fn empty_cart_skips_gateway() {
-        let gio = Cart::moi();
+        let gio = Cart::new();
         let spy = SpyGateway { called_with: RefCell::new(vec![]) };
         let kq = checkout(&gio, &spy, 0);
         assert!(kq.is_err());
@@ -378,9 +378,9 @@ mod property {
     fn discount_within_bounds() {
         let mut sinh = Generator::moi(2026);
         for _ in 0..2000 {
-            let mut gio = Cart::moi();
-            let so_mat_hang = sinh.so(5) + 1;
-            for i in 0..so_mat_hang {
+            let mut gio = Cart::new();
+            let item_count = sinh.so(5) + 1;
+            for i in 0..item_count {
                 let _ = gio.them(&format!("SP{}", i), (sinh.so(100_000) + 1) as u64, sinh.so(5) + 1);
             }
             let pt = sinh.so(150); // cố tình cho vượt 100
@@ -394,7 +394,7 @@ mod property {
     fn zero_discount_keeps_total() {
         let mut sinh = Generator::moi(7);
         for _ in 0..1000 {
-            let mut gio = Cart::moi();
+            let mut gio = Cart::new();
             gio.them("X", (sinh.so(50_000) + 1) as u64, sinh.so(9) + 1).unwrap();
             // TÍNH CHẤT: giảm 0% là phép đồng nhất
             assert_eq!(gio.after_discount(0), gio.tong_tien());
@@ -407,7 +407,7 @@ mod property {
         for _ in 0..1000 {
             let (g1, sl1) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
             let (g2, sl2) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
-            let mut gio = Cart::moi();
+            let mut gio = Cart::new();
             gio.them("A", g1, sl1).unwrap();
             gio.them("B", g2, sl2).unwrap();
             // TÍNH CHẤT: tổng = tổng thành tiền từng dòng
@@ -435,7 +435,7 @@ mod bdd {
     #[test]
     fn vip_gets_15_percent_off() {
         // GIVEN — một giỏ hàng trị giá 1.000.000đ và một cổng thanh toán
-        let mut gio = Cart::moi();
+        let mut gio = Cart::new();
         gio.them("Tai nghe", 1_000_000, 1).unwrap();
         let cong = OkGateway(RefCell::new(vec![]));
 
@@ -451,7 +451,7 @@ mod bdd {
     #[test]
     fn cannot_checkout_empty_cart() {
         // GIVEN — một giỏ hàng rỗng
-        let gio = Cart::moi();
+        let gio = Cart::new();
         let cong = OkGateway(RefCell::new(vec![]));
 
         // WHEN — cố gắng thanh toán

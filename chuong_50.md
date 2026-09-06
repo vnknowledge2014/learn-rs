@@ -250,7 +250,7 @@ fn main() {
     println!("    [Client Main] So du kiem tra duoc: {}d", current_bal);
     assert_eq!(current_bal, 350_000);
 
-    println!("\n[2] Mo phong 3 luong customer hang dong thoi rut tien (Concurrent Clients):");
+    println!("\n[2] Mo phong 3 luong khach hang dong thoi rut tien (Concurrent Clients):");
     let mut client_threads = Vec::new();
 
     for client_id in 1..=3 {

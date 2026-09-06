@@ -51,9 +51,9 @@ pub struct NetworkDevice {
 impl DetailedDescription for NetworkDevice {
     fn in_thong_tin_chi_tiet(&self) {
         println!("------------------------------------------------------------");
-        println!("THÔNG TIN THỰC THỂ: [NetworkDevice]");
-        println!("  - Trường `ip_address`      : {}", self.ip_address);
-        println!("  - Trường `service_port`    : {}", self.service_port);
+        println!("THÔNG TIN THỰC THỂ: [ThietBiMang]");
+        println!("  - Trường `dia_chi_ip`      : {}", self.ip_address);
+        println!("  - Trường `cong_dich_vu`    : {}", self.service_port);
         println!("  - Trường `dang_hoat_dong`  : {}", self.dang_hoat_dong);
         println!("------------------------------------------------------------");
     }
@@ -128,21 +128,21 @@ fn main() {
     println!("============================================================");
 
     // 1. Mô phỏng quá trình kính hiển vi `syn` phân tích AST của struct
-    let mo_hinh_ast = StructAST {
-        ten_struct: "NetworkDevice",
+    let ast_model = StructAST {
+        ten_struct: "ThietBiMang",
         field_list: vec![
-            AstDataField { field_name: "ip_address", kind_data: "String" },
-            AstDataField { field_name: "service_port", kind_data: "u16" },
+            AstDataField { field_name: "dia_chi_ip", kind_data: "String" },
+            AstDataField { field_name: "cong_dich_vu", kind_data: "u16" },
             AstDataField { field_name: "dang_hoat_dong", kind_data: "bool" },
         ],
     };
 
     println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
-    println!("- Tên cấu trúc được phát hiện: {}", mo_hinh_ast.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", mo_hinh_ast.get_list_name());
+    println!("- Tên cấu trúc được phát hiện: {}", ast_model.ten_struct);
+    println!("- Danh sách các cành trường dữ liệu: {:?}", ast_model.get_list_name());
 
     // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
-    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait DetailedDescription:");
+    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
     let router = NetworkDevice {
         ip_address: String::from("192.168.1.1"),
         service_port: 443,

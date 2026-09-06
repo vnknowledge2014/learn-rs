@@ -82,7 +82,7 @@ fn main() {
              chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
-    let _chung_thuc_session = LostReport;
+    let _auth_session = LostReport;
     println!("Chứng thực bảo mật hệ thống: Đã kích hoạt tem xác thực điện tử.");
 
     // Mở một tài khoản ngân hàng mới thông qua hàm liên kết open_account

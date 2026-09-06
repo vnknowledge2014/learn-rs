@@ -437,17 +437,17 @@ pub fn go_back_n(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult 
     let mut da_mat: VecDeque<u32> = mat_tai.iter().copied().collect();
 
     while has_num < tong_goi {
-        let mut mat_trong_lot = None;
+        let mut lost_in_window = None;
         for stt in has_num..(has_num + window).min(tong_goi) {
             count_send += 1;
             if da_mat.front() == Some(&stt) {
                 da_mat.pop_front();          // gói này mất, chỉ mất MỘT LẦN
-                mat_trong_lot = Some(stt);
+                lost_in_window = Some(stt);
                 break;                        // các gói sau sẽ bị bỏ (ngoài thứ tự)
             }
             da_nhan.push(stt);
         }
-        has_num = match mat_trong_lot {
+        has_num = match lost_in_window {
             Some(stt) => stt,                 // quay lại N — gửi lại từ gói mất
             None => (has_num + window).min(tong_goi),
         };
@@ -533,7 +533,7 @@ mod tests {
     use TcpState::*;
 
     #[test]
-    fn dong_goi_them_dung_54_byte_phan_dau() {
+    fn encapsulation_adds_exactly_54_header_bytes() {
         let g = dong_goi_xuong(b"hello");
         // HTTP 18 + TCP 20 + IP 20 + Ethernet 14 = 72 byte header cho 5 byte dữ liệu
         assert_eq!(g.tang, Tang::LienKet);
@@ -541,31 +541,31 @@ mod tests {
     }
 
     #[test]
-    fn du_lieu_goc_van_nam_o_cuoi_sau_khi_boc() {
+    fn payload_survives_decapsulation() {
         let g = dong_goi_xuong(b"hello");
         let byte = g.serialize();
         assert!(byte.ends_with(b"hello"), "tải trọng phải nguyên vẹn dưới đáy các header");
     }
 
     #[test]
-    fn bat_tay_ba_buoc_phia_khach() {
+    fn three_way_handshake_client_side() {
         assert_eq!(run_session(Dong, &[MoChuDong, NhanSynAck]), Ok(DaThietLap));
     }
 
     #[test]
-    fn bat_tay_ba_buoc_phia_chu() {
+    fn three_way_handshake_server_side() {
         assert_eq!(run_session(Dong, &[MoThuDong, NhanSyn, NhanAck]), Ok(DaThietLap));
     }
 
     #[test]
-    fn dong_chu_dong_di_qua_time_wait() {
+    fn active_close_passes_through_time_wait() {
         let kq = run_session(Dong, &[MoChuDong, NhanSynAck, UngDungDong, NhanAck, NhanFin]);
         assert_eq!(kq, Ok(ChoCuoi), "phải dừng ở TIME_WAIT chứ không đóng ngay");
         assert_eq!(transfer_state(ChoCuoi, HetGio), Some(Dong));
     }
 
     #[test]
-    fn dong_thu_dong_di_qua_close_wait() {
+    fn passive_close_passes_through_close_wait() {
         let kq = run_session(Dong, &[MoThuDong, NhanSyn, NhanAck, NhanFin, UngDungDong, NhanAck]);
         assert_eq!(kq, Ok(Dong));
     }
@@ -578,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn khoi_dong_cham_nhan_doi_roi_chuyen_pha_o_nguong() {
+    fn slow_start_doubles_then_switches_at_threshold() {
         let mut b = CongestionControl::new(16.0);
         for _ in 0..4 { b.nhan_ack(); }
         // 1 -> 2 -> 4 -> 8 -> 16: nhân đôi mỗi RTT, dừng nhân đúng tại ngưỡng
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn tranh_tac_nghen_tang_tuyen_tinh() {
+    fn congestion_avoidance_grows_linearly() {
         let mut b = CongestionControl::new(4.0);
         for _ in 0..2 { b.nhan_ack(); }        // 1 -> 2 -> 4 (chạm ngưỡng)
         let prev = b.cwnd;
@@ -602,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn het_gio_ve_mot_con_mat_goi_nhe_chi_giam_nua() {
+    fn timeout_resets_to_one_while_light_loss_halves() {
         let mut a = CongestionControl::new(64.0);
         for _ in 0..5 { a.nhan_ack(); }        // cwnd = 32
         let mut b = a.clone();
@@ -614,7 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn checksum_cua_du_lieu_kem_checksum_bang_khong() {
+    fn checksum_over_data_plus_checksum_is_zero() {
         let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06];
         let cs = total_check(&than);
         let mut kem = than.to_vec();
@@ -623,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn checksum_bat_duoc_loi_lat_mot_bit() {
+    fn checksum_catches_single_bit_flip() {
         let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
         let cs = total_check(&than);
         let mut hong = than.to_vec();
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn checksum_khong_bat_duoc_loi_hoan_vi_hai_tu() {
+    fn checksum_misses_word_transposition() {
         // Điểm YẾU đã biết: phép cộng có tính giao hoán nên đảo chỗ hai từ 16-bit
         // cho ra cùng checksum. Đây là lý do tầng ứng dụng vẫn cần CRC/hash mạnh.
         let a = [0x11u8, 0x22, 0x33, 0x44];
@@ -642,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn cidr_tinh_dung_mang_va_quang_ba() {
+    fn cidr_computes_network_and_broadcast() {
         let m = MangCon::analyze("192.168.10.130/26").unwrap();
         assert_eq!(MangCon::display(m.address_array()), "192.168.10.128");
         assert_eq!(MangCon::display(m.quang_ba()), "192.168.10.191");
@@ -650,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn cidr_truong_hop_bien() {
+    fn cidr_edge_cases() {
         assert_eq!(MangCon::analyze("10.0.0.1/32").unwrap().num_server(), 1);
         assert_eq!(MangCon::analyze("10.0.0.0/31").unwrap().num_server(), 2);
         assert_eq!(MangCon::analyze("10.0.0.0/24").unwrap().num_server(), 254);
@@ -659,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn peak_tuyen_pick_tien_to_long_nhat() {
+    fn routing_picks_longest_prefix() {
         let bang = [
             (MangCon::analyze("0.0.0.0/0").unwrap(), "mac-dinh"),
             (MangCon::analyze("10.0.0.0/8").unwrap(), "eth0"),
@@ -674,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_di_theo_chuoi_cname() {
+    fn dns_follows_cname_chain() {
         let d = DnsServer { sell_record: vec![
             ("a.vn".into(), SellRecord::CNAME("b.vn".into())),
             ("b.vn".into(), SellRecord::CNAME("c.vn".into())),
@@ -684,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_chan_vong_lap_cname() {
+    fn dns_breaks_cname_loops() {
         let d = DnsServer { sell_record: vec![
             ("x.vn".into(), SellRecord::CNAME("y.vn".into())),
             ("y.vn".into(), SellRecord::CNAME("x.vn".into())),
@@ -693,19 +693,19 @@ mod tests {
     }
 
     #[test]
-    fn dns_bao_nxdomain() {
+    fn dns_reports_nxdomain() {
         let d = DnsServer { sell_record: vec![] };
         assert!(d.part_solve("khong-ton-tai.vn").unwrap_err().contains("NXDOMAIN"));
     }
 
     #[test]
-    fn go_back_n_giao_du_moi_goi_theo_thu_tu() {
+    fn go_back_n_delivers_every_packet_in_order() {
         let kq = go_back_n(10, 4, &[2, 6]);
         assert_eq!(kq.da_nhan, (0..10).collect::<Vec<u32>>(), "phải giao đủ và đúng thứ tự");
     }
 
     #[test]
-    fn go_back_n_ton_bang_thong_khi_mat_goi() {
+    fn go_back_n_wastes_bandwidth_on_loss() {
         let clean = go_back_n(10, 4, &[]);
         let mat = go_back_n(10, 4, &[2, 6]);
         assert_eq!(clean.count_send, 10, "kênh sạch: mỗi gói gửi đúng 1 lần");

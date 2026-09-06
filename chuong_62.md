@@ -13,7 +13,7 @@ Chương này xây cả hai từ đầu — chạy offline, kiểm thử đầy 
 Mục tiêu học tập:
 - Hiểu **tín hiệu (signal)** và **giá trị dẫn xuất (derived)** — nền của reactivity.
 - Nắm **Virtual DOM** và thuật toán **diff** — vì sao nó làm UI nhanh.
-- Thấy **giao diện là hàm thuần túy của trạng thái** (declarative UI) — đúng compute thần Chương 13.
+- Thấy **giao diện là hàm thuần túy của trạng thái** (declarative UI) — đúng tinh thần Chương 13.
 - Chống **XSS ngay trong tầng kết xuất** (nối với Chương 57).
 - Biết hệ sinh thái frontend Rust: Leptos, Yew, Dioxus, và mô hình Tauri + Svelte.
 
@@ -70,7 +70,7 @@ Giải pháp: mô tả giao diện bằng một **cây ảo nhẹ** (`VirtualNod
 - Hai **thẻ cùng tên** → so thuộc tính và đệ quy so các con.
 - **Khác loại/khác tên thẻ** → thay thế cả nút.
 
-Điểm đắt giá minh họa trong test `diff_component_dem_chi_va_van_ban`: khi bộ đếm đổi từ 3 sang 4, chỉ có **một** bản vá (đổi nội dung `<h1>`) — hai nút `<button>` giữ nguyên, không bị dựng lại. Đây chính xác là điều làm React/Leptos mượt: **cập nhật ngoại khoa, không phẫu thuật toàn thân**.
+Điểm đắt giá minh họa trong test `diff_detects_attr_and_text_changes`: khi bộ đếm đổi từ 3 sang 4, chỉ có **một** bản vá (đổi nội dung `<h1>`) — hai nút `<button>` giữ nguyên, không bị dựng lại. Đây chính xác là điều làm React/Leptos mượt: **cập nhật ngoại khoa, không phẫu thuật toàn thân**.
 
 > **Ghi chú**: thuật toán diff ở đây so con *theo vị trí* (O(n)). Framework thật dùng thêm *khóa (key)* để nhận diện phần tử khi danh sách được sắp xếp lại — nếu không, đảo thứ tự một danh sách sẽ sinh nhiều bản vá không cần thiết. Đây là lý do React cảnh báo "mỗi phần tử trong list cần một `key` duy nhất".
 
@@ -326,7 +326,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signal_save_and_swap_value() {
+    fn signal_stores_and_updates_value() {
         let s = Signal::new(10i64);
         assert_eq!(s.lay(), 10);
         s.set(20);
@@ -336,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn tin_hieu_bo_qua_thay_doi_thua() {
+    fn signal_skips_redundant_updates() {
         let s = Signal::new(1i64);
         assert_eq!(s.session_sell(), 0);
         s.set(2);
@@ -348,22 +348,22 @@ mod tests {
     }
 
     #[test]
-    fn dan_xuat_tu_cap_nhat_theo_nguon() {
+    fn derived_signal_tracks_its_source() {
         let so = Signal::new(2i64);
-        let gap_doi = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
-        assert_eq!(gap_doi.lay(), 4);
+        let doubled = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
+        assert_eq!(doubled.lay(), 4);
         so.set(10);
-        assert_eq!(gap_doi.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
+        assert_eq!(doubled.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
     }
 
     #[test]
-    fn ket_xuat_html_dung() {
+    fn renders_correct_html() {
         let c = VirtualNode::the("div", vec![("class", "x")], vec![VirtualNode::van("chào")]);
         assert_eq!(c.to_html(), "<div class=\"x\">chào</div>");
     }
 
     #[test]
-    fn ket_xuat_thoat_xss() {
+    fn render_escapes_xss() {
         let c = VirtualNode::van("<script>alert(1)</script>");
         let html = c.to_html();
         assert!(!html.contains("<script>"));
@@ -380,14 +380,14 @@ mod tests {
     }
 
     #[test]
-    fn diff_khong_doi_thi_khong_co_ban_va() {
+    fn diff_of_identical_trees_is_empty() {
         let c = counter_view(&StateCount { so: Signal::new(5) });
         let va = diff(&c, &c.clone(), vec![]);
         assert!(va.is_empty(), "cây giống hệt không được sinh bản vá");
     }
 
     #[test]
-    fn diff_component_dem_chi_va_van_ban() {
+    fn diff_detects_attr_and_text_changes() {
         let a = counter_view(&StateCount { so: Signal::new(3) });
         let b = counter_view(&StateCount { so: Signal::new(4) });
         let va = diff(&a, &b, vec![]);
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_them_va_xoa_con() {
+    fn diff_detects_child_insert_and_remove() {
         let cu = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a")]);
         let new = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a"), VirtualNode::van("b")]);
         let them = diff(&cu, &new, vec![]);
@@ -410,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_khac_the_thi_thay_the() {
+    fn diff_replaces_on_different_tag() {
         let cu = VirtualNode::the("div", vec![], vec![]);
         let new = VirtualNode::the("span", vec![], vec![]);
         let va = diff(&cu, &new, vec![]);
@@ -460,12 +460,12 @@ Một mô hình phổ biến khác: giao diện bằng **Svelte/React/Vue** (Jav
 <script>
   import { invoke } from '@tauri-apps/api/core';
   let ket_qua = '';
-  async function compute() {
+  async function tinh() {
     // Gọi thẳng hàm Rust từ JavaScript!
     ket_qua = await invoke('tinh_tong', { a: 3, b: 4 });
   }
 </script>
-<button on:click={compute}>Tính</button>
+<button on:click={tinh}>Tính</button>
 <p>{ket_qua}</p>
 ```
 
@@ -484,7 +484,7 @@ fn tinh_tong(a: i64, b: i64) -> i64 { a + b }
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Reactivity = tín hiệu + giá trị dẫn xuất.** Cập nhật dữ liệu, giao diện tự đúng. Bỏ qua thay đổi thừa để tránh render lãng phí.
 2. **Virtual DOM + diff = tốc độ.** Dựng cây ảo rẻ, so với cây cũ, chỉ vá chỗ đổi lên DOM thật đắt.
-3. **Giao diện là hàm thuần túy của trạng thái** (khai báo) — ít trạng thái ẩn, dễ suy luận, đúng compute thần Chương 13.
+3. **Giao diện là hàm thuần túy của trạng thái** (khai báo) — ít trạng thái ẩn, dễ suy luận, đúng tinh thần Chương 13.
 4. **Thoát ký tự theo mặc định** chặn XSS ngay ở tầng render (Chương 57). Rust + WASM cho frontend an toàn kiểu, tốc độ cao.
 
 ### Bài tập rèn luyện tự giải:
@@ -498,7 +498,7 @@ Viết `view_todo(muc: &[(&str, bool)]) -> VirtualNode` dựng một `<ul>` vớ
 ```rust
 pub fn view_todo(level: &[(&str, bool)]) -> VirtualNode {
     let items: Vec<VirtualNode> = level.iter().map(|(name, done)| {
-        let lop = if *done { "xong" } else { "contains" };
+        let lop = if *done { "xong" } else { "chua" };
         VirtualNode::the("li", vec![("class", lop)], vec![VirtualNode::van(name)])
     }).collect();
     VirtualNode::the("ul", vec![], items)

@@ -126,13 +126,13 @@ fn main() {
     // 3. Kiểm thử khả năng chịu tải chống tràn ngăn xếp (Drop 100.000 phần tử)
     println!("\n[3] Kiểm thử độ bền của hàm hủy Drop an toàn:");
     {
-        let mut list_lon = ListLienLink::new();
+        let mut long_list = ListLienLink::new();
         for i in 0..100_000 {
-            list_lon.push_front(i);
+            long_list.push_front(i);
         }
         println!("    - Đã nạp thành công 100.000 phần tử vào danh sách liên kết.");
         println!("    - Bắt đầu giải phóng bộ nhớ khi ra khỏi khối ngoặc nhọn...");
-    } // list_lon bị Drop tại đây. Nhờ vòng lặp tuần tự, không bị tràn Stack!
+    } // long_list bị Drop tại đây. Nhờ vòng lặp tuần tự, không bị tràn Stack!
     println!("    => Giải phóng 100.000 nút bộ nhớ thành công tuyệt đối!");
 
     println!("============================================================");
@@ -145,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn push_pop_theo_thu_tu_lifo_o_dau() {
+    fn push_pop_is_lifo_at_head() {
         let mut list: ListLienLink<i32> = ListLienLink::new();
         assert!(list.is_empty());
         list.push_front(1);
@@ -161,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn list_new_thi_empty() {
+    fn new_list_is_empty() {
         let list: ListLienLink<String> = ListLienLink::new();
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_list_lon_no_cap_stack() {
+    fn dropping_long_list_does_not_overflow_stack() {
         // Bằng chứng cho mục "Drop lặp thay vì đệ quy": 1 triệu nút không sập.
         let mut list: ListLienLink<u32> = ListLienLink::new();
         for i in 0..1_000_000 {

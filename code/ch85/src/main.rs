@@ -674,8 +674,8 @@ impl ChainVenue {
         self.reserve_y as f64 / self.reserve_x as f64
     }
 
-    pub fn try_swap(&self, x_in: bool, in_: u128) -> Result<u128, SwapError> {
-        if in_ == 0 {
+    pub fn try_swap(&self, x_in: bool, amount_in: u128) -> Result<u128, SwapError> {
+        if amount_in == 0 {
             return Err(SwapError::ZeroInput);
         }
         if self.reserve_x == 0 || self.reserve_y == 0 {
@@ -683,21 +683,21 @@ impl ChainVenue {
         }
         let (dt_vao, dt_ra) =
             if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
-        let next_phi = in_ * (10_000 - self.fee_bps as u128);
+        let next_phi = amount_in * (10_000 - self.fee_bps as u128);
         // Làm tròn LUÔN có lợi cho bể — đó là chủ ý, không phải cẩu thả.
         Ok((next_phi * dt_ra) / (dt_vao * 10_000 + next_phi))
     }
 
-    pub fn swap(&mut self, x_in: bool, in_: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
-        let ra = self.try_swap(x_in, in_)?;
+    pub fn swap(&mut self, x_in: bool, amount_in: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
+        let ra = self.try_swap(x_in, amount_in)?;
         if ra < toi_thieu_ra {
             return Err(SwapError::BelowMinOut { nhan_duoc: ra, yeu_cau: toi_thieu_ra });
         }
         if x_in {
-            self.reserve_x += in_;
+            self.reserve_x += amount_in;
             self.reserve_y -= ra;
         } else {
-            self.reserve_y += in_;
+            self.reserve_y += amount_in;
             self.reserve_x -= ra;
         }
         Ok(ra)
@@ -705,12 +705,12 @@ impl ChainVenue {
 
     /// Giá trung bình thực nhận — luôn tệ hơn `price_x()`. Đây mới là con số
     /// dùng để so với sàn truyền thống khi tìm chênh lệch.
-    pub fn effective_price(&self, x_in: bool, in_: u128) -> Option<f64> {
-        let ra = self.try_swap(x_in, in_).ok()?;
+    pub fn effective_price(&self, x_in: bool, amount_in: u128) -> Option<f64> {
+        let ra = self.try_swap(x_in, amount_in).ok()?;
         if ra == 0 {
             return None;
         }
-        Some(if x_in { ra as f64 / in_ as f64 } else { in_ as f64 / ra as f64 })
+        Some(if x_in { ra as f64 / amount_in as f64 } else { amount_in as f64 / ra as f64 })
     }
 
     /// Nghịch đảo của `try_swap`: cần bỏ vào bao nhiêu để nhận ĐÚNG `ra`?
@@ -1214,7 +1214,7 @@ impl Metrics {
 // ============================================================================
 
 /// Lệnh đang bay tới sàn. Nó **chưa tồn tại** với sàn cho tới `arrives_at`.
-/// Bỏ qua khoảng này là dạng nhìn trộm tương lai compute vi nhất trong HFT.
+/// Bỏ qua khoảng này là dạng nhìn trộm tương lai tinh vi nhất trong HFT.
 #[derive(Debug, Clone, Copy)]
 struct InFlightOrder {
     arrives_at: Nanos,
@@ -1583,7 +1583,7 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
     // thị trường**: những nhà chênh lệch khác liên tục kéo giá bể về sát sàn
     // truyền thống. Không có lực này, bể trôi tự do và mọi chiến lược chênh
     // lệch trong mô hình sẽ in ra tiền — một kết quả hoàn toàn giả.
-    let mut be_open_phong = ChainVenue::new(BE_KHOI_DAU.0, BE_KHOI_DAU.1, BE_KHOI_DAU.2);
+    let mut pool = ChainVenue::new(BE_KHOI_DAU.0, BE_KHOI_DAU.1, BE_KHOI_DAU.2);
 
     for i in 0..event_count {
         let r = hash64(hat_giong ^ (i as u64).wrapping_mul(0x1000193));
@@ -1598,11 +1598,11 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
             // Hoán đổi trên bể chuỗi khối. Chiều được chọn để KÉO giá bể về
             // phía giá sàn truyền thống, cộng thêm một phần nhiễu từ người
             // giao dịch thường.
-            let lech = be_open_phong.price_x() - price_show as f64;
+            let lech = pool.price_x() - price_show as f64;
             let many = hash64(r ^ 0x5A5A) % 5 == 0; // 20% là nhiễu thuần
             let x_in = if many { (r >> 8) % 2 == 0 } else { lech > 0.0 };
             let kl = 1 + (hash64(r ^ 0xABC) % 500) as u128;
-            let _ = be_open_phong.swap(x_in, kl, 0);
+            let _ = pool.swap(x_in, kl, 0);
             p.record(SessionEvent {
                 timestamp: t,
                 san: Venue::Chain,
@@ -1988,8 +1988,8 @@ mod tests {
     #[test]
     fn min_out_blocks_bad_price() {
         let mut b = ChainVenue::new(1_000_000, 1_000_000, 30);
-        let data_kien = b.try_swap(true, 10_000).unwrap();
-        let r = b.swap(true, 10_000, data_kien + 1);
+        let amount_in = b.try_swap(true, 10_000).unwrap();
+        let r = b.swap(true, 10_000, amount_in + 1);
         assert!(matches!(r, Err(SwapError::BelowMinOut { .. })));
         assert_eq!(b.reserve_x, 1_000_000, "giao dịch bị chặn thì bể không đổi");
     }
@@ -2379,7 +2379,7 @@ mod tests {
 
     #[test]
     fn ignoring_latency_changes_everything() {
-        // Bỏ qua độ trễ là dạng nhìn trộm tương lai compute vi nhất: không ai gọi
+        // Bỏ qua độ trễ là dạng nhìn trộm tương lai tinh vi nhất: không ai gọi
         // tên nó như vậy, nhưng nó cho chiến lược khớp ở giá đã không còn tồn tại.
         let p = generate_session(6_000, 0x1234, 10_000);
         let run = |lat| {

@@ -80,7 +80,7 @@ Ba quy tắc:
 
 Lợi ích không phải lý thuyết. Vì `update` thuần túy:
 - **Undo/redo**: chỉ cần lưu danh sách trạng thái hoặc thông điệp.
-- **Ghi nhật ký & phát lại**: ghi chuỗi thông điệp, phát lại để dựng đúng trạng thái — chính là *event sourcing* ở Chương 54. Test `update_thuan_tuy_cho_phep_phat_lai` chứng minh điều này.
+- **Ghi nhật ký & phát lại**: ghi chuỗi thông điệp, phát lại để dựng đúng trạng thái — chính là *event sourcing* ở Chương 54. Test `pure_update_enables_replay` chứng minh điều này.
 - **Kiểm thử tầm thường**: gọi `update` với thông điệp, kiểm trạng thái ra. Không cần giao diện.
 
 Đây là lý do gpui (của Zed) và mọi framework UI nghiêm túc đều dùng biến thể của mô hình này.
@@ -93,7 +93,7 @@ Trong Tauri, giao diện chạy trong một **webview bị cô lập** — nó K
 Frontend:  invoke("luu_tep", { ten: "note.txt" })   ──►   Rust: #[tauri::command] fn luu_tep(...)
 ```
 
-Đây không chỉ là cách giao tiếp — nó là **mô hình bảo mật**. Webview có thể chứa mã độc (quảng cáo bên thứ ba, XSS ở Chương 57), nhưng nó chỉ gọi được **các lệnh đã đăng ký**, và lõi Rust **kiểm duyệt từng lời gọi**. Test `ipc_chan_path_traversal` cho thấy: dù frontend gửi `../../etc/passwd`, lõi Rust chặn — webview không bao giờ ghi được ra ngoài thư mục app. Đây là "danh sách trắng" (Chương 57) áp vào ranh giới desktop.
+Đây không chỉ là cách giao tiếp — nó là **mô hình bảo mật**. Webview có thể chứa mã độc (quảng cáo bên thứ ba, XSS ở Chương 57), nhưng nó chỉ gọi được **các lệnh đã đăng ký**, và lõi Rust **kiểm duyệt từng lời gọi**. Test `ipc_blocks_path_traversal` cho thấy: dù frontend gửi `../../etc/passwd`, lõi Rust chặn — webview không bao giờ ghi được ra ngoài thư mục app. Đây là "danh sách trắng" (Chương 57) áp vào ranh giới desktop.
 
 ### 3. Ba con đường xây desktop bằng Rust
 
@@ -323,7 +323,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn them_viec_va_tang_id() {
+    fn add_task_increments_id() {
         let m = OpenImage::new()
             .update(ThongMessage::ThemViec("A".into()))
             .update(ThongMessage::ThemViec("B".into()));
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn enable_all_state() {
+    fn toggle_state() {
         let m = OpenImage::new().update(ThongMessage::ThemViec("X".into()));
         assert!(!m.job[0].done);
         let m = m.update(ThongMessage::BatTat(1));
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_and_remove_da_done() {
+    fn remove_and_clear_completed() {
         let m = OpenImage::new()
             .update(ThongMessage::ThemViec("A".into()))
             .update(ThongMessage::ThemViec("B".into()))
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_show_thi_use() {
+    fn filter_shows_correct_items() {
         let m = OpenImage::new()
             .update(ThongMessage::ThemViec("A".into()))
             .update(ThongMessage::ThemViec("B".into()))
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn update_thuan_tuy_cho_phep_phat_lai() {
+    fn pure_update_enables_replay() {
         // Vì update thuần túy, ta có thể PHÁT LẠI một chuỗi thông điệp để dựng
         // lại đúng trạng thái — nền của undo/redo và event sourcing (Chương 54).
         let history = vec![
@@ -393,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn ipc_dieu_phoi_lenh() {
+    fn ipc_dispatches_commands() {
         let cau = IpcBridge::new()
             .register(Box::new(SystemInfoRequest))
             .register(Box::new(OrderSaveFile));
@@ -402,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn ipc_chan_path_traversal() {
+    fn ipc_blocks_path_traversal() {
         let cau = IpcBridge::new().register(Box::new(OrderSaveFile));
         let mut ok = HashMap::new();
         ok.insert("ten".into(), "note.txt".to_string());

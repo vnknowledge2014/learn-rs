@@ -511,7 +511,7 @@ mod tests {
 
     // ---------- Phân phối chuẩn ----------
     #[test]
-    fn n_chuan_khop_gia_tri_da_biet() {
+    fn norm_cdf_matches_known_values() {
         assert!((norm_cdf(0.0) - 0.5).abs() < 1e-7);
         assert!((norm_cdf(1.0) - 0.841_344_746).abs() < 1e-6);
         assert!((norm_cdf(-1.0) - 0.158_655_254).abs() < 1e-6);
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn n_chuan_doi_xung_va_don_dieu() {
+    fn norm_cdf_is_symmetric_and_monotonic() {
         let mut prev = 0.0;
         let mut x = -5.0;
         while x <= 5.0 {
@@ -534,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn mat_do_standard_set_peak_tai_no() {
+    fn the_normal_pdf_peaks_at_zero() {
         let peak = mat_do_standard(0.0);
         assert!((peak - 0.398_942_28).abs() < 1e-7);
         assert!(mat_do_standard(1.0) < peak);
@@ -543,7 +543,7 @@ mod tests {
 
     // ---------- Black–Scholes ----------
     #[test]
-    fn flat_price_buy_sell_always_use() {
+    fn put_call_parity_always_holds() {
         // BẤT BIẾN QUAN TRỌNG NHẤT của chương: C − P = S − K·e^(−rT).
         // Nếu nó lệch trên thị trường thật thì có arbitrage không rủi ro.
         for s in [50.0f64, 80.0, 100.0, 120.0, 200.0] {
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn gia_quyen_khong_bao_gio_am() {
+    fn option_prices_are_never_negative() {
         for s in [1.0f64, 50.0, 100.0, 500.0] {
             for k in [50.0f64, 100.0, 200.0] {
                 let t = OptionParams { spot: s, strike: k,
@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn price_quyen_always_few_nhat_table_european_lower_bound() {
+    fn prices_respect_the_european_lower_bound() {
         // Cận dưới ĐÚNG cho quyền châu Âu là max(0, S − K·e^(−rT)) và
         // max(0, K·e^(−rT) − S) — KHÔNG phải giá trị nội tại.
         for s in [20.0f64, 60.0, 100.0, 150.0, 300.0] {
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn quyen_buy_european_always_above_intrinsic_value() {
+    fn european_calls_stay_above_intrinsic_value() {
         // Với quyền MUA thì cận dưới châu Âu còn CHẶT HƠN nội tại (vì
         // K·e^(−rT) < K), nên quyền mua không bao giờ rẻ hơn nội tại.
         for s in [60.0f64, 100.0, 200.0] {
@@ -607,23 +607,23 @@ mod tests {
     }
 
     #[test]
-    fn quyen_ban_chau_au_sau_trong_tien_CO_THE_re_hon_noi_tai() {
+    fn deep_itm_european_put_can_trade_below_intrinsic() {
         // Kết quả gây bất ngờ nhưng hoàn toàn đúng — và là lý do quyền bán
         // kiểu Mỹ đắt hơn quyền bán châu Âu cùng tham số.
         let t = OptionParams { spot: 50.0, strike: 100.0,
                               years: 2.0, rate: 0.05, bien_dong: 0.15 };
         let price = gia_black_scholes(&t, OptionKind::Sell);
-        let noi_tai = t.intrinsic_value(OptionKind::Sell);
-        assert!(price < noi_tai,
-                "quyền bán {:.3} phải rẻ hơn nội tại {:.3}", price, noi_tai);
+        let intrinsic = t.intrinsic_value(OptionKind::Sell);
+        assert!(price < intrinsic,
+                "quyền bán {:.3} phải rẻ hơn nội tại {:.3}", price, intrinsic);
         assert!(price >= t.european_lower_bound(OptionKind::Sell) - 1e-9,
                 "nhưng vẫn phải trên cận dưới châu Âu");
         // Không có arbitrage: không được phép thực hiện sớm để ăn chênh lệch
-        assert!(t.european_lower_bound(OptionKind::Sell) < noi_tai);
+        assert!(t.european_lower_bound(OptionKind::Sell) < intrinsic);
     }
 
     #[test]
-    fn reverse_han_thi_price_table_use_intrinsic_value() {
+    fn at_expiry_price_equals_intrinsic_value() {
         for s in [80.0f64, 100.0, 120.0] {
             let t = OptionParams { spot: s, years: 0.0, ..ts() };
             assert_eq!(gia_black_scholes(&t, OptionKind::Buy), (s - 100.0f64).max(0.0));
@@ -634,14 +634,14 @@ mod tests {
     }
 
     #[test]
-    fn no_volatility_thi_no_has_value_time_time() {
+    fn zero_volatility_means_no_time_value() {
         let t = OptionParams { bien_dong: 0.0, ..ts() };
         assert_eq!(gia_black_scholes(&t, OptionKind::Buy),
                    t.intrinsic_value(OptionKind::Buy));
     }
 
     #[test]
-    fn price_quyen_buy_up_theo_spot() {
+    fn call_price_rises_with_spot() {
         let mut prev = -1.0;
         for s in [50.0f64, 80.0, 100.0, 120.0, 200.0] {
             let g = gia_black_scholes(&OptionParams { spot: s, ..ts() },
@@ -652,7 +652,7 @@ mod tests {
     }
 
     #[test]
-    fn price_quyen_up_theo_volatility() {
+    fn option_price_rises_with_volatility() {
         // Đây là lý do "bán biến động" là một chiến lược có thật: giá quyền
         // đơn điệu tăng theo biến động, nên bán khi biến động cao là bán đắt.
         for kind in [OptionKind::Buy, OptionKind::Sell] {
@@ -666,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn price_quyen_up_theo_time_time_remaining() {
+    fn option_price_rises_with_time_to_expiry() {
         let mut prev = -1.0;
         for tg in [0.01f64, 0.1, 0.25, 1.0, 2.0] {
             let g = gia_black_scholes(&OptionParams { years: tg, ..ts() },
@@ -678,7 +678,7 @@ mod tests {
 
     // ---------- Greeks ----------
     #[test]
-    fn delta_mua_trong_0_1_delta_ban_trong_am_1_den_0() {
+    fn call_delta_in_unit_range_put_delta_negative() {
         for s in [20.0f64, 60.0, 100.0, 140.0, 300.0] {
             let t = OptionParams { spot: s, ..ts() };
             let dm = greeks(&t, OptionKind::Buy).delta;
@@ -691,7 +691,7 @@ mod tests {
     }
 
     #[test]
-    fn delta_tien_ve_1_khi_quyen_mua_rat_sau_trong_tien() {
+    fn call_delta_approaches_one_deep_in_the_money() {
         let next = greeks(&OptionParams { spot: 500.0, ..ts() },
                               OptionKind::Buy).delta;
         assert!(next > 0.99, "rất sâu trong tiền → delta ≈ 1, thực tế {:.4}", next);
@@ -701,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn gamma_va_vega_giong_het_nhau_o_hai_loai_quyen() {
+    fn gamma_and_vega_are_identical_for_calls_and_puts() {
         // Hệ quả trực tiếp của ngang giá mua-bán: đạo hàm bậc hai theo giá và
         // đạo hàm theo biến động không phân biệt quyền mua hay quyền bán.
         for s in [70.0f64, 100.0, 130.0] {
@@ -714,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn gamma_lon_nhat_quanh_gia_thuc_hien() {
+    fn gamma_peaks_near_the_strike() {
         // Gamma là chỗ nguy hiểm nhất: quanh giá thực hiện, delta đổi nhanh
         // nhất, nên vị thế phòng hộ mất cân bằng nhanh nhất.
         let g_giua = greeks(&ts(), OptionKind::Buy).gamma;
@@ -726,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn gamma_va_vega_luon_khong_am_khi_mua_quyen() {
+    fn long_options_have_non_negative_gamma_and_vega() {
         for s in [50.0f64, 100.0, 200.0] {
             for v in [0.1f64, 0.3, 0.8] {
                 let g = greeks(&OptionParams { spot: s, bien_dong: v, ..ts() },
@@ -737,26 +737,26 @@ mod tests {
     }
 
     #[test]
-    fn theta_am_voi_quyen_mua_gan_gia_thuc_hien() {
+    fn theta_is_negative_for_a_near_the_money_call() {
         // Thời gian là kẻ thù của người MUA quyền chọn.
         let th = greeks(&ts(), OptionKind::Buy).theta;
         assert!(th < 0.0, "theta phải âm, thực tế {:.6}", th);
     }
 
     #[test]
-    fn greeks_tai_dao_han_la_bac_thang() {
-        let in_ = greeks(&OptionParams { spot: 120.0, years: 0.0,
+    fn greeks_at_expiry_are_a_step_function() {
+        let itm = greeks(&OptionParams { spot: 120.0, years: 0.0,
                                                ..ts() }, OptionKind::Buy);
-        assert_eq!(in_.delta, 1.0);
-        assert_eq!(in_.gamma, 0.0);
-        assert_eq!(in_.theta, 0.0);
+        assert_eq!(itm.delta, 1.0);
+        assert_eq!(itm.gamma, 0.0);
+        assert_eq!(itm.theta, 0.0);
         let out = greeks(&OptionParams { spot: 80.0, years: 0.0,
                                                ..ts() }, OptionKind::Buy);
         assert_eq!(out.delta, 0.0);
     }
 
     #[test]
-    fn delta_khop_voi_dao_ham_so_cua_gia() {
+    fn delta_matches_the_numerical_derivative() {
         // Kiểm chứng chéo: delta phải bằng đạo hàm của giá theo giá cơ sở.
         let h = 0.001;
         for s in [80.0f64, 100.0, 120.0] {
@@ -774,7 +774,7 @@ mod tests {
 
     // ---------- Biến động ngụ ý ----------
     #[test]
-    fn old_peak_price_lai_table_volatility_find_can_wait_out_use_price() {
+    fn repricing_with_the_solved_vol_recovers_the_price() {
         // BẤT BIẾN ĐÚNG: đưa biến động tìm được vào lại Black–Scholes phải
         // ra đúng giá ban đầu. Đây mới là điều ta thật sự cần bảo đảm.
         for v_that in [0.05f64, 0.1, 0.2, 0.35, 0.6, 1.0] {
@@ -794,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn find_use_volatility_when_quyen_cell_near_strike() {
+    fn vol_is_recovered_exactly_near_the_strike() {
         // Ở gần giá thực hiện, vega lớn nên giá rất nhạy với biến động và ta
         // khôi phục được con số chính xác.
         //
@@ -813,20 +813,20 @@ mod tests {
     }
 
     #[test]
-    fn vega_gan_khong_thi_bien_dong_ngu_y_kem_tin_cay() {
+    fn near_zero_vega_makes_implied_vol_unreliable() {
         // Ghi lại giới hạn một cách tường minh: vega của quyền rất sâu trong
         // tiền gần bằng 0, nên biến động ngụ ý ở đó gần như vô nghĩa.
         let next = OptionParams { spot: 500.0, ..ts() };
         let mid = ts();
-        let vega_sau = greeks(&next, OptionKind::Buy).vega;
-        let vega_giua = greeks(&mid, OptionKind::Buy).vega;
-        assert!(vega_sau < vega_giua / 100.0,
+        let vega_deep = greeks(&next, OptionKind::Buy).vega;
+        let vega_atm = greeks(&mid, OptionKind::Buy).vega;
+        assert!(vega_deep < vega_atm / 100.0,
                 "vega sâu trong tiền {:.8} phải nhỏ hơn hẳn ở giá thực hiện {:.8}",
-                vega_sau, vega_giua);
+                vega_deep, vega_atm);
     }
 
     #[test]
-    fn price_below_intrinsic_value_is_reject() {
+    fn a_price_below_intrinsic_is_rejected() {
         // Giá như vậy là bất khả — dữ liệu hỏng, hoặc có cơ hội arbitrage.
         let t = OptionParams { spot: 150.0, ..ts() };
         let lower_bound = t.european_lower_bound(OptionKind::Buy);
@@ -834,21 +834,21 @@ mod tests {
     }
 
     #[test]
-    fn gia_qua_cao_khong_dung_duoc_thi_tra_none() {
+    fn an_unreachable_price_returns_none() {
         let t = ts();
         assert_eq!(implied_volatility(&t, OptionKind::Buy, 99.0), None,
                    "không biến động nào cho ra giá đó");
     }
 
     #[test]
-    fn da_reverse_han_thi_no_tinh_can_implied_volatility() {
+    fn an_expired_option_has_no_implied_vol() {
         let t = OptionParams { years: 0.0, ..ts() };
         assert_eq!(implied_volatility(&t, OptionKind::Buy, 5.0), None);
     }
 
     // ---------- Chiến lược ----------
     #[test]
-    fn straddle_lo_nhieu_nhat_khi_gia_dung_yen() {
+    fn a_straddle_loses_most_when_price_is_flat() {
         let s = straddle(100.0, 4.0, 3.0);
         assert!((s.pnl(100.0) + 7.0).abs() < 1e-9, "đúng giá thực hiện → mất cả 7");
         assert!(s.pnl(80.0) > s.pnl(100.0), "giá động mạnh xuống → có lãi");
@@ -857,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn straddle_co_dung_hai_diem_hoa_von() {
+    fn a_straddle_has_exactly_two_breakevens() {
         let s = straddle(100.0, 4.0, 3.0);
         let hv = s.breakeven(50.0, 150.0, 0.01);
         assert_eq!(hv.len(), 2, "straddle phải có đúng hai điểm hoà vốn");
@@ -867,7 +867,7 @@ mod tests {
     }
 
     #[test]
-    fn strangle_re_hon_nhung_can_gia_dong_manh_hon() {
+    fn a_strangle_is_cheaper_but_needs_a_bigger_move() {
         let st = straddle(100.0, 4.0, 3.0);
         let sg = strangle(95.0, 105.0, 2.0, 1.5);
         assert!(sg.first_only_phi_sell() < st.first_only_phi_sell(), "strangle rẻ hơn");
@@ -890,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn quyen_mua_co_bao_dam_tu_bo_phan_tang_gia() {
+    fn a_covered_call_gives_up_the_upside() {
         let q = covered_call(100.0, 110.0, 3.0);
         // Giá đứng yên: lãi đúng bằng phí thu được
         assert!((q.pnl(100.0) - 3.0).abs() < 1e-9);
@@ -903,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn dieu_hau_sat_lai_khi_gia_nam_yen_va_lo_co_tran() {
+    fn hawkish_gate_tightens_when_flat_and_losing() {
         let d = dieu_hau_sat(95.0, 90.0, 105.0, 110.0, [1.0, 2.5, 2.5, 1.0]);
         let mid = d.pnl(100.0);
         assert!(mid > 0.0, "giá nằm giữa hai chân bán → có lãi, thực tế {:.2}", mid);
@@ -916,7 +916,7 @@ mod tests {
     }
 
     #[test]
-    fn leg_sell_has_pnl_inverse_first_with_buy() {
+    fn a_short_leg_mirrors_the_long_leg_pnl() {
         let buy = Leg { kind: KindLeg::QuyenMua, quantity: 1.0,
                             strike: 100.0, premium: 5.0 };
         let ban = Leg { quantity: -1.0, ..buy };
@@ -927,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn strategy_empty_thi_no_lai_no_lo() {
+    fn an_empty_strategy_has_no_pnl() {
         let c = OptionStrategy { name: "rỗng".into(), leg: vec![] };
         assert_eq!(c.pnl(100.0), 0.0);
         assert_eq!(c.first_only_phi_sell(), 0.0);
@@ -935,7 +935,7 @@ mod tests {
     }
 
     #[test]
-    fn tham_num_no_hop_le_is_phat_show() {
+    fn invalid_parameters_are_caught() {
         assert!(ts().is_valid());
         assert!(!OptionParams { spot: 0.0, ..ts() }.is_valid());
         assert!(!OptionParams { strike: -1.0, ..ts() }.is_valid());

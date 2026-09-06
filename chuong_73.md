@@ -542,7 +542,7 @@ mod tests {
 
     // ---------- Keccak-256 ----------
     #[test]
-    fn keccak_khop_vector_chuan() {
+    fn keccak_matches_reference_vectors() {
         // Nếu bài này hỏng thì mọi thứ phía sau đều vô nghĩa.
         assert_eq!(hex(&keccak256(b"")),
             "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn keccak_hoat_dong_qua_bien_khoi_136_byte() {
+    fn keccak_spans_the_136_byte_block_boundary() {
         // RATE = 136 byte. Các mốc 135/136/137 là chỗ cài đặt hay sai nhất:
         // sai đệm ở đây thì input ngắn vẫn đúng mà input dài thì hỏng.
         let mut seen = std::collections::HashSet::new();
@@ -567,20 +567,20 @@ mod tests {
     }
 
     #[test]
-    fn keccak_nhay_voi_moi_byte_trong_input_nhieu_khoi() {
+    fn keccak_is_sensitive_to_every_byte() {
         // Với input 300 byte (3 khối), lật BẤT KỲ byte nào cũng phải đổi băm.
         // Nếu vòng lặp bọt biển bỏ sót một khối, bài này sẽ bắt được.
         let root = vec![7u8; 300];
-        let hash_goc = keccak256(&root);
+        let root_hash = keccak256(&root);
         for pos_value in [0usize, 135, 136, 200, 271, 272, 299] {
             let mut fix = root.clone();
             fix[pos_value] ^= 1;
-            assert_ne!(keccak256(&fix), hash_goc, "lật byte {} mà băm không đổi", pos_value);
+            assert_ne!(keccak256(&fix), root_hash, "lật byte {} mà băm không đổi", pos_value);
         }
     }
 
     #[test]
-    fn keccak_hieu_ung_tuyet_lo() {
+    fn keccak_avalanche() {
         let mut tong = 0u32;
         for i in 0..64u8 {
             let a = keccak256(&[i, 0]);
@@ -593,7 +593,7 @@ mod tests {
 
     // ---------- Chữ ký hàm ----------
     #[test]
-    fn chu_ky_ham_khop_gia_tri_ai_cung_biet() {
+    fn selectors_match_well_known_values() {
         // Đây là những chữ ký có thật, tra được trên Etherscan.
         // Chúng đồng thời là bằng chứng độc lập rằng Keccak-256 ở trên đúng.
         assert_eq!(hex(&selector("transfer(address,uint256)")), "a9059cbb");
@@ -604,13 +604,13 @@ mod tests {
     }
 
     #[test]
-    fn topic0_su_kien_transfer_dung() {
+    fn transfer_event_topic0_is_correct() {
         assert_eq!(hex(&event_topic("Transfer(address,address,uint256)")),
             "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
     }
 
     #[test]
-    fn khoang_trang_trong_chu_ky_lam_doi_ket_qua() {
+    fn whitespace_in_signature_changes_the_selector() {
         // Chữ ký phải viết SÁT, không dấu cách. Sai chỗ này là gọi nhầm hàm.
         assert_ne!(selector("transfer(address,uint256)"),
                    selector("transfer(address, uint256)"));
@@ -618,7 +618,7 @@ mod tests {
 
     // ---------- ABI ----------
     #[test]
-    fn kieu_tinh_can_phai_trong_o_32_byte() {
+    fn static_types_right_align_in_a_32_byte_word() {
         let m = abi_encode(&[AbiValue::Uint(1)]);
         assert_eq!(m.len(), 32);
         assert_eq!(m[31], 1, "giá trị nằm ở byte CUỐI, 31 byte đầu là đệm 0");
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn dia_chi_duoc_dem_12_byte_o_dau() {
+    fn address_is_left_padded_with_12_bytes() {
         let a = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
         let m = abi_encode(&[AbiValue::Address(a)]);
         assert!(m[..12].iter().all(|&b| b == 0), "12 byte đầu phải là đệm");
@@ -635,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn so_am_duoc_mo_rong_dau_bang_ff() {
+    fn negative_ints_are_sign_extended_with_ff() {
         let m = abi_encode(&[AbiValue::Int(-1)]);
         assert!(m.iter().all(|&b| b == 0xFF), "-1 trong bù hai là toàn bit 1");
         let m2 = abi_encode(&[AbiValue::Int(1)]);
@@ -643,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn bool_ma_hoa_thanh_0_hoac_1() {
+    fn bool_encodes_to_zero_or_one() {
         assert_eq!(abi_encode(&[AbiValue::Bool(true)])[31], 1);
         assert_eq!(abi_encode(&[AbiValue::Bool(false)])[31], 0);
     }
@@ -663,14 +663,14 @@ mod tests {
     }
 
     #[test]
-    fn kieu_dong_duoc_dem_cho_tron_32_byte() {
+    fn dynamic_data_is_padded_to_32_bytes() {
         let m = abi_encode(&[AbiValue::Chuoi("a".into())]);
         assert_eq!(m.len() % 32, 0, "toàn bộ mã hoá ABI luôn là bội của 32");
         assert_eq!(m.len(), 32 + 32 + 32, "con trỏ + độ dài + 1 ô dữ liệu đã đệm");
     }
 
     #[test]
-    fn nhieu_kieu_dong_khong_de_len_nhau() {
+    fn multiple_dynamic_types_do_not_overlap() {
         let m = abi_encode(&[
             AbiValue::Chuoi("mot".into()),
             AbiValue::Chuoi("hai ba bon nam sau bay".into()),
@@ -683,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn mang_uint_ma_hoa_do_dai_roi_toi_phan_tu() {
+    fn uint_array_encodes_length_then_elements() {
         let m = abi_encode(&[AbiValue::MangUint(vec![10, 20, 30])]);
         assert_eq!(doc_uint(&m, 0), Some(32), "con trỏ");
         assert_eq!(doc_uint(&m, 1), Some(3), "độ dài mảng");
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn calldata_transfer_khop_dinh_dang_that() {
+    fn transfer_calldata_matches_the_real_format() {
         let t = Erc20 { address: [0u8; 20] };
         let den = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
         let cd = t.transfer(den, 1_000_000);
@@ -704,14 +704,14 @@ mod tests {
     }
 
     #[test]
-    fn doc_uint_tu_choi_gia_tri_vuot_u128() {
+    fn decoding_rejects_uint_beyond_u128() {
         let mut d = [0u8; 32];
         d[0] = 1; // bit cao của uint256, vượt xa u128
         assert_eq!(doc_uint(&d, 0), None, "phải báo lỗi chứ không cắt cụt âm thầm");
     }
 
     #[test]
-    fn doc_dia_chi_tu_choi_o_co_rac_o_phan_dem() {
+    fn address_decode_rejects_dirty_padding() {
         let mut d = [0u8; 32];
         d[0] = 0xAA; // rác trong 12 byte đệm — dấu hiệu dữ liệu hỏng
         assert_eq!(read_address(&d, 0), None);
@@ -719,7 +719,7 @@ mod tests {
 
     // ---------- RLP ----------
     #[test]
-    fn rlp_khop_vi_du_trong_sach_vang() {
+    fn rlp_matches_yellow_paper_examples() {
         // Các ví dụ này lấy thẳng từ Ethereum Yellow Paper.
         assert_eq!(hex(&Rlp::Chuoi(b"dog".to_vec()).encode()), "83646f67");
         assert_eq!(hex(&Rlp::Chuoi(vec![]).encode()), "80");
@@ -732,21 +732,21 @@ mod tests {
     }
 
     #[test]
-    fn rlp_so_khong_la_chuoi_rong() {
+    fn rlp_encodes_zero_as_empty_string() {
         // Bẫy kinh điển: RLP(0) KHÔNG phải 0x00 mà là 0x80 (chuỗi rỗng).
         assert_eq!(hex(&Rlp::numerator(0).encode()), "80");
         assert_ne!(Rlp::numerator(0), Rlp::Chuoi(vec![0]));
     }
 
     #[test]
-    fn rlp_so_khong_co_so_khong_thua_o_dau() {
+    fn rlp_integers_have_no_leading_zeros() {
         assert_eq!(Rlp::numerator(1024), Rlp::Chuoi(vec![0x04, 0x00]));
         assert_eq!(Rlp::numerator(255), Rlp::Chuoi(vec![0xff]));
         assert_eq!(Rlp::numerator(256), Rlp::Chuoi(vec![0x01, 0x00]));
     }
 
     #[test]
-    fn rlp_chuoi_dai_dung_dinh_dang_do_dai_dai() {
+    fn long_strings_use_the_long_length_form() {
         let long = vec![b'a'; 100];
         let m = Rlp::Chuoi(long).encode();
         assert_eq!(m[0], 0xB7 + 1, "0xB7 + số byte cần để ghi độ dài");
@@ -755,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn rlp_bien_55_va_56_byte() {
+    fn rlp_boundary_at_55_and_56_bytes() {
         // 55 byte dùng định dạng ngắn, 56 byte chuyển sang định dạng dài
         assert_eq!(Rlp::Chuoi(vec![b'a'; 55]).encode()[0], 0x80 + 55);
         assert_eq!(Rlp::Chuoi(vec![b'a'; 56]).encode()[0], 0xB7 + 1);
@@ -817,7 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn phi_thuc_te_khong_bao_gio_vuot_tran_nguoi_dung_dat() {
+    fn effective_fee_never_exceeds_the_user_cap() {
         let gd = trade_mau();
         for base in [1u128, 50_000_000_000, 99_000_000_000, 100_000_000_000] {
             assert!(gd.effective_fee(base) <= gd.max_fee,
@@ -827,14 +827,14 @@ mod tests {
     }
 
     #[test]
-    fn base_fee_thap_thi_tra_tron_ven_tien_boa() {
+    fn low_base_fee_pays_the_full_tip() {
         let gd = trade_mau();
         let base = 10_000_000_000u128;
         assert_eq!(gd.effective_fee(base), base + gd.max_priority_fee);
     }
 
     #[test]
-    fn base_fee_gan_tran_thi_tien_boa_bi_bop_lai() {
+    fn base_fee_near_cap_squeezes_the_tip() {
         let gd = trade_mau();
         let base = 99_000_000_000u128; // trần 100 gwei, chỉ còn 1 gwei cho boa
         assert_eq!(gd.effective_fee(base), 100_000_000_000,
@@ -842,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn base_fee_vuot_tran_thi_phep_tinh_khong_tran_so() {
+    fn base_fee_above_cap_does_not_overflow() {
         let gd = trade_mau();
         assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
                    "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");

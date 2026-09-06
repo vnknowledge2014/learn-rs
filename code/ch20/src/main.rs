@@ -310,7 +310,7 @@ pub struct OrderLineDto {
 }
 
 impl TryFrom<OrderDto> for DonQueue<Import> {
-    /// Trả về TẤT CẢ lỗi cùng lúc — đúng compute thần Applicative ở Chương 19.
+    /// Trả về TẤT CẢ lỗi cùng lúc — đúng tinh thần Applicative ở Chương 19.
     type Error = Vec<DomainError>;
 
     fn try_from(dto: OrderDto) -> Result<Self, Self::Error> {
@@ -478,12 +478,12 @@ fn main() {
     println!("   [Đã xác thực]   tổng hàng = {}", don_auth.tong_tien());
 
     // ---- LÕI THUẦN TÚY: lập hóa đơn (không I/O, kiểm thử được ngay) ----
-    let hoa_don = invoice_loop(&don_auth);
+    let invoice = invoice_loop(&don_auth);
     println!("   ┌─ HÓA ĐƠN (tính bởi LÕI THUẦN TÚY) ─────────────");
-    println!("   │ Tạm tính        : {}", hoa_don.computed_temp);
-    println!("   │ Chiết khấu      : {}", hoa_don.discount);
-    println!("   │ Phí vận chuyển  : {}", hoa_don.phi_van_transfer);
-    println!("   │ TỔNG THANH TOÁN : {}", hoa_don.total_payable);
+    println!("   │ Tạm tính        : {}", invoice.computed_temp);
+    println!("   │ Chiết khấu      : {}", invoice.discount);
+    println!("   │ Phí vận chuyển  : {}", invoice.phi_van_transfer);
+    println!("   │ TỔNG THANH TOÁN : {}", invoice.total_payable);
     println!("   └────────────────────────────────────────────────");
 
     let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::ChuyenKhoan {
@@ -491,7 +491,7 @@ fn main() {
     });
     println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
 
-    let _don_da_giao: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
+    let _delivered_order: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
     println!("   [Đã giao]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
@@ -529,7 +529,7 @@ mod tests {
     use super::*;
 
     fn don_mau() -> DonQueue<Authenticated> {
-        let email = Email::analyze("customer@shop.vn").unwrap();
+        let email = Email::analyze("khach@shop.vn").unwrap();
         let dong = vec![
             CloseQueue {
                 name: TenSanPham::analyze("Bàn phím").unwrap(),
@@ -546,27 +546,27 @@ mod tests {
     }
 
     #[test]
-    fn email_chap_nhan_dia_chi_hop_le() {
+    fn email_accepts_valid_address() {
         let e = Email::analyze("  An.Nguyen@Example.COM ").unwrap();
         assert_eq!(e.as_str(), "an.nguyen@example.com"); // đã chuẩn hóa
     }
 
     #[test]
-    fn email_tu_choi_dia_chi_sai() {
+    fn email_rejects_invalid_address() {
         for xau in ["", "   ", "khong-co-a-cong", "@thieu-ten.vn", "a@b@c.vn", "a@khongcocham"] {
             assert!(Email::analyze(xau).is_err(), "phải từ chối {:?}", xau);
         }
     }
 
     #[test]
-    fn quantity_must_duong_and_in_limit() {
+    fn quantity_must_be_positive_and_bounded() {
         assert!(Quantity::analyze(0).is_err());
         assert!(Quantity::analyze(1001).is_err());
         assert_eq!(Quantity::analyze(5).unwrap().value(), 5);
     }
 
     #[test]
-    fn ten_san_pham_dem_ky_tu_khong_dem_byte() {
+    fn product_name_counts_chars_not_bytes() {
         // 50 chữ cái tiếng Việt có dấu = nhiều hơn 50 BYTE, nhưng vẫn hợp lệ.
         let name_long: String = "ế".repeat(50);
         assert!(TenSanPham::analyze(&name_long).is_ok());
@@ -575,14 +575,14 @@ mod tests {
     }
 
     #[test]
-    fn don_empty_is_reject() {
+    fn empty_order_is_rejected() {
         let email = Email::analyze("a@b.vn").unwrap();
         let don = DonQueue::new("X", email, vec![]);
         assert_eq!(don.auth().unwrap_err(), DomainError::DonRong);
     }
 
     #[test]
-    fn dto_gom_tat_ca_loi_cung_luc() {
+    fn dto_collects_all_errors_at_once() {
         let dto = OrderDto {
             id: "X".to_string(),
             email: "sai".to_string(),
@@ -595,20 +595,20 @@ mod tests {
     // ---- Kiểm thử LÕI THUẦN TÚY: không cần CSDL, không cần mạng ----
 
     #[test]
-    fn tong_tien_cong_dung_thanh_tien_tung_dong() {
+    fn total_sums_line_amounts() {
         let don = don_mau();
         // 2 × 100.000 + 1 × 50.000 = 250.000
         assert_eq!(don.tong_tien(), Money::dong(250_000));
     }
 
     #[test]
-    fn phi_van_chuyen_mien_phi_tu_500k() {
+    fn shipping_is_free_above_threshold() {
         assert_eq!(shipping_fee(Money::dong(499_999)), Money::dong(30_000));
         assert_eq!(shipping_fee(Money::dong(500_000)), Money::dong(0));
     }
 
     #[test]
-    fn chiet_khau_theo_bac_so_dong() {
+    fn discount_tiers_by_line_count() {
         let tong = Money::dong(1_000_000);
         assert_eq!(apply_discount(tong, 3), Money::dong(0));
         assert_eq!(apply_discount(tong, 5), Money::dong(50_000));
@@ -616,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    fn hoa_don_tinh_use_toan_unit() {
+    fn invoice_totals_are_correct() {
         let don = don_mau(); // tạm tính 250.000, 2 dòng -> không chiết khấu
         let hd = invoice_loop(&don);
         assert_eq!(hd.computed_temp, Money::dong(250_000));
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn quy_trinh_typestate_chay_het_bon_buoc() {
+    fn typestate_flow_runs_all_four_steps() {
         let don = don_mau();
         let da_tra = don.payment(MathOp::TienMat);
         assert_eq!(da_tra.payment_method(), &MathOp::TienMat);
@@ -635,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn typestate_khong_ton_bo_nho_luc_chay() {
+    fn typestate_is_zero_cost_at_runtime() {
         use std::mem::size_of;
         // PhantomData chiếm 0 byte: DonQueue<Nhap> và DonQueue<Delivered> có cùng kích thước.
         assert_eq!(size_of::<DonQueue<Import>>(), size_of::<DonQueue<Delivered>>());

@@ -279,12 +279,12 @@ fn main() -> io::Result<()> {
     {
         let mut db = MiniBitcask::open(db_path)?;
 
-        db.set("user:101", "Alice - Ha Chain")?;
+        db.set("user:101", "Alice - Ha Noi")?;
         db.set("user:102", "Bob - Da Nang")?;
         db.set("user:103", "Charlie - TP Ho Chi Minh")?;
 
         // Ghi đè cập nhật giá trị (tạo ra dữ liệu cũ trên đĩa)
-        db.set("user:101", "Alice Nguyen - Ha Chain (Updated)")?;
+        db.set("user:101", "Alice Nguyen - Ha Noi (Updated)")?;
 
         // Xóa một khóa (tạo Tombstone trên đĩa)
         db.delete("user:102")?;
@@ -293,7 +293,7 @@ fn main() -> io::Result<()> {
         println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
 
         // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
-        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db.get("user:102")?, None);
         assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
@@ -309,7 +309,7 @@ fn main() -> io::Result<()> {
         println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
         println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
 
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:102")?, None);
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         assert_eq!(db_recovered.total_keys(), 2);
@@ -326,7 +326,7 @@ fn main() -> io::Result<()> {
         assert!(next_capacity < prev_capacity);
 
         // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
     }

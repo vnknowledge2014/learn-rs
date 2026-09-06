@@ -55,7 +55,7 @@ Mục tiêu học tập của chương này:
 - Bạn xếp một dãy 10 quân cờ Domino nối tiếp nhau trên sàn:
   - Quân thứ nhất ngã sẽ chạm vào quân thứ hai, quân thứ hai chạm vào quân thứ ba (`.and_then()`).
   - Nếu ở bước thứ hai, quân cờ bị gãy hoặc mất tích (đại diện cho trạng thái `None` hoặc lỗi `Err`), dây chuyền domino tự động dừng lại một cách văn minh.
-  - Bạn không cần phải cử một người đứng canh ở từng quân cờ để hô: "Nếu quân 1 ngã thì chạy sang quân 2, nếu quân 2 ngã thì chạy sang quân 3" (đó là cách viết `match` lồng nhau nhức đầu). Toàn bộ chuỗi tự động điều phối dòng chảy một cách trơn subtract!
+  - Bạn không cần phải cử một người đứng canh ở từng quân cờ để hô: "Nếu quân 1 ngã thì chạy sang quân 2, nếu quân 2 ngã thì chạy sang quân 3" (đó là cách viết `match` lồng nhau nhức đầu). Toàn bộ chuỗi tự động điều phối dòng chảy một cách trơn tru!
 
 ---
 
@@ -63,7 +63,7 @@ Mục tiêu học tập của chương này:
 
 ### 1. Phân biệt Con trỏ hàm (`fn`) và Giao ước Closure (`Fn`/`FnMut`/`FnOnce`)
 
-Trong Rust, có sự khác biệt compute tế giữa con trỏ hàm thuần túy và closure:
+Trong Rust, có sự khác biệt tinh tế giữa con trỏ hàm thuần túy và closure:
 
 1. **Con trỏ hàm (`fn`)**:
    - Viết bằng chữ thường `fn(...) -> ...`.
@@ -176,7 +176,7 @@ Nếu chọn nhầm, trình biên dịch báo `Option<Option<T>>` — hộp lồ
 
 ### 5. Lập trình hai đường ray (Railway-Oriented Programming)
 
-Đây là mô hình compute thần giúp gắn tất cả các bộ kết hợp bạn vừa học thành **một bức tranh duy nhất**. Nó đến từ cuốn *Domain Modeling Made Functional*, và một khi đã thấy, bạn sẽ không bao giờ nhìn `Result` như cũ nữa.
+Đây là mô hình tinh thần giúp gắn tất cả các bộ kết hợp bạn vừa học thành **một bức tranh duy nhất**. Nó đến từ cuốn *Domain Modeling Made Functional*, và một khi đã thấy, bạn sẽ không bao giờ nhìn `Result` như cũ nữa.
 
 Hãy hình dung chương trình của bạn là một tuyến **đường sắt hai ray**:
 
@@ -293,9 +293,9 @@ where
 /// Sử dụng `move` để đóng gói danh sách từ cấm vào struct vô danh của closure
 pub fn make_ban_filter(danh_sach_tu_cam: Vec<&'static str>) -> impl Fn(&str) -> bool {
     move |van_ban: &str| {
-        let chu_normal = van_ban.to_lowercase();
+        let lowercase = van_ban.to_lowercase();
         // Trả về true nếu KHÔNG chứa bất kỳ từ cấm nào
-        !danh_sach_tu_cam.iter().any(|&tu| chu_normal.contains(tu))
+        !danh_sach_tu_cam.iter().any(|&tu| lowercase.contains(tu))
     }
 }
 
@@ -344,7 +344,7 @@ pub fn auth_proxy_num(
         .filter(|&age| (16..=100).contains(&age))    // Giới hạn độ tuổi từ 16 đến 100
         .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
 
-    // Trả về cấu trúc hồ sơ đã được compute chế sạch sẽ
+    // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
     Ok(ValidProxy {
         name_dang_import: name_hop_le,
         email: email_hop_le,

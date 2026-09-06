@@ -57,9 +57,9 @@ where
 /// Sử dụng `move` để đóng gói danh sách từ cấm vào struct vô danh của closure
 pub fn make_ban_filter(danh_sach_tu_cam: Vec<&'static str>) -> impl Fn(&str) -> bool {
     move |van_ban: &str| {
-        let chu_normal = van_ban.to_lowercase();
+        let lowercase = van_ban.to_lowercase();
         // Trả về true nếu KHÔNG chứa bất kỳ từ cấm nào
-        !danh_sach_tu_cam.iter().any(|&tu| chu_normal.contains(tu))
+        !danh_sach_tu_cam.iter().any(|&tu| lowercase.contains(tu))
     }
 }
 
@@ -108,7 +108,7 @@ pub fn auth_proxy_num(
         .filter(|&age| (16..=100).contains(&age))    // Giới hạn độ tuổi từ 16 đến 100
         .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
 
-    // Trả về cấu trúc hồ sơ đã được compute chế sạch sẽ
+    // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
     Ok(ValidProxy {
         name_dang_import: name_hop_le,
         email: email_hop_le,

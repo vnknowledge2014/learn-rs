@@ -17,7 +17,7 @@ Trong chương này, chúng ta sẽ chinh phục:
 
 ## Hình tượng hóa đời sống (Intuitive Everyday Analogy)
 
-Để hiểu định lý CAP và thuật toán Raft mà không cần bất kỳ công thức toán học id trận nào, hãy quan sát hai câu chuyện đời thường:
+Để hiểu định lý CAP và thuật toán Raft mà không cần bất kỳ công thức toán học ma trận nào, hãy quan sát hai câu chuyện đời thường:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐

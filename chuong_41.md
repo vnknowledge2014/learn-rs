@@ -9,7 +9,7 @@ Trong các hệ thống phòng thủ không gian mạng hiện đại như Tư�
 Mục tiêu học tập của bạn:
 - Nắm vững kiến trúc khung truyền dữ liệu mạng: Khung Ethernet (Layer 2), Gói tin IPv4 (Layer 3), và Tiêu đề TCP/UDP (Layer 4).
 - Làm chủ kỹ thuật trích xuất dữ liệu không sao chép (Zero-Copy) dựa trên lát cắt byte `&[u8]` và chuyển đổi thứ tự byte mạng (Network Byte Order - Big-Endian) sang thứ tự CPU (Host Byte Order - Little-Endian).
-- Khám phá giải phẫu cấu trúc tệp nhị phân chuẩn mực: Tệp ELF (trên Linux) và tệp PE (trên Windows), nhận diện các "Byte id thuật" (Magic Bytes) nhận dạng tệp.
+- Khám phá giải phẫu cấu trúc tệp nhị phân chuẩn mực: Tệp ELF (trên Linux) và tệp PE (trên Windows), nhận diện các "Byte ma thuật" (Magic Bytes) nhận dạng tệp.
 - Tự tay lập trình công cụ kiểm tra tệp nhị phân và phân tích gói tin mạng chuẩn mực bằng Rust với hiệu năng tối đa và an toàn bộ nhớ tuyệt đối.
 
 ---
@@ -92,7 +92,7 @@ Mọi tệp thực thi, thư viện chia sẻ (`.so`), và tệp mã đối tư�
 │ 0x7F 'E' 'L' 'F'     │ 1 = 32b, 2 = 64b│ 1 = LE, 2 = BE  │ Luôn bằng 1    │ Địa chỉ bắt đầu chạy│
 └──────────────────────┴─────────────────┴─────────────────┴────────────────┴─────────────────────┘
 ```
-- **Byte 0..3**: Chuỗi id thuật định danh: `0x7F`, `0x45` ('E'), `0x4C` ('L'), `0x46` ('F').
+- **Byte 0..3**: Chuỗi ma thuật định danh: `0x7F`, `0x45` ('E'), `0x4C` ('L'), `0x46` ('F').
 - **Byte 4 (`EI_CLASS`)**: Phân biệt kiến trúc: `1` là 32-bit, `2` là 64-bit.
 - **Byte 5 (`EI_DATA`)**: Phân biệt mã hóa số: `1` là Little-Endian (Intel/AMD), `2` là Big-Endian (IBM PowerPC).
 - **Bytes 24..31** (trên hệ 64-bit): Điểm nhập cuộc (`Entry Point Virtual Address`) — địa chỉ câu lệnh máy đầu tiên mà CPU sẽ nhảy tới khi tiến trình khởi động!
@@ -120,7 +120,7 @@ pub struct ParsedIpv4Header<'a> {
 /// Trình phân tích tiêu đề gói tin mạng IPv4
 pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'static str> {
     if raw_bytes.len() < 20 {
-        return Err("Kich thuoc goi tin qua ngan de contains IPv4 Header hop le!");
+        return Err("Kich thuoc goi tin qua ngan de chua IPv4 Header hop le!");
     }
 
     // Byte 0: 4-bit Version và 4-bit IHL
@@ -171,7 +171,7 @@ pub struct ParsedElfHeader {
 /// Trình giải mã tiêu đề tệp ELF Linux
 pub fn parse_elf_header(binary_data: &[u8]) -> Result<ParsedElfHeader, &'static str> {
     if binary_data.len() < 32 {
-        return Err("Tap tin qua nho de contains ELF Header hop le!");
+        return Err("Tap tin qua nho de chua ELF Header hop le!");
     }
 
     // Kiểm tra 4 Magic Bytes: 0x7F, 'E', 'L', 'F'
@@ -214,7 +214,7 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM GIẢI MÃ GÓI TIN MẠNG IPV4 ZERO-COPY
     // -------------------------------------------------------------
-    println!("\n[1] Giai id goi tin mang IPv4 mo phong:");
+    println!("\n[1] Giai ma goi tin mang IPv4 mo phong:");
 
     // Dựng mảng byte gói tin mẫu (Tiêu đề 20 bytes + Payload 4 bytes)
     let sample_packet: [u8; 24] = [
@@ -241,7 +241,7 @@ fn main() {
                 parsed.dest_ip[0], parsed.dest_ip[1], parsed.dest_ip[2], parsed.dest_ip[3]
             );
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
-            println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang root!");
+            println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
         }
         Err(err) => println!("    [!] Loi phan tich: {}", err),
     }
@@ -249,7 +249,7 @@ fn main() {
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM GIẢI MÃ TIÊU ĐỀ TỆP NHỊ PHÂN LINUX ELF
     // -------------------------------------------------------------
-    println!("\n[2] Giai id tieu de tep thuc thi ELF Linux mo phong:");
+    println!("\n[2] Giai ma tieu de tep thuc thi ELF Linux mo phong:");
 
     // Tạo mảng 64 bytes mô phỏng phần đầu ELF64
     let mut mock_elf_data = [0u8; 64];

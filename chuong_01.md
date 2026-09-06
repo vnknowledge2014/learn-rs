@@ -101,7 +101,7 @@ Mỗi bóng bán dẫn hoạt động như một van đóng mở dòng điện:
 
 CPU hoạt động theo từng nhịp tim đập đều đặn, được gọi là **Xung nhịp (Clock speed)**. Ví dụ, một con chip có tốc độ `3.5 GHz` đồng nghĩa với việc nó có thể tạo ra `3.5 tỷ nhịp đập mỗi giây`!
 
-Dựa trên những nhịp đập đó, CPU lặp đi lặp lại một owner trình gồm 3 bước cơ bản (gọi là **Chu trình lệnh - Instruction Cycle**):
+Dựa trên những nhịp đập đó, CPU lặp đi lặp lại một chu trình gồm 3 bước cơ bản (gọi là **Chu trình lệnh - Instruction Cycle**):
 
 ```
   ┌──────────────────────────────────────────────────────────────────┐
@@ -120,7 +120,7 @@ Dựa trên những nhịp đập đó, CPU lặp đi lặp lại một owner tr
 2. **Giải mã (Decode)**: Khối điều khiển bên trong CPU phân tích chuỗi nhị phân đó: "Lệnh này yêu cầu cộng hai số, hay yêu cầu nhảy sang một địa chỉ khác?".
 3. **Thực thi (Execute)**: Khối tính toán số học & logic (**ALU - Arithmetic Logic Unit**) thực hiện phép tính và ghi kết quả trở lại thanh ghi hoặc mặt bàn RAM.
 
-> **Đừng nhầm hai khái niệm này**: *một nhịp xung nhịp* (clock cycle) **không** bằng *một owner trình lệnh*. Một lệnh đơn giản có thể cần vài nhịp mới xong; ngược lại, CPU hiện đại dùng kỹ thuật **đường ống (pipeline)** và **siêu vô hướng (superscalar)** để cùng lúc xử lý nhiều lệnh ở các giai đoạn khác nhau, nên trung bình vẫn có thể hoàn thành **nhiều hơn 1 lệnh mỗi nhịp**. Con số `3.5 GHz` cho biết tốc độ nhịp đập, không phải số lệnh chạy được mỗi giây.
+> **Đừng nhầm hai khái niệm này**: *một nhịp xung nhịp* (clock cycle) **không** bằng *một chu trình lệnh*. Một lệnh đơn giản có thể cần vài nhịp mới xong; ngược lại, CPU hiện đại dùng kỹ thuật **đường ống (pipeline)** và **siêu vô hướng (superscalar)** để cùng lúc xử lý nhiều lệnh ở các giai đoạn khác nhau, nên trung bình vẫn có thể hoàn thành **nhiều hơn 1 lệnh mỗi nhịp**. Con số `3.5 GHz` cho biết tốc độ nhịp đập, không phải số lệnh chạy được mỗi giây.
 
 ### 3. Không gian địa chỉ ô nhớ RAM (Memory Addresses)
 
@@ -211,17 +211,17 @@ fn main() {
              kich_thuoc_char, kich_thuoc_char * 8);
 
     // 5. Khám phá kiểu logic Đúng/Sai (bool)
-    let kich_thuoc_bool = std::mem::size_of::<bool>();
+    let bool_size = std::mem::size_of::<bool>();
     println!("- Kiểu bool (true/false) chiếm           : {} byte (dù chỉ cần 1 bit)", 
-             kich_thuoc_bool);
+             bool_size);
 
     println!("------------------------------------------------------------");
 
     // 6. Minh họa trực tiếp cách máy tính nhìn một con số dưới dạng công tắc bật/tắt (nhị phân)
-    let con_so_yeu_thich: u8 = 42;
-    println!("Con số quen thuộc trong đời thực: {}", con_so_yeu_thich);
+    let favorite_number: u8 = 42;
+    println!("Con số quen thuộc trong đời thực: {}", favorite_number);
     // Cú pháp {:08b} yêu cầu Rust in số này dưới dạng nhị phân 8 bit (0 và 1)
-    println!("Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}", con_so_yeu_thich);
+    println!("Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}", favorite_number);
 
     let linh_vat: char = '🦀'; // Cua Ferris - Linh vật chính thức của cộng đồng Rust
     println!("Linh vật đáng yêu của Rust: {}", linh_vat);

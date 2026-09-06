@@ -2,9 +2,9 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chủ đề 7 (Chương 37–42) đã dạy bạn tấn công **tầng bộ nhớ** theo compute thần OSCP: buffer overflow, use-after-free, format string. Nhưng phần lớn ứng dụng ngày nay là **ứng dụng web**, và lỗ hổng web thuộc một thế giới hoàn toàn khác — chúng không nằm ở con trỏ, mà ở chỗ **lập trình viên tin tưởng dữ liệu người dùng**.
+Chủ đề 7 (Chương 37–42) đã dạy bạn tấn công **tầng bộ nhớ** theo tinh thần OSCP: buffer overflow, use-after-free, format string. Nhưng phần lớn ứng dụng ngày nay là **ứng dụng web**, và lỗ hổng web thuộc một thế giới hoàn toàn khác — chúng không nằm ở con trỏ, mà ở chỗ **lập trình viên tin tưởng dữ liệu người dùng**.
 
-Chương này theo compute thần chứng chỉ **OSWE (Offensive Security Web Expert)**: hiểu lỗ hổng bằng cách nhìn nó từ góc kẻ tấn công, rồi **viết mã phòng thủ chặn đứng nó**. Mỗi lỗ hổng trong chương đều có hai bản: bản `❌ DÍNH LỖI` và bản `✅ SỬA`, kèm test chứng minh bản sửa thực sự chặn được đòn tấn công.
+Chương này theo tinh thần chứng chỉ **OSWE (Offensive Security Web Expert)**: hiểu lỗ hổng bằng cách nhìn nó từ góc kẻ tấn công, rồi **viết mã phòng thủ chặn đứng nó**. Mỗi lỗ hổng trong chương đều có hai bản: bản `❌ DÍNH LỖI` và bản `✅ SỬA`, kèm test chứng minh bản sửa thực sự chặn được đòn tấn công.
 
 > **Đây là giáo dục bảo mật phòng thủ.** Mục tiêu là để bạn *viết ứng dụng an toàn*, không phải tấn công hệ thống người khác. Mọi ví dụ đều là mô phỏng offline, không nhắm vào mục tiêu thật.
 
@@ -374,7 +374,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sql_tham_so_hoa_khong_tiem_duoc() {
+    fn parameterized_sql_resists_injection() {
         let doc = "admin' OR '1'='1; DROP TABLE users;--";
         let an = build_safe_sql(doc);
         // Cú pháp cố định, chỉ 1 chỗ ?; toàn bộ đòn tấn công nằm trong THAM SỐ
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn xss_thoat_het_ky_tu_nguy_hiem() {
+    fn xss_escaping_covers_all_dangerous_chars() {
         let out = escape_html("<script>alert('x')</script>");
         assert!(!out.contains('<'));
         assert!(!out.contains('>'));
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn idor_chan_truy_cap_cheo_nguoi_dung() {
+    fn idor_blocks_cross_user_access() {
         let store = vec![
             Invoice { id: 100, owner: 1, so_tien: 500 },
             Invoice { id: 101, owner: 2, so_tien: 999 },
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn ssrf_chan_metadata_dam_may_va_mang_noi_bo() {
+    fn ssrf_blocks_cloud_metadata_and_private_ranges() {
         let cp = ["api.tot.vn"];
         assert!(is_safe_url("https://api.tot.vn/x", &cp).is_ok());
         // Địa chỉ metadata đám mây — mục tiêu SSRF nguy hiểm nhất
@@ -424,14 +424,14 @@ mod tests {
     }
 
     #[test]
-    fn so_sanh_bat_bien_dung() {
+    fn constant_time_compare_is_correct() {
         assert!(so_sanh_bat_bien(b"token-abc", b"token-abc"));
         assert!(!so_sanh_bat_bien(b"token-abc", b"token-xyz"));
         assert!(!so_sanh_bat_bien(b"ngan", b"dai-hon-nhieu")); // độ dài khác
     }
 
     #[test]
-    fn do_strong_password() {
+    fn password_strength() {
         assert!(check_do_strong("abc").is_err());
         assert!(check_do_strong("khongcosohoa!X").is_err()); // thiếu số
         assert!(check_do_strong("Rust@2026!Secure").is_ok());
@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn path_traversal_bi_chan() {
+    fn path_traversal_is_blocked() {
         assert!(path_safe("/uploads", "anh.png").is_ok());
         assert!(path_safe("/uploads", "../../etc/passwd").is_err());
         assert!(path_safe("/uploads", "/etc/passwd").is_err());

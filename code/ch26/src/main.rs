@@ -30,20 +30,20 @@ fn main() {
     println!("============================================================");
 
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
-    let array_tinh: [i32; 5] = [10, 20, 30, 40, 50];
+    let computed_array: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&array_tinh));
-    println!("    - Số lượng phần tử  : {}", array_tinh.len());
+    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&computed_array));
+    println!("    - Số lượng phần tử  : {}", computed_array.len());
     
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
-    for i in 0..array_tinh.len() {
-        let address = &array_tinh[i] as *const i32 as usize;
+    for i in 0..computed_array.len() {
+        let address = &computed_array[i] as *const i32 as usize;
         print!("[Phần tử {}: đuôi ...{:x}] ", i, address % 0x1000);
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
-    // 2. Khảo sát Vector động Vec<T> và owner kỳ co giãn dung lượng
+    // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
     let mut vec_dong: Vec<i32> = Vec::new();
     println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
@@ -54,7 +54,7 @@ fn main() {
         let current_address = vec_dong.as_ptr() as usize;
         
         // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
-        let thong_report_swap_nha = if current_address != prev_address && prev_address != 0 {
+        let row_changed = if current_address != prev_address && prev_address != 0 {
             prev_address = current_address;
             " -> [ĐỔI NHÀ MỚI TRÊN HEAP!]"
         } else {
@@ -68,7 +68,7 @@ fn main() {
             vec_dong.len(),
             vec_dong.capacity(),
             current_address % 0x10000,
-            thong_report_swap_nha
+            row_changed
         );
     }
 
@@ -87,7 +87,7 @@ fn main() {
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
     // Lấy lát cắt từ mảng tĩnh
-    let lat_cat_mang = &array_tinh[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    let lat_cat_mang = &computed_array[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
     println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
     let tong_mang = total_tile_latency(lat_cat_mang);
     println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
@@ -125,14 +125,14 @@ mod tests {
     }
 
     #[test]
-    fn new_reverse_inverse_tai_wait_no_cap_phat() {
+    fn reverse_in_place_without_allocating() {
         let mut v = vec![1, 2, 3, 4, 5];
         reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![5, 4, 3, 2, 1]);
     }
 
     #[test]
-    fn first_reverse_inverse_two_lan_ve_sell() {
+    fn reverse_twice_is_identity() {
         let root = vec![7, 3, 9, 1];
         let mut v = root.clone();
         reverse_inverse_tai_wait(&mut v);
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn dao_nguoc_do_dai_le_giu_nguyen_giua() {
+    fn odd_length_reverse_keeps_middle() {
         let mut v = vec![1, 2, 3];
         reverse_inverse_tai_wait(&mut v);
         assert_eq!(v, vec![3, 2, 1]);

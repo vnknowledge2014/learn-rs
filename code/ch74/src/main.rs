@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Ghi một mẫu là O(1) và KHÔNG cấp phát — bắt buộc, vì bản thân việc đo
 /// không được làm nhiễu thứ đang đo.
 pub struct LatencyHistogram {
-    /// xor[i] đếm các giá trị trong [2^(i-1), 2^i)
+    /// xo[i] đếm các giá trị trong [2^(i-1), 2^i)
     xor: Vec<u64>,
     pub tong_mau: u64,
     pub min: u64,
@@ -51,10 +51,10 @@ impl LatencyHistogram {
     pub fn percentile(&self, p: f64) -> u64 {
         if self.tong_mau == 0 { return 0; }
         let threshold = (self.tong_mau as f64 * p).ceil().max(1.0) as u64;
-        let mut cong_don = 0u64;
+        let mut accumulate = 0u64;
         for (i, &c) in self.xor.iter().enumerate() {
-            cong_don += c;
-            if cong_don >= threshold {
+            accumulate += c;
+            if accumulate >= threshold {
                 return if i == 0 { 0 } else { (1u64 << (i - 1)) * 2 - 1 };
             }
         }
@@ -99,7 +99,7 @@ pub struct BufferSplitClose { pub a: CountHasCount, pub b: CountHasCount }
 /// Một-ghi-một-đọc, không khoá, không cấp phát, sức chứa là luỹ thừa của 2.
 ///
 /// Ba quyết định thiết kế đáng chú ý:
-/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 owner kỳ) bằng `&` (1 owner kỳ).
+/// 1. Sức chứa 2^n → thay `%` (phép chia, ~20–40 chu kỳ) bằng `&` (1 chu kỳ).
 /// 2. Con trỏ đọc/ghi nằm ở hai dòng cache RIÊNG → không chia sẻ giả.
 /// 3. Con trỏ TĂNG MÃI, không quấn vòng → phân biệt được "rỗng" và "đầy"
 ///    mà không phải hy sinh một ô như hàng đợi vòng thông thường.
@@ -405,7 +405,7 @@ mod tests {
 
     // ---------- Biểu đồ độ trễ ----------
     #[test]
-    fn bieu_do_rong_khong_panic() {
+    fn empty_histogram_does_not_panic() {
         let b = LatencyHistogram::new();
         assert_eq!(b.tong_mau, 0);
         assert_eq!(b.mean(), 0.0);
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn bieu_do_ghi_dung_min_max_va_trung_binh() {
+    fn histogram_tracks_min_max_and_mean() {
         let mut b = LatencyHistogram::new();
         for x in [10u64, 20, 30, 40] { b.record(x); }
         assert_eq!(b.min, 10);
@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_vi_tang_don_dieu() {
+    fn percentiles_are_monotonic() {
         let mut b = LatencyHistogram::new();
         for x in gen_mau_latency(10_000, 7) { b.record(x); }
         let (p50, p90, p99, p999) = (b.percentile(0.5), b.percentile(0.9),
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_vi_bao_gio_cung_bao_phu_gia_tri_that() {
+    fn percentiles_bracket_the_true_value() {
         // Cận trên của xô phải THỰC SỰ là cận trên: không được báo thấp hơn
         // giá trị thật, nếu không ta sẽ tưởng hệ thống nhanh hơn thực tế.
         let mut b = LatencyHistogram::new();
@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn duoi_dai_lam_trung_binh_noi_doi() {
+    fn a_long_tail_makes_the_mean_lie() {
         // Đây là bài học trung tâm của chương: 99% mẫu ở 200–300 ns, nhưng
         // 0.1% ở 50 µs kéo trung bình lên và che mất phân bố thật.
         let mut b = LatencyHistogram::new();
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn ghi_gia_tri_khong_va_gia_tri_lon_nhat_deu_an_toan() {
+    fn recording_zero_and_max_is_safe() {
         let mut b = LatencyHistogram::new();
         b.record(0);
         b.record(u64::MAX);
@@ -478,14 +478,14 @@ mod tests {
 
     // ---------- Chia sẻ giả ----------
     #[test]
-    fn dem_co_dem_chiem_tron_mot_dong_cache() {
+    fn padded_counter_owns_a_whole_cache_line() {
         assert_eq!(std::mem::size_of::<CountHasCount>(), DONG_CACHE);
         assert_eq!(std::mem::align_of::<CountHasCount>(), DONG_CACHE,
                    "phải căn theo dòng cache, không chỉ đủ kích thước");
     }
 
     #[test]
-    fn two_buffer_split_close_no_position_chung_close_cache() {
+    fn padded_counters_never_share_a_line() {
         let b = BufferSplitClose { a: CountHasCount::new(), b: CountHasCount::new() };
         let dc_a = &b.a as *const _ as usize;
         let dc_b = &b.b as *const _ as usize;
@@ -501,7 +501,7 @@ mod tests {
 
     // ---------- Vòng Disruptor ----------
     #[test]
-    fn prev_round_in_prev_out() {
+    fn ring_is_fifo() {
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
         for i in 0..5 { v.push(i).unwrap(); }
         for i in 0..5 { assert_eq!(v.take(), Some(i)); }
@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_dung_het_suc_chua_khong_hy_sinh_o_nao() {
+    fn ring_uses_full_capacity_without_wasting_a_slot() {
         // Hàng đợi vòng thường phải bỏ một ô để phân biệt rỗng/đầy.
         // Con trỏ tăng mãi giúp ta dùng trọn N ô.
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_quay_dung_qua_nhieu_luot() {
+    fn ring_wraps_correctly_over_many_laps() {
         let v: DisruptorRing<u64, 4> = DisruptorRing::new();
         for i in 0..1000u64 {
             v.push(i).unwrap();
@@ -530,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_rong_tra_none_va_khong_panic() {
+    fn empty_ring_returns_none_safely() {
         let v: DisruptorRing<u8, 16> = DisruptorRing::new();
         assert_eq!(v.take(), None);
         assert!(v.rong() && !v.day());
@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn get_lo_get_use_quantity_and_use_thu_from() {
+    fn batch_take_returns_the_requested_count() {
         let v: DisruptorRing<u32, 64> = DisruptorRing::new();
         for i in 0..50 { v.push(i).unwrap(); }
         let mut ra = Vec::new();
@@ -552,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn get_lo_above_round_empty_return_ve_no() {
+    fn batch_take_on_empty_ring_returns_zero() {
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
         let mut ra = Vec::new();
         assert_eq!(v.lay_lo(10, &mut ra), 0);
@@ -560,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn phep_and_thay_duoc_phep_chia_khi_suc_chua_la_luy_thua_hai() {
+    fn and_replaces_modulo_for_power_of_two_capacity() {
         for n in [8usize, 16, 64, 1024, 4096] {
             for v in [0usize, 1, 7, 1030, 99999] {
                 assert_eq!(v & (n - 1), v % n, "AND phải cho cùng kết quả với MOD");
@@ -570,13 +570,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "luỹ thừa của 2")]
-    fn suc_chua_khong_phai_luy_thua_hai_bi_tu_choi() {
+    fn non_power_of_two_capacity_is_rejected() {
         let _: DisruptorRing<u8, 100> = DisruptorRing::new();
     }
 
     // ---------- Bể đối tượng ----------
     #[test]
-    fn be_cap_phat_and_return_lai_use() {
+    fn pool_recycles_objects() {
         let mut b: ObjectPool<u64> = ObjectPool::new(3);
         assert_eq!(b.con_ranh(), 3);
         let a = b.borrow().unwrap();
@@ -588,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn be_het_thi_bao_none_chu_khong_cap_phat_them() {
+    fn exhausted_pool_returns_none_instead_of_allocating() {
         // Điểm mấu chốt: thà từ chối còn hơn cấp phát heap trên đường nóng.
         let mut b: ObjectPool<u32> = ObjectPool::new(2);
         assert!(b.borrow().is_some());
@@ -599,13 +599,13 @@ mod tests {
     }
 
     #[test]
-    fn goi_lenh_vua_dung_mot_dong_cache() {
+    fn order_packet_is_exactly_one_cache_line() {
         assert_eq!(std::mem::size_of::<OrderPacket>(), DONG_CACHE,
                    "bản ghi trên đường nóng nên vừa một dòng cache, không hơn");
     }
 
     #[test]
-    fn o_vua_tra_duoc_tai_dung_ngay() {
+    fn a_returned_slot_is_reusable_immediately() {
         let mut b: ObjectPool<u64> = ObjectPool::new(2);
         let i = b.borrow().unwrap();
         *b.fix(i) = 12345;
@@ -617,7 +617,7 @@ mod tests {
 
     // ---------- Bố trí bộ nhớ ----------
     #[test]
-    fn soa_doc_it_byte_hon_han_aos_khi_quet_mot_truong() {
+    fn soa_reads_far_fewer_bytes_when_scanning_one_field() {
         let n = 10_000;
         let aos = bytes_to_read_one_field_aos(n);
         let soa = QuoteTableSoA::new(n).bytes_to_read_one_field();
@@ -625,19 +625,19 @@ mod tests {
     }
 
     #[test]
-    fn soa_tinh_dung_tong() {
+    fn soa_computes_the_correct_sum() {
         let mut t = QuoteTableSoA::new(5);
         for i in 0..5 { t.price_buy[i] = (i as i64 + 1) * 100; }
         assert_eq!(t.total_price_buy(), 100 + 200 + 300 + 400 + 500);
     }
 
     #[test]
-    fn bao_gia_aos_khong_bi_don_dem_bat_ngo() {
+    fn aos_quote_has_no_surprise_padding() {
         // Nếu kích thước lệch so với tổng các trường thì có đệm ẩn — điều
         // cần biết khi tính băng thông bộ nhớ. Xếp trường theo kích thước
         // giảm dần là cách đơn giản nhất để tránh đệm.
-        let total_truong = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4;
-        assert_eq!(std::mem::size_of::<QuoteAoS>(), total_truong);
+        let total_fields = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4;
+        assert_eq!(std::mem::size_of::<QuoteAoS>(), total_fields);
     }
 
     // ---------- Ngân sách độ trễ ----------
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_tinh_use_total_and_node_true() {
+    fn budget_computes_total_and_bottleneck() {
         let ns = nanos_mau();
         assert_eq!(ns.tong(), 2_450);
         assert!(ns.set_level_spend());
@@ -661,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn amdahl_tinh_dung_gioi_han_tang_toc() {
+    fn amdahl_bounds_the_speedup() {
         let ns = nanos_mau();
         // Xoá hẳn chặng 1500 ns khỏi tổng 2450 ns → còn 950 ns
         let mong_doi = 2_450.0 / 950.0;
@@ -671,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_exceed_cap_is_report_truot() {
+    fn over_budget_is_reported_as_a_miss() {
         let ns = LatencyBudget {
             tran_ns: 1_000,
             chang: vec![LatencyStage { name: "cham".into(), ns: 9_999 }],
@@ -680,10 +680,10 @@ mod tests {
     }
 
     #[test]
-    fn ngan_sach_mot_chang_duy_nhat_cho_tang_toc_vo_han() {
+    fn a_single_stage_budget_allows_unbounded_speedup() {
         let ns = LatencyBudget {
             tran_ns: 100,
-            chang: vec![LatencyStage { name: "all".into(), ns: 500 }],
+            chang: vec![LatencyStage { name: "tat_ca".into(), ns: 500 }],
         };
         assert!(ns.max_speedup_if_node_removed().is_infinite(),
                 "xoá chặng duy nhất thì thời gian còn 0");
@@ -691,13 +691,13 @@ mod tests {
 
     // ---------- Sinh mẫu ----------
     #[test]
-    fn gen_mau_all_peak() {
+    fn sample_generation_is_deterministic() {
         assert_eq!(gen_mau_latency(100, 5), gen_mau_latency(100, 5));
         assert_ne!(gen_mau_latency(100, 5), gen_mau_latency(100, 6));
     }
 
     #[test]
-    fn gen_mau_has_use_three_region_latency() {
+    fn samples_span_exactly_three_latency_bands() {
         let m = gen_mau_latency(100_000, 1);
         let nhanh = m.iter().filter(|&&x| x < 1_000).count();
         let vua = m.iter().filter(|&&x| (1_000..10_000).contains(&x)).count();

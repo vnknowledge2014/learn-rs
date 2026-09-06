@@ -91,11 +91,11 @@ fn main() {
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Xây dựng Ma trận dữ liệu 2D với Mẫu lặp lồng nhau
     // ------------------------------------------------------------------------
-    println!("\n2. Khởi tạo Bảng dữ liệu id trận 2D qua macro lồng nhau:");
+    println!("\n2. Khởi tạo Bảng dữ liệu ma trận 2D qua macro lồng nhau:");
     let ma_tran_diem = tao_ma_tran![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối id trận hợp lệ
+        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
     ];
 
     for (num_queue, queue) in ma_tran_diem.iter().enumerate() {
@@ -108,9 +108,9 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
-    let result_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", result_tinh);
-    assert_eq!(result_tinh, 24);
+    let computed_result = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
+    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", computed_result);
+    assert_eq!(computed_result, 24);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MẪU MACRO NÂNG CAO HOÀN THÀNH THÀNH CÔNG  ");

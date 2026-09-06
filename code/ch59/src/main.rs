@@ -49,10 +49,10 @@ impl StrategyCanTable for WeightedRoundRobin {
         if tong == 0 { return may_chu.first(); }
         let level = self.count % tong;
         self.count += 1;
-        let mut cong_don = 0;
+        let mut accumulate = 0;
         for m in may_chu {
-            cong_don += m.weight;
-            if level < cong_don { return Some(m); }
+            accumulate += m.weight;
+            if level < accumulate { return Some(m); }
         }
         may_chu.last()
     }
@@ -237,7 +237,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn may3() -> Vec<Server> {
+    fn server3() -> Vec<Server> {
         vec![
             Server { name: "a".into(), current_connect: 5, weight: 1 },
             Server { name: "b".into(), current_connect: 2, weight: 3 },
@@ -246,21 +246,21 @@ mod tests {
     }
 
     #[test]
-    fn xoay_vong_deu_va_quay_lai() {
-        let m = may3();
+    fn round_robin_is_even_and_wraps() {
+        let m = server3();
         let mut xv = RoundRobin::new();
         let name: Vec<&str> = (0..6).map(|_| xv.pick(&m).unwrap().name.as_str()).collect();
         assert_eq!(name, vec!["a", "b", "c", "a", "b", "c"]);
     }
 
     #[test]
-    fn it_ket_noi_chon_may_ranh_nhat() {
-        assert_eq!(FewConnect.pick(&may3()).unwrap().name, "b"); // b có 2 kết nối
+    fn least_connections_picks_idlest() {
+        assert_eq!(FewConnect.pick(&server3()).unwrap().name, "b"); // b có 2 kết nối
     }
 
     #[test]
-    fn weight_part_unit_use_ratio() {
-        let m = may3(); // trọng số a=1, b=3, c=1 -> tổng 5
+    fn weights_distribute_proportionally() {
+        let m = server3(); // trọng số a=1, b=3, c=1 -> tổng 5
         let mut wt = WeightedRoundRobin::new();
         let mut count: HashMap<String, u32> = HashMap::new();
         for _ in 0..5 { *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1; }
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn bam_nhat_quan_it_xao_tron_khi_bo_may() {
+    fn consistent_hash_minimizes_remapping() {
         let mut round = ConsistentHashRing::new(150);
         for m in ["A", "B", "C", "D"] { round.add_server(m); }
         let key: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn bam_nhat_quan_khoa_on_dinh() {
+    fn consistent_hash_keys_are_stable() {
         let mut round = ConsistentHashRing::new(50);
         round.add_server("X");
         round.add_server("Y");
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn token_bucket_gioi_han_va_hoi_phuc() {
+    fn token_bucket_limits_and_refills() {
         let mut xor = TokenBucket::new(3.0, 1.0);
         // 3 token đầu -> cho; token thứ 4 tức thì -> chặn
         assert!(xor.wait_op(0.0));
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn token_bucket_khong_vuot_dung_luong() {
+    fn token_bucket_never_exceeds_capacity() {
         let mut xor = TokenBucket::new(2.0, 100.0);
         // chờ rất lâu nhưng token bị GHIM ở dung lượng, không tràn
         xor.wait_op(1000.0);
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn back_pressure_tu_choi_khi_day() {
+    fn back_pressure_rejects_when_full() {
         let mut hq: QueueLimit<u32> = QueueLimit::new(2);
         assert_eq!(hq.send(1), KetQuaNhan::DaNhan);
         assert_eq!(hq.send(2), KetQuaNhan::DaNhan);

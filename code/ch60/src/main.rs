@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
 //! Chương 60 — Khoa học máy tính: Quy hoạch động, Quay lui, Tham lam, Lý thuyết số.
-//! Theo compute thần TheAlgorithms/Rust và Rusty-CS, giải các bài LeetCode kinh điển.
+//! Theo tinh thần TheAlgorithms/Rust và Rusty-CS, giải các bài LeetCode kinh điển.
 
 
 // ============================================================================
@@ -250,7 +250,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fib_hai_cach_khop_nhau() {
+    fn fib_both_methods_agree() {
         for n in 0..=20 {
             assert_eq!(fib_naive(n), fib_qhd(n), "lệch ở n={}", n);
         }
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn doi_tien_qhd() {
+    fn coin_change_dp() {
         assert_eq!(swap_tien(&[1, 5, 6, 9], 11), Some(2)); // 5+6
         assert_eq!(swap_tien(&[2], 3), None);              // không thể
         assert_eq!(swap_tien(&[1, 3, 4], 6), Some(2));     // 3+3
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn tham_lam_doi_tien_co_the_sai() {
+    fn greedy_coin_change_can_be_wrong() {
         // Đây là bằng chứng: tham lam KHÔNG tối ưu với mệnh giá [1,3,4]
         assert_eq!(greedy_change(vec![1, 3, 4], 6), 3); // 4+1+1
         assert_eq!(swap_tien(&[1, 3, 4], 6), Some(2));        // 3+3 -> QHĐ đúng
@@ -274,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn lcs_dung() {
+    fn lcs_is_correct() {
         assert_eq!(longest_common_subsequence("ABCBDAB", "BDCAB"), 4); // "BCAB" hoặc "BDAB"
         assert_eq!(longest_common_subsequence("abc", "abc"), 3);
         assert_eq!(longest_common_subsequence("abc", "xyz"), 0);
@@ -288,14 +288,14 @@ mod tests {
     }
 
     #[test]
-    fn hoan_pos_use_quantity() {
+    fn permutations_have_correct_count() {
         assert_eq!(swap_pos(&[1, 2, 3]).len(), 6);   // 3! = 6
         assert_eq!(swap_pos(&[1, 2, 3, 4]).len(), 24); // 4! = 24
         assert_eq!(swap_pos::<i32>(&[]).len(), 1);   // hoán vị của rỗng = 1 (dãy rỗng)
     }
 
     #[test]
-    fn n_hau_khop_ket_qua_kinh_dien() {
+    fn n_queens_matches_known_counts() {
         // Dãy số nghiệm N-Queens nổi tiếng: 1,0,0,2,10,4,40,92
         assert_eq!(n_hau(1), 1);
         assert_eq!(n_hau(4), 2);
@@ -305,14 +305,14 @@ mod tests {
     }
 
     #[test]
-    fn chon_hoat_dong_tham_lam_dung() {
+    fn greedy_activity_selection_is_optimal() {
         // Tham lam theo kết thúc sớm nhất LÀ tối ưu cho bài này (đã chứng minh)
         let hop = vec![(1, 3), (2, 5), (4, 7), (1, 8), (5, 9), (8, 10)];
         assert_eq!(select_active(hop), 3); // (1,3),(4,7),(8,10)
     }
 
     #[test]
-    fn ly_thuyet_so() {
+    fn number_theory() {
         assert_eq!(ucln(48, 36), 12);
         assert_eq!(ucln(17, 5), 1); // nguyên tố cùng nhau
         assert_eq!(bcnn(4, 6), 12);
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn luy_thua_mod_dung() {
+    fn mod_pow_is_correct() {
         assert_eq!(mod_pow(2, 10, 1000), 24);   // 1024 % 1000
         assert_eq!(mod_pow(3, 0, 7), 1);        // x^0 = 1
         assert_eq!(mod_pow(7, 256, 13), 9);

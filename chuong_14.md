@@ -322,8 +322,8 @@ pub fn cat_bot_curry(gioi_han: usize) -> impl Fn(&str) -> String {
 /// Nhà máy sinh bộ lọc từ cấm: khóa sẵn danh sách từ, trả về một vị từ (predicate).
 pub fn make_ban_filter(tu_cam: Vec<String>) -> impl Fn(&str) -> bool {
     move |van_ban: &str| {
-        let chu_normal = van_ban.to_lowercase();
-        !tu_cam.iter().any(|tu| chu_normal.contains(tu.as_str()))
+        let lowercase = van_ban.to_lowercase();
+        !tu_cam.iter().any(|tu| lowercase.contains(tu.as_str()))
     }
 }
 
@@ -417,12 +417,12 @@ fn main() {
     // 4. CURRY HÓA: một hàm gốc sinh ra nhiều hàm chuyên dụng
     // ------------------------------------------------------------------
     println!("\n4. CURRY HÓA & ÁP DỤNG TỪNG PHẦN");
-    let cut_ngan = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
+    let truncate = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
     let cut_long = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
 
     let cau = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
     println!("   Bản gốc   : {}", cau);
-    println!("   Cắt còn 10: {}", cut_ngan(cau));
+    println!("   Cắt còn 10: {}", truncate(cau));
     println!("   Cắt còn 25: {}", cut_long(cau));
 
     // ------------------------------------------------------------------
@@ -446,10 +446,10 @@ fn main() {
     {
         // Phụ thuộc thật: ghi vào sổ nhật ký trong bộ nhớ.
         let record_in_num = |sell_record: SellRecordLog| num_log.push(sell_record);
-        let mut kiem_traverse = make_validator(&is_clean, &che_di, record_in_num);
+        let mut validator = make_validator(&is_clean, &che_di, record_in_num);
 
-        println!("   #101 -> {}", kiem_traverse(101, "  Bài viết rất hay!  "));
-        println!("   #102 -> {}", kiem_traverse(102, "  Cẩn thận kẻo bị lừa đảo  "));
+        println!("   #101 -> {}", validator(101, "  Bài viết rất hay!  "));
+        println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
     }
 
     println!("   Nhật ký thu được ({} dòng):", num_log.len());
@@ -514,7 +514,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn luat_ket_hop_cua_phep_ghep() {
+    fn composition_is_associative() {
         let mau = ["  a   b ", "Xin   chào", "   rust  "];
         for s in mau {
             let a = compose(compose(cut_range_state, reduce_range), capitalize_first);
@@ -524,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn luat_don_vi_cua_phep_ghep() {
+    fn composition_has_identity() {
         let f = compose(cut_range_state, capitalize_first);
         let left = compose(closest::<&str>, &f);
         for s in ["  xin chào ", "rust"] {
@@ -533,22 +533,22 @@ mod tests {
     }
 
     #[test]
-    fn curry_hoa_tuong_duong_ham_goc() {
+    fn curried_matches_original() {
         let cat_15 = cat_bot_curry(15);
         let cau = "Rust là ngôn ngữ tuyệt vời";
         assert_eq!(cat_15(cau), cat_bot(15, cau));
     }
 
     #[test]
-    fn flip_dao_dung_thu_tu_tham_so() {
+    fn flip_swaps_argument_order() {
         let subtract = |a: i32, b: i32| a - b;
-        let tru_inverse = flip_args(subtract);
+        let flipped_subtract = flip_args(subtract);
         assert_eq!(subtract(10, 3), 7);
-        assert_eq!(tru_inverse(10, 3), -7); // = subtract(3, 10)
+        assert_eq!(flipped_subtract(10, 3), -7); // = tru(3, 10)
     }
 
     #[test]
-    fn nha_may_sinh_ham_hoat_dong_doc_lap() {
+    fn generated_closures_are_independent() {
         let filter = make_ban_filter(vec!["spam".to_string()]);
         assert!(filter("bài viết hay"));
         assert!(!filter("đây là SPAM"));

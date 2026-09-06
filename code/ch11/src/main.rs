@@ -24,8 +24,8 @@ impl std::fmt::Display for MathError {
 }
 
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
-fn check_num_tien(series_import: &str) -> Result<f64, MathError> {
-    let so_tien: f64 = series_import.trim().parse().map_err(|_| {
+fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
+    let so_tien: f64 = input_buffer.trim().parse().map_err(|_| {
         MathError::SoTienKhongHopLe(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
@@ -38,7 +38,7 @@ fn check_num_tien(series_import: &str) -> Result<f64, MathError> {
 
 // 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
 fn display_trade(
-    series_import: &str, 
+    input_buffer: &str, 
     mut so_du_hien_tai: f64, 
     is_account_active: bool
 ) -> Result<f64, MathError> {
@@ -49,7 +49,7 @@ fn display_trade(
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
     // Nếu check_num_tien trả về Err, hàm lập tức return Err ngay tại dòng này!
-    let so_tien_can_rut = check_num_tien(series_import)?;
+    let so_tien_can_rut = check_num_tien(input_buffer)?;
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
@@ -79,7 +79,7 @@ fn main() {
     }
 
     // --- KỊCH BẢN 2: LỖI NHẬP LIỆU KHÔNG PHẢI CHỮ SỐ ---
-    println!("\n[Kịch bản 2] Người dùng nhập chữ linh compute:");
+    println!("\n[Kịch bản 2] Người dùng nhập chữ linh tinh:");
     match display_trade("mot_trieu", first_balance_sell, true) {
         Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Hệ thống xử lý êm dịu: [{}]", e),

@@ -131,7 +131,7 @@ Ghi rõ để bạn không đi tìm:
 - **Mã dùng framework thật trong workspace.** Các chương 61, 62, 63, 66, 68, 72, 79 chỉ giữ **lõi thuần tuý** trong crate, để `cargo test --workspace` chạy được offline, không cần SDK, không cần mạng, không cần bo mạch. Mã dùng Axum, Leptos, Tauri, `cosmwasm-std`, `solana-program`, RHDL nằm trong phần lý thuyết của chương.
 - **Lời khuyên đầu tư.** Sách này dạy cách xây hệ thống, không dạy nên mua gì.
 - **Số liệu lãi lỗ đáng tin.** Mọi phiên giao dịch trong sách đều là **tổng hợp**. Chương 85 giải thích rõ vì sao con số lãi lỗ của nó là một sản phẩm phụ của mô hình, và vì sao thứ đáng tin là các **bất biến**.
-- **Định danh tiếng Việt trong mã nguồn.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm và biến đều bằng **tiếng Anh**; phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 19 của [`THUAT_NGU.md`](./THUAT_NGU.md).
+- **Định danh tiếng Việt trong mã nguồn.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm, biến **và cả tên hàm kiểm thử** đều bằng **tiếng Anh**; phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 19 của [`THUAT_NGU.md`](./THUAT_NGU.md).
 - **Nội dung bản quyền của các nguồn tham khảo.** Chúng ta dùng phân loại và tên bài để định hướng, rồi tự cài lại từ đầu bằng Rust.
 
 ---

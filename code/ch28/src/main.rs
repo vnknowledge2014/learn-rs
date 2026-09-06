@@ -143,14 +143,14 @@ fn main() {
 
     // Tiến hành xuất kho lần lượt theo đúng thứ tự ưu tiên
     println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
-    let mut thu_from_handle = Vec::new();
+    let mut handles = Vec::new();
     while let Some(don) = he_thong.handle_don_ke_cont() {
         println!("    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k", don.order_code, don.customer_name, don.tong_tien);
-        thu_from_handle.push(don.order_code);
+        handles.push(don.order_code);
     }
 
     // Xác nhận thứ tự xử lý: Đơn VIP 999 trước, sau đó là 101, rồi đến 102
-    assert_eq!(thu_from_handle, vec![999, 101, 102]);
+    assert_eq!(handles, vec![999, 101, 102]);
     assert_eq!(he_thong.so_don_dang_cho(), 0);
     println!("    => Toàn bộ hàng đợi đã được xử lý sạch sẽ!");
 
@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn kiem_tra_ngoac() {
+    fn bracket_matching() {
         assert!(is_balanced_brackets("(a[b]{c})"));
         assert!(is_balanced_brackets(""));
         assert!(!is_balanced_brackets("(a]"));
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn hang_doi_fifo_va_uu_tien_vip() {
+    fn fifo_queue_and_vip_priority() {
         let mut hd = QueueDonQueue::new();
         hd.them_don(don(1, "A"));
         hd.them_don(don(2, "B"));

@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables)]
 //! Chương 56 — Kỹ nghệ Ngữ cảnh & Tác tử: Context, Harness, Loop, Graph Engineering.
 //! Toàn bộ chạy offline: mô hình ngôn ngữ được thay bằng một bản giả tất định,
-//! đúng compute thần "test double" ở Chương 55 — nhờ vậy mọi thứ kiểm thử được.
+//! đúng tinh thần "test double" ở Chương 55 — nhờ vậy mọi thứ kiểm thử được.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn ngu_canh_khong_bao_gio_vuot_ngan_sach() {
+    fn context_never_exceeds_budget() {
         let list = vec![mau("a", 400, 0.9, false), mau("b", 400, 0.8, false), mau("c", 400, 0.7, false)];
         let g = close_edge_call(list, 1000);
         assert!(g.tong_token <= 1000, "vượt ngân sách: {}", g.tong_token);
@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn mau_ghim_luon_duoc_giu() {
+    fn pinned_items_are_always_kept() {
         let list = vec![
             mau("quy_tac", 100, 0.01, true),  // liên quan cực thấp nhưng GHIM
             mau("to", 900, 0.99, false),
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn uu_tien_mat_do_gia_tri_chu_khong_phai_diem_tho() {
+    fn ranks_by_value_density_not_raw_score() {
         // "nho" có điểm thấp hơn nhưng mật độ (lq/token) cao hơn nhiều
         let list = vec![mau("to", 900, 0.9, false), mau("nho", 90, 0.5, false)];
         let g = close_edge_call(list, 500);
@@ -409,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn chong_lang_quen_dat_quan_trong_o_hai_dau() {
+    fn anti_forgetting_puts_key_items_at_both_ends() {
         let list = vec![mau("a", 1, 0.9, false), mau("b", 1, 0.5, false), mau("c", 1, 0.8, false)];
         let sx = forgetting_resistant_sort(list);
         // xếp giảm dần: a(.9) c(.8) b(.5) -> chẵn ra đầu, lẻ ra cuối (đảo): a, b, c
@@ -418,21 +418,21 @@ mod tests {
     }
 
     #[test]
-    fn cong_cu_tra_loi_dung_va_bao_loi_ro_rang() {
+    fn tool_answers_correctly_and_errors_clearly() {
         let cc = LegacyComputeTool;
         assert_eq!(cc.run("1,2,3"), LegacyToolResult::Xong("6".into()));
         assert!(matches!(cc.run("1,x"), LegacyToolResult::Loi(_)));
     }
 
     #[test]
-    fn unit_frame_reject_cong_old_out_portfolio() {
+    fn harness_rejects_unregistered_tools() {
         let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
         // Tác tử KHÔNG THỂ gọi thứ không được đăng ký — đây là ranh giới an toàn.
         assert!(matches!(frame.goi("xoa_o_cung", "/"), LegacyToolResult::Loi(_)));
     }
 
     #[test]
-    fn round_loop_use_when_hoan_into() {
+    fn loop_stops_on_completion() {
         let frame = UnitFrame::new(5).register(Box::new(LegacyComputeTool));
         let which = UnitWhichPrice { size_sell: vec![
             ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "40,2".into() },
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_lap_dung_khi_het_luot_goi() {
+    fn loop_stops_when_out_of_calls() {
         let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
         // Bộ não không bao giờ trả lời, chỉ gọi công cụ với tham số KHÁC nhau
         let which = UnitWhichPrice { size_sell: vec![
@@ -460,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn round_loop_phat_show_tac_from_is_link() {
+    fn loop_detects_stuck_agent() {
         let frame = UnitFrame::new(50).register(Box::new(LegacyComputeTool));
         let which = UnitWhichPrice { size_sell: vec![
             ExecClose::GoiCongCu { name: "tinh_tong".into(), param: "1".into() },
@@ -472,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn next_do_thi_access_export_use_do() {
+    fn graph_retrieval_respects_depth() {
         let mut g = RealValueGraph::new();
         g.add_entity("A", "a"); g.add_entity("B", "b");
         g.add_entity("C", "c"); g.add_entity("D", "d");
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn do_thi_khong_lap_vo_han_khi_co_chu_trinh() {
+    fn graph_walk_terminates_on_cycles() {
         let mut g = RealValueGraph::new();
         g.add_entity("A", "a"); g.add_entity("B", "b");
         g.add_relation("A", "r", "B");

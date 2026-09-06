@@ -351,10 +351,10 @@ impl L3Book {
             }
             BanTin::CancelOrder { id, so_luong_huy } => {
                 if let Some(l) = self.order.get_mut(id) {
-                    let thuc_cancel = (*so_luong_huy).min(l.remaining);
-                    l.remaining -= thuc_cancel;
+                    let actually_cancelled = (*so_luong_huy).min(l.remaining);
+                    l.remaining -= actually_cancelled;
                     let (c, g, het) = (l.side, l.price, l.remaining == 0);
-                    self.l2.bot(c, g, thuc_cancel, het);
+                    self.l2.bot(c, g, actually_cancelled, het);
                     if het { self.remove_from_queue(*id, c, g); self.order.remove(id); }
                 }
             }
@@ -542,7 +542,7 @@ mod tests {
 
     // ---------- Giao thức nhị phân ----------
     #[test]
-    fn ma_hoa_roi_phan_tich_ra_dung_ban_goc() {
+    fn encode_then_parse_round_trips() {
         let all_bt = vec![
             BanTin::AddOrder { id: 1, id_chain: 7, side: Side::Buy, price: 8_450, quantity: 100 },
             BanTin::AddOrder { id: 2, id_chain: 7, side: Side::Sell, price: -50, quantity: 1 },
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn analyze_reject_call_qua_ngan() {
+    fn parser_rejects_short_packets() {
         assert_eq!(analyze(&[]), Err(ErrorAnalyze::QuaNgan { can: 17, co: 0 }));
         assert_eq!(analyze(&[b'A'; 10]), Err(ErrorAnalyze::QuaNgan { can: 17, co: 10 }));
         // Đủ phần đầu chung nhưng thiếu thân bản tin 'A'
@@ -567,13 +567,13 @@ mod tests {
     }
 
     #[test]
-    fn analyze_reject_kind_sell_info_is() {
+    fn parser_rejects_unknown_message_type() {
         let mut b = vec![b'Z']; b.extend_from_slice(&[0u8; 60]);
         assert_eq!(analyze(&b), Err(ErrorAnalyze::LoaiBanTinLa(b'Z')));
     }
 
     #[test]
-    fn analyze_reject_id_side_is() {
+    fn parser_rejects_unknown_side_code() {
         let g = FieldPacket { nonce: 1, timestamp_nanos: 1,
             ban_tin: BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                         price: 100, quantity: 1 } };
@@ -583,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn nhi_phan_gon_hon_json_nhieu_lan() {
+    fn binary_is_far_smaller_than_json() {
         let g = FieldPacket { nonce: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
             ban_tin: BanTin::AddOrder { id: 999, id_chain: 1, side: Side::Buy,
                                         price: 8_450, quantity: 100 } };
@@ -592,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn dung_thu_tu_byte_lon_truoc() {
+    fn uses_big_endian_byte_order() {
         // Giao thức mạng LUÔN dùng big-endian. Nhầm sang little-endian thì
         // số nhỏ vẫn "chạy" nhưng giá trị hoàn toàn sai.
         let g = FieldPacket { nonce: 0x0102030405060708, timestamp_nanos: 0,
@@ -603,7 +603,7 @@ mod tests {
 
     // ---------- Phát hiện khe ----------
     #[test]
-    fn amount_lien_mach_no_report_khe() {
+    fn a_contiguous_stream_reports_no_gap() {
         let mut p = GapDetector::new(0);
         for g in generate_session(100, 1) {
             assert_eq!(p.nhan(g), KetQuaNhan::DungThuTu);
@@ -613,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn phat_show_use_khe_and_num_sell_info_mat() {
+    fn detects_the_gap_and_counts_lost_messages() {
         let session = generate_session(10, 2);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
@@ -631,26 +631,26 @@ mod tests {
     }
 
     #[test]
-    fn chi_xin_phat_lai_MOT_lan_cho_mot_khe() {
+    fn requests_retransmission_only_once_per_gap() {
         // Nếu báo khe ở mọi bản tin sau đó, ta sẽ gửi hàng nghìn yêu cầu phát
         // lại cho cùng một khe và tự làm sập luồng khôi phục của sàn.
         let session = generate_session(20, 8);
         let mut p = GapDetector::new(0);
-        let mut count_report_khe = 0;
+        let mut gap_count = 0;
         for (i, g) in session.iter().enumerate() {
             if (3..=5).contains(&i) { continue; }
             if matches!(p.nhan(g.clone()), KetQuaNhan::ThieuBanTin { .. }) {
-                count_report_khe += 1;
+                gap_count += 1;
             }
         }
-        assert_eq!(count_report_khe, 1, "một khe chỉ được xin phát lại đúng một lần");
+        assert_eq!(gap_count, 1, "một khe chỉ được xin phát lại đúng một lần");
         assert_eq!(p.slot_count, 1);
         assert_eq!(p.tong_ban_tin_mat, 3);
         assert!(p.dang_recovery(), "vẫn đang chờ dữ liệu phát lại");
     }
 
     #[test]
-    fn roi_che_do_khoi_phuc_sau_khi_khe_duoc_lap_du() {
+    fn leaves_recovery_once_the_gap_is_filled() {
         let session = generate_session(20, 8);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
@@ -680,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    fn ban_tin_toi_som_duoc_dem_lai_chu_khong_vut_di() {
+    fn early_messages_are_buffered_not_dropped() {
         let session = generate_session(10, 4);
         let mut p = GapDetector::new(0);
         p.nhan(session[0].clone());
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn lap_khe_roi_rut_duoc_toan_bo() {
+    fn filling_the_gap_drains_everything() {
         let session = generate_session(10, 5);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
@@ -707,7 +707,7 @@ mod tests {
 
     // ---------- Sổ L2 ----------
     #[test]
-    fn l2_return_use_price_good_nhat_two_side() {
+    fn l2_reports_best_on_both_sides() {
         let mut s = L2Book::new();
         s.them(Side::Buy, 8_390, 100);
         s.them(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên mua
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn l2_coalesce_quantity_and_count_order_book_same_level_price() {
+    fn l2_aggregates_size_and_order_count_per_level() {
         let mut s = L2Book::new();
         for _ in 0..3 { s.them(Side::Buy, 8_400, 100); }
         let (m, _) = s.peak_num(1);
@@ -728,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn level_price_done_quantity_must_bien_mat_block_num() {
+    fn an_emptied_level_disappears_from_the_book() {
         // Nếu để lại mức rỗng, `best_bid` sẽ trỏ vào chỗ không có gì —
         // và chiến lược sẽ gửi lệnh vào hư không.
         let mut s = L2Book::new();
@@ -740,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn bot_qua_khoi_luong_khong_lam_am_so() {
+    fn over_reducing_never_makes_size_negative() {
         let mut s = L2Book::new();
         s.them(Side::Buy, 8_400, 100);
         assert!(s.bot(Side::Buy, 8_400, 99_999, true), "trừ quá cũng chỉ về 0");
@@ -749,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn so_rong_khong_panic_va_khong_bao_cheo() {
+    fn empty_book_neither_panics_nor_reports_crossed() {
         let s = L2Book::new();
         assert_eq!(s.best_bid(), None);
         assert_eq!(s.spread(), None);
@@ -758,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn phat_hien_so_bi_cheo_va_bi_khoa() {
+    fn detects_crossed_and_locked_books() {
         let mut cheo = L2Book::new();
         cheo.them(Side::Buy, 8_500, 100);
         cheo.them(Side::Sell, 8_400, 100);
@@ -774,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn gia_can_bang_lech_ve_phia_it_khoi_luong() {
+    fn fair_price_leans_toward_the_thin_side() {
         // Nhiều người muốn mua hơn bán → áp lực đẩy giá lên → giá cân bằng
         // phải gần giá BÁN hơn.
         let mut s = L2Book::new();
@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn peak_num_return_use_thu_from_uu_tien() {
+    fn top_of_book_respects_priority_order() {
         let mut s = L2Book::new();
         for g in [8_380, 8_390, 8_400] { s.them(Side::Buy, g, 100); }
         for g in [8_430, 8_420, 8_410] { s.them(Side::Sell, g, 100); }
@@ -799,7 +799,7 @@ mod tests {
 
     // ---------- Sổ L3 ----------
     #[test]
-    fn l3_and_l2_always_nhat_quan_qua_all_session_long() {
+    fn l3_and_l2_stay_consistent_over_a_long_session() {
         // BẤT BIẾN QUAN TRỌNG NHẤT của chương: L2 phải luôn là bản tổng hợp
         // đúng của L3. Lệch nhau nghĩa là có bản tin bị xử lý sai.
         let mut s = L3Book::new();
@@ -821,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn l3_giu_dung_uu_tien_thoi_gian() {
+    fn l3_preserves_time_priority() {
         let mut s = L3Book::new();
         for (id, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
             s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn khop_het_lenh_dau_hang_day_ca_hang_len() {
+    fn filling_the_head_advances_the_whole_queue() {
         let mut s = L3Book::new();
         for (id, sl) in [(1u64, 500u32), (2, 300)] {
             s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
@@ -849,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn khop_mot_phan_giu_nguyen_vi_tri() {
+    fn a_partial_fill_keeps_queue_position() {
         let mut s = L3Book::new();
         for (id, sl) in [(1u64, 500u32), (2, 300)] {
             s.apply(&BanTin::AddOrder { id, id_chain: 1, side: Side::Buy,
@@ -862,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn thay_the_lenh_lam_mat_sach_uu_tien_thoi_gian() {
+    fn replacing_an_order_forfeits_time_priority() {
         // Bài học đắt tiền: sửa giá/khối lượng một lệnh = xuống cuối hàng.
         // Đó là lý do chiến lược tốt cân nhắc rất kỹ trước khi sửa lệnh.
         let mut s = L3Book::new();
@@ -878,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn huy_lenh_khong_ton_tai_khong_lam_hong_so() {
+    fn cancelling_an_unknown_order_leaves_the_book_intact() {
         let mut s = L3Book::new();
         s.apply(&BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                       price: 8_400, quantity: 100 });
@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_qua_quantity_remaining_van_safe() {
+    fn cancelling_more_than_remaining_is_safe() {
         let mut s = L3Book::new();
         s.apply(&BanTin::AddOrder { id: 1, id_chain: 1, side: Side::Buy,
                                       price: 8_400, quantity: 100 });
@@ -898,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn vi_tri_cua_lenh_khong_ton_tai_la_none() {
+    fn position_of_an_unknown_order_is_none() {
         let s = L3Book::new();
         assert_eq!(s.queue_position(123), None);
         assert_eq!(s.queue_ahead(123), None);
@@ -906,7 +906,7 @@ mod tests {
 
     // ---------- Sinh dữ liệu ----------
     #[test]
-    fn gen_session_all_peak_and_lien_mach_nonce() {
+    fn generated_session_is_deterministic_and_gapless() {
         assert_eq!(generate_session(50, 9), generate_session(50, 9));
         assert_ne!(generate_session(50, 9), generate_session(50, 10));
         let p = generate_session(200, 1);
@@ -914,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn thoi_diem_trong_phien_tang_don_dieu() {
+    fn session_timestamps_are_monotonic() {
         let p = generate_session(500, 3);
         for w in p.windows(2) {
             assert!(w[1].timestamp_nanos > w[0].timestamp_nanos,
@@ -923,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn moi_ban_tin_sinh_ra_deu_ma_hoa_phan_tich_duoc() {
+    fn every_generated_message_round_trips() {
         for g in generate_session(500, 11) {
             assert_eq!(analyze(&encode(&g)), Ok(g.clone()));
         }

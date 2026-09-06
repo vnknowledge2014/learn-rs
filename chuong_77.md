@@ -80,7 +80,7 @@ Trường hợp đảo chiều là chỗ hay sai nhất. Nếu xử lý nó như
 
 ### 2. Thứ tự các phép kiểm tra là một quyết định thiết kế
 
-Trong khi xây chương này, một lỗi compute vi xuất hiện: kiểm tra **giá trị lệnh** đứng trước kiểm tra **vị thế**, nên nhiều bài kiểm thử không bao giờ chạm tới nhánh vị thế — chúng bị chặn sớm hơn.
+Trong khi xây chương này, một lỗi tinh vi xuất hiện: kiểm tra **giá trị lệnh** đứng trước kiểm tra **vị thế**, nên nhiều bài kiểm thử không bao giờ chạm tới nhánh vị thế — chúng bị chặn sớm hơn.
 
 Bài học rộng hơn: khi cổng có nhiều luật, **luật nào chặn trước sẽ che khuất luật sau**. Điều đó ảnh hưởng tới cả kiểm thử lẫn chẩn đoán sản xuất — thông báo lỗi bạn nhận được không nhất thiết là vấn đề nghiêm trọng nhất.
 
@@ -409,12 +409,12 @@ impl ArbCap {
         let cl = self.spread(gia_a, gia_b);
         // Tính điểm z TRƯỚC khi thêm điểm mới — nếu không, chính điểm dị
         // biệt ta muốn phát hiện lại kéo trung bình về phía nó và tự che mình.
-        let day_truoc_do = self.window.day();
+        let previous_series = self.window.day();
         let z = self.window.diem_z(cl);
         self.window.them(cl);
 
         let z = match z {
-            Some(z) if day_truoc_do => z,
+            Some(z) if previous_series => z,
             _ => return SignalCap::KhongLam,
         };
 
@@ -494,17 +494,17 @@ pub fn risk_level(equity_curve: &[i64]) -> RiskOwned {
         peak = peak.max(v);
         dd = dd.max(peak - v);
     }
-    let thay_swap: Vec<f64> = equity_curve.windows(2).map(|w| (w[1] - w[0]) as f64).collect();
-    let n = thay_swap.len() as f64;
-    let tb = thay_swap.iter().sum::<f64>() / n;
-    let ps = thay_swap.iter().map(|x| (x - tb).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
+    let deltas: Vec<f64> = equity_curve.windows(2).map(|w| (w[1] - w[0]) as f64).collect();
+    let n = deltas.len() as f64;
+    let tb = deltas.iter().sum::<f64>() / n;
+    let ps = deltas.iter().map(|x| (x - tb).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
     let sd = ps.sqrt();
     RiskOwned {
         total_pnl: equity_curve[equity_curve.len() - 1] - equity_curve[0],
         max_drawdown: dd,
         ratio_drawdown: if peak.abs() > 0 { dd as f64 / peak.abs() as f64 } else { 0.0 },
-        num_session_lai: thay_swap.iter().filter(|&&x| x > 0.0).count(),
-        num_session_lo: thay_swap.iter().filter(|&&x| x < 0.0).count(),
+        num_session_lai: deltas.iter().filter(|&&x| x > 0.0).count(),
+        num_session_lo: deltas.iter().filter(|&&x| x < 0.0).count(),
         sharpe_ratio: if sd < 1e-12 { 0.0 } else { tb / sd },
     }
 }
@@ -588,15 +588,15 @@ fn main() {
     println!("\n5. ARBITRAGE CẶP");
     let (ga, gb) = gen_cap_price(3_000, 2024, 1.5);
     let mut arb = ArbCap::new(1.5, 100, 2.0, 0.5, 4.0);
-    let (mut in_, mut ra) = (0, 0);
+    let (mut entries, mut ra) = (0, 0);
     for i in 0..ga.len() {
         match arb.update(ga[i], gb[i]) {
-            SignalCap::MoDaiA | SignalCap::MoDaiB => in_ += 1,
+            SignalCap::MoDaiA | SignalCap::MoDaiB => entries += 1,
             SignalCap::Dong => ra += 1,
             SignalCap::KhongLam => {}
         }
     }
-    println!("   {} điểm dữ liệu → vào lệnh {} lần · thoát {} lần", ga.len(), in_, ra);
+    println!("   {} điểm dữ liệu → vào lệnh {} lần · thoát {} lần", ga.len(), entries, ra);
     println!("   → Ngưỡng dừng 4σ tồn tại vì chênh lệch giãn mãi nghĩa là quan hệ ĐÃ GÃY,");
     println!("     không phải 'cơ hội càng ngon hơn'.");
 
@@ -657,7 +657,7 @@ mod tests {
     }
 
     #[test]
-    fn chan_ngon_tay_beo() {
+    fn blocks_fat_finger_prices() {
         // Gõ 8400 thành 84000 — lỗi có thật, xảy ra hằng năm ở mọi thị trường.
         let mut c = sample_gate();
         let e = c.check(Side::Buy, 84_000, 1, 8_400, 1_000_000_000).unwrap_err();
@@ -667,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn khong_co_gia_tham_chieu_thi_bo_qua_kiem_tra_ngon_tay_beo() {
+    fn no_reference_price_skips_the_fat_finger_check() {
         // Mã mới niêm yết chưa có giá tham chiếu — không được chặn oan.
         let mut c = sample_gate();
         assert!(c.check(Side::Buy, 9_000, 1, 0, 1_000_000_000).is_ok());
@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn block_value_order_qua_lon() {
+    fn blocks_oversized_notional() {
         let mut c = sample_gate();
         assert!(matches!(c.check(Side::Buy, 8_400, 100_000, 8_400, 1).unwrap_err(),
                          RejectReason::VuotGiaTriLenh { .. }));
@@ -734,7 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn cong_tac_tat_chan_moi_thu_va_khong_tu_go_duoc() {
+    fn the_kill_switch_blocks_everything_and_never_self_clears() {
         let mut c = sample_gate();
         c.enable_all_switches();
         // Kể cả lệnh hoàn toàn hợp lệ cũng không lọt
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    fn ban_khong_roi_mua_lai_re_hon_thi_co_lai() {
+    fn short_then_cheaper_buyback_is_profitable() {
         let mut c = sample_gate();
         c.record_recv_fill(Side::Sell, 9_000, 100);
         assert_eq!(c.position, -100);
@@ -820,7 +820,7 @@ mod tests {
 
     // ---------- Tín hiệu ----------
     #[test]
-    fn mat_can_bang_nam_trong_khoang_am_mot_den_mot() {
+    fn imbalance_stays_within_minus_one_and_one() {
         assert_eq!(imbalance(0, 0), 0.0, "sổ rỗng thì trung tính, không chia cho 0");
         assert_eq!(imbalance(100, 100), 0.0);
         assert_eq!(imbalance(100, 0), 1.0);
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn gia_vi_mo_lech_ve_phia_ben_it_khoi_luong() {
+    fn micro_price_leans_toward_the_thin_side() {
         // Nhiều người chờ MUA → áp lực đẩy giá lên → giá vi mô gần giá BÁN.
         let many_buy = price_pos_open(8_400, 9_000, 8_410, 1_000).unwrap();
         let many_sell = price_pos_open(8_400, 1_000, 8_410, 9_000).unwrap();
@@ -868,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn phuong_sai_khong_bao_gio_am_du_sai_so_dau_phay_dong() {
+    fn variance_is_never_negative_despite_float_error() {
         let mut c = StatsWindow::new(50);
         for _ in 0..50 { c.them(1_000_000.0); } // toàn giá trị giống hệt, cỡ lớn
         assert!(c.variance() >= 0.0, "phải chặn sai số làm ra số âm");
@@ -896,7 +896,7 @@ mod tests {
 
     // ---------- Arbitrage cặp ----------
     #[test]
-    fn arb_khong_ra_tin_hieu_khi_chua_du_du_lieu() {
+    fn arb_stays_silent_until_warm() {
         let mut a = ArbCap::new(1.5, 100, 2.0, 0.5, 4.0);
         let (ga, gb) = gen_cap_price(50, 1, 1.5);
         for i in 0..50 {
@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn arb_vao_lenh_khi_chenh_lech_gian_bat_thuong() {
+    fn arb_enters_on_an_abnormal_spread() {
         let mut a = ArbCap::new(1.0, 20, 2.0, 0.5, 10.0);
         // 20 điểm ổn định quanh 0 (có dao động nhỏ để độ lệch chuẩn khác 0)
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn arb_khong_mo_hai_vi_the_cung_luc() {
+    fn arb_never_opens_two_positions_at_once() {
         let mut a = ArbCap::new(1.0, 20, 2.0, 0.5, 100.0);
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
         assert_ne!(a.update(10_100, 10_000), SignalCap::KhongLam);
@@ -929,7 +929,7 @@ mod tests {
     }
 
     #[test]
-    fn arb_cat_lo_khi_chenh_lech_gian_qua_nguong_dung() {
+    fn arb_stops_out_beyond_the_threshold() {
         // Bài học sống còn: chênh lệch giãn mãi nghĩa là quan hệ ĐÃ GÃY,
         // không phải "cơ hội càng tốt hơn". Phải thoát.
         let mut a = ArbCap::new(1.0, 20, 2.0, 0.5, 3.0);
@@ -950,14 +950,14 @@ mod tests {
 
     // ---------- Định cỡ ----------
     #[test]
-    fn kelly_bang_khong_khi_khong_co_loi_the() {
+    fn kelly_is_zero_without_an_edge() {
         assert_eq!(kelly_fraction(0.5, 1.0), 0.0, "tung đồng xu công bằng → đừng đánh");
         assert_eq!(kelly_fraction(0.4, 1.0), 0.0, "lợi thế âm → tuyệt đối đừng đánh");
         assert_eq!(kelly_fraction(0.3, 0.5), 0.0);
     }
 
     #[test]
-    fn kelly_tang_theo_loi_the() {
+    fn kelly_grows_with_the_edge() {
         let mut prev = 0.0;
         for p in [0.55, 0.60, 0.65, 0.70, 0.80] {
             let f = kelly_fraction(p, 1.0);
@@ -968,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn kelly_dung_gia_tri_kinh_dien() {
+    fn kelly_matches_the_textbook_value() {
         // 60% thắng, ăn 1 thua 1 → Kelly = 2p − 1 = 0.20
         assert!((kelly_fraction(0.60, 1.0) - 0.20).abs() < 1e-9);
         // 40% thắng, ăn 2 thua 1 → (0.4·2 − 0.6)/2 = 0.10
@@ -976,7 +976,7 @@ mod tests {
     }
 
     #[test]
-    fn kelly_mot_phan_luon_nho_hon_kelly_toan_phan() {
+    fn fractional_kelly_is_always_below_full_kelly() {
         for p in [0.55, 0.60, 0.75] {
             let toan = kelly_fraction(p, 1.0);
             let part = fractional_kelly(p, 1.0, 0.25);
@@ -986,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn kelly_khong_chia_cho_khong() {
+    fn kelly_never_divides_by_zero() {
         assert_eq!(kelly_fraction(0.9, 0.0), 0.0);
         assert_eq!(kelly_fraction(0.9, -1.0), 0.0);
     }
@@ -1002,14 +1002,14 @@ mod tests {
     }
 
     #[test]
-    fn co_theo_bien_dong_khong_bao_gio_don_bay_qua_von() {
+    fn vol_sizing_never_levers_beyond_capital() {
         // Mã êm hơn mục tiêu KHÔNG được dẫn tới mua vượt vốn.
         let c = has_theo_volatility(1_000_000, 0.40, 0.05, 100);
         assert_eq!(c, 10_000, "tỉ trọng bị chặn ở 1.0, không dùng đòn bẩy ngầm");
     }
 
     #[test]
-    fn co_theo_bien_dong_an_toan_voi_dau_vao_xau() {
+    fn vol_sizing_is_safe_on_bad_input() {
         assert_eq!(has_theo_volatility(1_000_000, 0.1, 0.0, 100), 0);
         assert_eq!(has_theo_volatility(1_000_000, 0.1, 0.1, 0), 0);
         assert_eq!(has_theo_volatility(1_000_000, 0.1, -0.5, 100), 0);
@@ -1017,7 +1017,7 @@ mod tests {
 
     // ---------- Thước đo rủi ro ----------
     #[test]
-    fn duong_von_di_len_deu_thi_khong_sut_giam() {
+    fn a_monotonic_equity_curve_has_no_drawdown() {
         let d: Vec<i64> = (0..50).map(|i| 100_000 + i * 100).collect();
         let r = risk_level(&d);
         assert_eq!(r.max_drawdown, 0);
@@ -1033,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn sut_giam_khong_bao_gio_am() {
+    fn drawdown_is_never_negative() {
         for hat in [1u64, 7, 42] {
             let mut s = hat;
             let d: Vec<i64> = (0..200).map(|_| {
@@ -1045,7 +1045,7 @@ mod tests {
     }
 
     #[test]
-    fn duong_von_em_co_sharpe_cao_hon_duong_xoc() {
+    fn a_smooth_curve_has_a_higher_sharpe() {
         // Cùng đích đến, nhưng đường êm mới là đường người ta đi hết được.
         // Đường "êm" vẫn phải có dao động nhỏ: đường thẳng tuyệt đối cho độ
         // lệch chuẩn 0, và khi đó Sharpe không định nghĩa được (ta trả 0).
@@ -1060,7 +1060,7 @@ mod tests {
     }
 
     #[test]
-    fn duong_von_qua_ngan_khong_panic() {
+    fn a_very_short_curve_does_not_panic() {
         assert_eq!(risk_level(&[]).total_pnl, 0);
         assert_eq!(risk_level(&[100]).max_drawdown, 0);
         assert_eq!(risk_level(&[100, 100]).sharpe_ratio, 0.0, "không dao động → Sharpe 0");

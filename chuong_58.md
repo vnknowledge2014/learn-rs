@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn suy_kieu_dung() {
+    fn type_inference_is_correct() {
         assert_eq!(infer_type("42".into()), Value::So(42.0));
         assert_eq!(infer_type("3.14".into()), Value::So(3.14));
         assert_eq!(infer_type("Hà Nội".into()), Value::Chuoi("Hà Nội".into()));
@@ -410,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn elec_value_thieu() {
+    fn fills_missing_values() {
         let mut b = bang_mau();
         b.missing_signal("thu", 0.0);
         // Sau khi điền, cột 'thu' không còn Rong nào
@@ -436,21 +436,21 @@ mod tests {
     }
 
     #[test]
-    fn filter_theo_pos_from() {
+    fn filters_by_predicate() {
         let b = bang_mau();
         let l = b.filter(|h| h["thu"].so().map(|x| x >= 100.0).unwrap_or(false));
         assert_eq!(l.num_queue(), 2); // A=100, B=200
     }
 
     #[test]
-    fn mean_truot_use() {
+    fn moving_average_is_correct() {
         assert_eq!(moving_average(&[1.0, 2.0, 3.0, 4.0], 2), vec![1.5, 2.5, 3.5]);
         assert_eq!(moving_average(&[1.0], 3), Vec::<f64>::new()); // ngắn hơn cửa sổ
         assert_eq!(moving_average(&[1.0, 2.0], 0), Vec::<f64>::new());
     }
 
     #[test]
-    fn phat_show_point_enable_normal() {
+    fn detects_outliers() {
         // Ở ngưỡng 1.5σ, điểm 100 bị phát hiện.
         let bt = emit_normal(&[10.0, 10.0, 10.0, 100.0, 10.0], 1.5);
         assert_eq!(bt, vec![3]);
@@ -463,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn inner_join_chi_giu_khoa_khop() {
+    fn inner_join_keeps_only_matching_keys() {
         let mut t = Bang::new(vec!["id", "ten"]);
         t.add_queue(vec![Value::So(1.0), Value::Chuoi("An".into())]);
         t.add_queue(vec![Value::So(2.0), Value::Chuoi("Bình".into())]);

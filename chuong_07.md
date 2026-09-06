@@ -165,10 +165,10 @@ fn main() {
     println!("- Số lượng ký tự trong chuỗi thông tin: {}", length);
 
     // Nhiều người có thể cùng mượn đọc đồng thời một lúc:
-    let nguoi_view_1 = &thong_tin_xe;
-    let nguoi_view_2 = &thong_tin_xe;
-    println!("- Độc giả 1 đọc: {}", nguoi_view_1);
-    println!("- Độc giả 2 đọc: {}", nguoi_view_2);
+    let reader_1 = &thong_tin_xe;
+    let reader_2 = &thong_tin_xe;
+    println!("- Độc giả 1 đọc: {}", reader_1);
+    println!("- Độc giả 2 đọc: {}", reader_2);
 
     // --- PHẦN 2: THAM CHIẾU KHẢ BIẾN (&mut T - MƯỢN ĐỂ SỬA) ---
     println!("\n2. Minh họa mượn dữ liệu để sửa đổi trực tiếp:");

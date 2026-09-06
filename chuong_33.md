@@ -53,7 +53,7 @@ Hãy cùng quan sát hệ thống biển báo trên mạng lưới đường cao
   - **Tầng 3 (Nút lá)**: Bạn đỗ xe vào đúng bãi đỗ xe chứa các số từ 70 đến 99. Tại đây, bạn nhìn thấy ngay ngôi nhà số 85!
 - Chỉ qua đúng **3 lần nhìn biển báo**, bạn đã tìm thấy mục tiêu giữa hàng chục triệu số nhà. Mỗi lần nhìn biển báo tương đương đúng 1 lần đọc trang 4KB từ đĩa vào RAM!
 
-### 2. Sự khác biệt compute tế giữa B-Tree và B+ Tree
+### 2. Sự khác biệt tinh tế giữa B-Tree và B+ Tree
 - **Trong Cây B-Tree truyền thống**: Mỗi biển báo trên cao (nút trong) lại cõng theo một thùng hàng nặng trịch (dữ liệu bản ghi thực tế). Điều này khiến tấm biển báo trở nên cồng kềnh, một trang 4KB chỉ chứa được vài ba biển báo, làm cây mọc cao lên.
 - **Trong Cây B+ Tree hiện đại**: 
   - Các nút trên cao chỉ chứa duy nhất các con số chỉ hướng (Khóa - Key) và địa chỉ trang con (`page_id`), cực kỳ thanh thoát và nhẹ nhàng. Một trang 4KB có thể nhồi nhét tới hàng trăm khóa chỉ hướng!
@@ -116,7 +116,7 @@ pub enum BPlusNode<K: Ord + Copy, V: Clone> {
 }
 
 impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
-    /// Tạo một nút lá mới compute
+    /// Tạo một nút lá mới tinh
     pub fn new_leaf() -> Self {
         BPlusNode::Leaf {
             keys: Vec::new(),
@@ -244,13 +244,13 @@ fn main() {
     is_must.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
     is_must.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
 
-    let node_goc = BPlusNode::Internal {
+    let root_node = BPlusNode::Internal {
         keys: vec![50],
         children: vec![Box::new(is_left), Box::new(is_must)],
     };
 
     let b_tree = BPlusTree {
-        root: Box::new(node_goc),
+        root: Box::new(root_node),
         total_records: 5,
     };
 

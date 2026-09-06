@@ -89,13 +89,13 @@ Hệ quả rất hay: **không có dự đoán rẽ nhánh, không có dự đo�
 
 Trên CPU, sổ lệnh là cây hoặc bảng băm, và tìm giá tốt nhất mất O(log n) với vài lần trượt cache.
 
-Trên FPGA với 16 mức giá lưu trong thanh ghi, bạn có thể so sánh **cả 16 mức cùng lúc** trong một owner kỳ. Tìm giá tốt nhất là một cây so sánh độ sâu 4 — khoảng 2 ns.
+Trên FPGA với 16 mức giá lưu trong thanh ghi, bạn có thể so sánh **cả 16 mức cùng lúc** trong một chu kỳ. Tìm giá tốt nhất là một cây so sánh độ sâu 4 — khoảng 2 ns.
 
 Đánh đổi: số mức phải **cố định lúc tổng hợp**. Không có `Vec` nào để `push` cả. Đây là ràng buộc lớn nhất khi chuyển tư duy từ phần mềm sang phần cứng: mọi kích thước phải biết trước.
 
 ### 4. Đường ống: độ trễ hay thông lượng?
 
-Chia mạch thành nhiều tầng có thanh ghi ở giữa cho phép chạy ở tần số cao hơn (vì mỗi tầng ngắn hơn), nên **thông lượng** tăng. Nhưng **độ trễ** tổng cộng tăng, vì thêm mỗi tầng là thêm một owner kỳ.
+Chia mạch thành nhiều tầng có thanh ghi ở giữa cho phép chạy ở tần số cao hơn (vì mỗi tầng ngắn hơn), nên **thông lượng** tăng. Nhưng **độ trễ** tổng cộng tăng, vì thêm mỗi tầng là thêm một chu kỳ.
 
 Trong hầu hết lĩnh vực (xử lý ảnh, mạng), thông lượng là thứ đáng giá, nên người ta chia ống rất sâu. Trong HFT thì ngược lại: **độ trễ là thứ được trả tiền**, nên thiết kế cố ý giữ ống nông — thà chạy 200 MHz với 5 tầng còn hơn 500 MHz với 20 tầng.
 
@@ -217,7 +217,7 @@ pub fn xor_tree(data: &[u8]) -> u32 {
     tang.first().copied().unwrap_or(0)
 }
 
-pub fn do_next_xor_tree(n: usize) -> u32 {
+pub fn xor_tree_depth(n: usize) -> u32 {
     if n <= 1 { return 0; }
     (n as f64).log2().ceil() as u32
 }
@@ -295,7 +295,7 @@ impl OrderBookHardware {
     }
 
     /// Độ sâu cây so sánh — quyết định tần số tối đa của mạch.
-    pub fn comparator_depth() -> u32 { do_next_xor_tree(SO_MUC_PHAN_CUNG) }
+    pub fn comparator_depth() -> u32 { xor_tree_depth(SO_MUC_PHAN_CUNG) }
 
     pub fn num_level_dang_use(&self, la_mua: bool) -> usize {
         let o = if la_mua { &self.buy } else { &self.ban };
@@ -461,7 +461,7 @@ fn main() {
     println!("\n2. CÂY XOR — rút gọn song song");
     println!("   {:>8} {:>18} {:>18}", "số byte", "cây (log n tầng)", "tuần tự (n tầng)");
     for n in [4usize, 16, 64, 256, 1024] {
-        println!("   {:>8} {:>18} {:>18}", n, do_next_xor_tree(n), n);
+        println!("   {:>8} {:>18} {:>18}", n, xor_tree_depth(n), n);
     }
     let d: Vec<u8> = (0..=255).collect();
     println!("   Cùng kết quả với cách tuần tự: {}", xor_tree(&d) == xor_tuan_tu(&d));
@@ -547,7 +547,7 @@ mod tests {
 
     // ---------- Cây XOR ----------
     #[test]
-    fn cay_xor_cho_cung_ket_qua_voi_tuan_tu() {
+    fn the_xor_tree_matches_sequential_xor() {
         // Bất biến: song song hoá KHÔNG được đổi kết quả. XOR có tính kết hợp
         // và giao hoán nên gộp theo cây hay theo chuỗi đều như nhau.
         for n in [0usize, 1, 2, 3, 4, 7, 16, 17, 64, 255, 256] {
@@ -557,17 +557,17 @@ mod tests {
     }
 
     #[test]
-    fn do_sau_cay_la_log_chu_khong_tuyen_tinh() {
-        assert_eq!(do_next_xor_tree(1), 0);
-        assert_eq!(do_next_xor_tree(2), 1);
-        assert_eq!(do_next_xor_tree(4), 2);
-        assert_eq!(do_next_xor_tree(256), 8);
-        assert_eq!(do_next_xor_tree(1024), 10, "1024 byte chỉ cần 10 tầng, không phải 1024");
+    fn tree_depth_is_logarithmic_not_linear() {
+        assert_eq!(xor_tree_depth(1), 0);
+        assert_eq!(xor_tree_depth(2), 1);
+        assert_eq!(xor_tree_depth(4), 2);
+        assert_eq!(xor_tree_depth(256), 8);
+        assert_eq!(xor_tree_depth(1024), 10, "1024 byte chỉ cần 10 tầng, không phải 1024");
     }
 
     // ---------- Tách trường ----------
     #[test]
-    fn split_use_new_truong() {
+    fn extracts_every_field_correctly() {
         let mut bt = FieldExtractor::default();
         let g = call_hop_le(b'A', 12_345, 8_450, 100);
         let t = bt.tach(&g).unwrap();
@@ -592,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn call_qua_ngan_is_reject() {
+    fn short_packets_are_rejected() {
         let mut bt = FieldExtractor::default();
         for n in 0..DAI_GOI {
             assert_eq!(bt.tach(&vec![0u8; n]), None, "gói {} byte phải bị từ chối", n);
@@ -601,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn total_check_sai_is_danh_first_no_hop_le() {
+    fn a_bad_checksum_marks_the_packet_invalid() {
         let mut bt = FieldExtractor::default();
         let mut g = call_hop_le(b'A', 1, 100, 10);
         g[19] ^= 0xFF; // phá tổng kiểm tra
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn lat_mot_bit_trong_than_goi_bi_bat() {
+    fn a_single_bit_flip_in_the_body_is_caught() {
         let mut bt = FieldExtractor::default();
         for pos_value in 0..17usize {
             let mut g = call_hop_le(b'A', 999, 8_400, 500);
@@ -623,14 +623,14 @@ mod tests {
     }
 
     #[test]
-    fn split_always_ton_use_one_period() {
+    fn extraction_always_costs_exactly_one_cycle() {
         let bt = FieldExtractor::default();
         assert_eq!(bt.period_split(), 1, "phần cứng tách mọi trường song song");
     }
 
     // ---------- Sổ lệnh phần cứng ----------
     #[test]
-    fn num_empty_no_has_price_good_nhat() {
+    fn an_empty_book_has_no_best_price() {
         let s = OrderBookHardware::default();
         assert_eq!(s.best_bid(), None);
         assert_eq!(s.best_ask(), None);
@@ -638,7 +638,7 @@ mod tests {
     }
 
     #[test]
-    fn return_use_price_good_nhat_two_side() {
+    fn reports_best_on_both_sides() {
         let mut s = OrderBookHardware::default();
         for (g, kl) in [(8_380i64, 100u32), (8_400, 500), (8_390, 300)] {
             s.update(true, g, kl);
@@ -652,7 +652,7 @@ mod tests {
     }
 
     #[test]
-    fn cap_nhat_muc_da_co_thi_ghi_de_khoi_luong() {
+    fn updating_an_existing_level_overwrites_its_size() {
         let mut s = OrderBookHardware::default();
         s.update(true, 8_400, 500);
         s.update(true, 8_400, 700);
@@ -661,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn quantity_ve_no_thi_level_bien_mat() {
+    fn zeroing_the_size_removes_the_level() {
         let mut s = OrderBookHardware::default();
         s.update(true, 8_400, 500);
         s.update(true, 8_390, 300);
@@ -671,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn so_day_thi_giu_lai_cac_muc_tot_nhat() {
+    fn a_full_book_keeps_the_best_levels() {
         // Sổ phần cứng chỉ có 8 ô. Khi đầy, mức tệ nhất phải bị đẩy ra —
         // nếu không, ta sẽ giữ những mức giá vô dụng và bỏ mất mức tốt.
         let mut s = OrderBookHardware::default();
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn ben_ban_cung_giu_lai_muc_tot_nhat() {
+    fn the_ask_side_also_keeps_its_best_levels() {
         let mut s = OrderBookHardware::default();
         for i in 0..SO_MUC_PHAN_CUNG as i64 {
             s.update(false, 9_000 - i, 100);
@@ -703,26 +703,26 @@ mod tests {
     }
 
     #[test]
-    fn do_sau_so_sanh_la_log_so_muc() {
+    fn comparator_depth_is_logarithmic_in_levels() {
         assert_eq!(OrderBookHardware::comparator_depth(), 3, "8 mức → 3 tầng cây so sánh");
     }
 
     // ---------- Mạch rủi ro ----------
-    fn mach() -> RiskCircuit {
+    fn circuit() -> RiskCircuit {
         RiskCircuit { max_value: 1_000_000, max_position: 500,
                     position: 0, switch_all: false }
     }
 
     #[test]
-    fn order_hop_le_no_enable_has_which() {
-        let c = mach().check(true, 8_400, 100);
+    fn a_valid_order_raises_no_flag() {
+        let c = circuit().check(true, 8_400, 100);
         assert!(!c.is_block());
         assert_eq!(c.num_has_enable(), 0);
     }
 
     #[test]
-    fn moi_dieu_kien_bat_dung_co_cua_no() {
-        let m = mach();
+    fn each_condition_raises_its_own_flag() {
+        let m = circuit();
         assert!(m.check(true, 8_400, 0).quantity_no);
         assert!(m.check(true, 0, 100).price_no);
         assert!(m.check(true, 8_400, 1_000).exceed_value);
@@ -732,31 +732,31 @@ mod tests {
     }
 
     #[test]
-    fn nhieu_loi_cung_luc_bat_nhieu_co_cung_luc() {
+    fn multiple_violations_raise_multiple_flags() {
         // Đây là điểm khác biệt thật so với phần mềm: phần mềm `return` ở lỗi
         // ĐẦU TIÊN nên chỉ biết một lỗi; mạch tính song song nên thấy HẾT.
-        let c = mach().check(true, 0, -1);
+        let c = circuit().check(true, 0, -1);
         assert!(c.quantity_no && c.price_no);
         assert!(c.num_has_enable() >= 2, "phần cứng thấy mọi lỗi cùng lúc, không dừng ở lỗi đầu");
     }
 
     #[test]
-    fn ban_khong_cung_bi_chan_boi_han_muc_vi_the() {
-        let m = mach();
+    fn the_short_side_is_bounded_by_the_position_limit_too() {
+        let m = circuit();
         assert!(m.check(false, 100, 600).exceed_position, "chiều bán cũng phải bị chặn");
     }
 
     #[test]
-    fn position_current_can_tinh_in() {
-        let m = RiskCircuit { position: 450, ..mach() };
+    fn current_position_is_counted_in() {
+        let m = RiskCircuit { position: 450, ..circuit() };
         assert!(!m.check(true, 100, 50).exceed_position, "450+50 = 500, vừa trần");
         assert!(m.check(true, 100, 51).exceed_position, "450+51 vượt trần");
         assert!(!m.check(false, 100, 500).exceed_position, "bán thì giảm vị thế");
     }
 
     #[test]
-    fn phep_nhan_khong_bao_gio_tran_so() {
-        let m = mach();
+    fn the_multiply_never_overflows() {
+        let m = circuit();
         // Toàn bộ dùng phép bão hoà: không được panic, và phải báo vượt hạn mức
         let c = m.check(true, i64::MAX, i64::MAX);
         assert!(c.exceed_value);
@@ -766,10 +766,10 @@ mod tests {
     }
 
     #[test]
-    fn check_always_ton_use_one_period() {
+    fn the_check_always_costs_exactly_one_cycle() {
         // Bất biến quan trọng nhất của mạch rủi ro: thời gian KHÔNG phụ thuộc
         // dữ liệu. Nhờ vậy độ trễ không dao động và không rò rỉ thông tin.
-        let m = mach();
+        let m = circuit();
         assert_eq!(m.period_check(), 1);
         for (g, sl) in [(8_400i64, 100i64), (0, 0), (-1, -1), (i64::MAX, i64::MAX)] {
             let _ = m.check(true, g, sl);
@@ -779,14 +779,14 @@ mod tests {
 
     // ---------- Đường ống ----------
     #[test]
-    fn latency_table_total_all_up() {
+    fn latency_is_the_sum_of_the_stages() {
         let o = HwPipeline::typical();
         assert_eq!(o.latency_period(), 3 + 1 + 1 + 2 + 1 + 2 + 3);
         assert!((o.latency_nanos() - 13.0 * NS_MOI_CHU_KY).abs() < 1e-9);
     }
 
     #[test]
-    fn total_thong_amount_table_up_slow_nhat_no_must() {
+    fn throughput_is_set_by_the_slowest_stage_not_the_sum() {
         // Nhầm hai đại lượng này là hiểu sai toàn bộ kiến trúc đường ống.
         let o = HwPipeline::typical();
         assert_eq!(o.first_period_block(), 3, "tầng chậm nhất là 3 owner kỳ");
@@ -794,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn duong_ong_tang_thong_luong_nhung_khong_giam_do_tre() {
+    fn pipelining_raises_throughput_without_cutting_latency() {
         let o = HwPipeline::typical();
         // Một gói: y hệt nhau
         assert_eq!(o.total_period_wait(1), o.latency_period());
@@ -806,14 +806,14 @@ mod tests {
     }
 
     #[test]
-    fn no_call_which_thi_no_ton_period_which() {
+    fn no_packets_means_no_cycles() {
         let o = HwPipeline::typical();
         assert_eq!(o.total_period_wait(0), 0);
         assert_eq!(o.total_cycles_no_pipeline(0), 0);
     }
 
     #[test]
-    fn phan_cung_nhanh_hon_phan_mem_hang_chuc_lan() {
+    fn hardware_beats_software_by_an_order_of_magnitude() {
         let o = HwPipeline::typical();
         let ratio = software_latency_ns() / o.latency_nanos();
         assert!(ratio > 50.0, "phải nhanh hơn ít nhất 50 lần, thực tế {:.0}", ratio);
@@ -821,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn thong_luong_dat_hang_tram_trieu_goi_moi_giay() {
+    fn throughput_reaches_hundreds_of_millions_of_packets() {
         let o = HwPipeline::typical();
         assert!(o.packets_per_second() > 50e6,
                 "phải trên 50 triệu gói/giây, thực tế {:.0}", o.packets_per_second());
@@ -829,13 +829,13 @@ mod tests {
 
     // ---------- Phân công phần cứng/phần mềm ----------
     #[test]
-    fn viec_nong_va_it_doi_thi_xuong_phan_cung() {
+    fn hot_and_stable_work_belongs_in_hardware() {
         let c = HeavyStage { name: "tách gói".into(), rate_swap: 1, on_hot_path: true };
         assert_eq!(partial_sum(&c), ExecutionUnit::PhanCung);
     }
 
     #[test]
-    fn viec_hay_doi_thi_o_lai_phan_mem_du_rat_nong() {
+    fn volatile_work_stays_in_software_even_if_hot() {
         // Bài học kiến trúc quan trọng nhất của chương: tốc độ không đáng giá
         // bằng khả năng thay đổi. Chiến lược sửa 200 lần/năm mà nằm trên FPGA
         // thì mỗi lần thử nghiệm tốn hàng chục phút tổng hợp mạch.
@@ -845,7 +845,7 @@ mod tests {
     }
 
     #[test]
-    fn viec_khong_nong_thi_o_phan_mem_du_it_doi() {
+    fn cold_work_stays_in_software_even_if_stable() {
         let c = HeavyStage { name: "báo cáo".into(), rate_swap: 1,
                            on_hot_path: false };
         assert_eq!(partial_sum(&c), ExecutionUnit::PhanMem,
@@ -853,7 +853,7 @@ mod tests {
     }
 
     #[test]
-    fn quy_doi_chu_ky_sang_nano_giay_dung() {
+    fn cycles_convert_to_nanoseconds_correctly() {
         assert!((cycles_to_ns(1) - 4.0).abs() < 1e-9);
         assert!((cycles_to_ns(250) - 1_000.0).abs() < 1e-9, "250 owner kỳ ở 250 MHz = 1 µs");
         assert_eq!(cycles_to_ns(0), 0.0);
@@ -892,7 +892,7 @@ mod tests {
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Đây là bài toán mà FPGA vượt trội tuyệt đối: N phép nhân-cộng chạy hoàn toàn song song trên các khối DSP, rồi cộng lại bằng cây. Trên CPU cùng phép tính mất N owner kỳ; trên FPGA mất `log₂(N)` tầng.
+Đây là bài toán mà FPGA vượt trội tuyệt đối: N phép nhân-cộng chạy hoàn toàn song song trên các khối DSP, rồi cộng lại bằng cây. Trên CPU cùng phép tính mất N chu kỳ; trên FPGA mất `log₂(N)` tầng.
 </details>
 
 <details>
@@ -945,7 +945,7 @@ fn cong_theo_cay(v: &[i64]) -> i64 {
 }
 ```
 
-Với N=16 ở 250 MHz, bộ lọc này xử lý một mẫu mỗi 4 ns với độ trễ 4 tầng. CPU cùng phép tính cần khoảng 16 owner kỳ cộng chi phí truy cập bộ nhớ — chậm hơn khoảng một bậc.
+Với N=16 ở 250 MHz, bộ lọc này xử lý một mẫu mỗi 4 ns với độ trễ 4 tầng. CPU cùng phép tính cần khoảng 16 chu kỳ cộng chi phí truy cập bộ nhớ — chậm hơn khoảng một bậc.
 </details>
 
 **Bài 2.** Cài **bộ kiểm rủi ro thời gian hằng số** với chứng minh không có nhánh nào thay đổi thời gian.

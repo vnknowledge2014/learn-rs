@@ -70,7 +70,7 @@ Cách kiểm chứng chặt chẽ nhất rất đơn giản: tính chỉ báo tr
 // Bất biến: sma(&gia[..=t], n)[t] == sma(&gia, n)[t]  với mọi t
 ```
 
-Bài kiểm thử này bắt được cả những vi phạm compute vi mà mắt thường không thấy — ví dụ như chuẩn hoá bằng giá trị max của toàn bộ chuỗi, hay điền giá trị thiếu bằng nội suy hai chiều.
+Bài kiểm thử này bắt được cả những vi phạm tinh vi mà mắt thường không thấy — ví dụ như chuẩn hoá bằng giá trị max của toàn bộ chuỗi, hay điền giá trị thiếu bằng nội suy hai chiều.
 
 Trong Rust, cách làm cho vi phạm **khó xảy ra** là thiết kế API trả `Vec<Option<f64>>` cùng độ dài đầu vào. `None` ở đầu chuỗi buộc người dùng phải xử lý tường minh trường hợp "chưa đủ dữ liệu", thay vì im lặng cắt bớt và làm lệch chỉ số.
 
@@ -92,7 +92,7 @@ MACD gồm ba thành phần:
 - **Đường tín hiệu** = EMA(9) của đường MACD
 - **Histogram** = MACD − tín hiệu
 
-Điểm compute tế: đường tín hiệu là EMA **của một EMA**, nên nó thừa hưởng toàn bộ độ trễ của cả hai. Tổng độ trễ khoảng 26+9 = 35 phiên trước khi giá trị ổn định. Với biểu đồ ngày, đó là hơn một tháng rưỡi.
+Điểm tinh tế: đường tín hiệu là EMA **của một EMA**, nên nó thừa hưởng toàn bộ độ trễ của cả hai. Tổng độ trễ khoảng 26+9 = 35 phiên trước khi giá trị ổn định. Với biểu đồ ngày, đó là hơn một tháng rưỡi.
 
 Đây là đánh đổi cơ bản của mọi chỉ báo làm mượt: **mượt hơn = chậm hơn**. Không có cách nào thoát khỏi nó bằng cách chỉnh tham số.
 
@@ -338,15 +338,15 @@ pub fn macd_series(price: &[f64], nhanh: usize, cham: usize, signal: usize)
 
     // Chuỗi MACD chỉ có giá trị từ khi CẢ HAI đường EMA đã sẵn sàng
     let mut duong_macd: Vec<f64> = Vec::new();
-    let mut only_num_goc: Vec<usize> = Vec::new();
+    let mut root_indices: Vec<usize> = Vec::new();
     for i in 0..price.len() {
         if let (Some(a), Some(b)) = (e_nhanh[i], e_cham[i]) {
             duong_macd.push(a - b);
-            only_num_goc.push(i);
+            root_indices.push(i);
         }
     }
     let e_tin_hieu = ema_series(&duong_macd, signal);
-    for (k, &i) in only_num_goc.iter().enumerate() {
+    for (k, &i) in root_indices.iter().enumerate() {
         if let Some(s) = e_tin_hieu[k] {
             ra[i] = Some(MacdValue { macd: duong_macd[k], signal: s,
                                       histogram: duong_macd[k] - s });
@@ -498,18 +498,18 @@ fn main() {
 
     println!("\n5. MACD (12, 26, 9)");
     let m = macd_series(&price, 12, 26, 9);
-    let mut giao_cut = 0;
+    let mut crossover = 0;
     for i in 1..m.len() {
         if let (Some(a), Some(b)) = (m[i - 1], m[i]) {
-            if a.histogram.signum() != b.histogram.signum() { giao_cut += 1; }
+            if a.histogram.signum() != b.histogram.signum() { crossover += 1; }
         }
     }
     let last = m[499].unwrap();
     println!("   Tại nến 499: MACD {:.2} · tín hiệu {:.2} · biểu đồ {:.2}",
              last.macd, last.signal, last.histogram);
-    println!("   Số lần biểu đồ đổi dấu trong 500 nến: {}", giao_cut);
+    println!("   Số lần biểu đồ đổi dấu trong 500 nến: {}", crossover);
     println!("   → {} tín hiệu trên 500 phiên. Phần lớn là nhiễu, và mỗi tín hiệu",
-             giao_cut);
+             crossover);
     println!("     đều tốn phí giao dịch — xem lại Chương 69.");
 
     println!("\n6. DẢI BOLLINGER (20, 2σ)");
@@ -546,14 +546,14 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn candle_don(mo: Price, high: Price, low: Price, dong: Price) -> Candle {
+    fn simple_candle(mo: Price, high: Price, low: Price, dong: Price) -> Candle {
         Candle { timestamp: 0, mo, high, low, dong, quantity: 100 }
     }
 
     // ---------- Nến ----------
     #[test]
-    fn tinh_use_than_bien_do_and_bong() {
-        let n = candle_don(100, 120, 90, 110);
+    fn computes_body_range_and_wicks() {
+        let n = simple_candle(100, 120, 90, 110);
         assert_eq!(n.than(), 10);
         assert_eq!(n.bien_do(), 30);
         assert_eq!(n.upper_wick(), 10, "120 − max(100,110)");
@@ -562,16 +562,16 @@ mod tests {
     }
 
     #[test]
-    fn phat_show_candle_no_hop_le() {
-        assert!(candle_don(100, 120, 90, 110).is_valid());
-        assert!(!candle_don(100, 80, 90, 110).is_valid(), "cao < thấp là vô lý");
-        assert!(!candle_don(100, 105, 90, 110).is_valid(), "đóng > cao là vô lý");
-        assert!(!candle_don(100, 120, 105, 110).is_valid(), "thấp > mở là vô lý");
-        assert!(!candle_don(100, 120, 0, 110).is_valid(), "giá không được bằng 0");
+    fn detects_an_invalid_candle() {
+        assert!(simple_candle(100, 120, 90, 110).is_valid());
+        assert!(!simple_candle(100, 80, 90, 110).is_valid(), "cao < thấp là vô lý");
+        assert!(!simple_candle(100, 105, 90, 110).is_valid(), "đóng > cao là vô lý");
+        assert!(!simple_candle(100, 120, 105, 110).is_valid(), "thấp > mở là vô lý");
+        assert!(!simple_candle(100, 120, 0, 110).is_valid(), "giá không được bằng 0");
     }
 
     #[test]
-    fn moi_nen_sinh_ra_deu_hop_le() {
+    fn every_generated_candle_is_valid() {
         for hat in [1u64, 42, 2024] {
             for n in gen_candle(1_000, hat) {
                 assert!(n.is_valid(), "nến sinh ra phải luôn hợp lệ: {:?}", n);
@@ -581,44 +581,44 @@ mod tests {
 
     // ---------- Mẫu hình ----------
     #[test]
-    fn doji_khi_mo_gan_bang_dong() {
-        assert!(la_doji(&candle_don(100, 120, 80, 100), 500), "mở = đóng");
-        assert!(la_doji(&candle_don(100, 120, 80, 101), 500), "thân 1 trên biên độ 40");
-        assert!(!la_doji(&candle_don(100, 120, 80, 115), 500), "thân 15 là quá lớn");
+    fn doji_when_open_nearly_equals_close() {
+        assert!(la_doji(&simple_candle(100, 120, 80, 100), 500), "mở = đóng");
+        assert!(la_doji(&simple_candle(100, 120, 80, 101), 500), "thân 1 trên biên độ 40");
+        assert!(!la_doji(&simple_candle(100, 120, 80, 115), 500), "thân 15 là quá lớn");
     }
 
     #[test]
-    fn nen_khong_bien_do_duoc_coi_la_doji() {
+    fn a_zero_range_candle_counts_as_a_doji() {
         // Phiên không giao dịch — phải xử lý được, không chia cho 0.
-        assert!(la_doji(&candle_don(100, 100, 100, 100), 500));
+        assert!(la_doji(&simple_candle(100, 100, 100, 100), 500));
     }
 
     #[test]
-    fn bua_va_sao_bang_doi_xung_nhau() {
+    fn hammer_and_shooting_star_are_mirror_images() {
         // Búa: bóng dưới dài, thân nhỏ ở trên
-        let bua = candle_don(110, 112, 90, 111);
+        let bua = simple_candle(110, 112, 90, 111);
         assert!(la_bua(&bua), "bóng dưới {} thân {}", bua.lower_wick(), bua.than());
         assert!(!la_sao_bang(&bua));
         // Sao băng: bóng trên dài, thân nhỏ ở dưới
-        let sao = candle_don(91, 112, 90, 92);
+        let sao = simple_candle(91, 112, 90, 92);
         assert!(la_sao_bang(&sao));
         assert!(!la_bua(&sao));
     }
 
     #[test]
-    fn nhan_chim_tang_phai_bao_tron_than_nen_truoc() {
-        let hom_qua = candle_don(110, 112, 98, 100); // giảm
-        let hom_nay = candle_don(99, 116, 98, 115);  // tăng, bao trọn
+    fn bullish_engulfing_must_cover_the_prior_body() {
+        let hom_qua = simple_candle(110, 112, 98, 100); // giảm
+        let hom_nay = simple_candle(99, 116, 98, 115);  // tăng, bao trọn
         assert!(la_nhan_chim_tang(&hom_qua, &hom_nay));
         // Không bao trọn thì không tính
-        let hep = candle_don(102, 110, 101, 108);
+        let hep = simple_candle(102, 110, 101, 108);
         assert!(!la_nhan_chim_tang(&hom_qua, &hep));
         // Hôm qua phải là nến GIẢM
-        assert!(!la_nhan_chim_tang(&candle_don(100, 116, 98, 112), &hom_nay));
+        assert!(!la_nhan_chim_tang(&simple_candle(100, 116, 98, 112), &hom_nay));
     }
 
     #[test]
-    fn nhan_dien_tat_dinh_va_khong_nhin_nen_tuong_lai() {
+    fn detection_is_deterministic_and_never_looks_ahead() {
         // Bất biến sống còn: thêm nến phía sau KHÔNG được đổi kết quả tại
         // nến trước. Vi phạm điều này là "vẽ lại" (repainting).
         let candle = gen_candle(300, 7);
@@ -630,13 +630,13 @@ mod tests {
     }
 
     #[test]
-    fn list_empty_no_has_mau_hinh() {
+    fn an_empty_series_has_no_patterns() {
         assert_eq!(recv_elec(&[]), Pattern::KhongCo);
     }
 
     // ---------- Trung bình động ----------
     #[test]
-    fn sma_tinh_dung_gia_tri_da_biet() {
+    fn sma_matches_known_values() {
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 5), Some(3.0));
         assert_eq!(sma(&[1.0, 2.0, 3.0, 4.0, 5.0], 3), Some(4.0), "chỉ lấy 3 giá cuối");
         assert_eq!(sma(&[1.0, 2.0], 5), None, "chưa đủ dữ liệu");
@@ -644,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn sma_chua_du_du_lieu_thi_tra_none_chu_khong_tra_bua() {
+    fn sma_returns_none_rather_than_garbage_when_cold() {
         // Trả 0 hay trả trung bình của số ít nến sẽ khiến chiến lược vào lệnh
         // trên dữ liệu không đủ — lỗi âm thầm và tốn tiền.
         let c = sma_series(&[1.0, 2.0, 3.0, 4.0, 5.0], 3);
@@ -655,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn ema_bam_gia_sat_hon_sma() {
+    fn ema_tracks_price_more_closely_than_sma() {
         // Giá nhảy bậc: EMA phải phản ứng nhanh hơn SMA.
         let mut price = vec![100.0; 30];
         for x in price.iter_mut().skip(20) { *x = 200.0; }
@@ -667,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn ema_hoi_tu_ve_gia_khong_doi() {
+    fn ema_converges_to_a_constant_price() {
         let price = vec![100.0; 200];
         let e = ema_series(&price, 20);
         assert!((e[199].unwrap() - 100.0).abs() < 1e-9,
@@ -675,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn ema_duoc_moi_bang_sma() {
+    fn ema_is_seeded_with_an_sma() {
         let price: Vec<f64> = (1..=20).map(|i| i as f64).collect();
         let e = ema_series(&price, 10);
         assert_eq!(e[9], Some(5.5), "giá trị đầu tiên là SMA của 10 phần tử đầu");
@@ -683,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn wma_cho_gia_moi_trong_so_cao_hon() {
+    fn wma_weights_recent_prices_more() {
         // [1,2,3] với trọng số [1,2,3] → (1+4+9)/6 = 2.333
         let w = wma(&[1.0, 2.0, 3.0], 3).unwrap();
         assert!((w - 14.0 / 6.0).abs() < 1e-9);
@@ -693,7 +693,7 @@ mod tests {
 
     // ---------- RSI ----------
     #[test]
-    fn rsi_bang_100_khi_chi_toan_tang() {
+    fn rsi_is_100_on_an_unbroken_rally() {
         let price: Vec<f64> = (1..=50).map(|i| i as f64 * 100.0).collect();
         let r = rsi_series(&price, 14);
         assert!((r[49].unwrap() - 100.0).abs() < 1e-6,
@@ -701,21 +701,21 @@ mod tests {
     }
 
     #[test]
-    fn rsi_bang_0_khi_chi_toan_giam() {
+    fn rsi_is_0_on_an_unbroken_selloff() {
         let price: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
         let r = rsi_series(&price, 14);
         assert!(r[49].unwrap() < 1e-6, "không có phiên tăng nào → RSI = 0");
     }
 
     #[test]
-    fn rsi_bang_50_khi_gia_dung_yen() {
+    fn rsi_is_50_when_price_is_flat() {
         let price = vec![100.0; 50];
         assert!((rsi_series(&price, 14)[49].unwrap() - 50.0).abs() < 1e-9,
                 "không tăng không giảm → trung tính, và không chia cho 0");
     }
 
     #[test]
-    fn rsi_luon_nam_trong_khoang_0_den_100() {
+    fn rsi_always_stays_within_0_and_100() {
         for hat in [1u64, 42, 2024, 31337] {
             let price = price_close(&gen_candle(500, hat));
             for x in rsi_series(&price, 14).into_iter().flatten() {
@@ -725,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn rsi_chua_du_du_lieu_thi_none() {
+    fn rsi_is_none_until_warm() {
         let price: Vec<f64> = (1..=10).map(|i| i as f64).collect();
         let r = rsi_series(&price, 14);
         assert!(r.iter().all(|x| x.is_none()), "10 giá không đủ cho RSI(14)");
@@ -733,7 +733,7 @@ mod tests {
 
     // ---------- MACD ----------
     #[test]
-    fn macd_bieu_do_bang_hieu_hai_duong() {
+    fn the_macd_histogram_is_the_difference_of_the_two_lines() {
         let price = price_close(&gen_candle(200, 5));
         for m in macd_series(&price, 12, 26, 9).into_iter().flatten() {
             assert!((m.histogram - (m.macd - m.signal)).abs() < 1e-9);
@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn macd_duong_khi_xu_huong_tang() {
+    fn macd_is_positive_in_an_uptrend() {
         // Giá tăng đều → EMA nhanh phải nằm trên EMA chậm → MACD dương.
         let price: Vec<f64> = (1..=200).map(|i| 10_000.0 + i as f64 * 10.0).collect();
         let m = macd_series(&price, 12, 26, 9);
@@ -749,14 +749,14 @@ mod tests {
     }
 
     #[test]
-    fn macd_am_khi_xu_huong_giam() {
+    fn macd_is_negative_in_a_downtrend() {
         let price: Vec<f64> = (1..=200).map(|i| 10_000.0 - i as f64 * 10.0).collect();
         let m = macd_series(&price, 12, 26, 9);
         assert!(m[199].unwrap().macd < 0.0);
     }
 
     #[test]
-    fn macd_chua_du_du_lieu_thi_none() {
+    fn macd_is_none_until_warm() {
         let price: Vec<f64> = (1..=20).map(|i| i as f64).collect();
         assert!(macd_series(&price, 12, 26, 9).iter().all(|x| x.is_none()),
                 "20 giá không đủ cho MACD(12,26,9)");
@@ -764,14 +764,14 @@ mod tests {
 
     // ---------- Bollinger ----------
     #[test]
-    fn bollinger_giua_bang_dung_sma() {
+    fn the_bollinger_middle_band_equals_the_sma() {
         let price: Vec<f64> = (1..=30).map(|i| i as f64).collect();
         let b = bollinger(&price, 20, 2.0).unwrap();
         assert_eq!(b.mid, sma(&price, 20).unwrap());
     }
 
     #[test]
-    fn bollinger_doi_xung_quanh_duong_giua() {
+    fn the_bands_are_symmetric_about_the_middle() {
         let price = price_close(&gen_candle(100, 9));
         let b = bollinger(&price, 20, 2.0).unwrap();
         assert!(((b.above - b.mid) - (b.mid - b.below)).abs() < 1e-9,
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn dai_thu_hep_khi_gia_it_dao_dong() {
+    fn the_bands_narrow_when_volatility_falls() {
         let em = vec![100.0; 30];
         let xoc: Vec<f64> = (0..30).map(|i| 100.0 + ((i % 2) as f64) * 50.0).collect();
         let a = bollinger(&em, 20, 2.0).unwrap();
@@ -790,7 +790,7 @@ mod tests {
     }
 
     #[test]
-    fn pos_value_percent_use_cell_two_bien() {
+    fn percent_b_is_exact_at_both_bands() {
         let b = BollingerBands { above: 120.0, mid: 100.0, below: 80.0 };
         assert!((b.pos_value_percent(80.0) - 0.0).abs() < 1e-9);
         assert!((b.pos_value_percent(100.0) - 0.5).abs() < 1e-9);
@@ -802,23 +802,23 @@ mod tests {
 
     // ---------- ATR ----------
     #[test]
-    fn bien_do_that_tinh_ca_khoang_nhay_giua_hai_phien() {
-        let prev = candle_don(100, 105, 95, 100);
+    fn true_range_includes_the_overnight_gap() {
+        let prev = simple_candle(100, 105, 95, 100);
         // Phiên sau nhảy vọt lên: biên độ trong phiên chỉ 5, nhưng khoảng
         // cách so với giá đóng hôm trước là 30 — ATR phải thấy điều đó.
-        let nay = candle_don(128, 130, 125, 129);
+        let nay = simple_candle(128, 130, 125, 129);
         assert_eq!(nay.bien_do(), 5);
         assert_eq!(bien_do_that(&nay, Some(&prev)), 30, "phải bắt được khoảng nhảy");
     }
 
     #[test]
-    fn bien_do_true_candle_first_tien_table_bien_do_normal() {
-        let n = candle_don(100, 110, 90, 105);
+    fn the_first_candle_true_range_is_the_plain_range() {
+        let n = simple_candle(100, 110, 90, 105);
         assert_eq!(bien_do_that(&n, None), 20);
     }
 
     #[test]
-    fn atr_luon_duong() {
+    fn atr_is_always_positive() {
         for hat in [1u64, 42, 2024] {
             let candle = gen_candle(300, hat);
             for a in atr_series(&candle, 14).into_iter().flatten() {
@@ -828,7 +828,7 @@ mod tests {
     }
 
     #[test]
-    fn atr_lon_hon_khi_thi_truong_dao_dong_manh() {
+    fn atr_rises_with_volatility() {
         let em: Vec<Candle> = (0..50).map(|i| Candle { timestamp: i,
             mo: 10_000, high: 10_010, low: 9_990, dong: 10_000, quantity: 1 }).collect();
         let xoc: Vec<Candle> = (0..50).map(|i| Candle { timestamp: i,
@@ -839,13 +839,13 @@ mod tests {
     }
 
     #[test]
-    fn atr_chua_du_du_lieu_thi_none() {
+    fn atr_is_none_until_warm() {
         let candle = gen_candle(10, 1);
         assert!(atr_series(&candle, 14).iter().all(|x| x.is_none()));
     }
 
     #[test]
-    fn co_theo_atr_giam_khi_bien_dong_tang() {
+    fn atr_sizing_shrinks_as_volatility_rises() {
         let mut prev = i64::MAX;
         for atr in [20.0f64, 50.0, 100.0, 200.0] {
             let c = co_theo_atr(100_000, atr, 2.0);
@@ -856,14 +856,14 @@ mod tests {
     }
 
     #[test]
-    fn co_theo_atr_an_toan_voi_dau_vao_xau() {
+    fn atr_sizing_is_safe_on_bad_input() {
         assert_eq!(co_theo_atr(100_000, 0.0, 2.0), 0, "không chia cho 0");
         assert_eq!(co_theo_atr(100_000, 20.0, 0.0), 0);
     }
 
     // ---------- Không nhìn trước tương lai ----------
     #[test]
-    fn moi_chi_bao_deu_khong_nhin_truoc_tuong_lai() {
+    fn no_indicator_peeks_at_the_future() {
         // BẤT BIẾN QUAN TRỌNG NHẤT của chương: giá trị chỉ báo tại nến i phải
         // giống hệt nhau dù ta đưa vào 201 nến hay 500 nến. Vi phạm điều này
         // là "nhìn trộm tương lai", và mọi kết quả kiểm định trở nên vô nghĩa.
@@ -880,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn gen_candle_all_peak() {
+    fn candle_generation_is_deterministic() {
         assert_eq!(gen_candle(100, 5), gen_candle(100, 5));
         assert_ne!(gen_candle(100, 5), gen_candle(100, 6));
     }

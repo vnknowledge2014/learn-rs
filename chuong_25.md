@@ -13,7 +13,7 @@ Mục tiêu học tập của chương này:
 - Hiểu rõ ký hiệu Big-O như một thước đo "độ tốn công" khi quy mô công việc $N$ bùng nổ.
 - Nhận diện trực quan các cấp bậc Big-O phổ biến: $O(1)$, $O(\log N)$, $O(N)$, $O(N \log N)$, $O(N^2)$, và $O(2^N)$.
 - Biết cách sử dụng `std::time::Instant` trong Rust để thực nghiệm đo đạc thời gian thực thi của mã nguồn.
-- Rèn luyện phản xạ phát hiện các "nút thắt cổ chai" (bottlenecks) làm tiêu hao bộ nhớ đệm (buffer) và owner kỳ vi xử lý CPU.
+- Rèn luyện phản xạ phát hiện các "nút thắt cổ chai" (bottlenecks) làm tiêu hao bộ nhớ đệm (buffer) và chu kỳ vi xử lý CPU.
 
 ---
 
@@ -64,7 +64,7 @@ Trong đám cưới, người dẫn chương trình yêu cầu: **"Tất cả c�
 
 ### 1. Bản chất phần cứng: Vì sao CPU quan tâm đến Big-O?
 
-Bộ vi xử lý trung tâm CPU của máy tính hiện đại hoạt động theo các owner kỳ xung nhịp (clock cycles). Một vi xử lý tốc độ 3.0 GHz có thể thực hiện khoảng 3 tỷ owner kỳ mỗi giây. 
+Bộ vi xử lý trung tâm CPU của máy tính hiện đại hoạt động theo các chu kỳ xung nhịp (clock cycles). Một vi xử lý tốc độ 3.0 GHz có thể thực hiện khoảng 3 tỷ chu kỳ mỗi giây. 
 
 Tuy nhiên, tài nguyên phần cứng không phải là vô tận:
 1. **Truy xuất bộ nhớ (Memory Access Latency)**: CPU truy xuất thanh ghi (registers) tốn dưới 1 nanosecond, nhưng truy xuất thanh RAM chính tốn tới 50-100 nanoseconds (chậm hơn hàng trăm lần).
@@ -198,15 +198,15 @@ fn main() {
     println!("============================================================");
 
     // Chuẩn bị tập dữ liệu lớn gồm 1.000.000 (1 triệu) số nguyên đã sắp xếp
-    let quy_open: usize = 1_000_000;
-    println!("Khởi tạo danh sách gồm {} phần tử...", quy_open);
-    let list: Vec<i32> = (0..quy_open as i32).collect();
+    let scale: usize = 1_000_000;
+    println!("Khởi tạo danh sách gồm {} phần tử...", scale);
+    let list: Vec<i32> = (0..scale as i32).collect();
 
     let level_spend: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
     let bat_dau_o1 = Instant::now();
-    let ket_qua_o1 = index_access_o1(&list, quy_open - 1);
+    let ket_qua_o1 = index_access_o1(&list, scale - 1);
     let thoi_gian_o1 = bat_dau_o1.elapsed();
     println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
     println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
@@ -229,8 +229,8 @@ fn main() {
     println!("    - Thời gian thực thi: {:?}", thoi_gian_ologn);
 
     // Xác nhận tính nhất quán của kết quả
-    assert_eq!(ket_qua_on, Some(quy_open - 1));
-    assert_eq!(ket_qua_ologn, Some(quy_open - 1));
+    assert_eq!(ket_qua_on, Some(scale - 1));
+    assert_eq!(ket_qua_ologn, Some(scale - 1));
 
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
     if thoi_gian_ologn.as_nanos() > 0 {
@@ -303,21 +303,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn truy_cap_o1_dung_va_ngoai_bien() {
+    fn index_access_is_o1_and_bounds_checked() {
         let list = [10, 20, 30];
         assert_eq!(index_access_o1(&list, 1), Some(20));
         assert_eq!(index_access_o1(&list, 5), None); // an toàn, không panic
     }
 
     #[test]
-    fn search_tuyen_tinh() {
+    fn linear_search() {
         let list = [4, 8, 15, 16, 23, 42];
         assert_eq!(linear_search_on(&list, 15), Some(2));
         assert_eq!(linear_search_on(&list, 99), None);
     }
 
     #[test]
-    fn search_nhi_part_fill_with_tuyen_tinh() {
+    fn binary_search_matches_linear() {
         let list: Vec<i32> = (0..1000).map(|x| x * 3).collect();
         for &level_spend in &[0, 297, 1500, 2997, 1, 2998] {
             // hai thuật toán phải cho CÙNG kết luận có/không
@@ -331,20 +331,20 @@ mod tests {
     }
 
     #[test]
-    fn search_nhi_part_array_empty_and_one_part_from() {
+    fn binary_search_on_empty_and_single() {
         assert_eq!(binary_search_ologn(&[], 5), None);
         assert_eq!(binary_search_ologn(&[5], 5), Some(0));
         assert_eq!(binary_search_ologn(&[5], 3), None);
     }
 
     #[test]
-    fn tong_o1_khong_gian() {
+    fn sum_uses_o1_space() {
         assert_eq!(sum_in_place_o1(&[1, 2, 3, 4]), 10);
         assert_eq!(sum_in_place_o1(&[]), 0);
     }
 
     #[test]
-    fn nhan_doi_on_khong_gian() {
+    fn doubling_grows_in_on_space() {
         assert_eq!(grow_doubling(&[1, 2, 3]), vec![2, 4, 6]);
     }
 }

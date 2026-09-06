@@ -10,7 +10,7 @@ Tuy nhiên, làm thế nào để đảm bảo tính cô lập (Isolation) mà k
 
 Mục tiêu học tập của chương này:
 - Nắm vững bản chất 4 thuộc tính vàng của **ACID**: Tính nguyên tử (Atomicity), Tính nhất quán (Consistency), Tính cô lập (Isolation), và Tính bền vững (Durability).
-- Nhận diện các hiện tượng nguy hiểm khi thiếu kiểm soát đồng thời: Đọc rác (Dirty Read), Đọc không thể lặp lại (Non-repeatable Read), và Đọc bóng id (Phantom Read).
+- Nhận diện các hiện tượng nguy hiểm khi thiếu kiểm soát đồng thời: Đọc rác (Dirty Read), Đọc không thể lặp lại (Non-repeatable Read), và Đọc bóng ma (Phantom Read).
 - Phân biệt cơ chế Khóa bi quan (Pessimistic Locking / 2PL) và triết lý tiến bộ của **MVCC**: *"Người đọc không bao giờ chặn người ghi, người ghi không bao giờ chặn người đọc"*.
 - Hiểu sâu sắc mối quan hệ cộng sinh giữa MVCC và động cơ **LSM-Tree** (`MemTable`, `SSTable`, và tiến trình `Compaction`).
 - Tự tay lập trình một hệ thống lưu trữ đa phiên bản MVCC hoàn chỉnh bằng Rust, kiểm soát tầm nhìn bản ghi (Snapshot Visibility) thông qua mã định danh giao dịch (`tx_id`).
@@ -78,9 +78,9 @@ Hãy quan sát hai câu chuyện đời thường vô cùng quen thuộc để t
 ### 2. Các hiện tượng xung đột và Các cấp độ cô lập (Isolation Levels)
 
 Khi nhiều giao dịch chạy song song, nếu không cô lập tốt sẽ nảy sinh 3 hiểm họa:
-- **Dirty Read (Đọc dữ liệu rác)**: Giao dịch A đọc một giá trị do Giao dịch B vừa sửa, nhưng sau đó Giao dịch B bị hủy (`Rollback`). Giao dịch A đã hành động dựa trên một dữ liệu id quỷ không có thật!
+- **Dirty Read (Đọc dữ liệu rác)**: Giao dịch A đọc một giá trị do Giao dịch B vừa sửa, nhưng sau đó Giao dịch B bị hủy (`Rollback`). Giao dịch A đã hành động dựa trên một dữ liệu ma quỷ không có thật!
 - **Non-repeatable Read (Đọc không nhất quán)**: Giao dịch A đọc dòng số 1 ra giá trị 100. Giao dịch B vào sửa thành 200 và Commit. Giao dịch A đọc lại dòng số 1 thì thấy giá trị biến thành 200.
-- **Phantom Read (Bóng id xuất hiện)**: Giao dịch A đếm có 5 đơn hàng. Giao dịch B chèn thêm đơn hàng thứ 6. Giao dịch A đếm lại thì thấy xuất hiện thêm dòng mới.
+- **Phantom Read (Bóng ma xuất hiện)**: Giao dịch A đếm có 5 đơn hàng. Giao dịch B chèn thêm đơn hàng thứ 6. Giao dịch A đếm lại thì thấy xuất hiện thêm dòng mới.
 
 Hội đồng chuẩn SQL định nghĩa 4 cấp độ cô lập từ yếu đến mạnh:
 1. `Read Uncommitted`: Cho phép đọc dữ liệu chưa commit (nguy hiểm nhất).
@@ -253,9 +253,9 @@ fn main() {
     println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
 
     // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
-    let tx_tuong_lai = kho_mvcc.start_trade(); // tx = 4
-    let new_balance = kho_mvcc.doc("tai_khoan:A", tx_tuong_lai);
-    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", tx_tuong_lai, new_balance);
+    let future_tx = kho_mvcc.start_trade(); // tx = 4
+    let new_balance = kho_mvcc.doc("tai_khoan:A", future_tx);
+    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
 
     // Xác nhận tính chính xác tuyệt đối:
     // Người đọc cũ (tx = 2) nhìn thấy phiên bản cũ "1000" mà không bị chặn bởi người ghi!

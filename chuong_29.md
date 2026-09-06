@@ -65,7 +65,7 @@ Hãy cùng hình dung cấu trúc Cây qua hai hình ảnh vô cùng quen thuộ
   - **Nút gốc (Root)**: Cụ tổ của dòng họ — người không có cha mẹ trong cây phả hệ này, đứng ở vị trí cao nhất.
   - **Nút nhánh (Internal Node)**: Những người con của cụ tổ, vừa là con của cụ, vừa là cha mẹ của thế hệ tiếp theo.
   - **Nút lá (Leaf)**: Thế hệ con cháu mới sinh ra chưa lập gia đình, nằm ở tận cùng của các nhánh cây và không có con cái nối dõi (`None`).
-- Trong cây phả hệ, quyền sở hữu (ownership) chảy một chiều từ trên xuống dưới: Cụ tổ truyền lại huyết thống và tài sản cho con cháu; con cháu không thể đồng thời làm cha mẹ của cụ tổ (không có owner trình lặp kín - Acyclic).
+- Trong cây phả hệ, quyền sở hữu (ownership) chảy một chiều từ trên xuống dưới: Cụ tổ truyền lại huyết thống và tài sản cho con cháu; con cháu không thể đồng thời làm cha mẹ của cụ tổ (không có chu trình lặp kín - Acyclic).
 
 ### 2. Tủ hồ sơ phân loại thông minh (Cây nhị phân tìm kiếm - BST)
 - Hãy tưởng tượng bạn là người thủ thư quản lý hàng vạn tập hồ sơ bệnh án.
@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn duyet_in_order_luon_tang_dan() {
+    fn in_order_walk_is_sorted() {
         let c = cay_mau();
         let so: Vec<i32> = c.in_order_walk().into_iter().copied().collect();
         assert_eq!(so, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn no_insert_duplicate_loop() {
+    fn no_duplicate_inserts() {
         let mut c = BinarySearchTree::new();
         c.them(5);
         c.them(5); // giá trị trùng bị bỏ qua
@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn cay_can_bang_thap_hon_cay_suy_bien() {
+    fn balanced_tree_is_shallower_than_degenerate() {
         let mut suy_bien = BinarySearchTree::new();
         for x in 1..=7 {
             suy_bien.them(x); // chèn tuần tự -> suy biến thành danh sách

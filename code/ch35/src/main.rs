@@ -128,9 +128,9 @@ fn main() {
     println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
 
     // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
-    let tx_tuong_lai = kho_mvcc.start_trade(); // tx = 4
-    let new_balance = kho_mvcc.doc("tai_khoan:A", tx_tuong_lai);
-    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", tx_tuong_lai, new_balance);
+    let future_tx = kho_mvcc.start_trade(); // tx = 4
+    let new_balance = kho_mvcc.doc("tai_khoan:A", future_tx);
+    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
 
     // Xác nhận tính chính xác tuyệt đối:
     // Người đọc cũ (tx = 2) nhìn thấy phiên bản cũ "1000" mà không bị chặn bởi người ghi!

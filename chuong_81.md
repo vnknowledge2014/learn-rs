@@ -113,7 +113,7 @@ Cùng thuật toán, cùng số phép cộng, khác nhau vài lần về tốc �
 
 ### 4. GEMM theo lát: câu chuyện cường độ số học
 
-Nhân id trận ngây thơ trên GPU bị chặn bởi **băng thông bộ nhớ**, không phải sức tính. Với mỗi phép nhân-cộng, bạn phải đọc 2 giá trị — tỉ lệ tính/đọc quá thấp.
+Nhân ma trận ngây thơ trên GPU bị chặn bởi **băng thông bộ nhớ**, không phải sức tính. Với mỗi phép nhân-cộng, bạn phải đọc 2 giá trị — tỉ lệ tính/đọc quá thấp.
 
 Chia lát (tiling) sửa điều đó: nạp một lát `T×T` vào bộ nhớ chia sẻ, rồi mỗi giá trị được dùng `T` lần.
 
@@ -165,7 +165,7 @@ Chạy bằng `cargo run -p ch81`, kiểm thử bằng `cargo test -p ch81`.
 #![allow(dead_code)]
 //! Chương 81 — Lập trình GPU: mô hình thực thi SIMT, phân kỳ warp, gộp truy
 //! cập bộ nhớ, bộ nhớ chia sẻ và xung đột ngân hàng, rút gọn song song, và
-//! nhân id trận theo lát.
+//! nhân ma trận theo lát.
 //!
 //! Theo phân loại bài tập của [LeetGPU](https://leetgpu.com/) — 99 bài chia
 //! ba mức, từ cộng vector tới khối transformer. Ở đây ta ĐẾM số giao dịch bộ
@@ -320,7 +320,7 @@ pub fn bank_analysis(chi_so_o_nho: &[usize]) -> BankAnalysis {
     BankAnalysis { level_conflict: level, has_conflict: level > 1 }
 }
 
-/// Truy cập lát id trận theo CỘT với bề rộng 32: mọi luồng rơi vào CÙNG một
+/// Truy cập lát ma trận theo CỘT với bề rộng 32: mọi luồng rơi vào CÙNG một
 /// ngân hàng → xung đột 32 lối, chậm gấp 32 lần.
 pub fn access_cap_col_lat(be_rong: usize) -> Vec<usize> {
     (0..LUONG_MOI_WARP).map(|i| i * be_rong).collect()
@@ -567,7 +567,7 @@ mod tests {
 
     // ---------- Cấu hình phát ----------
     #[test]
-    fn cau_hinh_phat_aux_done_part_from() {
+    fn the_launch_config_covers_every_element() {
         for (n, l) in [(1_000_000usize, 256usize), (1_000, 256), (1, 256), (257, 256)] {
             let c = LaunchConfig::for_n_items(n, l);
             assert!(c.total_amount() >= n, "phải đủ luồng phủ hết {} phần tử", n);
@@ -576,14 +576,14 @@ mod tests {
     }
 
     #[test]
-    fn phat_no_part_from_which_thi_no_can_block() {
+    fn zero_elements_needs_no_blocks() {
         let c = LaunchConfig::for_n_items(0, 256);
         assert_eq!(c.num_block, 0);
         assert_eq!(c.total_amount(), 0);
     }
 
     #[test]
-    fn khoi_khong_boi_so_warp_thi_lang_phi_lan() {
+    fn a_non_warp_multiple_block_wastes_lanes() {
         let tron = LaunchConfig { num_block: 1, amount_new_block: 256 };
         assert_eq!(tron.warp_moi_khoi(), 8);
         assert_eq!(tron.wasted_per_block(), 0);
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn moi_kich_thuoc_khoi_boi_so_32_deu_khong_lang_phi() {
+    fn any_multiple_of_32_wastes_nothing() {
         for l in [32usize, 64, 128, 256, 512, 1024] {
             let c = LaunchConfig { num_block: 1, amount_new_block: l };
             assert_eq!(c.wasted_per_block(), 0, "khối {} luồng", l);
@@ -602,17 +602,17 @@ mod tests {
 
     // ---------- Phân kỳ warp ----------
     #[test]
-    fn warp_dong_nhat_thi_khong_phan_ky() {
-        let toan_use = vec![true; 256];
-        let p = divergence_analysis(&toan_use);
+    fn a_uniform_warp_does_not_diverge() {
+        let all_true = vec![true; 256];
+        let p = divergence_analysis(&all_true);
         assert_eq!(p.divergent_warps, 0);
         assert!((p.he_so_cham - 1.0).abs() < 1e-9);
-        let toan_sai = vec![false; 256];
-        assert_eq!(divergence_analysis(&toan_sai).divergent_warps, 0);
+        let all_false = vec![false; 256];
+        assert_eq!(divergence_analysis(&all_false).divergent_warps, 0);
     }
 
     #[test]
-    fn re_nhanh_theo_chan_le_lam_moi_warp_phan_ky() {
+    fn branching_on_parity_diverges_every_warp() {
         let p = divergence_analysis(&branch_on_parity(1024));
         assert_eq!(p.so_warp, 32);
         assert_eq!(p.divergent_warps, 32, "warp nào cũng có cả luồng chẵn lẫn lẻ");
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn re_nhanh_theo_warp_thi_khong_phan_ky_chut_nao() {
+    fn branching_per_warp_never_diverges() {
         // Bài học trung tâm: cùng tỉ lệ 50/50, chỉ khác CÁCH NHÓM.
         let dk = branch_on_warp(1024);
         let p = divergence_analysis(&dk);
@@ -631,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn chi_mot_luong_lac_dieu_cung_lam_ca_warp_phan_ky() {
+    fn one_odd_lane_diverges_the_whole_warp() {
         // Đây là điều khiến phân kỳ nguy hiểm: một luồng đủ để phạt cả 32.
         let mut dk = vec![true; 32];
         dk[17] = false;
@@ -642,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn danh_sach_rong_khong_panic() {
+    fn an_empty_list_does_not_panic() {
         let p = divergence_analysis(&[]);
         assert_eq!(p.so_warp, 0);
         assert_eq!(p.he_so_cham, 1.0);
@@ -650,14 +650,14 @@ mod tests {
 
     // ---------- Gộp truy cập ----------
     #[test]
-    fn truy_cap_lien_tuc_gop_thanh_it_giao_dich_nhat() {
+    fn contiguous_access_coalesces_into_the_fewest_transactions() {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, 1);
         assert_eq!(p.num_trade, 1, "32 luồng x 4 byte = 128 byte = đúng 1 giao dịch");
         assert!((p.efficiency - 1.0).abs() < 1e-9, "hiệu suất băng thông hoàn hảo");
     }
 
     #[test]
-    fn buoc_nhay_cang_lon_thi_cang_nhieu_giao_dich() {
+    fn a_larger_stride_costs_more_transactions() {
         let mut prev = 0;
         for b in [1usize, 2, 4, 8, 16, 32] {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
@@ -669,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn byte_co_ich_khong_doi_du_buoc_nhay_thay_doi() {
+    fn useful_bytes_stay_constant_as_stride_changes() {
         // Cùng lượng dữ liệu CẦN, khác hẳn lượng dữ liệu PHẢI CHUYỂN.
         for b in [1usize, 4, 32] {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
@@ -680,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    fn hieu_suat_always_in_range_no_to_one() {
+    fn efficiency_stays_within_zero_and_one() {
         for b in [1usize, 2, 3, 7, 16, 64, 128] {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
             assert!((0.0..=1.0).contains(&p.efficiency),
@@ -690,7 +690,7 @@ mod tests {
 
     // ---------- Xung đột ngân hàng ----------
     #[test]
-    fn truy_cap_lien_tuc_khong_xung_dot() {
+    fn contiguous_access_has_no_bank_conflicts() {
         let chi_so: Vec<usize> = (0..LUONG_MOI_WARP).collect();
         let p = bank_analysis(&chi_so);
         assert_eq!(p.level_conflict, 1);
@@ -698,14 +698,14 @@ mod tests {
     }
 
     #[test]
-    fn doc_cot_lat_32_gay_xung_dot_toan_phan() {
+    fn reading_a_column_of_a_32_wide_tile_conflicts_fully() {
         let p = bank_analysis(&access_cap_col_lat(32));
         assert_eq!(p.level_conflict, 32, "mọi luồng rơi vào CÙNG một ngân hàng");
         assert!(p.has_conflict);
     }
 
     #[test]
-    fn count_add_one_col_remove_clean_conflict() {
+    fn padding_by_one_column_removes_all_conflicts() {
         // Thủ thuật rẻ nhất trong lập trình GPU: tốn thêm 1/32 bộ nhớ,
         // đổi lấy tốc độ gấp 32 lần.
         let p = bank_analysis(&access_cap_col_lat_has_count(32));
@@ -714,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn xung_dot_phu_thuoc_uoc_chung_voi_so_ngan_hang() {
+    fn conflicts_depend_on_the_gcd_with_the_bank_count() {
         // Bề rộng nguyên tố cùng nhau với 32 thì không xung đột.
         for be_rong in [1usize, 3, 33, 65] {
             let p = bank_analysis(&access_cap_col_lat(be_rong));
@@ -729,7 +729,7 @@ mod tests {
 
     // ---------- Rút gọn ----------
     #[test]
-    fn rut_gon_song_song_cho_cung_ket_qua_voi_tuan_tu() {
+    fn parallel_reduction_matches_sequential() {
         // Bất biến sống còn: song song hoá không được đổi kết quả.
         for n in [0usize, 1, 2, 3, 7, 16, 17, 1000, 4096] {
             let d: Vec<i64> = (1..=n as i64).collect();
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn so_buoc_la_log_chu_khong_tuyen_tinh() {
+    fn the_step_count_is_logarithmic() {
         for n in [2usize, 4, 16, 1024, 1_048_576] {
             let d: Vec<i64> = vec![1; n];
             let r = rut_gon_song_song(&d);
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn so_phep_cong_van_la_n_tru_mot() {
+    fn the_addition_count_is_still_n_minus_one() {
         // Song song hoá KHÔNG làm ít việc hơn — nó chỉ làm việc song song.
         for n in [2usize, 8, 100, 1024] {
             let d: Vec<i64> = vec![1; n];
@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn reduce_use_with_quantity_le() {
+    fn reduction_is_correct_for_odd_counts() {
         // Số lẻ phần tử là chỗ dễ sai nhất: phần tử cuối không có cặp.
         let d = vec![1i64, 2, 3, 4, 5, 6, 7];
         assert_eq!(rut_gon_song_song(&d).tong, 28);
@@ -773,7 +773,7 @@ mod tests {
 
     // ---------- GEMM theo lát ----------
     #[test]
-    fn lat_giam_so_lan_doc_toan_cuc() {
+    fn tiling_cuts_global_reads() {
         let n = 1024;
         let nt = gemm_naive(n);
         let mut prev = nt.read_global;
@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn lat_khong_lam_doi_so_phep_nhan() {
+    fn tiling_does_not_change_the_multiply_count() {
         // Tối ưu không được đổi khối lượng TÍNH TOÁN, chỉ đổi cách chạm bộ nhớ.
         let n = 512;
         let nt = gemm_naive(n);
@@ -796,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn cuong_do_tinh_toan_tang_theo_kich_thuoc_lat() {
+    fn arithmetic_intensity_grows_with_tile_size() {
         let n = 1024;
         let mut prev = gemm_naive(n).arithmetic_intensity;
         for lat in [8usize, 16, 32] {
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn lat_bang_mot_thi_khong_khac_gi_ngay_tho() {
+    fn a_tile_of_one_is_no_better_than_naive() {
         let n = 256;
         assert_eq!(tiled_gemm(n, 1).read_global, gemm_naive(n).read_global);
         assert_eq!(tiled_gemm(n, 0).read_global, gemm_naive(n).read_global,
@@ -816,14 +816,14 @@ mod tests {
 
     // ---------- Mức chiếm dụng ----------
     #[test]
-    fn few_into_record_thi_chiem_use_high() {
+    fn few_registers_gives_high_occupancy() {
         let m = occupancy(256, 32, 0);
         assert!(m.ratio > 0.9, "32 thanh ghi/luồng phải cho chiếm dụng cao, thực tế {:.2}",
                 m.ratio);
     }
 
     #[test]
-    fn nhieu_thanh_ghi_thi_chiem_dung_tut() {
+    fn many_registers_drops_occupancy() {
         let it = occupancy(256, 32, 0);
         let many = occupancy(256, 128, 0);
         assert!(many.ratio < it.ratio,
@@ -833,14 +833,14 @@ mod tests {
     }
 
     #[test]
-    fn bo_nho_chia_se_cung_co_the_thanh_nut_that() {
+    fn shared_memory_can_also_become_the_bottleneck() {
         let m = occupancy(256, 32, 32_768); // nửa dung lượng chia sẻ mỗi khối
         assert_eq!(m.blocked_by, "bộ nhớ chia sẻ");
         assert!(m.ratio < 0.5);
     }
 
     #[test]
-    fn occupancy_always_in_range_hop_le() {
+    fn occupancy_stays_in_a_valid_range() {
         for l in [32usize, 128, 256, 512, 1024] {
             for tg in [16usize, 32, 64, 128, 255] {
                 let m = occupancy(l, tg, 0);
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn khong_dung_thanh_ghi_hay_chia_se_thi_bi_chan_boi_so_warp() {
+    fn with_no_register_or_shared_pressure_the_warp_cap_binds() {
         let m = occupancy(1024, 0, 0);
         assert_eq!(m.ratio, 1.0, "không có ràng buộc nào thì chiếm dụng tối đa");
     }

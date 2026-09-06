@@ -75,7 +75,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg)
     -> StdResult<Binary> { … }                 // CHỈ ĐỌC — chú ý `Deps`, không phải `DepsMut`
 ```
 
-Điều đáng chú ý về mặt kiểu: `query` nhận `Deps` (bất biến) còn `execute` nhận `DepsMut`. **Hệ thống kiểu của Rust bảo đảm truy vấn không thể sửa trạng thái** — đây là một ví dụ đẹp về việc mã hoá luật bảo mật vào kiểu dữ liệu, đúng compute thần chương 20 về typestate.
+Điều đáng chú ý về mặt kiểu: `query` nhận `Deps` (bất biến) còn `execute` nhận `DepsMut`. **Hệ thống kiểu của Rust bảo đảm truy vấn không thể sửa trạng thái** — đây là một ví dụ đẹp về việc mã hoá luật bảo mật vào kiểu dữ liệu, đúng tinh thần chương 20 về typestate.
 
 `MessageInfo` mang `sender` — người **thực sự** ký giao dịch. Mọi kiểm tra quyền phải dựa trên `info.sender`, không bao giờ dựa trên tham số do người gọi truyền vào.
 
@@ -588,7 +588,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn env_mau() -> NewField {
+    fn sample_env() -> NewField {
         NewField { height: 100, timestamp: 1000, dia_chi_hop_dong: "hd".into() }
     }
     fn goi(ai: &str) -> ThongTinGoi {
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn balance_chua_record_is_no_chu_no_must_error() {
         let k = Store::default();
-        assert_eq!(k.balance("contains-ton-tai"), 0, "mặc định 0 giúp không cần khởi tạo trước");
+        assert_eq!(k.balance("chua-ton-tai"), 0, "mặc định 0 giúp không cần khởi tạo trước");
     }
 
     // ---------- Token CW20 ----------
@@ -621,7 +621,7 @@ mod tests {
     fn transfer_khoan_report_toan_total_supply() {
         let mut k = token_mau();
         let prev: Money = ["An", "Binh", "Cuong"].iter().map(|a| k.balance(a)).sum();
-        TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::ChuyenKhoan { den: "Binh".into(), quantity: 300 }).unwrap();
         let next: Money = ["An", "Binh", "Cuong"].iter().map(|a| k.balance(a)).sum();
         assert_eq!(prev, next, "chuyển khoản không được sinh hay huỷ token");
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn no_transfer_can_qua_balance() {
         let mut k = token_mau();
-        let e = TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        let e = TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::ChuyenKhoan { den: "Binh".into(), quantity: 1_001 }).unwrap_err();
         assert_eq!(e, ContractError::KhongDuSoDu { can: 1_001, co: 1_000 });
         assert_eq!(k.balance("An"), 1_000, "thất bại phải KHÔNG để lại thay đổi nào");
@@ -640,24 +640,24 @@ mod tests {
     }
 
     #[test]
-    fn tu_khong_co_gi_thi_khong_chuyen_duoc() {
+    fn cannot_transfer_from_empty_account() {
         let mut k = token_mau();
-        assert!(TokenCw20::execute(&mut k, &env_mau(), &goi("KeLa"),
+        assert!(TokenCw20::execute(&mut k, &sample_env(), &goi("KeLa"),
             TokenMsg::ChuyenKhoan { den: "KeLa2".into(), quantity: 1 }).is_err());
     }
 
     #[test]
     fn transfer_quantity_no_is_reject() {
         let mut k = token_mau();
-        assert_eq!(TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        assert_eq!(TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::ChuyenKhoan { den: "Binh".into(), quantity: 0 }).unwrap_err(),
             ContractError::SoTienBangKhong);
     }
 
     #[test]
-    fn dot_token_lam_giam_ca_so_du_lan_tong_cung() {
+    fn burning_reduces_both_balance_and_total_supply() {
         let mut k = token_mau();
-        TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::Dot { quantity: 400 }).unwrap();
         assert_eq!(k.balance("An"), 600);
         assert_eq!(TokenCw20::total_supply(&k), 600, "đốt phải giảm tổng cung, không chỉ số dư");
@@ -666,12 +666,12 @@ mod tests {
     #[test]
     fn allowance_limit_use_limit() {
         let mut k = token_mau();
-        TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::ChoPhep { nguoi_duoc_uy_quyen: "San".into(), quantity: 500 }).unwrap();
-        TokenCw20::execute(&mut k, &env_mau(), &goi("San"),
+        TokenCw20::execute(&mut k, &sample_env(), &goi("San"),
             TokenMsg::ChuyenTuUyQuyen { tu: "An".into(), den: "Binh".into(), quantity: 300 }).unwrap();
         assert_eq!(TokenCw20::allowance(&k, "An", "San"), 200);
-        let e = TokenCw20::execute(&mut k, &env_mau(), &goi("San"),
+        let e = TokenCw20::execute(&mut k, &sample_env(), &goi("San"),
             TokenMsg::ChuyenTuUyQuyen { tu: "An".into(), den: "Binh".into(), quantity: 300 })
             .unwrap_err();
         assert_eq!(e, ContractError::KhongDuSoDu { can: 300, co: 200 }, "vượt hạn mức phải bị chặn");
@@ -680,19 +680,19 @@ mod tests {
     #[test]
     fn no_allowance_thi_no_rut_proxy_can() {
         let mut k = token_mau();
-        assert!(TokenCw20::execute(&mut k, &env_mau(), &goi("KeGian"),
+        assert!(TokenCw20::execute(&mut k, &sample_env(), &goi("KeGian"),
             TokenMsg::ChuyenTuUyQuyen { tu: "An".into(), den: "KeGian".into(), quantity: 1 })
             .is_err());
         assert_eq!(k.balance("An"), 1_000);
     }
 
     #[test]
-    fn han_muc_khong_bi_tru_khi_chuyen_that_bai() {
+    fn failed_transfer_does_not_consume_allowance() {
         let mut k = token_mau();
-        TokenCw20::execute(&mut k, &env_mau(), &goi("An"),
+        TokenCw20::execute(&mut k, &sample_env(), &goi("An"),
             TokenMsg::ChoPhep { nguoi_duoc_uy_quyen: "San".into(), quantity: 5_000 }).unwrap();
         // hạn mức 5000 nhưng An chỉ có 1000 → chuyển hỏng
-        assert!(TokenCw20::execute(&mut k, &env_mau(), &goi("San"),
+        assert!(TokenCw20::execute(&mut k, &sample_env(), &goi("San"),
             TokenMsg::ChuyenTuUyQuyen { tu: "An".into(), den: "B".into(), quantity: 2_000 })
             .is_err());
         assert_eq!(TokenCw20::allowance(&k, "An", "San"), 5_000,
@@ -723,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn nguoi_la_khong_dong_duoc_gi() {
+    fn stranger_can_do_nothing() {
         let i = ThongTinGoi { sender: "M".into(), tien_gui_kem: 100 };
         let mut kq = Escrow::block_make(&i, "B", "T", 2000).unwrap();
         assert_eq!(kq.release(&goi("KeLa")).unwrap_err(),
@@ -743,10 +743,10 @@ mod tests {
     fn refund_is_block_prev_han_and_wait_qua_next_han() {
         let i = ThongTinGoi { sender: "M".into(), tien_gui_kem: 100 };
         let mut kq = Escrow::block_make(&i, "B", "T", 2000).unwrap();
-        let som = NewField { timestamp: 1500, ..env_mau() };
+        let som = NewField { timestamp: 1500, ..sample_env() };
         assert_eq!(kq.refund(&som, &goi("M")).unwrap_err(),
                    ContractError::ChuaDenHan { remaining: 500 });
-        let borrow = NewField { timestamp: 2500, ..env_mau() };
+        let borrow = NewField { timestamp: 2500, ..sample_env() };
         assert!(kq.refund(&borrow, &goi("M")).is_ok());
         assert_eq!(kq.state, StateEscrow::DaHoanTien);
     }
@@ -755,7 +755,7 @@ mod tests {
     fn in_tai_refund_can_enable_ke_time_han() {
         let i = ThongTinGoi { sender: "M".into(), tien_gui_kem: 100 };
         let mut kq = Escrow::block_make(&i, "B", "T", 9_999_999).unwrap();
-        assert!(kq.refund(&env_mau(), &goi("T")).is_ok());
+        assert!(kq.refund(&sample_env(), &goi("T")).is_ok());
     }
 
     #[test]
@@ -765,13 +765,13 @@ mod tests {
         let mut kq = Escrow::block_make(&i, "B", "T", 2000).unwrap();
         assert!(kq.release(&goi("M")).is_ok());
         assert_eq!(kq.release(&goi("M")).unwrap_err(), ContractError::DaHoanTat);
-        assert_eq!(kq.refund(&env_mau(), &goi("T")).unwrap_err(), ContractError::DaHoanTat,
+        assert_eq!(kq.refund(&sample_env(), &goi("T")).unwrap_err(), ContractError::DaHoanTat,
                    "đã giải ngân thì cũng không hoàn tiền được nữa");
     }
 
     // ---------- Solana ----------
     #[test]
-    fn pda_tat_dinh_va_khac_nhau_theo_hat_giong() {
+    fn pda_is_deterministic_and_seed_specific() {
         let a = derive_pda(&[b"bo_dem", b"An"], MA_CHUONG_TRINH);
         assert_eq!(a, derive_pda(&[b"bo_dem", b"An"], MA_CHUONG_TRINH), "phải tất định");
         assert_ne!(a, derive_pda(&[b"bo_dem", b"Binh"], MA_CHUONG_TRINH));
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn pda_phan_biet_duoc_ranh_gioi_hat_giong() {
+    fn pda_distinguishes_seed_boundaries() {
         // Không có dấu phân cách, ["ab","c"] và ["a","bc"] sẽ ra cùng địa chỉ —
         // lỗ hổng thật, cho phép kẻ tấn công tạo PDA trùng của người khác.
         assert_ne!(derive_pda(&[b"ab", b"c"], MA_CHUONG_TRINH),
@@ -798,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn tang_bo_dem_thanh_cong_khi_moi_kiem_tra_deu_qua() {
+    fn increment_succeeds_when_all_checks_pass() {
         let mut account = unit_account("An");
         assert_eq!(CounterProgram::tang(&mut account), Ok(1));
         assert_eq!(CounterProgram::tang(&mut account), Ok(2));
@@ -814,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn tu_choi_khi_tai_khoan_khong_khai_bao_ghi() {
+    fn rejects_account_not_declared_writable() {
         let mut account = unit_account("An");
         account[1].is_writable = false;
         assert!(matches!(CounterProgram::tang(&mut account).unwrap_err(),
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn tu_choi_khi_chuong_trinh_khac_so_huu_tai_khoan() {
+    fn rejects_account_owned_by_another_program() {
         let mut account = unit_account("An");
         account[1].owner = "ChuongTrinhGia".into();
         assert!(matches!(CounterProgram::tang(&mut account).unwrap_err(),
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn chuyen_lamports_bao_toan_tong_so() {
+    fn lamport_transfer_conserves_total() {
         let mut account = unit_account("An");
         account[0].is_writable = true;
         let prev_total = account[0].lamports + account[1].lamports;
@@ -861,7 +861,7 @@ mod tests {
     }
 
     #[test]
-    fn chuyen_lamports_qua_so_du_bi_chan() {
+    fn lamport_transfer_beyond_balance_is_blocked() {
         let mut account = unit_account("An");
         account[0].is_writable = true;
         let (a, b) = account.split_at_mut(1);
@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn in_one_lo_no_has_two_trade_which_use_each() {
         let gd: Vec<Vec<Address>> = (0..20)
-            .map(|i| vec![format!("account{}", i % 7), format!("account{}", (i * 3) % 11)])
+            .map(|i| vec![format!("tk{}", i % 7), format!("tk{}", (i * 3) % 11)])
             .collect();
         let pt = arrange_schedule_parallel(&gd);
         for lo in &pt.lo {

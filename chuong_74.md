@@ -10,7 +10,7 @@ Giao dịch tần suất cao (HFT) là ngành duy nhất mà **nanosecond có gi
 |---|---|
 | Đo bằng phân vị, không bằng trung bình | Trung bình giấu đi chính thứ giết bạn: cái đuôi |
 | Không cấp phát trên đường nóng | `malloc` là bất định; bất định là kẻ thù |
-| Bố cục bộ nhớ quan trọng hơn thuật toán | Một lần trượt cache = 300 owner kỳ = 100 phép cộng |
+| Bố cục bộ nhớ quan trọng hơn thuật toán | Một lần trượt cache = 300 chu kỳ = 100 phép cộng |
 
 > Một câu nói lưu truyền trong ngành: *"Chúng tôi không tối ưu tốc độ trung bình. Chúng tôi tối ưu trường hợp tệ nhất, vì trường hợp tệ nhất là lúc thị trường đang biến động — tức là đúng lúc quan trọng nhất."*
 
@@ -65,8 +65,8 @@ Mục tiêu học tập:
 │    Con trỏ ĐƠN ĐIỆU TĂNG → phân biệt được "rỗng" với "đầy" mà không cờ.     │
 │                                                                              │
 │  AoS vs SoA                                                                 │
-│    AoS: [gia,sl,id][gia,sl,id][gia,sl,id]  ← đọc 1 lệnh: 1 dòng cache      │
-│    SoA: [gia,gia,gia][sl,sl,sl][id,id,id]  ← quét mọi giá: cực nhanh       │
+│    AoS: [gia,sl,ma][gia,sl,ma][gia,sl,ma]  ← đọc 1 lệnh: 1 dòng cache      │
+│    SoA: [gia,gia,gia][sl,sl,sl][ma,ma,ma]  ← quét mọi giá: cực nhanh       │
 │    Không có bên nào luôn thắng. Chọn theo CÁCH BẠN TRUY CẬP.               │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -93,7 +93,7 @@ Một mutex có ba vấn đề trên đường nóng:
 Disruptor thay bằng hai con trỏ nguyên tử **đơn điệu tăng**. Người ghi chỉ chờ khi vòng đầy; người đọc chỉ chờ khi vòng rỗng. Không có khoá nào cả.
 
 Hai chi tiết cài đặt đáng nhớ:
-- Kích thước **luỹ thừa của 2** để `chỉ_mục = con_trỏ & (N−1)` — phép AND một owner kỳ, thay cho phép chia hàng chục owner kỳ.
+- Kích thước **luỹ thừa của 2** để `chỉ_mục = con_trỏ & (N−1)` — phép AND một chu kỳ, thay cho phép chia hàng chục chu kỳ.
 - Con trỏ **không bao giờ quay vòng** (u64 tăng mãi). Nhờ vậy `ghi − đọc` cho biết chính xác số phần tử, phân biệt được rỗng và đầy — điều mà con trỏ quay vòng không làm được nếu không hy sinh một ô.
 
 ### 3. Bể đối tượng: cấp phát trước, tái dùng mãi
@@ -153,7 +153,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Ghi một mẫu là O(1) và KHÔNG cấp phát — bắt buộc, vì bản thân việc đo
 /// không được làm nhiễu thứ đang đo.
 pub struct LatencyHistogram {
-    /// xor[i] đếm các giá trị trong [2^(i-1), 2^i)
+    /// xo[i] đếm các giá trị trong [2^(i-1), 2^i)
     xor: Vec<u64>,
     pub tong_mau: u64,
     pub min: u64,
@@ -186,10 +186,10 @@ impl LatencyHistogram {
     pub fn percentile(&self, p: f64) -> u64 {
         if self.tong_mau == 0 { return 0; }
         let threshold = (self.tong_mau as f64 * p).ceil().max(1.0) as u64;
-        let mut cong_don = 0u64;
+        let mut accumulate = 0u64;
         for (i, &c) in self.xor.iter().enumerate() {
-            cong_don += c;
-            if cong_don >= threshold {
+            accumulate += c;
+            if accumulate >= threshold {
                 return if i == 0 { 0 } else { (1u64 << (i - 1)) * 2 - 1 };
             }
         }
@@ -540,7 +540,7 @@ mod tests {
 
     // ---------- Biểu đồ độ trễ ----------
     #[test]
-    fn bieu_do_rong_khong_panic() {
+    fn empty_histogram_does_not_panic() {
         let b = LatencyHistogram::new();
         assert_eq!(b.tong_mau, 0);
         assert_eq!(b.mean(), 0.0);
@@ -548,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn bieu_do_ghi_dung_min_max_va_trung_binh() {
+    fn histogram_tracks_min_max_and_mean() {
         let mut b = LatencyHistogram::new();
         for x in [10u64, 20, 30, 40] { b.record(x); }
         assert_eq!(b.min, 10);
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_vi_tang_don_dieu() {
+    fn percentiles_are_monotonic() {
         let mut b = LatencyHistogram::new();
         for x in gen_mau_latency(10_000, 7) { b.record(x); }
         let (p50, p90, p99, p999) = (b.percentile(0.5), b.percentile(0.9),
@@ -569,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_vi_bao_gio_cung_bao_phu_gia_tri_that() {
+    fn percentiles_bracket_the_true_value() {
         // Cận trên của xô phải THỰC SỰ là cận trên: không được báo thấp hơn
         // giá trị thật, nếu không ta sẽ tưởng hệ thống nhanh hơn thực tế.
         let mut b = LatencyHistogram::new();
@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn duoi_dai_lam_trung_binh_noi_doi() {
+    fn a_long_tail_makes_the_mean_lie() {
         // Đây là bài học trung tâm của chương: 99% mẫu ở 200–300 ns, nhưng
         // 0.1% ở 50 µs kéo trung bình lên và che mất phân bố thật.
         let mut b = LatencyHistogram::new();
@@ -602,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn ghi_gia_tri_khong_va_gia_tri_lon_nhat_deu_an_toan() {
+    fn recording_zero_and_max_is_safe() {
         let mut b = LatencyHistogram::new();
         b.record(0);
         b.record(u64::MAX);
@@ -613,7 +613,7 @@ mod tests {
 
     // ---------- Chia sẻ giả ----------
     #[test]
-    fn dem_co_dem_chiem_tron_mot_dong_cache() {
+    fn padded_counter_owns_a_whole_cache_line() {
         assert_eq!(std::mem::size_of::<CountHasCount>(), DONG_CACHE);
         assert_eq!(std::mem::align_of::<CountHasCount>(), DONG_CACHE,
                    "phải căn theo dòng cache, không chỉ đủ kích thước");
@@ -644,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_dung_het_suc_chua_khong_hy_sinh_o_nao() {
+    fn ring_uses_full_capacity_without_wasting_a_slot() {
         // Hàng đợi vòng thường phải bỏ một ô để phân biệt rỗng/đầy.
         // Con trỏ tăng mãi giúp ta dùng trọn N ô.
         let v: DisruptorRing<u32, 8> = DisruptorRing::new();
@@ -655,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_quay_dung_qua_nhieu_luot() {
+    fn ring_wraps_correctly_over_many_laps() {
         let v: DisruptorRing<u64, 4> = DisruptorRing::new();
         for i in 0..1000u64 {
             v.push(i).unwrap();
@@ -665,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn vong_rong_tra_none_va_khong_panic() {
+    fn empty_ring_returns_none_safely() {
         let v: DisruptorRing<u8, 16> = DisruptorRing::new();
         assert_eq!(v.take(), None);
         assert!(v.rong() && !v.day());
@@ -673,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn get_lo_get_use_quantity_and_use_thu_from() {
+    fn batch_take_returns_the_requested_count() {
         let v: DisruptorRing<u32, 64> = DisruptorRing::new();
         for i in 0..50 { v.push(i).unwrap(); }
         let mut ra = Vec::new();
@@ -695,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn phep_and_thay_duoc_phep_chia_khi_suc_chua_la_luy_thua_hai() {
+    fn and_replaces_modulo_for_power_of_two_capacity() {
         for n in [8usize, 16, 64, 1024, 4096] {
             for v in [0usize, 1, 7, 1030, 99999] {
                 assert_eq!(v & (n - 1), v % n, "AND phải cho cùng kết quả với MOD");
@@ -705,13 +705,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "luỹ thừa của 2")]
-    fn suc_chua_khong_phai_luy_thua_hai_bi_tu_choi() {
+    fn non_power_of_two_capacity_is_rejected() {
         let _: DisruptorRing<u8, 100> = DisruptorRing::new();
     }
 
     // ---------- Bể đối tượng ----------
     #[test]
-    fn be_cap_phat_and_return_lai_use() {
+    fn pool_recycles_objects() {
         let mut b: ObjectPool<u64> = ObjectPool::new(3);
         assert_eq!(b.con_ranh(), 3);
         let a = b.borrow().unwrap();
@@ -723,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn be_het_thi_bao_none_chu_khong_cap_phat_them() {
+    fn exhausted_pool_returns_none_instead_of_allocating() {
         // Điểm mấu chốt: thà từ chối còn hơn cấp phát heap trên đường nóng.
         let mut b: ObjectPool<u32> = ObjectPool::new(2);
         assert!(b.borrow().is_some());
@@ -734,13 +734,13 @@ mod tests {
     }
 
     #[test]
-    fn goi_lenh_vua_dung_mot_dong_cache() {
+    fn order_packet_is_exactly_one_cache_line() {
         assert_eq!(std::mem::size_of::<OrderPacket>(), DONG_CACHE,
                    "bản ghi trên đường nóng nên vừa một dòng cache, không hơn");
     }
 
     #[test]
-    fn o_vua_tra_duoc_tai_dung_ngay() {
+    fn a_returned_slot_is_reusable_immediately() {
         let mut b: ObjectPool<u64> = ObjectPool::new(2);
         let i = b.borrow().unwrap();
         *b.fix(i) = 12345;
@@ -752,7 +752,7 @@ mod tests {
 
     // ---------- Bố trí bộ nhớ ----------
     #[test]
-    fn soa_doc_it_byte_hon_han_aos_khi_quet_mot_truong() {
+    fn soa_reads_far_fewer_bytes_when_scanning_one_field() {
         let n = 10_000;
         let aos = bytes_to_read_one_field_aos(n);
         let soa = QuoteTableSoA::new(n).bytes_to_read_one_field();
@@ -760,19 +760,19 @@ mod tests {
     }
 
     #[test]
-    fn soa_tinh_dung_tong() {
+    fn soa_computes_the_correct_sum() {
         let mut t = QuoteTableSoA::new(5);
         for i in 0..5 { t.price_buy[i] = (i as i64 + 1) * 100; }
         assert_eq!(t.total_price_buy(), 100 + 200 + 300 + 400 + 500);
     }
 
     #[test]
-    fn bao_gia_aos_khong_bi_don_dem_bat_ngo() {
+    fn aos_quote_has_no_surprise_padding() {
         // Nếu kích thước lệch so với tổng các trường thì có đệm ẩn — điều
         // cần biết khi tính băng thông bộ nhớ. Xếp trường theo kích thước
         // giảm dần là cách đơn giản nhất để tránh đệm.
-        let total_truong = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4;
-        assert_eq!(std::mem::size_of::<QuoteAoS>(), total_truong);
+        let total_fields = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4;
+        assert_eq!(std::mem::size_of::<QuoteAoS>(), total_fields);
     }
 
     // ---------- Ngân sách độ trễ ----------
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_tinh_use_total_and_node_true() {
+    fn budget_computes_total_and_bottleneck() {
         let ns = nanos_mau();
         assert_eq!(ns.tong(), 2_450);
         assert!(ns.set_level_spend());
@@ -796,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn amdahl_tinh_dung_gioi_han_tang_toc() {
+    fn amdahl_bounds_the_speedup() {
         let ns = nanos_mau();
         // Xoá hẳn chặng 1500 ns khỏi tổng 2450 ns → còn 950 ns
         let mong_doi = 2_450.0 / 950.0;
@@ -806,7 +806,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_exceed_cap_is_report_truot() {
+    fn over_budget_is_reported_as_a_miss() {
         let ns = LatencyBudget {
             tran_ns: 1_000,
             chang: vec![LatencyStage { name: "cham".into(), ns: 9_999 }],
@@ -815,10 +815,10 @@ mod tests {
     }
 
     #[test]
-    fn ngan_sach_mot_chang_duy_nhat_cho_tang_toc_vo_han() {
+    fn a_single_stage_budget_allows_unbounded_speedup() {
         let ns = LatencyBudget {
             tran_ns: 100,
-            chang: vec![LatencyStage { name: "all".into(), ns: 500 }],
+            chang: vec![LatencyStage { name: "tat_ca".into(), ns: 500 }],
         };
         assert!(ns.max_speedup_if_node_removed().is_infinite(),
                 "xoá chặng duy nhất thì thời gian còn 0");

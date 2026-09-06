@@ -362,20 +362,20 @@ impl OrderBook {
             let swap_resp = if swap_resp_is_sell { &mut self.ben_ban } else { &mut self.side_buy };
             let queue = swap_resp.get_mut(&key).unwrap();
             while order.remaining() > 0 {
-                let swap_tac = match queue.front_mut() { Some(d) => d, None => break };
-                let amount = order.remaining().min(swap_tac.remaining());
+                let head_task = match queue.front_mut() { Some(d) => d, None => break };
+                let amount = order.remaining().min(head_task.remaining());
                 order.filled += amount;
-                swap_tac.filled += amount;
+                head_task.filled += amount;
                 all_fill.push(Fill {
                     order_aggressive: order.id,
-                    order_passive: swap_tac.id,
+                    order_passive: head_task.id,
                     // Giá khớp là giá của lệnh ĐÃ NẰM SẴN trong sổ — người
                     // đến sau được hưởng giá tốt hơn nếu có. Đây là quy tắc
                     // "cải thiện giá" của mọi sàn nghiêm túc.
                     price: gia_khop,
                     quantity: amount,
                 });
-                if swap_tac.remaining() == 0 { queue.pop_front(); }
+                if head_task.remaining() == 0 { queue.pop_front(); }
             }
             if queue.is_empty() { swap_resp.remove(&key); }
         }
@@ -496,7 +496,7 @@ pub fn run_test(
     let mut num_trade = 0;
     let mut equity_curve = Vec::with_capacity(data.len());
     let mut peak = i64::MIN;
-    let mut max_sut = 0;
+    let mut max_dd = 0;
 
     for i in 0..data.len() {
         let history = &data[..=i];
@@ -521,7 +521,7 @@ pub fn run_test(
         let gt = position.value_empty(data[i].dong);
         equity_curve.push(gt);
         peak = peak.max(gt);
-        max_sut = max_sut.max(peak - gt);
+        max_dd = max_dd.max(peak - gt);
     }
 
     let last_price = data.last().map_or(0, |n| n.dong);
@@ -529,7 +529,7 @@ pub fn run_test(
         last_value: position.value_empty(last_price),
         last_position: position,
         num_trade: num_trade,
-        max_drawdown: max_sut,
+        max_drawdown: max_dd,
         equity_curve,
     }
 }
@@ -634,13 +634,13 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn orders_sent(id: OrderId, side: Side, price: Price, sl: Quantity) -> Order<Sent> {
+    fn order_sent(id: OrderId, side: Side, price: Price, sl: Quantity) -> Order<Sent> {
         Order::<DangSoan>::new(id, "VNM", side, price, sl).transfer::<RiskChecked>().send()
     }
 
     // ---------- Tiền & kiểu ----------
     #[test]
-    fn tien_so_nguyen_khong_co_sai_so_tich_luy() {
+    fn integer_money_has_no_drift() {
         let f64_tong: f64 = (0..1000).map(|_| 0.01f64).sum();
         assert_ne!(f64_tong, 10.0, "f64 KHÔNG cộng đúng — đây là lý do không dùng nó cho tiền");
         let tick_tong: i64 = (0..1000).map(|_| 1i64).sum();
@@ -648,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn hien_thi_tick_dung_ca_so_am() {
+    fn tick_display_handles_negatives() {
         assert_eq!(tick_to_string(8_450), "84.50");
         assert_eq!(tick_to_string(5), "0.05");
         assert_eq!(tick_to_string(-8_450), "-84.50");
@@ -656,12 +656,12 @@ mod tests {
 
     // ---------- Rủi ro ----------
     #[test]
-    fn cong_rui_ro_chan_dung_tung_loai_vi_pham() {
+    fn risk_gate_blocks_each_violation_kind() {
         let hm = Limit { max_order_value: 1_000_000, max_position: 500,
                           list_wait_op: vec!["VNM".into()] };
         // Dùng `unwrap_err()` chứ không `assert_eq!` cả `Result`: `Lenh` không
         // cài `PartialEq` (so sánh hai lệnh theo giá trị là vô nghĩa — mỗi lệnh
-        // có danh tính riêng qua `id`).
+        // có danh tính riêng qua `ma`).
         assert!(hm.check(Order::new(1, "VNM", Side::Buy, 8_500, 100), 0).is_ok());
         assert_eq!(hm.check(Order::new(2, "VNM", Side::Buy, 8_500, 0), 0).unwrap_err(),
                    ErrorRisk::SoLuongKhongDuong(0));
@@ -674,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn limit_position_tinh_all_side_sell_no() {
+    fn position_limit_covers_the_short_side_too() {
         let hm = Limit { max_order_value: i64::MAX, max_position: 100,
                           list_wait_op: vec!["VNM".into()] };
         // bán khống 150 khi đang giữ 0 → vị thế -150, vượt trần 100
@@ -686,12 +686,12 @@ mod tests {
 
     // ---------- Sổ lệnh ----------
     #[test]
-    fn order_book_return_use_price_good_nhat_two_side() {
+    fn book_reports_best_on_both_sides() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Buy, 100, 10));
-        s.nap(orders_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên mua
-        s.nap(orders_sent(3, Side::Sell, 120, 10));
-        s.nap(orders_sent(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
+        s.nap(order_sent(1, Side::Buy, 100, 10));
+        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên mua
+        s.nap(order_sent(3, Side::Sell, 120, 10));
+        s.nap(order_sent(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(105));
         assert_eq!(s.best_ask(), Some(110));
         assert_eq!(s.spread(), Some(5));
@@ -699,19 +699,19 @@ mod tests {
     }
 
     #[test]
-    fn order_no_giao_each_thi_nam_lai_num() {
+    fn non_crossing_order_rests_on_book() {
         let mut s = OrderBook::new();
-        assert!(s.nap(orders_sent(1, Side::Buy, 100, 10)).is_empty());
-        assert!(s.nap(orders_sent(2, Side::Sell, 110, 10)).is_empty());
+        assert!(s.nap(order_sent(1, Side::Buy, 100, 10)).is_empty());
+        assert!(s.nap(order_sent(2, Side::Sell, 110, 10)).is_empty());
         assert_eq!(s.total_order_book(), 2);
     }
 
     #[test]
-    fn uu_tien_time_time_cell_same_level_price() {
+    fn time_priority_within_a_price_level() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Buy, 100, 50));  // đến TRƯỚC
-        s.nap(orders_sent(2, Side::Buy, 100, 50));  // đến SAU
-        let fill = s.nap(orders_sent(3, Side::Sell, 100, 60));
+        s.nap(order_sent(1, Side::Buy, 100, 50));  // đến TRƯỚC
+        s.nap(order_sent(2, Side::Buy, 100, 50));  // đến SAU
+        let fill = s.nap(order_sent(3, Side::Sell, 100, 60));
         assert_eq!(fill.len(), 2);
         assert_eq!(fill[0].order_passive, 1, "lệnh đến trước phải khớp trước");
         assert_eq!(fill[0].quantity, 50);
@@ -720,31 +720,31 @@ mod tests {
     }
 
     #[test]
-    fn uu_tien_gia_thang_uu_tien_thoi_gian() {
+    fn price_priority_beats_time_priority() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Buy, 100, 50));  // đến trước, giá THẤP hơn
-        s.nap(orders_sent(2, Side::Buy, 105, 50));  // đến sau, giá CAO hơn
-        let fill = s.nap(orders_sent(3, Side::Sell, 100, 10));
+        s.nap(order_sent(1, Side::Buy, 100, 50));  // đến trước, giá THẤP hơn
+        s.nap(order_sent(2, Side::Buy, 105, 50));  // đến sau, giá CAO hơn
+        let fill = s.nap(order_sent(3, Side::Sell, 100, 10));
         assert_eq!(fill[0].order_passive, 2, "giá tốt hơn thắng, dù đến sau");
         assert_eq!(fill[0].price, 105);
     }
 
     #[test]
-    fn nguoi_den_sau_duoc_cai_thien_gia() {
+    fn later_arrival_gets_price_improvement() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Sell, 100, 10)); // ai đó chào bán rẻ
+        s.nap(order_sent(1, Side::Sell, 100, 10)); // ai đó chào bán rẻ
         // ta sẵn sàng mua tới 120, nhưng chỉ phải trả 100
-        let fill = s.nap(orders_sent(2, Side::Buy, 120, 10));
+        let fill = s.nap(order_sent(2, Side::Buy, 120, 10));
         assert_eq!(fill[0].price, 100, "khớp ở giá của lệnh nằm sẵn trong sổ");
     }
 
     #[test]
-    fn order_lon_scan_qua_many_level_price() {
+    fn large_order_sweeps_multiple_levels() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Sell, 100, 10));
-        s.nap(orders_sent(2, Side::Sell, 101, 10));
-        s.nap(orders_sent(3, Side::Sell, 102, 10));
-        let fill = s.nap(orders_sent(4, Side::Buy, 102, 25));
+        s.nap(order_sent(1, Side::Sell, 100, 10));
+        s.nap(order_sent(2, Side::Sell, 101, 10));
+        s.nap(order_sent(3, Side::Sell, 102, 10));
+        let fill = s.nap(order_sent(4, Side::Buy, 102, 25));
         assert_eq!(fill.len(), 3);
         assert_eq!(fill.iter().map(|k| k.price).collect::<Vec<_>>(), vec![100, 101, 102],
                    "phải ăn từ giá tốt nhất trở đi");
@@ -753,17 +753,17 @@ mod tests {
     }
 
     #[test]
-    fn part_data_cua_order_aggressive_nam_lai_num() {
+    fn aggressive_remainder_rests_on_book() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Sell, 100, 10));
-        let fill = s.nap(orders_sent(2, Side::Buy, 100, 30));
+        s.nap(order_sent(1, Side::Sell, 100, 10));
+        let fill = s.nap(order_sent(2, Side::Buy, 100, 30));
         assert_eq!(fill.iter().map(|k| k.quantity).sum::<i64>(), 10);
         assert_eq!(s.best_bid(), Some(100), "20 đơn vị còn lại thành lệnh chờ mua");
         assert_eq!(s.qty_at(Side::Buy, 100), 20);
     }
 
     #[test]
-    fn report_toan_quantity_qua_new_lan_fill() {
+    fn quantity_is_conserved_across_fills() {
         // BẤT BIẾN SỐNG CÒN của mọi sàn: không đơn vị nào được sinh ra
         // hay biến mất trong quá trình khớp.
         let mut s = OrderBook::new();
@@ -774,7 +774,7 @@ mod tests {
             let price = 100 + ((i * 7) % 11) as i64 - 5;
             let sl = 10 + (i % 13) as i64;
             da_nap += sl;
-            filled += s.nap(orders_sent(i, side, price, sl))
+            filled += s.nap(order_sent(i, side, price, sl))
                         .iter().map(|k| k.quantity).sum::<i64>();
         }
         let con_weight: i64 = [Side::Buy, Side::Sell].iter()
@@ -786,10 +786,10 @@ mod tests {
     }
 
     #[test]
-    fn huy_lenh_go_dung_lenh_va_don_muc_gia_rong() {
+    fn cancel_removes_order_and_prunes_empty_level() {
         let mut s = OrderBook::new();
-        s.nap(orders_sent(1, Side::Buy, 100, 10));
-        s.nap(orders_sent(2, Side::Buy, 100, 20));
+        s.nap(order_sent(1, Side::Buy, 100, 10));
+        s.nap(order_sent(2, Side::Buy, 100, 20));
         assert!(s.cancel(1));
         assert_eq!(s.qty_at(Side::Buy, 100), 20);
         assert!(s.cancel(2));
@@ -798,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn so_rong_khong_co_gia_va_khong_panic() {
+    fn empty_book_has_no_price_and_no_panic() {
         let s = OrderBook::new();
         assert_eq!(s.best_bid(), None);
         assert_eq!(s.spread(), None);
@@ -808,7 +808,7 @@ mod tests {
 
     // ---------- Vị thế ----------
     #[test]
-    fn vi_the_thoa_luat_vi_nhom() {
+    fn position_obeys_monoid_laws() {
         let a = Position::from_fill(Side::Buy, 100, 10);
         let b = Position::from_fill(Side::Sell, 110, 5);
         let c = Position::from_fill(Side::Buy, 90, 3);
@@ -818,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn coalesce_position_theo_block_wait_same_result() {
+    fn chunked_position_merge_agrees() {
         // Vì là vị nhóm, chia nhỏ rồi gộp lại (như khi dùng rayon) cho kết quả
         // Y HỆT tính tuần tự. Đây là bảo chứng toán học, không phải may mắn.
         let fill: Vec<Position> = (0..100).map(|i| {
@@ -833,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn mua_roi_ban_cao_hon_thi_co_lai() {
+    fn buy_then_sell_higher_is_profitable() {
         let v = Position::from_fill(Side::Buy, 8_000, 100)
             .compose(Position::from_fill(Side::Sell, 8_500, 100));
         assert_eq!(v.quantity, 0, "đã đóng hết vị thế");
@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn position_open_can_peak_price_lai_theo_market() {
+    fn open_position_is_marked_to_market() {
         let v = Position::from_fill(Side::Buy, 8_000, 100);
         assert_eq!(v.value_empty(8_000), 0, "vừa mua xong thì hòa vốn");
         assert_eq!(v.value_empty(8_100), 10_000, "giá lên 100 tick → lãi 10 000");
@@ -850,7 +850,7 @@ mod tests {
 
     // ---------- Kiểm định ----------
     #[test]
-    fn sinh_du_lieu_tat_dinh_theo_hat_giong() {
+    fn data_generation_is_seed_deterministic() {
         assert_eq!(gen_data(50, 8_000, 7), gen_data(50, 8_000, 7));
         assert_ne!(gen_data(50, 8_000, 7), gen_data(50, 8_000, 8));
     }
@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn chien_luoc_giu_im_khi_chua_du_du_lieu() {
+    fn strategy_stays_silent_until_warm() {
         let mut cl = MeanCross { nhanh: 5, cham: 20, don_pos: 100 };
         let few_candle = gen_data(10, 8_000, 1);
         assert_eq!(cl.decide(&few_candle, &Position::RONG), Signal::Giu,
@@ -873,7 +873,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tai_loop_can_hoan_toan() {
+    fn backtest_is_fully_reproducible() {
         let data = gen_data(300, 8_000, 42);
         let run = || {
             let mut cl = MeanCross { nhanh: 5, cham: 20, don_pos: 100 };
@@ -883,7 +883,7 @@ mod tests {
     }
 
     #[test]
-    fn phi_va_truot_gia_luon_lam_ket_qua_xau_di() {
+    fn fees_and_slippage_always_hurt() {
         let data = gen_data(400, 8_000, 2024);
         let mut cl1 = MeanCross { nhanh: 5, cham: 20, don_pos: 100 };
         let ly_tuong = run_test(&data, &mut cl1, 0, 0);
@@ -896,7 +896,7 @@ mod tests {
     }
 
     #[test]
-    fn sut_giam_toi_da_khong_bao_gio_am() {
+    fn max_drawdown_is_never_negative() {
         for hat in [1u64, 7, 42, 2024, 31337] {
             let data = gen_data(200, 8_000, hat);
             let mut cl = MeanCross { nhanh: 3, cham: 10, don_pos: 50 };
@@ -907,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn no_trade_thi_no_lai_no_lo() {
+    fn no_trades_means_no_pnl() {
         struct NoOp;
         impl Strategy for NoOp {
             fn name(&self) -> &str { "đứng ngoài" }
@@ -921,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn chien_luoc_khong_duoc_nhin_trom_tuong_lai() {
+    fn strategy_cannot_peek_at_the_future() {
         // Nếu bộ kiểm định khớp ở giá ĐÓNG của chính cây nến ra tín hiệu,
         // ta đã dùng thông tin chưa tồn tại. Ở đây khớp ở giá MỞ của nến kế
         // tiếp, nên nến CUỐI CÙNG không thể sinh giao dịch nào.

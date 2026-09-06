@@ -218,7 +218,7 @@ fn main() {
     goi(Method::GET, "/san-pham/99", "");         // 404
     goi(Method::POST, "/san-pham", "gia=xyz");     // 422 thiếu tên
     goi(Method::DELETE, "/san-pham/2", "");
-    goi(Method::GET, "/khong-co-route", "");       // 404
+    goi(Method::GET, "/khong-co-tuyen", "");       // 404
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   LÕI NGHIỆP VỤ THUẦN TÚY = KIỂM THỬ ĐƯỢC KHÔNG CẦN CHẠY SERVER ");
@@ -229,13 +229,13 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn new_truong() -> (RouteMatcher, Arc<State>) {
+    fn environment() -> (RouteMatcher, Arc<State>) {
         (use_resp_use(), State::new())
     }
 
     #[test]
-    fn tao_va_xem_san_pham() {
-        let (app, tt) = new_truong();
+    fn create_and_read_product() {
+        let (app, tt) = environment();
         let r = app.handle(yc(Method::POST, "/san-pham", "ten=Sách;gia=45000"), &tt);
         assert_eq!(r.id, 201);
         let r = app.handle(yc(Method::GET, "/san-pham/1", ""), &tt);
@@ -244,21 +244,21 @@ mod tests {
     }
 
     #[test]
-    fn tuyen_no_ton_tai_return_404() {
-        let (app, tt) = new_truong();
+    fn unknown_route_returns_404() {
+        let (app, tt) = environment();
         assert_eq!(app.handle(yc(Method::GET, "/bat-ky", ""), &tt).id, 404);
     }
 
     #[test]
-    fn sai_phuong_thuc_return_404() {
-        let (app, tt) = new_truong();
+    fn wrong_method_returns_404() {
+        let (app, tt) = environment();
         // Có tuyến GET /san-pham/:id nhưng không có PUT -> 404
         assert_eq!(app.handle(yc(Method::PUT, "/san-pham/1", ""), &tt).id, 404);
     }
 
     #[test]
-    fn data_sai_return_422() {
-        let (app, tt) = new_truong();
+    fn invalid_payload_returns_422() {
+        let (app, tt) = environment();
         // Thiếu tên
         assert_eq!(app.handle(yc(Method::POST, "/san-pham", "gia=100"), &tt).id, 422);
         // Giá không phải số
@@ -266,8 +266,8 @@ mod tests {
     }
 
     #[test]
-    fn tham_num_path_close() {
-        let (app, tt) = new_truong();
+    fn dynamic_path_params() {
+        let (app, tt) = environment();
         app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
         app.handle(yc(Method::POST, "/san-pham", "ten=B;gia=2"), &tt);
         // :id được trích đúng
@@ -275,8 +275,8 @@ mod tests {
     }
 
     #[test]
-    fn xoa_san_pham() {
-        let (app, tt) = new_truong();
+    fn delete_product() {
+        let (app, tt) = environment();
         app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
         assert_eq!(app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id, 200);
         assert_eq!(app.handle(yc(Method::GET, "/san-pham/1", ""), &tt).id, 404); // đã xóa
@@ -284,8 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn liet_ke_sap_theo_id() {
-        let (app, tt) = new_truong();
+    fn list_is_sorted_by_id() {
+        let (app, tt) = environment();
         for i in 1..=3 { app.handle(yc(Method::POST, "/san-pham", &format!("ten=SP{};gia={}", i, i)), &tt); }
         let r = app.handle(yc(Method::GET, "/san-pham", ""), &tt);
         assert_eq!(r.than, "1:SP1:1,2:SP2:2,3:SP3:3");

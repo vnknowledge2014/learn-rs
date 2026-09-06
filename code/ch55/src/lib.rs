@@ -225,8 +225,8 @@ mod property {
         let mut sinh = Generator::new(2026);
         for _ in 0..2000 {
             let mut gio = Cart::new();
-            let so_mat_hang = sinh.so(5) + 1;
-            for i in 0..so_mat_hang {
+            let item_count = sinh.so(5) + 1;
+            for i in 0..item_count {
                 let _ = gio.them(&format!("SP{}", i), (sinh.so(100_000) + 1) as u64, sinh.so(5) + 1);
             }
             let pt = sinh.so(150); // cố tình cho vượt 100

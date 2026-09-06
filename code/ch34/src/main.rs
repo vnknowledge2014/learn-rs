@@ -130,18 +130,18 @@ fn main() -> io::Result<()> {
     // GIAI ĐOẠN 2: Khởi động lại sau sự cố và kiểm tra tính năng phục hồi
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
-        let engine_phuc_hoi = MiniLsmEngine::open(duong_dan_wal)?;
+        let recovered_engine = MiniLsmEngine::open(duong_dan_wal)?;
         
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
-        println!("      + 'user:1' = {:?}", engine_phuc_hoi.get("user:1"));
-        println!("      + 'user:2' = {:?}", engine_phuc_hoi.get("user:2"));
-        println!("      + 'user:3' = {:?}", engine_phuc_hoi.get("user:3"));
+        println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
+        println!("      + 'user:2' = {:?}", recovered_engine.get("user:2"));
+        println!("      + 'user:3' = {:?}", recovered_engine.get("user:3"));
 
         // Xác nhận dữ liệu được phục hồi chuẩn xác 100%
-        assert_eq!(engine_phuc_hoi.get("user:1"), Some(&"Alice Nguyen".to_string()));
-        assert_eq!(engine_phuc_hoi.get("user:2"), None);
-        assert_eq!(engine_phuc_hoi.get("user:3"), Some(&"Charlie".to_string()));
-        assert_eq!(engine_phuc_hoi.total_keys(), 2);
+        assert_eq!(recovered_engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
+        assert_eq!(recovered_engine.get("user:2"), None);
+        assert_eq!(recovered_engine.get("user:3"), Some(&"Charlie".to_string()));
+        assert_eq!(recovered_engine.total_keys(), 2);
         
         println!("    => Toàn bộ trạng thái dữ liệu đã được phục hồi hoàn hảo nhờ WAL!");
     }

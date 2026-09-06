@@ -72,7 +72,7 @@ Ba chiến lược khác nhau về *cách chọn máy chủ tiếp theo*:
 - **Ít kết nối nhất**: tốt khi các yêu cầu tốn công không đều (một số kéo dài lâu).
 - **Trọng số**: khi các máy chủ mạnh yếu khác nhau.
 
-Trong Rust, cả ba cài chung một `trait StrategyCanTable` (Chương 12), nên đổi chiến lược không cần sửa mã gọi — đúng compute thần đa hình và tiêm phụ thuộc.
+Trong Rust, cả ba cài chung một `trait StrategyCanTable` (Chương 12), nên đổi chiến lược không cần sửa mã gọi — đúng tinh thần đa hình và tiêm phụ thuộc.
 
 ### 3. Băm nhất quán — vì sao `hash % N` là thảm họa
 
@@ -80,7 +80,7 @@ Giả sử bạn có 4 máy cache và phân khóa bằng `hash(khóa) % 4`. Thê
 
 **Băm nhất quán** đặt cả máy chủ lẫn khóa lên một *vòng tròn băm*. Khóa đi theo chiều kim đồng hồ tới máy chủ gần nhất. Khi thêm/bớt một máy, **chỉ những khóa trong một cung nhỏ** cần di chuyển — trung bình `1/N` số khóa, thay vì gần như tất cả.
 
-Test `bam_nhat_quan_it_xao_tron_khi_bo_may` trong chương chứng minh: bỏ 1 trong 4 máy chỉ làm ~25% khóa di chuyển (giữ nguyên >60%, thực tế thường ~75%), và **0 khóa "bất thường"** — chỉ khóa của máy bị bỏ mới di chuyển.
+Test `consistent_hash_minimizes_remapping` trong chương chứng minh: bỏ 1 trong 4 máy chỉ làm ~25% khóa di chuyển (giữ nguyên >60%, thực tế thường ~75%), và **0 khóa "bất thường"** — chỉ khóa của máy bị bỏ mới di chuyển.
 
 ### 4. Chất lượng hàm băm quyết định phân bố tải
 
@@ -177,10 +177,10 @@ impl StrategyCanTable for WeightedRoundRobin {
         if tong == 0 { return may_chu.first(); }
         let level = self.count % tong;
         self.count += 1;
-        let mut cong_don = 0;
+        let mut accumulate = 0;
         for m in may_chu {
-            cong_don += m.weight;
-            if level < cong_don { return Some(m); }
+            accumulate += m.weight;
+            if level < accumulate { return Some(m); }
         }
         may_chu.last()
     }
@@ -365,7 +365,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn may3() -> Vec<Server> {
+    fn server3() -> Vec<Server> {
         vec![
             Server { name: "a".into(), current_connect: 5, weight: 1 },
             Server { name: "b".into(), current_connect: 2, weight: 3 },
@@ -374,21 +374,21 @@ mod tests {
     }
 
     #[test]
-    fn xoay_vong_deu_va_quay_lai() {
-        let m = may3();
+    fn round_robin_is_even_and_wraps() {
+        let m = server3();
         let mut xv = RoundRobin::new();
         let name: Vec<&str> = (0..6).map(|_| xv.pick(&m).unwrap().name.as_str()).collect();
         assert_eq!(name, vec!["a", "b", "c", "a", "b", "c"]);
     }
 
     #[test]
-    fn it_ket_noi_chon_may_ranh_nhat() {
-        assert_eq!(FewConnect.pick(&may3()).unwrap().name, "b"); // b có 2 kết nối
+    fn least_connections_picks_idlest() {
+        assert_eq!(FewConnect.pick(&server3()).unwrap().name, "b"); // b có 2 kết nối
     }
 
     #[test]
-    fn weight_part_unit_use_ratio() {
-        let m = may3(); // trọng số a=1, b=3, c=1 -> tổng 5
+    fn weights_distribute_proportionally() {
+        let m = server3(); // trọng số a=1, b=3, c=1 -> tổng 5
         let mut wt = WeightedRoundRobin::new();
         let mut count: HashMap<String, u32> = HashMap::new();
         for _ in 0..5 { *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1; }
@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn bam_nhat_quan_it_xao_tron_khi_bo_may() {
+    fn consistent_hash_minimizes_remapping() {
         let mut round = ConsistentHashRing::new(150);
         for m in ["A", "B", "C", "D"] { round.add_server(m); }
         let key: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn bam_nhat_quan_khoa_on_dinh() {
+    fn consistent_hash_keys_are_stable() {
         let mut round = ConsistentHashRing::new(50);
         round.add_server("X");
         round.add_server("Y");
@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn token_bucket_gioi_han_va_hoi_phuc() {
+    fn token_bucket_limits_and_refills() {
         let mut xor = TokenBucket::new(3.0, 1.0);
         // 3 token đầu -> cho; token thứ 4 tức thì -> chặn
         assert!(xor.wait_op(0.0));
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn token_bucket_khong_vuot_dung_luong() {
+    fn token_bucket_never_exceeds_capacity() {
         let mut xor = TokenBucket::new(2.0, 100.0);
         // chờ rất lâu nhưng token bị GHIM ở dung lượng, không tràn
         xor.wait_op(1000.0);
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn back_pressure_tu_choi_khi_day() {
+    fn back_pressure_rejects_when_full() {
         let mut hq: QueueLimit<u32> = QueueLimit::new(2);
         assert_eq!(hq.send(1), KetQuaNhan::DaNhan);
         assert_eq!(hq.send(2), KetQuaNhan::DaNhan);
@@ -460,7 +460,7 @@ mod tests {
 
 ---
 
-## CDN, DNS và Reverse Proxy — mô hình compute thần
+## CDN, DNS và Reverse Proxy — mô hình tinh thần
 
 Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình chứ không tự viết, nhưng phải hiểu để thiết kế đúng:
 
@@ -468,7 +468,7 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 - **CDN** (Content Delivery Network): đặt bản sao nội dung tĩnh (ảnh, JS, CSS) ở hàng trăm điểm gần người dùng. Về bản chất đây là **cache-aside phân tán theo địa lý** (Chương 52) — giảm độ trễ và gánh nặng cho máy chủ gốc.
 - **Reverse Proxy** (nginx, Caddy): đứng trước các máy chủ ứng dụng, làm cửa ngõ duy nhất. Nó thường kiêm luôn: cân bằng tải (mục 1), kết thúc TLS, giới hạn tần suất (mục 5), và bộ đệm. Trong Rust, bạn có thể tự viết reverse proxy bằng `tokio` + `hyper` — nhưng thường dùng công cụ có sẵn.
 
-> **Nguyên tắc thiết kế**: đẩy càng nhiều việc ra *rìa* (edge) càng tốt. CDN xử lý nội dung tĩnh, reverse proxy xử lý TLS và rate limit, để máy chủ ứng dụng chỉ tập trung vào logic nghiệp vụ — đúng compute thần "lõi thuần túy, vỏ mệnh lệnh" ở Chương 20, nhưng ở quy mô hạ tầng.
+> **Nguyên tắc thiết kế**: đẩy càng nhiều việc ra *rìa* (edge) càng tốt. CDN xử lý nội dung tĩnh, reverse proxy xử lý TLS và rate limit, để máy chủ ứng dụng chỉ tập trung vào logic nghiệp vụ — đúng tinh thần "lõi thuần túy, vỏ mệnh lệnh" ở Chương 20, nhưng ở quy mô hạ tầng.
 
 ---
 
@@ -489,18 +489,57 @@ Thêm trường `khoe_manh: bool` vào `Server` và một chiến lược `XoayV
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub struct XoayVongBoQuaChet { pos_value: usize }
-impl XoayVongBoQuaChet { pub fn new() -> Self { XoayVongBoQuaChet { pos_value: 0 } } }
-impl XoayVongBoQuaChet {
-    pub fn pick<'a>(&mut self, may: &'a [MayChu2]) -> Option<&'a MayChu2> {
-        let khoe: Vec<&MayChu2> = may.iter().filter(|m| m.khoe_manh).collect();
-        if khoe.is_empty() { return None; }
-        let m = khoe[self.pos_value % khoe.len()];
-        self.pos_value += 1;
-        Some(m)
+/// Máy chủ có thêm cờ sức khoẻ. Bài tập yêu cầu thêm trường `healthy`
+/// vào `Server`; ở đây tách thành kiểu riêng để lời giải biên dịch được
+/// độc lập mà không phải sửa kiểu gốc của chương.
+#[derive(Debug, Clone)]
+pub struct HealthyServer {
+    pub name: String,
+    pub current_connect: u32,
+    pub weight: u32,
+    /// Do luồng kiểm tra sức khoẻ nền cập nhật.
+    pub healthy: bool,
+}
+
+/// Xoay vòng nhưng BỎ QUA máy đã chết.
+#[derive(Default)]
+pub struct RoundRobinSkipDead { pos: usize }
+
+impl RoundRobinSkipDead {
+    pub fn new() -> Self { RoundRobinSkipDead { pos: 0 } }
+
+    pub fn pick<'a>(&mut self, servers: &'a [HealthyServer]) -> Option<&'a HealthyServer> {
+        // Lọc trước rồi mới xoay vòng: nếu xoay vòng trên cả danh sách rồi
+        // mới bỏ máy chết, con trỏ sẽ nhảy cóc và phân tải mất đều.
+        let alive: Vec<&HealthyServer> = servers.iter().filter(|s| s.healthy).collect();
+        if alive.is_empty() { return None; }
+        let s = alive[self.pos % alive.len()];
+        self.pos += 1;
+        Some(s)
     }
 }
-// (MayChu2 = Server có thêm trường khoe_manh: bool)
+
+#[test]
+fn dead_servers_are_never_picked() {
+    let servers = vec![
+        HealthyServer { name: "a".into(), current_connect: 0, weight: 1, healthy: true },
+        HealthyServer { name: "b".into(), current_connect: 0, weight: 1, healthy: false },
+        HealthyServer { name: "c".into(), current_connect: 0, weight: 1, healthy: true },
+    ];
+    let mut lb = RoundRobinSkipDead::new();
+    let picked: Vec<&str> = (0..6).filter_map(|_| lb.pick(&servers)).map(|s| s.name.as_str()).collect();
+    assert!(!picked.contains(&"b"), "máy chết không bao giờ được chọn");
+    assert_eq!(picked, ["a", "c", "a", "c", "a", "c"], "vẫn xoay vòng đều giữa các máy sống");
+}
+
+#[test]
+fn all_dead_returns_none() {
+    let servers = vec![
+        HealthyServer { name: "a".into(), current_connect: 0, weight: 1, healthy: false },
+    ];
+    // Không có máy nào sống thì phải TRẢ VỀ None, không phải chọn bừa.
+    assert!(RoundRobinSkipDead::new().pick(&servers).is_none());
+}
 ```
 
 Trong thực tế, "kiểm tra sức khỏe" là một luồng nền định kỳ ping từng máy; máy không phản hồi bị đánh dấu chết và loại khỏi vòng cho tới khi hồi phục — đúng mẫu Circuit Breaker ở Chương 48.

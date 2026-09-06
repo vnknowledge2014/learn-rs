@@ -164,7 +164,7 @@ Ba tầng, mỗi tầng thêm một đòi hỏi:
 Nhìn kỹ sẽ thấy: **Plus chính là Monoid, nhưng ở tầng ngữ cảnh** thay vì tầng giá trị. Đây là mẫu dùng hằng ngày để đọc cấu hình theo thứ tự ưu tiên:
 
 ```rust
-let gate = tu_dong_lenh.or(from_bien_new_truong).or(from_file_cau_hinh).unwrap_or(8080);
+let gate = tu_dong_lenh.or(missing_field).or(from_config_file).unwrap_or(8080);
 ```
 
 ### 3.7. ChainRec — câu trả lời cho vấn đề tràn ngăn xếp
@@ -678,7 +678,7 @@ fn main() {
     println!("16. Foldable     gấp cây [20,50,70] -> tổng= {}", cay.clone().gap(0i64, |a, x| a + x));
     println!("17. Traversable  Vec<Result> -> Result<Vec>= {:?}",
              traverse_vec_result(vec!["1", "2"], |s: &str| s.parse::<i32>()));
-    println!("18. Chain        Some(4).concat(|x| Some(x*5))= {:?}", Some(4i32).concat(|x| Some(x * 5)));
+    println!("18. Chain        Some(4).noi(|x| Some(x*5))= {:?}", Some(4i32).concat(|x| Some(x * 5)));
     println!("20. Monad        = Applicative + Chain (siêu trait đánh dấu)");
 
     let luy_thua = chain_rec_option(( 1u64, 20u32), |(acc, remaining)| {
@@ -880,7 +880,7 @@ mod luat {
     }
 
     #[test] // 19. CHAINREC: chạy 1 TRIỆU vòng mà KHÔNG tràn ngăn xếp
-    fn chainrec_no_stack_overflow() {
+    fn chainrec_does_not_overflow_the_stack() {
         let kq = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
             Some(if remaining == 0 { StepCont::Xong(acc) }
                  else { StepCont::TiepTuc((acc + 1, remaining - 1)) })
@@ -935,7 +935,7 @@ Tin vui: **GAT (Generic Associated Types)** đã ổn định từ Rust 1.65 và
 
 Muốn cài `Semigroup` cho `i64` theo *hai* cách (cộng và nhân)? Không được — lỗi `E0119`. Muốn cài trait của thư viện khác cho kiểu của thư viện khác? Không được — lỗi `E0117`.
 
-Lối thoát duy nhất là **kiểu bọc**: `Tong(i64)`, `Product(i64)`, `Ham<A,B>`, `PosFrom<A>`. Bạn thấy mẫu này khắp mã nguồn trên. Đây không phải hạn chế vô cớ: nó bảo đảm **tính nhất quán cài đặt** — cả chương trình luôn thống nhất về việc `a.ghep(b)` nghĩa là gì.
+Lối thoát duy nhất là **kiểu bọc**: `Tong(i64)`, `Tich(i64)`, `Ham<A,B>`, `PosFrom<A>`. Bạn thấy mẫu này khắp mã nguồn trên. Đây không phải hạn chế vô cớ: nó bảo đảm **tính nhất quán cài đặt** — cả chương trình luôn thống nhất về việc `a.ghep(b)` nghĩa là gì.
 
 ### 5.3. Quyền sở hữu làm thay đổi hình dạng chữ ký
 

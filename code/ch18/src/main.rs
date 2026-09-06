@@ -314,9 +314,9 @@ fn main() {
     // 2. DANH SÁCH RỖNG — GIÁ TRỊ CỦA "HỘP RỖNG"
     // ------------------------------------------------------------------
     println!("\n2. VÌ SAO CẦN PHẦN TỬ ĐƠN VỊ?");
-    let empty_cong: Vec<Tong> = Vec::new();
+    let empty_sum: Vec<Tong> = Vec::new();
     let rong_nhan: Vec<Product> = Vec::new();
-    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_cong));
+    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_sum));
     println!(
         "   Tích của danh sách RỖNG: {:?}  (đúng: 1, KHÔNG phải 0!)",
         coalesce_all_all(rong_nhan)
@@ -363,11 +363,11 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n5. KIỂM THỬ THEO TÍNH CHẤT (1.000 bộ mẫu mỗi luật)");
     verify_link_hop("Tong   ", Tong, 1000);
-    verify_link_hop("Product   ", Product, 1000);
+    verify_link_hop("Tich   ", Product, 1000);
     verify_link_hop("LonNhat", Max, 1000);
     verify_link_hop("String ", |n: i64| n.to_string(), 1000);
     verify_don_pos("Tong   ", Tong, 1000);
-    verify_don_pos("Product   ", Product, 1000);
+    verify_don_pos("Tich   ", Product, 1000);
     verify_don_pos("LonNhat", Max, 1000);
 
     // ------------------------------------------------------------------
@@ -424,38 +424,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tong_tuan_thu_luat_ket_hop() {
+    fn sum_is_associative() {
         assert!(verify_link_hop("Tong", Tong, 500));
     }
 
     #[test]
-    fn tong_tuan_thu_luat_don_vi() {
+    fn sum_has_identity() {
         assert!(verify_don_pos("Tong", Tong, 500));
     }
 
     #[test]
-    fn tich_tuan_thu_ca_hai_luat() {
-        assert!(verify_link_hop("Product", Product, 500));
-        assert!(verify_don_pos("Product", Product, 500));
+    fn product_obeys_both_laws() {
+        assert!(verify_link_hop("Tich", Product, 500));
+        assert!(verify_don_pos("Tich", Product, 500));
     }
 
     #[test]
-    fn chuoi_tuan_thu_luat_ket_hop() {
+    fn string_concat_is_associative() {
         assert!(verify_link_hop("String", |n: i64| n.to_string(), 500));
     }
 
     #[test]
-    fn list_empty_return_ve_part_from_don_pos() {
-        let empty_cong: Vec<Tong> = Vec::new();
+    fn empty_list_folds_to_identity() {
+        let empty_sum: Vec<Tong> = Vec::new();
         let rong_nhan: Vec<Product> = Vec::new();
         let rong_max: Vec<Max> = Vec::new();
-        assert_eq!(coalesce_all_all(empty_cong), Tong(0));
+        assert_eq!(coalesce_all_all(empty_sum), Tong(0));
         assert_eq!(coalesce_all_all(rong_nhan), Product(1));
         assert_eq!(coalesce_all_all(rong_max), Max(i64::MIN));
     }
 
     #[test]
-    fn vi_nhom_tich_gop_dung_bon_chi_so() {
+    fn product_monoid_aggregates_four_metrics() {
         let order_log = vec![
             SellRecordAccessCap { path: "/a".into(), id_state: 200, time_ms: 10 },
             SellRecordAccessCap { path: "/b".into(), id_state: 503, time_ms: 40 },
@@ -472,7 +472,7 @@ mod tests {
     /// chia nhỏ dữ liệu rồi ghép lại luôn cho cùng kết quả —
     /// tức là thuật toán này SONG SONG HÓA ĐƯỢC một cách an toàn.
     #[test]
-    fn chia_nho_roi_ghep_lai_cho_cung_ket_qua() {
+    fn split_then_merge_gives_same_result() {
         let mut sinh = Generator::new(12345);
         let data: Vec<Tong> = (0..100).map(|_| Tong(sinh.num_cont())).collect();
 
@@ -485,13 +485,13 @@ mod tests {
     }
 
     #[test]
-    fn op_tru_no_must_nua_group() {
+    fn subtraction_is_not_a_semigroup() {
         // Phản ví dụ: chứng minh phép trừ VI PHẠM luật kết hợp.
         assert_ne!((10i64 - 3) - 2, 10i64 - (3 - 2));
     }
 
     #[test]
-    fn nan_pha_vo_luat_phan_xa() {
+    fn nan_breaks_reflexivity() {
         let nan = f64::NAN;
         assert!(!(nan == nan), "NaN phải KHÔNG bằng chính nó theo IEEE 754");
         // Còn số nguyên thì luôn thỏa luật phản xạ:

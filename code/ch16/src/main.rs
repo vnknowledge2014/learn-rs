@@ -283,10 +283,10 @@ fn main() {
     let m = [10i32, 3, 2];
     println!("   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
              m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
-    let noi_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
-    let noi_must: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
+    let folded_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
+    let folded_right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
     println!("   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
-             noi_left, noi_must);
+             folded_left, folded_right);
     println!("   → Trước khi song song hóa, phải biết phép gộp của mình có tính gì!");
 
     // ------------------------------------------------------------------
@@ -308,7 +308,7 @@ fn main() {
         .into_iter()
         .filter(|m| m.chars().count() > 5)
         .collect(); // ← nhờ FromIterator tự cài
-    println!("   collect() thẳng vào Cart : {:?}", gio_moi);
+    println!("   collect() thẳng vào GioHang : {:?}", gio_moi);
 
     // ------------------------------------------------------------------
     // 14. Extend — NỐI THÊM VÀO TẬP HỢP ĐÃ CÓ
@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn take_while_khac_filter() {
+    fn take_while_differs_from_filter() {
         let so = [1, 3, 5, 4, 7, 9];
         let tw: Vec<i32> = so.iter().copied().take_while(|x| x % 2 == 1).collect();
         let ft: Vec<i32> = so.iter().copied().filter(|x| x % 2 == 1).collect();
@@ -346,20 +346,20 @@ mod tests {
     }
 
     #[test]
-    fn reduce_tra_none_khi_rong() {
+    fn reduce_returns_none_when_empty() {
         let rong: Vec<u64> = Vec::new();
         assert_eq!(rong.iter().copied().reduce(|a, b| a + b), None);
         assert_eq!(rong.iter().fold(0u64, |a, b| a + b), 0); // fold vẫn có câu trả lời
     }
 
     #[test]
-    fn try_fold_dung_ngay_khi_tran_so() {
+    fn try_fold_stops_on_overflow() {
         let kq: Option<u64> = [u64::MAX, 1, 2].iter().try_fold(0u64, |a, b| a.checked_add(*b));
         assert_eq!(kq, None);
     }
 
     #[test]
-    fn scan_nha_ra_tung_buoc_trung_gian() {
+    fn scan_emits_intermediate_steps() {
         let accum_ke: Vec<i32> = [1, 2, 3, 4]
             .iter()
             .scan(0, |t, x| { *t += x; Some(*t) })
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn fold_va_rfold_chi_khac_nhau_voi_phep_khong_giao_hoan() {
+    fn fold_and_rfold_differ_only_when_non_commutative() {
         let m = [10i32, 3, 2];
         // Phép cộng GIAO HOÁN -> duyệt hai chiều cho cùng kết quả
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_gom_duoc_nhieu_kieu_dich() {
+    fn collect_targets_many_types() {
         let v: Vec<i32> = (1..4).collect();
         assert_eq!(v, vec![1, 2, 3]);
         let s: String = ['R', 'u', 's', 't'].into_iter().collect();
@@ -395,20 +395,20 @@ mod tests {
     }
 
     #[test]
-    fn partition_chia_dung_hai_nhom() {
+    fn partition_splits_into_two_groups() {
         let (chan, le): (Vec<i32>, Vec<i32>) = (1..8).partition(|x| x % 2 == 0);
         assert_eq!(chan, vec![2, 4, 6]);
         assert_eq!(le, vec![1, 3, 5, 7]);
     }
 
     #[test]
-    fn iterator_tu_viet_hoat_dong() {
+    fn custom_iterator_works() {
         assert_eq!(CountInverse::new(3).collect::<Vec<u32>>(), vec![3, 2, 1]);
         assert_eq!(CountInverse::new(10).filter(|x| x % 3 == 0).sum::<u32>(), 18); // 9+6+3
     }
 
     #[test]
-    fn into_iterator_va_from_iterator_tu_viet() {
+    fn custom_into_and_from_iterator() {
         let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into()]);
         let name: Vec<&String> = (&gio).into_iter().collect();
         assert_eq!(name.len(), 2);

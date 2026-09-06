@@ -4,7 +4,7 @@
 
 Ở Chương 21, bạn đã bước đầu khám phá thế giới siêu lập trình với `macro_rules!` và các bộ khớp cú pháp cơ bản. Bạn đã thấy macro có thể tạo ra các từ điển `HashMap` tiện lợi chỉ bằng vài dòng mã ngắn gọn. Nhưng khi xây dựng các thư viện lớn hoặc các công cụ tự động hóa phức tạp, bạn sẽ ngay lập tức đối mặt với những bài toán hóc búa hơn:
 - *Làm sao để một macro có thể nhận danh sách tham số lặp đi lặp lại vô số lần, hỗ trợ cả dấu phẩy ở phần tử cuối cùng (`trailing comma`) giống hệt như các cấu trúc chuẩn của Rust?*
-- *Làm sao để tạo các id trận đa chiều 2D, 3D bằng các mẫu lặp lồng nhau?*
+- *Làm sao để tạo các ma trận đa chiều 2D, 3D bằng các mẫu lặp lồng nhau?*
 - *Điều gì sẽ xảy ra nếu bên trong macro bạn khai báo một biến tạm mang tên `let x = 10;`, và người lập trình bên ngoài cũng đang có một biến `let x = 999;`? Liệu biến của macro có vô tình "đè bẹp" hoặc làm sai lệch giá trị của biến bên ngoài hay không?*
 
 Trong các ngôn ngữ như C hay C++, các tiền xử lý macro (`#define`) khét tiếng vì sự nguy hiểm: Chúng hoạt động như công cụ thay thế chuỗi mù quáng, thường xuyên gây ra lỗi xung đột tên biến ngầm và lỗ hổng bảo mật rò rỉ bộ nhớ đệm (buffer overflow). Nhưng trong Rust, các kỹ sư thiết kế ngôn ngữ đã trang bị một cơ chế bảo vệ tối tân mang tên: **Tính vệ sinh trong Macro (Macro Hygiene)**. Nhờ tính vệ sinh, các biến bên trong macro được cách ly hoàn toàn với thế giới bên ngoài.
@@ -16,7 +16,7 @@ Mục tiêu học tập của chương này:
   - **`$(...)*`**: Lặp lại từ 0 đến vô số lần.
   - **`$(...),+`**: Lặp lại từ 1 đến vô số lần (ít nhất một phần tử).
   - **`$(...)?`**: Tùy chọn (xuất hiện 0 hoặc 1 lần), đặc biệt là kỹ thuật xử lý dấu phẩy cuối dòng `$(,)?`.
-- Thiết kế các cấu trúc lặp lồng nhau (**Nested Repetitions**) cho dữ liệu bảng biểu và id trận đa chiều.
+- Thiết kế các cấu trúc lặp lồng nhau (**Nested Repetitions**) cho dữ liệu bảng biểu và ma trận đa chiều.
 - Khám phá mẫu thiết kế đệ quy nâng cao: **Bộ nhai thẻ bài (TT Muncher - Token Tree Muncher)**.
 - Xử lý các trường hợp biên (Edge Cases): Giới hạn đệ quy `#![recursion_limit]` và quy tắc xuất bản macro qua nhiều crate với `#[macro_export]`.
 
@@ -113,7 +113,7 @@ Cú pháp lặp trong `macro_rules!` có dạng chuẩn:
 
 ### 3. Mẫu lặp lồng nhau (Nested Repetitions)
 
-Khi bạn muốn biểu diễn các cấu trúc đa chiều như id trận hàng và cột (2D Grid) hoặc danh sách các bảng dữ liệu:
+Khi bạn muốn biểu diễn các cấu trúc đa chiều như ma trận hàng và cột (2D Grid) hoặc danh sách các bảng dữ liệu:
 
 ```rust
 macro_rules! tao_ma_tran {
@@ -249,11 +249,11 @@ fn main() {
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Xây dựng Ma trận dữ liệu 2D với Mẫu lặp lồng nhau
     // ------------------------------------------------------------------------
-    println!("\n2. Khởi tạo Bảng dữ liệu id trận 2D qua macro lồng nhau:");
+    println!("\n2. Khởi tạo Bảng dữ liệu ma trận 2D qua macro lồng nhau:");
     let ma_tran_diem = tao_ma_tran![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối id trận hợp lệ
+        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
     ];
 
     for (num_queue, queue) in ma_tran_diem.iter().enumerate() {
@@ -266,9 +266,9 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
-    let result_tinh = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", result_tinh);
-    assert_eq!(result_tinh, 24);
+    let computed_result = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
+    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", computed_result);
+    assert_eq!(computed_result, 24);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MẪU MACRO NÂNG CAO HOÀN THÀNH THÀNH CÔNG  ");

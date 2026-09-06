@@ -160,10 +160,10 @@ pub fn sha256(data: &[u8]) -> Bam {
 
     // Đệm: thêm bit 1, rồi các bit 0, rồi độ dài 64-bit — sao cho chia hết 512 bit
     let mut m = data.to_vec();
-    let do_dai_bit = (data.len() as u64) * 8;
+    let bit_length = (data.len() as u64) * 8;
     m.push(0x80);
     while m.len() % 64 != 56 { m.push(0); }
-    m.extend_from_slice(&do_dai_bit.to_be_bytes());
+    m.extend_from_slice(&bit_length.to_be_bytes());
 
     for khoi in m.chunks(64) {
         // Mở rộng 16 từ thành 64 từ
@@ -318,7 +318,7 @@ pub struct TapUtxo { pub o: HashMap<OnlyDeriveOutput, Output> }
 pub enum ErrorTrade {
     DauVaoKhongTonTai(OnlyDeriveOutput),
     TieuHaiLan(OnlyDeriveOutput),
-    ChiVuotThu { in_: u64, ra: u64 },
+    ChiVuotThu { total_in: u64, ra: u64 },
     KhongCoDauRa,
 }
 
@@ -335,10 +335,10 @@ impl TapUtxo {
         if gd.la_tao_tien() { return Ok(0); }
 
         let mut total_in = 0u64;
-        let mut thay_in_trade = HashSet::new();
+        let mut seen_in_trade = HashSet::new();
         for cd in &gd.input {
             // Tiêu hai lần TRONG CÙNG một giao dịch hoặc cùng một khối
-            if da_tieu_trong_khoi.contains(cd) || !thay_in_trade.insert(*cd) {
+            if da_tieu_trong_khoi.contains(cd) || !seen_in_trade.insert(*cd) {
                 return Err(ErrorTrade::TieuHaiLan(*cd));
             }
             match self.o.get(cd) {
@@ -348,7 +348,7 @@ impl TapUtxo {
         }
         let tong_ra: u64 = gd.output.iter().map(|d| d.value).sum();
         if tong_ra > total_in {
-            return Err(ErrorTrade::ChiVuotThu { in_: total_in, ra: tong_ra });
+            return Err(ErrorTrade::ChiVuotThu { total_in: total_in, ra: tong_ra });
         }
         Ok(total_in - tong_ra) // phần chênh là PHÍ, thợ đào được lấy
     }
@@ -664,7 +664,7 @@ mod tests {
 
     // ---------- SHA-256 đối chiếu vector chuẩn ----------
     #[test]
-    fn sha256_khop_vector_chuan_fips() {
+    fn sha256_matches_fips_vectors() {
         // Đây là bài kiểm thử quan trọng nhất chương: nếu sai một bit,
         // toàn bộ chuỗi khối phía trên đều vô nghĩa.
         assert_eq!(sha256(b"").hex(),
@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn sha256_dung_o_moi_bien_do_dai_khoi_dem() {
+    fn sha256_correct_at_every_padding_boundary() {
         // 55 byte = vừa đủ đệm trong 1 khối; 56 byte = phải sang khối thứ hai.
         // Đây là chỗ cài đặt SHA-256 hay sai nhất.
         assert_eq!(sha256(&[b'a'; 55]).hex(),
@@ -688,12 +688,12 @@ mod tests {
     }
 
     #[test]
-    fn sha256d_la_bam_hai_lan() {
+    fn sha256d_is_double_hash() {
         assert_eq!(sha256d(b"abc"), sha256(&sha256(b"abc").0));
     }
 
     #[test]
-    fn hieu_ung_tuyet_lo_gan_mot_nua_so_bit() {
+    fn avalanche_flips_about_half_the_bits() {
         // Tiêu chuẩn vàng của hàm băm mật mã: đổi 1 bit đầu vào phải làm
         // khoảng 50% bit đầu ra đổi theo, không thể đoán được bit nào.
         let mut tong = 0u32;
@@ -708,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn dem_bit_khong_dau_dung() {
+    fn unsigned_bit_count_is_correct() {
         assert_eq!(Bam::KHONG.unsigned_bits(), 256);
         let mut b = [0u8; 32]; b[0] = 0xFF;
         assert_eq!(Bam(b).unsigned_bits(), 0);
@@ -718,7 +718,7 @@ mod tests {
 
     // ---------- Cây Merkle ----------
     #[test]
-    fn merkle_moi_la_deu_chung_minh_duoc() {
+    fn every_leaf_has_a_valid_proof() {
         for n in [1usize, 2, 3, 4, 5, 8, 9, 16, 17] {
             let la: Vec<Bam> = (0..n as u32).map(|i| sha256(&i.to_be_bytes())).collect();
             let cay = MerkleTree::build(&la);
@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn merkle_bang_chung_dai_log_chu_khong_tuyen_tinh() {
+    fn proof_length_is_logarithmic() {
         let la: Vec<Bam> = (0..1024u32).map(|i| sha256(&i.to_be_bytes())).collect();
         let cay = MerkleTree::build(&la);
         let cm = cay.prove(500).unwrap();
@@ -748,15 +748,15 @@ mod tests {
     }
 
     #[test]
-    fn merkle_doi_mot_la_lam_doi_goc() {
+    fn changing_one_leaf_changes_the_root() {
         let mut la: Vec<Bam> = (0..8u32).map(|i| sha256(&i.to_be_bytes())).collect();
-        let old_goc = MerkleTree::build(&la).root();
+        let old_root = MerkleTree::build(&la).root();
         la[5] = sha256(b"da bi sua");
-        assert_ne!(MerkleTree::build(&la).root(), old_goc, "sửa bất kỳ lá nào phải lộ ra ở gốc");
+        assert_ne!(MerkleTree::build(&la).root(), old_root, "sửa bất kỳ lá nào phải lộ ra ở gốc");
     }
 
     #[test]
-    fn merkle_chi_so_ngoai_pham_vi_tra_none() {
+    fn out_of_range_index_returns_none() {
         let la: Vec<Bam> = (0..4u32).map(|i| sha256(&i.to_be_bytes())).collect();
         assert!(MerkleTree::build(&la).prove(4).is_none());
     }
@@ -781,13 +781,13 @@ mod tests {
     }
 
     #[test]
-    fn khong_the_chi_nhieu_hon_thu() {
+    fn cannot_spend_more_than_received() {
         let (c, cd) = series_has_tien("An");
         let u = c.utxo_tai(c.peak);
         let gd = Trade { input: vec![cd],
             output: vec![Output { value: 999, owner: "An".into() }] };
         assert_eq!(u.check(&gd, &HashSet::new()),
-                   Err(ErrorTrade::ChiVuotThu { in_: 50, ra: 999 }));
+                   Err(ErrorTrade::ChiVuotThu { total_in: 50, ra: 999 }));
     }
 
     #[test]
@@ -826,7 +826,7 @@ mod tests {
 
     // ---------- Khối & đào ----------
     #[test]
-    fn dao_tim_duoc_so_thoa_do_kho() {
+    fn mining_finds_a_nonce_meeting_difficulty() {
         let mut k = Block {
             header: BlockHeader { prev_hash_block: Bam::KHONG, merkle_root: Bam::KHONG,
                                     timestamp: 0, difficulty: 12, so_ngau_nhien: 0 },
@@ -839,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn kiem_chung_bang_chung_re_hon_tao_ra_no_rat_nhieu() {
+    fn verifying_is_far_cheaper_than_mining() {
         // Bất đối xứng này là toàn bộ ý nghĩa của "bằng chứng công việc":
         // tìm thì tốn hàng nghìn lần thử, kiểm tra chỉ tốn MỘT lần băm.
         let mut k = Block {
@@ -862,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn them_khoi_lam_tang_chieu_cao_va_so_du() {
+    fn adding_block_raises_height_and_balances() {
         let mut c = Chain::new(8, 50);
         for i in 1..=3u64 {
             let k = c.new_mine_block("An", vec![], i).unwrap();
@@ -891,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn tu_choi_tho_dao_tu_thuong_qua_muc() {
+    fn rejects_miner_overpaying_itself() {
         let mut c = Chain::new(8, 50);
         let mut k = c.new_mine_block("An", vec![], 1).unwrap();
         k.trade[0] = Trade::tao_tien("An", 1_000_000, 1); // tham lam
@@ -901,7 +901,7 @@ mod tests {
     }
 
     #[test]
-    fn tu_choi_khoi_khong_co_cha() {
+    fn rejects_orphan_block() {
         let mut c = Chain::new(8, 50);
         let id_price = sha256(b"khong ton tai");
         let mut k = Block {
@@ -915,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn tai_to_chuc_khi_nhanh_re_vuot_len() {
+    fn reorg_when_side_branch_outweighs() {
         let mut c = Chain::new(8, 50);
         let thuy = c.genesis();
 
@@ -953,7 +953,7 @@ mod tests {
     }
 
     #[test]
-    fn hoa_cong_viec_thi_giu_nguyen_dinh_dau_tien() {
+    fn tie_on_work_keeps_first_tip() {
         // Quy tắc chống dao động: chỉ đổi đỉnh khi THỰC SỰ nhiều việc hơn,
         // không đổi khi bằng. Nếu không, mạng sẽ lật qua lật lại vô nghĩa.
         let mut c = Chain::new(8, 50);
@@ -967,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn moi_khoi_deu_bam_ra_ma_khac_nhau() {
+    fn every_block_hashes_uniquely() {
         let mut c = Chain::new(8, 50);
         let mut seen = HashSet::new();
         seen.insert(c.peak);
@@ -1049,7 +1049,7 @@ impl Chain {
 }
 ```
 
-Chú ý phép `clamp(0.25, 4.0)`: không có nó, một thợ đào khai dấu thời gian gian dối có thể kéo độ khó xuống rất thấp chỉ trong một owner kỳ, rồi đào lại cả chuỗi với chi phí thấp.
+Chú ý phép `clamp(0.25, 4.0)`: không có nó, một thợ đào khai dấu thời gian gian dối có thể kéo độ khó xuống rất thấp chỉ trong một chu kỳ, rồi đào lại cả chuỗi với chi phí thấp.
 </details>
 
 **Bài 2.** Cài **ví nhẹ**: cho một gốc Merkle và một bằng chứng gộp, xác minh giao dịch mà **không** cần cả khối.

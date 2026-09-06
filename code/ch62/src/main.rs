@@ -230,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signal_save_and_swap_value() {
+    fn signal_stores_and_updates_value() {
         let s = Signal::new(10i64);
         assert_eq!(s.lay(), 10);
         s.set(20);
@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn tin_hieu_bo_qua_thay_doi_thua() {
+    fn signal_skips_redundant_updates() {
         let s = Signal::new(1i64);
         assert_eq!(s.session_sell(), 0);
         s.set(2);
@@ -252,22 +252,22 @@ mod tests {
     }
 
     #[test]
-    fn dan_xuat_tu_cap_nhat_theo_nguon() {
+    fn derived_signal_tracks_its_source() {
         let so = Signal::new(2i64);
-        let gap_doi = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
-        assert_eq!(gap_doi.lay(), 4);
+        let doubled = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
+        assert_eq!(doubled.lay(), 4);
         so.set(10);
-        assert_eq!(gap_doi.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
+        assert_eq!(doubled.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
     }
 
     #[test]
-    fn ket_xuat_html_dung() {
+    fn renders_correct_html() {
         let c = VirtualNode::the("div", vec![("class", "x")], vec![VirtualNode::van("chào")]);
         assert_eq!(c.to_html(), "<div class=\"x\">chào</div>");
     }
 
     #[test]
-    fn ket_xuat_thoat_xss() {
+    fn render_escapes_xss() {
         let c = VirtualNode::van("<script>alert(1)</script>");
         let html = c.to_html();
         assert!(!html.contains("<script>"));
@@ -284,14 +284,14 @@ mod tests {
     }
 
     #[test]
-    fn diff_khong_doi_thi_khong_co_ban_va() {
+    fn diff_of_identical_trees_is_empty() {
         let c = counter_view(&StateCount { so: Signal::new(5) });
         let va = diff(&c, &c.clone(), vec![]);
         assert!(va.is_empty(), "cây giống hệt không được sinh bản vá");
     }
 
     #[test]
-    fn diff_component_dem_chi_va_van_ban() {
+    fn diff_detects_attr_and_text_changes() {
         let a = counter_view(&StateCount { so: Signal::new(3) });
         let b = counter_view(&StateCount { so: Signal::new(4) });
         let va = diff(&a, &b, vec![]);
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_them_va_xoa_con() {
+    fn diff_detects_child_insert_and_remove() {
         let cu = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a")]);
         let new = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a"), VirtualNode::van("b")]);
         let them = diff(&cu, &new, vec![]);
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_khac_the_thi_thay_the() {
+    fn diff_replaces_on_different_tag() {
         let cu = VirtualNode::the("div", vec![], vec![]);
         let new = VirtualNode::the("span", vec![], vec![]);
         let va = diff(&cu, &new, vec![]);

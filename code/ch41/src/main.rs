@@ -14,7 +14,7 @@ pub struct ParsedIpv4Header<'a> {
 /// Trình phân tích tiêu đề gói tin mạng IPv4
 pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'static str> {
     if raw_bytes.len() < 20 {
-        return Err("Kich thuoc goi tin qua ngan de contains IPv4 Header hop le!");
+        return Err("Kich thuoc goi tin qua ngan de chua IPv4 Header hop le!");
     }
 
     // Byte 0: 4-bit Version và 4-bit IHL
@@ -65,7 +65,7 @@ pub struct ParsedElfHeader {
 /// Trình giải mã tiêu đề tệp ELF Linux
 pub fn parse_elf_header(binary_data: &[u8]) -> Result<ParsedElfHeader, &'static str> {
     if binary_data.len() < 32 {
-        return Err("Tap tin qua nho de contains ELF Header hop le!");
+        return Err("Tap tin qua nho de chua ELF Header hop le!");
     }
 
     // Kiểm tra 4 Magic Bytes: 0x7F, 'E', 'L', 'F'
@@ -108,7 +108,7 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM GIẢI MÃ GÓI TIN MẠNG IPV4 ZERO-COPY
     // -------------------------------------------------------------
-    println!("\n[1] Giai id goi tin mang IPv4 mo phong:");
+    println!("\n[1] Giai ma goi tin mang IPv4 mo phong:");
 
     // Dựng mảng byte gói tin mẫu (Tiêu đề 20 bytes + Payload 4 bytes)
     let sample_packet: [u8; 24] = [
@@ -135,7 +135,7 @@ fn main() {
                 parsed.dest_ip[0], parsed.dest_ip[1], parsed.dest_ip[2], parsed.dest_ip[3]
             );
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
-            println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang root!");
+            println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
         }
         Err(err) => println!("    [!] Loi phan tich: {}", err),
     }
@@ -143,7 +143,7 @@ fn main() {
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM GIẢI MÃ TIÊU ĐỀ TỆP NHỊ PHÂN LINUX ELF
     // -------------------------------------------------------------
-    println!("\n[2] Giai id tieu de tep thuc thi ELF Linux mo phong:");
+    println!("\n[2] Giai ma tieu de tep thuc thi ELF Linux mo phong:");
 
     // Tạo mảng 64 bytes mô phỏng phần đầu ELF64
     let mut mock_elf_data = [0u8; 64];

@@ -64,7 +64,7 @@ Hãy cùng quan sát cách người chủ tiệm tạp hóa quản lý sổ sác
 
 ### 2. Dọn dẹp sổ nợ (Compaction & Merge)
 - Sau 6 tháng, cuốn sổ cái dày cộm lên hàng ngàn trang, trong đó chứa rất nhiều dòng nợ cũ đã lỗi thời của Bác Ba và Chị Năm.
-- Cuối năm, bác chủ tiệm mua một cuốn sổ mới compute, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ compute tươm!
+- Cuối năm, bác chủ tiệm mua một cuốn sổ mới tinh, mở tờ giấy mục lục ngoài bìa ra và chỉ chép lại các số nợ mới nhất còn hiệu lực sang cuốn sổ mới, vứt bỏ toàn bộ các trang giấy nợ cũ đã bị hủy. Cuốn sổ lại trở nên mỏng nhẹ tinh tươm!
 
 ---
 
@@ -399,12 +399,12 @@ fn main() -> io::Result<()> {
     {
         let mut db = MiniBitcask::open(db_path)?;
 
-        db.set("user:101", "Alice - Ha Chain")?;
+        db.set("user:101", "Alice - Ha Noi")?;
         db.set("user:102", "Bob - Da Nang")?;
         db.set("user:103", "Charlie - TP Ho Chi Minh")?;
 
         // Ghi đè cập nhật giá trị (tạo ra dữ liệu cũ trên đĩa)
-        db.set("user:101", "Alice Nguyen - Ha Chain (Updated)")?;
+        db.set("user:101", "Alice Nguyen - Ha Noi (Updated)")?;
 
         // Xóa một khóa (tạo Tombstone trên đĩa)
         db.delete("user:102")?;
@@ -413,7 +413,7 @@ fn main() -> io::Result<()> {
         println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
 
         // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
-        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db.get("user:102")?, None);
         assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
@@ -429,7 +429,7 @@ fn main() -> io::Result<()> {
         println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
         println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
 
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:102")?, None);
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         assert_eq!(db_recovered.total_keys(), 2);
@@ -446,7 +446,7 @@ fn main() -> io::Result<()> {
         assert!(next_capacity < prev_capacity);
 
         // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Chain (Updated)".to_string()));
+        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
         assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
         println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
     }
@@ -508,7 +508,7 @@ impl DemoStore {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp compute hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
+1. **Thiết kế lai hoàn hảo**: Bitcask kết hợp tinh hoa của Bảng băm trên RAM (`KeyDir`) cho tốc độ tra cứu $O(1)$ và Tệp ghi nối đuôi (Append-only) trên đĩa cho tốc độ ghi tối đa.
 2. **Đúng 1 lần đọc đĩa (Single Disk Seek)**: Nhờ biết chính xác tọa độ byte (`offset`) và độ dài (`value_size`) từ RAM, thao tác đọc dữ liệu bỏ qua mọi tầng trung gian, nhảy thẳng tới vị trí đĩa cần đọc.
 3. **Cơ chế Tombstone**: Thay vì tìm xóa tại chỗ trên đĩa (gây phân mảnh và chậm chạp), Bitcask ghi một bản ghi đánh dấu xóa (Tombstone) vào cuối tệp và xóa khỏi RAM.
 4. **Nén gộp Compaction**: Tiến trình dọn dẹp định kỳ đọc lại các khóa còn sống và ghi sang tệp mới, giữ cho cơ sở dữ liệu luôn nhỏ gọn và loại bỏ hoàn toàn các phiên bản dữ liệu cũ.

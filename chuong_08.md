@@ -7,7 +7,7 @@ Nếu bạn dạo quanh các diễn đàn công nghệ quốc tế và hỏi: *"
 Nhiều người bỏ cuộc vì nghĩ rằng Lifetime là một khái niệm toán học hàn lâm bí hiểm. Nhưng sự thật hoàn toàn ngược lại! Lifetime thực chất chỉ là một **bản cam kết thời gian mượn đồ rất đỗi đời thường**. Nếu bạn hiểu được cách một tấm vé vào cổng khu du lịch hoạt động ra sao, bạn sẽ làm chủ hoàn toàn Lifetime trong Rust chỉ sau vài trang sách.
 
 Mục tiêu học tập của chương này:
-- Hiểu mục đích tối thượng duy nhất của Lifetime: **Ngăn chặn triệt để hiện tượng Tham chiếu lơ lửng (Dangling Reference)** — tình trạng con trỏ trỏ vào vùng nhớ id đã bị xóa bỏ.
+- Hiểu mục đích tối thượng duy nhất của Lifetime: **Ngăn chặn triệt để hiện tượng Tham chiếu lơ lửng (Dangling Reference)** — tình trạng con trỏ trỏ vào vùng nhớ ma đã bị xóa bỏ.
 - Xóa bỏ nỗi sợ hãi về các ký hiệu chú thích `'a`: Hiểu rằng `'a` không kéo dài tuổi thọ của biến, mà chỉ là lời mô tả mối liên hệ sống còn giữa các dữ liệu.
 - Nằm lòng 3 Quy tắc suy luận vòng đời tự động (**Lifetime Elision Rules**) giúp bạn hiểu vì sao 90% trường hợp bạn không cần phải tự tay viết ký hiệu `'a`.
 - Biết cách thiết kế một cấu trúc dữ liệu (`struct`) chứa tham chiếu mượn mà vẫn an toàn tuyệt đối.
@@ -200,8 +200,8 @@ fn main() {
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");
-    let thong_diep_vinh_cuu: &'static str = "PHẦN MỀM ĐÃ ĐƯỢC CHỨNG NHẬN AN TOÀN TUYỆT ĐỐI";
-    println!("- Dòng chữ trên bia đá vĩnh cửu: '{}'", thong_diep_vinh_cuu);
+    let eternal_message: &'static str = "PHẦN MỀM ĐÃ ĐƯỢC CHỨNG NHẬN AN TOÀN TUYỆT ĐỐI";
+    println!("- Dòng chữ trên bia đá vĩnh cửu: '{}'", eternal_message);
 }
 ```
 

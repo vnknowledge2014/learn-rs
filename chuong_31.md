@@ -209,8 +209,8 @@ impl BinaryPageStore {
     pub fn record_sell_record(&mut self, sell_record: &SellRecordUser) -> io::Result<u64> {
         // Nhảy đến cuối tệp để ghi nối đuôi tuần tự (Sequential Append)
         let vi_tri_offset = self.file.seek(SeekFrom::End(0))?;
-        let bytes_can_ghi = sell_record.serialize();
-        self.file.write_all(&bytes_can_ghi)?;
+        let bytes_to_write = sell_record.serialize();
+        self.file.write_all(&bytes_to_write)?;
         // Ép dữ liệu từ bộ nhớ đệm hệ điều hành xuống đĩa vật lý
         self.file.flush()?;
         Ok(vi_tri_offset)

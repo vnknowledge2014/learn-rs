@@ -31,19 +31,19 @@ fn parse_float(cau_hoi: &str) -> f32 {
     println!("{}", cau_hoi);
 
     // Chuỗi co giãn được cấp phát trên bãi đỗ HEAP để hứng các ký tự người dùng gõ
-    let mut series_import = String::new();
+    let mut input_buffer = String::new();
 
     // io::stdin() kết nối với bàn phím
-    // read_line ghi dữ liệu vào series_import qua tham chiếu mượn sửa (mutable borrow / &mut)
+    // read_line ghi dữ liệu vào input_buffer qua tham chiếu mượn sửa (mutable borrow / &mut)
     // expect sẽ dừng chương trình và báo lỗi nếu thiết bị nhập liệu bị ngắt kết nối
     io::stdin()
-        .read_line(&mut series_import)
+        .read_line(&mut input_buffer)
         .expect("Lỗi: Không thể đọc dữ liệu từ bàn phím!");
 
     // .trim() loại bỏ ký tự xuống dòng Enter (\n hoặc \r\n)
     // .parse() chuyển đổi chuỗi thành số f32
-    // unwrap_or(0.0) sẽ lấy số 0.0 làm giá trị mặc định nếu người dùng gõ chữ linh compute
-    series_import.trim().parse::<f32>().unwrap_or(0.0)
+    // unwrap_or(0.0) sẽ lấy số 0.0 làm giá trị mặc định nếu người dùng gõ chữ linh tinh
+    input_buffer.trim().parse::<f32>().unwrap_or(0.0)
 }
 
 fn main() {

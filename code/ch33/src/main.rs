@@ -18,7 +18,7 @@ pub enum BPlusNode<K: Ord + Copy, V: Clone> {
 }
 
 impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
-    /// Tạo một nút lá mới compute
+    /// Tạo một nút lá mới tinh
     pub fn new_leaf() -> Self {
         BPlusNode::Leaf {
             keys: Vec::new(),
@@ -146,13 +146,13 @@ fn main() {
     is_must.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
     is_must.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
 
-    let node_goc = BPlusNode::Internal {
+    let root_node = BPlusNode::Internal {
         keys: vec![50],
         children: vec![Box::new(is_left), Box::new(is_must)],
     };
 
     let b_tree = BPlusTree {
-        root: Box::new(node_goc),
+        root: Box::new(root_node),
         total_records: 5,
     };
 

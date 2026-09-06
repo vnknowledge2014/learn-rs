@@ -407,7 +407,7 @@ pub fn ghep2<A, B>(a: Auth<A>, b: Auth<B>) -> Auth<(A, B)> {
     }
 }
 
-/// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng compute thần ghép hàm ở Chương 14.
+/// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
 pub fn ghep3<A, B, C>(a: Auth<A>, b: Auth<B>, c: Auth<C>) -> Auth<(A, B, C)> {
     ghep2(ghep2(a, b), c).mapping(|((x, y), z)| (x, y, z))
 }
@@ -533,7 +533,7 @@ fn main() {
     println!("   Hộp rỗng vẫn rỗng: {:?} -> {:?}", hop_rong, hop_rong.map(|x| x * 2));
 
     // Dùng trait Functor tổng quát tự viết (mô phỏng HKT)
-    println!("\n   Qua trait `Functor` tổng quát (mô phỏng HKT):");
+    println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
     println!("   Option: {:?}", Some(5i32).mapping(|x| x + 1));
     println!("   Vec   : {:?}", vec![1i32, 2, 3].mapping(|x| x * 10));
     let r: Result<i32, String> = Ok(7);
@@ -557,9 +557,9 @@ fn main() {
     // 3. BIFUNCTOR: Result có hai chân
     // ------------------------------------------------------------------
     println!("\n3. BIFUNCTOR — `Result` CÓ HAI CHÂN");
-    let into_cong: Result<i32, String> = Ok(5);
+    let into_sum: Result<i32, String> = Ok(5);
     let that_bai: Result<i32, String> = Err("mất kết nối".into());
-    println!("   map     (chân Ok) : {:?}", into_cong.map(|v| v * 100));
+    println!("   map     (chân Ok) : {:?}", into_sum.map(|v| v * 100));
     println!(
         "   map_err (chân Err): {:?}",
         that_bai.map_err(|e| format!("[HỆ THỐNG] {}", e))
@@ -620,9 +620,9 @@ fn main() {
     // 7. ALTERNATIVE: chuỗi phương án dự phòng
     // ------------------------------------------------------------------
     println!("\n7. ALTERNATIVE — CHUỖI PHƯƠNG ÁN DỰ PHÒNG");
-    let from_bien_new_truong: Option<&str> = None;
-    let from_file_cau_hinh: Option<&str> = Some("8080");
-    let gate = from_bien_new_truong.or(from_file_cau_hinh).unwrap_or("3000");
+    let missing_field: Option<&str> = None;
+    let from_config_file: Option<&str> = Some("8080");
+    let gate = missing_field.or(from_config_file).unwrap_or("3000");
     println!("   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)", gate);
 
     // ------------------------------------------------------------------
@@ -675,14 +675,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn luat_functor_don_vi() {
+    fn functor_identity_law() {
         for x in [Some(1i32), Some(-7), None] {
             assert_eq!(x.map(|a| a), x);
         }
     }
 
     #[test]
-    fn luat_functor_ghep() {
+    fn functor_composition_law() {
         let f = |a: i32| a + 3;
         let g = |a: i32| a * 2;
         for x in [Some(0i32), Some(10), Some(-4), None] {
@@ -691,7 +691,7 @@ mod tests {
     }
 
     #[test]
-    fn luat_monad_don_vi_trai_va_phai() {
+    fn monad_left_and_right_identity() {
         let f = |n: i32| if n > 0 { Some(n * 2) } else { None };
         for a in [-3i32, 0, 5, 100] {
             assert_eq!(Some(a).and_then(f), f(a)); // M1
@@ -702,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn luat_monad_ket_hop() {
+    fn monad_associativity() {
         let f = |n: i32| if n >= 0 { Some(n + 1) } else { None };
         let g = |n: i32| if n % 2 == 0 { Some(n / 2) } else { None };
         for m in [Some(-5i32), Some(0), Some(3), Some(8), None] {
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn traversable_dao_dung_ngu_canh() {
+    fn traversable_swaps_contexts() {
         let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
         assert_eq!(tot, Ok(vec![1, 2, 3]));
 
@@ -737,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn applicative_gom_du_ba_loi() {
+    fn applicative_collects_all_three_errors() {
         let don = DonTho {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn monad_chi_bao_mot_loi() {
+    fn monad_reports_only_first_error() {
         let don = DonTho {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
@@ -764,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn don_hop_le_qua_all_two_strategy() {
+    fn valid_order_passes_both_strategies() {
         let don = DonTho {
             name: "Nguyễn Văn An".into(),
             email: " An.Nguyen@Example.COM ".into(),
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn ham_tu_tong_quat_hoat_dong_cho_ba_kieu() {
+    fn the_generic_functor_works_for_three_types() {
         assert_eq!(Some(5i32).mapping(|x| x + 1), Some(6));
         assert_eq!(vec![1i32, 2, 3].mapping(|x| x * 10), vec![10, 20, 30]);
         let r: Result<i32, String> = Ok(7);

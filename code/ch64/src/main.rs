@@ -189,17 +189,17 @@ pub struct StateChange {
 /// FIFO: trang vào trước ra trước. Đơn giản nhưng có "nghịch lý Belady".
 pub fn fifo_replace(series: &[u64], num_frame: usize) -> StateChange {
     let mut frame: VecDeque<u64> = VecDeque::new();
-    let mut in_: HashSet<u64> = HashSet::new();
+    let mut visited: HashSet<u64> = HashSet::new();
     let mut error = 0;
     let mut history = Vec::new();
     for &t in series {
-        if !in_.contains(&t) {
+        if !visited.contains(&t) {
             error += 1;
             if frame.len() == num_frame {
-                if let Some(cu) = frame.pop_front() { in_.remove(&cu); }
+                if let Some(cu) = frame.pop_front() { visited.remove(&cu); }
             }
             frame.push_back(t);
-            in_.insert(t);
+            visited.insert(t);
         }
         history.push(frame.iter().copied().collect());
     }
@@ -271,7 +271,7 @@ impl WaitForGraph {
         self.edge.entry(ai_cho).or_default().push(cho_ai);
     }
 
-    /// Phát hiện bế tắc = tìm owner trình bằng DFS 3 màu.
+    /// Phát hiện bế tắc = tìm chu trình bằng DFS 3 màu.
     pub fn has_deadlock(&self) -> Option<Vec<u32>> {
         let mut mau: HashMap<u32, u8> = HashMap::new(); // 0=trắng 1=xám 2=đen
         let mut duong: Vec<u32> = Vec::new();
@@ -296,7 +296,7 @@ impl WaitForGraph {
             for k in ke {
                 match mau.get(&k).copied().unwrap_or(0) {
                     1 => {
-                        // gặp lại đỉnh XÁM -> có owner trình
+                        // gặp lại đỉnh XÁM -> có chu trình
                         let start = duong.iter().position(|&x| x == k).unwrap();
                         return Some(duong[start..].to_vec());
                     }
@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn fcfs_chay_theo_thu_tu_den() {
+    fn fcfs_runs_in_arrival_order() {
         let kq = lap_lich_fcfs(mau());
         // A(0-5), B(5-8), C(8-9)
         assert_eq!(kq.process[0].end, Some(5));
@@ -393,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn sjf_cho_trung_binh_thap_hon_fcfs() {
+    fn sjf_beats_fcfs_on_average_wait() {
         let f = lap_lich_fcfs(mau());
         let s = lap_lich_sjf(mau());
         // SJF tối ưu thời gian chờ trung bình (định lý kinh điển)
@@ -402,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn round_robin_khong_bo_doi_ai() {
+    fn round_robin_starves_nobody() {
         let kq = lap_lich_round_robin(mau(), 2);
         // Mọi tiến trình đều hoàn thành
         assert!(kq.process.iter().all(|p| p.end.is_some()));
@@ -412,14 +412,14 @@ mod tests {
     }
 
     #[test]
-    fn moi_thuat_toan_deu_chay_du_tong_burst() {
+    fn every_scheduler_runs_total_burst() {
         for kq in [lap_lich_fcfs(mau()), lap_lich_sjf(mau()), lap_lich_round_robin(mau(), 3)] {
             assert_eq!(kq.timeline.len(), 9, "phải dùng đúng 9 đơn vị CPU");
         }
     }
 
     #[test]
-    fn thay_state_toi_uu_always_good_nhat() {
+    fn optimal_replacement_is_a_lower_bound() {
         let series = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
         let opt = optimal_replacement(&series, 3).num_error_state;
         let lru = lru_replace(&series, 3).num_error_state;
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn nghich_ly_belady_co_that_voi_fifo() {
+    fn belady_anomaly_is_real_for_fifo() {
         let series = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
         let ba = fifo_replace(&series, 3).num_error_state;
         let bon = fifo_replace(&series, 4).num_error_state;
@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn lru_khong_bi_nghich_ly_belady() {
+    fn lru_is_immune_to_belady() {
         let series = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
         let ba = lru_replace(&series, 3).num_error_state;
         let bon = lru_replace(&series, 4).num_error_state;
@@ -448,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn first_frame_data_lon_thi_only_error_state_lan() {
+    fn enough_frames_means_only_compulsory_faults() {
         let series = [1u64, 2, 3, 1, 2, 3, 1, 2, 3];
         // 3 trang khác nhau, 5 khung -> chỉ 3 lỗi bắt buộc (compulsory miss)
         assert_eq!(lru_replace(&series, 5).num_error_state, 3);
@@ -456,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn phat_show_be_tac_when_has_chu_trinh() {
+    fn detects_deadlock_on_cycle() {
         let mut g = WaitForGraph::new();
         g.them_cho(1, 2);
         g.them_cho(2, 3);
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn no_report_be_tac_when_do_thi_no_chu_trinh() {
+    fn no_deadlock_on_acyclic_graph() {
         let mut g = WaitForGraph::new();
         g.them_cho(1, 2);
         g.them_cho(2, 3);
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn be_tac_hai_tien_trinh_kinh_dien() {
+    fn classic_two_process_deadlock() {
         // P1 giữ A chờ B; P2 giữ B chờ A — bế tắc đơn giản nhất
         let mut g = WaitForGraph::new();
         g.them_cho(1, 2);

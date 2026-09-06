@@ -91,17 +91,17 @@ fn main() {
     // TÌNH HUỐNG 3: Giao ước FnOnce - Đoạt quyền sở hữu (Move)
     // ------------------------------------------------------------------------
     // Giả lập một khóa bảo mật phiên đăng nhập chỉ dùng một lần (One-Time Token)
-    let key_report_mat = String::from("SEC-TOKEN-XYZ-9999-SECRET");
+    let secret_token = String::from("SEC-TOKEN-XYZ-9999-SECRET");
 
-    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của key_report_mat
+    // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của secret_token
     let huy_phien_lam_viec = move || {
-        // Biến key_report_mat bị di chuyển vào đây và tiêu thụ
-        let thong_report = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", key_report_mat);
-        thong_report // Trả về chuỗi thông báo, key_report_mat bị Drop tại đây
+        // Biến secret_token bị di chuyển vào đây và tiêu thụ
+        let thong_report = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", secret_token);
+        thong_report // Trả về chuỗi thông báo, secret_token bị Drop tại đây
     };
 
     exec_consume("Tiêu hủy phiên bảo mật", huy_phien_lam_viec);
-    // println!("{}", key_report_mat); // LỖI: value borrowed here after move!
+    // println!("{}", secret_token); // LỖI: value borrowed here after move!
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 4: Lưu trữ danh sách Closure trong Vector với Box<dyn Fn()>

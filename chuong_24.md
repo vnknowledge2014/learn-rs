@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Chúc mừng bạn đã tiến bước đến chương đỉnh cao của Chủ đề 4: Siêu lập trình (Meta Programming)! Ở Chương 23, bạn đã làm quen với các khái niệm nền tảng của Macro thủ tục: Cây cú pháp trừu tượng (AST), kính hiển vi bóc tách `syn`, và cây bút id thuật sinh mã `quote`.
+Chúc mừng bạn đã tiến bước đến chương đỉnh cao của Chủ đề 4: Siêu lập trình (Meta Programming)! Ở Chương 23, bạn đã làm quen với các khái niệm nền tảng của Macro thủ tục: Cây cú pháp trừu tượng (AST), kính hiển vi bóc tách `syn`, và cây bút ma thuật sinh mã `quote`.
 
 Trong thế giới Rust thực chiến, Macro thủ tục không chỉ gói gọn trong một hình thức duy nhất mà được chia thành **Ba nhánh sức mạnh tối thượng (The Trinity of Procedural Macros)**:
 1. **Custom Derive Macro (`#[derive(TenTrait)]`)**: Tự động sinh mã triển khai một Trait cho struct hoặc enum mà không làm biến đổi mã gốc.

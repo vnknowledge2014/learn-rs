@@ -50,7 +50,7 @@ impl Graph {
             return None;
         }
 
-        // Mảng đánh dấu các đỉnh đã thăm để tránh owner trình lặp vô tận
+        // Mảng đánh dấu các đỉnh đã thăm để tránh chu trình lặp vô tận
         let mut da_tham = vec![false; self.adjacency_list.len()];
         // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
@@ -90,24 +90,24 @@ pub fn quicksort<T: Ord>(data: &mut [T]) {
     if data.len() <= 1 {
         return;
     }
-    let pos_value_chot = part_region(data);
+    let pivot_pos = part_region(data);
     // Chia đôi mảng và đệ quy sắp xếp hai nửa
-    quicksort(&mut data[0..pos_value_chot]);
-    quicksort(&mut data[pos_value_chot + 1..]);
+    quicksort(&mut data[0..pivot_pos]);
+    quicksort(&mut data[pivot_pos + 1..]);
 }
 
 fn part_region<T: Ord>(data: &mut [T]) -> usize {
     let length = data.len();
-    let only_num_chot = length - 1;
+    let pivot_index = length - 1;
     let mut i = 0;
 
-    for j in 0..only_num_chot {
-        if data[j] <= data[only_num_chot] {
+    for j in 0..pivot_index {
+        if data[j] <= data[pivot_index] {
             data.swap(i, j);
             i += 1;
         }
     }
-    data.swap(i, only_num_chot);
+    data.swap(i, pivot_index);
     i
 }
 
@@ -154,9 +154,9 @@ fn main() {
     assert_eq!(distance_hidden_use, Some(1));
 
     println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(hoa));
-    let distance_hoa = array_remote_hoi.bfs_shortest_distance(an, hoa);
-    println!("      => Kết quả: {:?} (Không có đường đi)", distance_hoa);
-    assert_eq!(distance_hoa, None);
+    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, hoa);
+    println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
+    assert_eq!(distance_to_c, None);
 
     // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
     println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
@@ -178,7 +178,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn count_rate_from() {
+    fn word_frequency_count() {
         let bang = thong_ke_from_region("rust rust an toan rust");
         assert_eq!(bang.get("rust"), Some(&3));
         assert_eq!(bang.get("an"), Some(&1));
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn quicksort_khop_voi_sort_chuan() {
+    fn quicksort_matches_std_sort() {
         let mut a = vec![5, 2, 9, 1, 5, 6, 3, 3, 8];
         let mut b = a.clone();
         quicksort(&mut a);
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn quicksort_truong_hop_bien() {
+    fn quicksort_edge_cases() {
         let mut rong: Vec<i32> = vec![];
         quicksort(&mut rong);
         assert!(rong.is_empty());
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn bfs_tim_duong_ngan_nhat() {
+    fn bfs_finds_shortest_path() {
         let mut g = Graph::new();
         let a = g.add_peak("A");
         let b = g.add_peak("B");
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn bfs_khong_co_duong_di() {
+    fn bfs_reports_no_path() {
         let mut g = Graph::new();
         let a = g.add_peak("A");
         let b = g.add_peak("B"); // cô lập

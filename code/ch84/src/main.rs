@@ -101,7 +101,7 @@ pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
 pub struct KetQuaDongLienKet {
     /// Hệ số kéo về. Càng âm càng quay về trung bình nhanh.
     pub reversion_coef: f64,
-    /// Nửa owner kỳ: bao nhiêu bước để chênh lệch co lại một nửa.
+    /// Nửa chu kỳ: bao nhiêu bước để chênh lệch co lại một nửa.
     pub half_life: f64,
     pub has_cointegration: bool,
 }
@@ -114,7 +114,7 @@ pub fn cointegration_test(spread: &[f64], threshold: f64)
     let de: Vec<f64> = spread.windows(2).map(|w| w[1] - w[0]).collect();
     let hq = regression(&e, &de)?;
     let lambda = hq.beta;
-    // Chênh lệch co lại theo e^(λt); nửa owner kỳ là khi e^(λt) = 1/2
+    // Chênh lệch co lại theo e^(λt); nửa chu kỳ là khi e^(λt) = 1/2
     let half = if lambda < -1e-12 { (0.5f64).ln() / lambda } else { f64::INFINITY };
     Some(KetQuaDongLienKet {
         reversion_coef: lambda,
@@ -272,12 +272,12 @@ where F: FnMut(usize, usize, usize) -> f64
         let done_in = first + do_dai_trong_mau;
         let done_out = done_in + do_dai_ngoai_mau;
         // Chọn tham số CHỈ dựa trên đoạn trong mẫu
-        let (good_nhat, diem_trong) = all_params.iter()
+        let (best, diem_trong) = all_params.iter()
             .map(|&p| (p, cham_diem(p, first, done_in)))
             .fold((all_params[0], f64::MIN), |a, b| if b.1 > a.1 { b } else { a });
         // Rồi chấm nó trên đoạn ngoài mẫu ngay sau
-        let point_out = cham_diem(good_nhat, done_in, done_out);
-        segments.push(TestSegment { query_param: good_nhat,
+        let point_out = cham_diem(best, done_in, done_out);
+        segments.push(TestSegment { query_param: best,
                                      point_in_mau: diem_trong,
                                      point_out_mau: point_out });
         first += do_dai_ngoai_mau;
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn thong_ke_du_lieu_qua_it_khong_panic() {
+    fn stats_on_too_little_data_do_not_panic() {
         assert_eq!(mean(&[]), 0.0);
         assert_eq!(variance(&[]), 0.0);
         assert_eq!(variance(&[5.0]), 0.0, "một điểm thì không có phương sai mẫu");
@@ -469,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn tuong_quan_bang_1_khi_quan_he_tuyen_tinh_hoan_hao() {
+    fn correlation_is_one_for_a_perfect_linear_relation() {
         let x: Vec<f64> = (1..=100).map(|i| i as f64).collect();
         let tang: Vec<f64> = x.iter().map(|v| 3.0 * v + 7.0).collect();
         let down: Vec<f64> = x.iter().map(|v| -2.0 * v + 5.0).collect();
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn tuong_quan_luon_trong_khoang_am_mot_den_mot() {
+    fn correlation_stays_within_minus_one_and_one() {
         for hat in [1u64, 42, 2024] {
             let a = gen_returns(500, hat, 0.02, 0.0);
             let b = gen_returns(500, hat + 1000, 0.02, 0.0);
@@ -488,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn chuoi_khong_doi_thi_tuong_quan_khong_dinh_nghia_duoc() {
+    fn a_constant_series_has_undefined_correlation() {
         let queue = vec![5.0; 100];
         let x: Vec<f64> = (1..=100).map(|i| i as f64).collect();
         assert_eq!(correlation(&queue, &x), None, "không chia cho độ lệch bằng 0");
@@ -496,7 +496,7 @@ mod tests {
 
     // ---------- Hồi quy ----------
     #[test]
-    fn regression_find_use_coef_when_no_has_many() {
+    fn regression_recovers_the_coefficients_without_noise() {
         let x: Vec<f64> = (1..=100).map(|i| i as f64).collect();
         let y: Vec<f64> = x.iter().map(|v| 2.5 * v + 10.0).collect();
         let h = regression(&x, &y).unwrap();
@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn r_binh_phuong_luon_trong_khoang_0_1() {
+    fn r_squared_stays_within_zero_and_one() {
         for hat in [1u64, 7, 42, 2024] {
             let (a, b) = sinh_cap_dong_lien_ket(500, hat, 1.5);
             let h = regression(&a, &b).unwrap();
@@ -516,13 +516,13 @@ mod tests {
     }
 
     #[test]
-    fn hoi_quy_tra_none_khi_khong_du_dieu_kien() {
+    fn regression_returns_none_on_degenerate_input() {
         assert_eq!(regression(&[1.0, 2.0], &[1.0, 2.0]), None, "cần ít nhất 3 điểm");
         assert_eq!(regression(&[5.0; 10], &[1.0; 10]), None, "x không đổi thì vô nghĩa");
     }
 
     #[test]
-    fn part_data_has_mean_table_no() {
+    fn residuals_have_zero_mean() {
         // Tính chất toán học của bình phương tối thiểu. Nếu không đúng thì
         // hồi quy đã cài sai.
         let (a, b) = sinh_cap_dong_lien_ket(500, 11, 1.5);
@@ -533,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn phan_du_khong_con_tuong_quan_voi_bien_giai_thich() {
+    fn residuals_are_uncorrelated_with_the_regressor() {
         // Tính chất thứ hai: phần dư trực giao với biến giải thích. Nếu còn
         // tương quan thì vẫn còn thông tin chưa khai thác hết.
         let (a, b) = sinh_cap_dong_lien_ket(500, 13, 1.5);
@@ -545,7 +545,7 @@ mod tests {
 
     // ---------- Đồng liên kết ----------
     #[test]
-    fn phat_show_use_cap_cointegration() {
+    fn identifies_the_cointegrated_pair() {
         let (a, b) = sinh_cap_dong_lien_ket(1_000, 2024, 1.5);
         let h = regression(&a, &b).unwrap();
         let e = part_data(&a, &b, &h);
@@ -557,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn reject_cap_only_correlation_high_id_no_cointegration() {
+    fn rejects_a_merely_correlated_pair() {
         // BÀI HỌC TRUNG TÂM: tương quan gần 1 nhưng chênh lệch giãn mãi.
         let (c, d) = gen_cap_price_cointegration(1_000, 7);
         let r = correlation(&c, &d).unwrap();
@@ -570,8 +570,8 @@ mod tests {
     }
 
     #[test]
-    fn keo_ve_cang_manh_thi_nua_chu_ky_cang_ngan() {
-        let gen_chenh = |he_so: f64| -> Vec<f64> {
+    fn stronger_reversion_means_a_shorter_half_life() {
+        let gen_spread = |he_so: f64| -> Vec<f64> {
             let mut s = 7u64;
             let mut e = 10.0f64;
             let mut v = Vec::new();
@@ -583,21 +583,21 @@ mod tests {
             }
             v
         };
-        let a = cointegration_test(&gen_chenh(0.5), -0.05).unwrap();
-        let b = cointegration_test(&gen_chenh(0.95), -0.05).unwrap();
+        let a = cointegration_test(&gen_spread(0.5), -0.05).unwrap();
+        let b = cointegration_test(&gen_spread(0.95), -0.05).unwrap();
         assert!(a.half_life < b.half_life,
                 "kéo mạnh nửa owner kỳ {:.2} phải ngắn hơn kéo yếu {:.2}",
                 a.half_life, b.half_life);
     }
 
     #[test]
-    fn data_qua_ngan_thi_no_test_can() {
+    fn too_short_a_series_cannot_be_tested() {
         assert_eq!(cointegration_test(&[1.0; 10], -0.05), None);
     }
 
     // ---------- Kalman ----------
     #[test]
-    fn kalman_hoi_tu_ve_beta_that() {
+    fn kalman_converges_to_the_true_beta() {
         let beta_that = 1.5;
         let (a, b) = sinh_cap_dong_lien_ket(2_000, 2024, beta_that);
         let mut lk = KalmanFilter::new(1.0, 1e-5, 1.0);
@@ -607,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn kalman_bot_bat_dinh_khi_co_them_du_lieu() {
+    fn kalman_uncertainty_falls_with_more_data() {
         let (a, b) = sinh_cap_dong_lien_ket(500, 5, 1.5);
         let mut lk = KalmanFilter::new(1.0, 1e-6, 1.0);
         let first = lk.estimated_variance;
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn kalman_khong_panic_voi_x_bang_khong() {
+    fn kalman_does_not_panic_when_x_is_zero() {
         let mut lk = KalmanFilter::new(1.0, 1e-5, 0.0);
         let e = lk.update(0.0, 5.0);
         assert!(e.is_finite());
@@ -628,7 +628,7 @@ mod tests {
 
     // ---------- Danh mục ----------
     #[test]
-    fn da_dang_hoa_down_risk_when_two_id_no_correlation_hoan_toan() {
+    fn diversification_cuts_risk_when_correlation_is_below_one() {
         // "Bữa trưa miễn phí" duy nhất trong tài chính.
         let a = gen_returns(1_000, 1, 0.02, 0.0005);
         let b = gen_returns(1_000, 999, 0.02, 0.0005);
@@ -641,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn hai_ma_giong_het_nhau_thi_khong_da_dang_hoa_duoc() {
+    fn identical_assets_give_no_diversification() {
         // Đa dạng hoá giả: mua hai mã y hệt nhau chẳng giảm rủi ro chút nào.
         let a = gen_returns(500, 1, 0.02, 0.0);
         let mot = portfolio_stats(&[a.clone()], &[1.0], 0.0).unwrap();
@@ -651,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn danh_muc_tham_so_sai_tra_none() {
+    fn a_malformed_portfolio_returns_none() {
         let a = gen_returns(100, 1, 0.02, 0.0);
         assert_eq!(portfolio_stats(&[], &[], 0.0), None);
         assert_eq!(portfolio_stats(&[a], &[0.5, 0.5], 0.0), None,
@@ -659,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn phuong_sai_danh_muc_khong_bao_gio_am() {
+    fn portfolio_variance_is_never_negative() {
         for hat in [1u64, 42, 2024] {
             let a = gen_returns(300, hat, 0.02, 0.0);
             let b = gen_returns(300, hat + 7, 0.03, 0.0);
@@ -670,7 +670,7 @@ mod tests {
 
     // ---------- Rủi ro đuôi ----------
     #[test]
-    fn thieu_hut_ky_vong_luon_lon_hon_hoac_bang_var() {
+    fn expected_shortfall_is_never_below_var() {
         // Bất biến toán học: trung bình phần đuôi luôn tệ hơn ngưỡng đuôi.
         for hat in [1u64, 42, 2024] {
             let ls = gen_returns(2_000, hat, 0.02, 0.0);
@@ -684,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn var_tang_theo_muc_tin_cay() {
+    fn var_grows_with_the_confidence_level() {
         let ls = gen_returns(2_000, 42, 0.02, 0.0);
         let mut prev = f64::MIN;
         for mtc in [0.80f64, 0.90, 0.95, 0.99] {
@@ -695,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn var_dau_vao_xau_tra_none() {
+    fn var_returns_none_on_bad_input() {
         assert_eq!(value_at_risk(&[], 0.95), None);
         assert_eq!(value_at_risk(&[1.0], 1.5), None);
         assert_eq!(expected_shortfall(&[], 0.95), None);
@@ -703,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn var_cua_chuoi_khong_doi_bang_chinh_gia_tri_do() {
+    fn var_of_a_constant_series_is_that_constant() {
         let ls = vec![-0.01; 100];
         assert!((value_at_risk(&ls, 0.95).unwrap() - 0.01).abs() < 1e-12);
         assert!((expected_shortfall(&ls, 0.95).unwrap() - 0.01).abs() < 1e-12);
@@ -711,7 +711,7 @@ mod tests {
 
     // ---------- Kiểm định tiến ----------
     #[test]
-    fn kiem_dinh_tien_chia_dung_so_doan() {
+    fn walk_forward_splits_into_the_right_number_of_folds() {
         let cham = |_p: usize, _tu: usize, _den: usize| 1.0;
         let kq = walk_forward(1_000, 200, 100, &[5, 10, 20], cham);
         // Cửa sổ trượt 100 mỗi bước, cần 300 để đủ một đoạn → 8 đoạn
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn diem_ngoai_mau_thap_hon_trong_mau_khi_co_khop_qua_muc() {
+    fn out_of_sample_score_drops_when_overfitting() {
         // Chấm điểm có nhiễu phụ thuộc đoạn: chọn tham số theo nhiễu chính
         // là khớp quá mức, và điểm ngoài mẫu sẽ tụt.
         let cham = |p: usize, tu: usize, _den: usize| -> f64 {
@@ -733,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn no_has_many_thi_no_drawdown() {
+    fn without_noise_there_is_no_degradation() {
         // Nếu tham số thật sự tốt (không phải khớp nhiễu), điểm ngoài mẫu
         // bằng điểm trong mẫu.
         let cham = |p: usize, _tu: usize, _den: usize| if p == 20 { 1.0 } else { 0.3 };
@@ -744,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn data_qua_ngan_thi_no_has_doan_which() {
+    fn too_short_a_series_yields_no_folds() {
         let cham = |_p: usize, _tu: usize, _den: usize| 1.0;
         let kq = walk_forward(100, 200, 100, &[5], cham);
         assert!(kq.segments.is_empty());
@@ -752,14 +752,14 @@ mod tests {
     }
 
     #[test]
-    fn khong_co_tham_so_nao_thi_khong_panic() {
+    fn an_empty_parameter_grid_does_not_panic() {
         let cham = |_p: usize, _tu: usize, _den: usize| 1.0;
         let kq = walk_forward(1_000, 200, 100, &[], cham);
         assert!(kq.segments.is_empty());
     }
 
     #[test]
-    fn nhieu_tat_dinh_trai_deu_va_lap_lai_duoc() {
+    fn deterministic_noise_is_uniform_and_reproducible() {
         assert_eq!(deterministic_noise(100, 20), deterministic_noise(100, 20), "phải tất định");
         assert_ne!(deterministic_noise(100, 20), deterministic_noise(200, 20));
         assert_ne!(deterministic_noise(100, 20), deterministic_noise(100, 50));
@@ -772,7 +772,7 @@ mod tests {
 
     // ---------- Sinh dữ liệu ----------
     #[test]
-    fn gen_data_all_peak() {
+    fn data_generation_is_deterministic() {
         assert_eq!(sinh_cap_dong_lien_ket(100, 5, 1.5),
                    sinh_cap_dong_lien_ket(100, 5, 1.5));
         assert_ne!(sinh_cap_dong_lien_ket(100, 5, 1.5),

@@ -4,17 +4,17 @@
 
 fn main() {
     println!("=== 1. KHÁM PHÁ TÍNH BẤT BIẾN (IMMUTABILITY) ===");
-    let nam_into_loop = 2006; // Biến bất biến: không thể sửa
-    println!("Năm ngôn ngữ Rust bắt đầu được thai nghén: {}", nam_into_loop);
+    let founding_year = 2006; // Biến bất biến: không thể sửa
+    println!("Năm ngôn ngữ Rust bắt đầu được thai nghén: {}", founding_year);
     // Nếu bạn bỏ chú thích dòng dưới, compiler sẽ lập tức báo lỗi E0384:
-    // nam_into_loop = 2010;
+    // founding_year = 2010;
 
     println!("\n=== 2. KHÁM PHÁ BIẾN KHẢ BIẾN VỚI TỪ KHÓA 'mut' ===");
-    let mut phien_ban_rust = 1.0; // Chiếc bảng phấn: cho phép xóa đi viết lại
-    println!("Phiên bản Rust ban đầu: {}", phien_ban_rust);
+    let mut rust_version = 1.0; // Chiếc bảng phấn: cho phép xóa đi viết lại
+    println!("Phiên bản Rust ban đầu: {}", rust_version);
     
-    phien_ban_rust = 1.85; // Cập nhật giá trị mới hợp lệ
-    println!("Phiên bản Rust hiện đại : {}", phien_ban_rust);
+    rust_version = 1.85; // Cập nhật giá trị mới hợp lệ
+    println!("Phiên bản Rust hiện đại : {}", rust_version);
 
     println!("\n=== 3. KỸ THUẬT CHE KHUẤT BIẾN (SHADOWING) ===");
     // Giả sử nhận được dữ liệu dạng chuỗi văn bản từ người dùng nhập
@@ -50,8 +50,8 @@ fn main() {
 
     println!("\n=== 6. ÉP KIỂU AN TOÀN VỚI TỪ KHÓA 'as' ===");
     let point_transfer_can: u8 = 9;
-    let point_thi: f32 = 8.5;
+    let exam_score: f32 = 8.5;
     // Để cộng số nguyên với số thực, ta phải chủ động ép kiểu (explicit casting)
-    let diem_tong_ket = (point_transfer_can as f32 * 0.3) + (point_thi * 0.7);
+    let diem_tong_ket = (point_transfer_can as f32 * 0.3) + (exam_score * 0.7);
     println!("Điểm tổng kết môn học: {:.2}", diem_tong_ket);
 }

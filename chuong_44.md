@@ -64,7 +64,7 @@ Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **C�
 ├─────────────────────────────────────────────────────────────┤
 │ 4. INPUT / OUTPUT SPEC (Đặc tả dữ liệu đầu vào & đầu ra)    │
 ├─────────────────────────────────────────────────────────────┤
-│ 5. FEW-SHOT EXAMPLES (Ví dụ mẫu chuẩn để AI concat theo)       │
+│ 5. FEW-SHOT EXAMPLES (Ví dụ mẫu chuẩn để AI noi theo)       │
 └─────────────────────────────────────────────────────────────┘
 ```
 

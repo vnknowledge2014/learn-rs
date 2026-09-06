@@ -206,7 +206,7 @@ fn main() {
              chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
-    let _chung_thuc_session = LostReport;
+    let _auth_session = LostReport;
     println!("Chứng thực bảo mật hệ thống: Đã kích hoạt tem xác thực điện tử.");
 
     // Mở một tài khoản ngân hàng mới thông qua hàm liên kết open_account
@@ -257,8 +257,8 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0599** | `no method named 'rut_tien' found for struct 'Account' in the current scope` | Bạn gọi một phương thức chưa được khai báo trong khối `impl`, hoặc gõ sai chính tả tên hàm. | Kiểm tra lại tên phương thức trong khối `impl` và đảm bảo kiểu dữ liệu gọi phương thức là chính xác. |
-| **E0596** | `cannot borrow 'account' as mutable, as it is not declared as mutable` | Bạn gọi phương thức đòi hỏi `&mut self` (như `nap_tien`) trên một đối tượng struct khai báo bất biến (`let account = ...`). | Thêm từ khóa `mut` khi tạo biến: `let mut account = ...`. |
-| **E0382** | `use of moved value: 'account'` | Bạn gọi một phương thức nhận `self` (tiêu thụ đối tượng), sau đó lại cố sử dụng tiếp biến đó ở các dòng sau. | Đổi tham số phương thức thành `&self` hoặc `&mut self` nếu không muốn hủy đối tượng, hoặc tạo bản sao trước khi tiêu thụ. |
+| **E0596** | `cannot borrow 'tk' as mutable, as it is not declared as mutable` | Bạn gọi phương thức đòi hỏi `&mut self` (như `nap_tien`) trên một đối tượng struct khai báo bất biến (`let tk = ...`). | Thêm từ khóa `mut` khi tạo biến: `let mut tk = ...`. |
+| **E0382** | `use of moved value: 'tk'` | Bạn gọi một phương thức nhận `self` (tiêu thụ đối tượng), sau đó lại cố sử dụng tiếp biến đó ở các dòng sau. | Đổi tham số phương thức thành `&self` hoặc `&mut self` nếu không muốn hủy đối tượng, hoặc tạo bản sao trước khi tiêu thụ. |
 | **E0063** | `missing field 'activate' in initializer of 'AccountBank'` | Bạn khởi tạo Struct nhưng quên chưa điền giá trị cho một trong các trường dữ liệu. | Điền đầy đủ tất cả các trường, hoặc sử dụng cú pháp cập nhật `..struct_cu` để lấy giá trị mặc định cho các trường còn lại. |
 
 ---

@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn duyet_in_order_luon_tang_dan() {
+    fn in_order_walk_is_sorted() {
         let c = cay_mau();
         let so: Vec<i32> = c.in_order_walk().into_iter().copied().collect();
         assert_eq!(so, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn no_insert_duplicate_loop() {
+    fn no_duplicate_inserts() {
         let mut c = BinarySearchTree::new();
         c.them(5);
         c.them(5); // giá trị trùng bị bỏ qua
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn cay_can_bang_thap_hon_cay_suy_bien() {
+    fn balanced_tree_is_shallower_than_degenerate() {
         let mut suy_bien = BinarySearchTree::new();
         for x in 1..=7 {
             suy_bien.them(x); // chèn tuần tự -> suy biến thành danh sách

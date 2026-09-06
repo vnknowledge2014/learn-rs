@@ -8,7 +8,7 @@ Khi chương trình phần mềm của bạn bắt đầu lớn dần lên, vi�
 
 Mục tiêu học tập của chương này:
 - Nắm vững cú pháp khai báo và triệu gọi hàm trong Rust với từ khóa `fn`.
-- Hiểu sự khác biệt compute tế giữa việc trả về giá trị ngầm định (**Implicit Return**) bằng biểu thức không có dấu chấm phẩy `;` và câu lệnh `return` rõ ràng.
+- Hiểu sự khác biệt tinh tế giữa việc trả về giá trị ngầm định (**Implicit Return**) bằng biểu thức không có dấu chấm phẩy `;` và câu lệnh `return` rõ ràng.
 - Hiểu sâu sắc bản chất phần cứng của **Bộ nhớ Ngăn xếp (Stack)** và **Vùng nhớ Tự do (Heap)**.
 - Mổ xẻ cấu trúc ô nhớ của kiểu chuỗi co giãn `String` (gồm con trỏ, độ dài, và sức chứa).
 - Tương tác trực tiếp với người dùng qua bàn phím máy tính bằng thư viện Nhập/Xuất chuẩn `std::io`.
@@ -77,7 +77,7 @@ fn tinh_tong(so_a: i32, so_b: i32) -> i32 {
 
 Mỗi khi một hàm được gọi, hệ thống sẽ cấp phát một vùng nhỏ trên đỉnh Stack gọi là **Khung ngăn xếp (Stack Frame)**:
 - Khung này chứa tất cả các tham số truyền vào và các biến cục bộ khai báo bên trong hàm đó.
-- Khi hàm thực thi xong và thoát ra, toàn bộ Stack Frame đó sẽ bị "thu hồi" ngay lập tức bằng cách di chuyển con trỏ đỉnh ngăn xếp (Stack Pointer). Bộ nhớ được dọn sạch compute tươm trong 1 owner kỳ xung nhịp CPU!
+- Khi hàm thực thi xong và thoát ra, toàn bộ Stack Frame đó sẽ bị "thu hồi" ngay lập tức bằng cách di chuyển con trỏ đỉnh ngăn xếp (Stack Pointer). Bộ nhớ được dọn sạch tinh tươm trong 1 chu kỳ xung nhịp CPU!
 
 ```
   ĐỈNH STACK ▲
@@ -181,19 +181,19 @@ fn parse_float(cau_hoi: &str) -> f32 {
     println!("{}", cau_hoi);
 
     // Chuỗi co giãn được cấp phát trên bãi đỗ HEAP để hứng các ký tự người dùng gõ
-    let mut series_import = String::new();
+    let mut input_buffer = String::new();
 
     // io::stdin() kết nối với bàn phím
-    // read_line ghi dữ liệu vào series_import qua tham chiếu mượn sửa (mutable borrow / &mut)
+    // read_line ghi dữ liệu vào input_buffer qua tham chiếu mượn sửa (mutable borrow / &mut)
     // expect sẽ dừng chương trình và báo lỗi nếu thiết bị nhập liệu bị ngắt kết nối
     io::stdin()
-        .read_line(&mut series_import)
+        .read_line(&mut input_buffer)
         .expect("Lỗi: Không thể đọc dữ liệu từ bàn phím!");
 
     // .trim() loại bỏ ký tự xuống dòng Enter (\n hoặc \r\n)
     // .parse() chuyển đổi chuỗi thành số f32
-    // unwrap_or(0.0) sẽ lấy số 0.0 làm giá trị mặc định nếu người dùng gõ chữ linh compute
-    series_import.trim().parse::<f32>().unwrap_or(0.0)
+    // unwrap_or(0.0) sẽ lấy số 0.0 làm giá trị mặc định nếu người dùng gõ chữ linh tinh
+    input_buffer.trim().parse::<f32>().unwrap_or(0.0)
 }
 
 fn main() {
@@ -253,7 +253,7 @@ Dưới đây là các lỗi kinh điển khi làm việc với hàm và các ki
 4. **Bản chất của `String`**: Một cấu trúc gồm 3 trường trên Stack (Con trỏ `ptr`, Độ dài `len`, Sức chứa `capacity`) quản lý một mảng byte thực sự nằm ngoài bãi đỗ Heap.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập thực hành 1**: Viết một hàm có tên là `tinh_chu_vi_dien_tich_hcn(chieu_dai: f32, chieu_rong: f32) -> (f32, f32)` nhận vào chiều dài và chiều rộng của một hình chữ nhật, sau đó trả về một bộ đôi (Tuple) gồm cả owner vi và diện tích của hình chữ nhật đó.
+1. **Bài tập thực hành 1**: Viết một hàm có tên là `tinh_chu_vi_dien_tich_hcn(chieu_dai: f32, chieu_rong: f32) -> (f32, f32)` nhận vào chiều dài và chiều rộng của một hình chữ nhật, sau đó trả về một bộ đôi (Tuple) gồm cả chu vi và diện tích của hình chữ nhật đó.
 2. **Bài tập tư duy 2**: Hãy chỉ ra các biến sau đây nằm ở vùng nhớ nào (Stack hay Heap):
    - `let a: i64 = 1000;`
    - `let b: bool = false;`

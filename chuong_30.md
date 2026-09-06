@@ -65,7 +65,7 @@ Hãy quan sát hai hình ảnh vô cùng sinh động trong đời sống thực
 - Hãy nhìn vào bản đồ giao thông của một thành phố:
   - Các nhà ga, bến xe, hoặc các nút giao là các **Đỉnh (Vertices)**.
   - Các đoạn đường nối giữa hai địa điểm là các **Cạnh (Edges)**.
-- Khác với Cây (nơi chỉ có quan hệ cha-con một chiều và không có vòng lặp), Đồ thị cho phép các con đường đan xen chằng chịt, có thể quay vòng lại điểm xuất phát (owner trình - Cycle).
+- Khác với Cây (nơi chỉ có quan hệ cha-con một chiều và không có vòng lặp), Đồ thị cho phép các con đường đan xen chằng chịt, có thể quay vòng lại điểm xuất phát (chu trình - Cycle).
 - **Thuật toán BFS (Tìm kiếm theo chiều rộng)** giống như việc bạn ném một viên sỏi xuống mặt hồ nước phẳng lặng: Sóng nước sẽ lan tỏa đều ra xung quanh theo từng vòng tròn đồng tâm: Đầu tiên là các trạm cách bạn 1 chặng đi, sau đó là các trạm cách 2 chặng, rồi 3 chặng... Nhờ cơ chế lan tỏa từng lớp này, lần đầu tiên bạn chạm tới điểm đích cũng chính là con đường ngắn nhất!
 
 ---
@@ -76,7 +76,7 @@ Hãy quan sát hai hình ảnh vô cùng sinh động trong đời sống thực
 
 Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **SwissTable** (nằm trong thư viện nổi tiếng `hashbrown` được tích hợp thẳng vào thư viện chuẩn `std::collections`):
 1. **Hàm băm (Hash Function)**: Mặc định Rust sử dụng thuật toán `SipHash 1-3`, một hàm băm mật mã học được thiết kế đặc biệt để ngăn chặn các cuộc tấn công từ chối dịch vụ **HashDoS** (khi kẻ tấn công cố tình tạo ra hàng triệu khóa có cùng giá trị băm để làm bảng băm suy biến về danh sách liên kết $O(N)$).
-2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 owner kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
+2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
 3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
    ```rust
    let mut dem_tu = std::collections::HashMap::new();
@@ -216,24 +216,24 @@ pub fn quicksort<T: Ord>(data: &mut [T]) {
     if data.len() <= 1 {
         return;
     }
-    let pos_value_chot = part_region(data);
+    let pivot_pos = part_region(data);
     // Chia đôi mảng và đệ quy sắp xếp hai nửa
-    quicksort(&mut data[0..pos_value_chot]);
-    quicksort(&mut data[pos_value_chot + 1..]);
+    quicksort(&mut data[0..pivot_pos]);
+    quicksort(&mut data[pivot_pos + 1..]);
 }
 
 fn part_region<T: Ord>(data: &mut [T]) -> usize {
     let length = data.len();
-    let only_num_chot = length - 1;
+    let pivot_index = length - 1;
     let mut i = 0;
 
-    for j in 0..only_num_chot {
-        if data[j] <= data[only_num_chot] {
+    for j in 0..pivot_index {
+        if data[j] <= data[pivot_index] {
             data.swap(i, j);
             i += 1;
         }
     }
-    data.swap(i, only_num_chot);
+    data.swap(i, pivot_index);
     i
 }
 
@@ -280,9 +280,9 @@ fn main() {
     assert_eq!(distance_hidden_use, Some(1));
 
     println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(hoa));
-    let distance_hoa = array_remote_hoi.bfs_shortest_distance(an, hoa);
-    println!("      => Kết quả: {:?} (Không có đường đi)", distance_hoa);
-    assert_eq!(distance_hoa, None);
+    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, hoa);
+    println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
+    assert_eq!(distance_to_c, None);
 
     // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
     println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
@@ -354,7 +354,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn count_rate_from() {
+    fn word_frequency_count() {
         let bang = thong_ke_from_region("rust rust an toan rust");
         assert_eq!(bang.get("rust"), Some(&3));
         assert_eq!(bang.get("an"), Some(&1));
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn quicksort_khop_voi_sort_chuan() {
+    fn quicksort_matches_std_sort() {
         let mut a = vec![5, 2, 9, 1, 5, 6, 3, 3, 8];
         let mut b = a.clone();
         quicksort(&mut a);
@@ -371,7 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn quicksort_truong_hop_bien() {
+    fn quicksort_edge_cases() {
         let mut rong: Vec<i32> = vec![];
         quicksort(&mut rong);
         assert!(rong.is_empty());
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn bfs_tim_duong_ngan_nhat() {
+    fn bfs_finds_shortest_path() {
         let mut g = Graph::new();
         let a = g.add_peak("A");
         let b = g.add_peak("B");
@@ -402,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn bfs_khong_co_duong_di() {
+    fn bfs_reports_no_path() {
         let mut g = Graph::new();
         let a = g.add_peak("A");
         let b = g.add_peak("B"); // cô lập
@@ -415,13 +415,13 @@ mod tests {
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Sức mạnh $O(1)$ của Bảng băm**: `HashMap` mang lại khả năng tra cứu khóa-giá trị tức thời nhờ thuật toán băm phân phối vào các xô ô nhớ (buckets).
-2. **Kỹ thuật Entry API**: Giúp tra cứu, khởi tạo mặc định và cập nhật giá trị chỉ với một lần tính toán băm duy nhất, tối ưu hóa tối đa owner kỳ CPU.
+2. **Kỹ thuật Entry API**: Giúp tra cứu, khởi tạo mặc định và cập nhật giá trị chỉ với một lần tính toán băm duy nhất, tối ưu hóa tối đa chu kỳ CPU.
 3. **Đồ thị dùng chỉ số**: Biểu diễn Đồ thị bằng danh sách kề `Vec<Vec<usize>>` là phương pháp chuẩn mực trong Rust để đạt 100% Safe Rust và giải phóng lập trình viên khỏi gánh nặng con trỏ.
 4. **BFS tìm đường ngắn nhất**: Thuật toán Tìm kiếm theo chiều rộng (BFS) kết hợp với Hàng đợi FIFO (`VecDeque`) là công cụ hoàn hảo để tìm khoảng cách chặng ngắn nhất trong đồ thị không trọng số.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Tìm kiếm phần tử xuất hiện nhiều nhất)**:  
-   Sử dụng `HashMap`, hãy viết một hàm `fn tim_phan_tu_pho_bien_nhat(list: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
+   Sử dụng `HashMap`, hãy viết một hàm `fn tim_phan_tu_pho_bien_nhat(ds: &[i32]) -> Option<i32>` tìm số nguyên có tần suất xuất hiện nhiều nhất trong mảng trong thời gian $O(N)$.
 2. **Bài tập 2 (Phát hiện đỉnh cô lập trong đồ thị)**:  
    Viết phương thức `fn tim_dinh_co_lap(&self) -> Vec<usize>` cho cấu trúc `Graph` để liệt kê tất cả các đỉnh không có bất kỳ cạnh kết nối nào với các đỉnh khác trong mạng lưới (`adjacency_list[i].is_empty()`).
 3. **Bài tập 3 (Thuật toán DFS - Tìm kiếm theo chiều sâu)**:  
