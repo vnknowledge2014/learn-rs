@@ -190,7 +190,7 @@ fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
     Ok(so_tien)
 }
 
-// 3. Hàm thực hiện deliver dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
+// 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
 fn display_trade(
     input_buffer: &str, 
     mut so_du_hien_tai: f64, 
@@ -257,7 +257,7 @@ fn main() {
     println!("\n[Kịch bản 5] Sử dụng unwrap_or để lấy giá trị mặc định an toàn:");
     let result_error: Result<f64, &str> = Err("Mất kết nối máy chủ");
     let num_tien_last_same = result_error.unwrap_or(0.0);
-    println!("- Giá trị an toàn attempt được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
+    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
 }
 ```
 

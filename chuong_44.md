@@ -105,7 +105,7 @@ use std::collections::VecDeque;
 // Mỗi phần của ngữ cảnh có mức độ ưu tiên khác nhau khi ngân sách bộ nhớ bị giới hạn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PriorityTier {
-    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits deliver ước
+    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
     High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
     Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
     Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ

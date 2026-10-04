@@ -168,7 +168,7 @@ Chạy bằng `cargo run -p ch81`, kiểm thử bằng `cargo test -p ch81`.
 //! nhân ma trận theo lát.
 //!
 //! Theo phân loại bài tập của [LeetGPU](https://leetgpu.com/) — 99 bài chia
-//! ba mức, từ cộng vector tới khối transformer. Ở đây ta ĐẾM số deliver dịch bộ
+//! ba mức, từ cộng vector tới khối transformer. Ở đây ta ĐẾM số giao dịch bộ
 //! nhớ và số lần thực thi bị tuần tự hoá bằng mô phỏng tất định, thay vì đo
 //! đồng hồ — nhờ vậy kiểm thử được mà không cần GPU.
 //!
@@ -262,8 +262,8 @@ pub fn branch_on_warp(n: usize) -> Vec<bool> {
 // 3. GỘP TRUY CẬP BỘ NHỚ
 // ============================================================================
 // Bộ nhớ toàn cục của GPU phục vụ theo GIAO DỊCH 128 byte. Nếu 32 luồng trong
-// warp đọc 32 số f32 LIỀN NHAU, cả warp gói gọn trong 1 deliver dịch. Nếu chúng
-// đọc cách quãng, mỗi luồng có thể tốn một deliver dịch riêng — chậm gấp 32 lần
+// warp đọc 32 số f32 LIỀN NHAU, cả warp gói gọn trong 1 giao dịch. Nếu chúng
+// đọc cách quãng, mỗi luồng có thể tốn một giao dịch riêng — chậm gấp 32 lần
 // dù đọc cùng số byte có ích.
 
 pub const BYTE_MOI_GIAO_DICH: usize = 128;
@@ -278,7 +278,7 @@ pub struct CoalescingAnalysis {
     pub efficiency: f64,
 }
 
-/// Đếm số deliver dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
+/// Đếm số giao dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
 pub fn coalescing_analysis(quantity: usize, byte_moi_phan_tu: usize, buoc_nhay: usize)
     -> CoalescingAnalysis
 {
@@ -388,7 +388,7 @@ pub fn num_step_reduce(n: usize) -> usize {
 // ============================================================================
 // Bản ngây thơ: mỗi luồng đọc cả một hàng và một cột từ bộ nhớ toàn cục —
 // mỗi phần tử bị đọc lại n lần. Bản theo lát: cả khối cùng nạp một lát vào
-// bộ nhớ chia sẻ, rồi mọi luồng dùng shared. Số lần đọc toàn cục giảm `lat` lần.
+// bộ nhớ chia sẻ, rồi mọi luồng dùng chung. Số lần đọc toàn cục giảm `lat` lần.
 
 #[derive(Debug, PartialEq)]
 pub struct GemmAnalysis {
@@ -500,13 +500,13 @@ fn main() {
 
     println!("\n3. GỘP TRUY CẬP BỘ NHỚ (một warp đọc f32)");
     println!("   {:>10} {:>14} {:>14} {:>12}",
-             "bước nhảy", "deliver dịch", "byte chuyển", "hiệu suất");
+             "bước nhảy", "giao dịch", "byte chuyển", "hiệu suất");
     for b in [1usize, 2, 4, 8, 32] {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
         println!("   {:>10} {:>14} {:>14} {:>11.1}%",
                  b, p.num_trade, p.bytes_transferred, p.efficiency * 100.0);
     }
-    println!("   → Bước nhảy 32 tốn {} deliver dịch cho cùng {} byte có ích.",
+    println!("   → Bước nhảy 32 tốn {} giao dịch cho cùng {} byte có ích.",
              coalescing_analysis(32, 4, 32).num_trade, 32 * 4);
 
     println!("\n4. XUNG ĐỘT NGÂN HÀNG BỘ NHỚ CHIA SẺ");
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn contiguous_access_coalesces_into_the_fewest_transactions() {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, 1);
-        assert_eq!(p.num_trade, 1, "32 luồng x 4 byte = 128 byte = đúng 1 deliver dịch");
+        assert_eq!(p.num_trade, 1, "32 luồng x 4 byte = 128 byte = đúng 1 giao dịch");
         assert!((p.efficiency - 1.0).abs() < 1e-9, "hiệu suất băng thông hoàn hảo");
     }
 
@@ -665,7 +665,7 @@ mod tests {
             prev = p.num_trade;
         }
         assert_eq!(coalescing_analysis(LUONG_MOI_WARP, 4, 32).num_trade, 32,
-                   "bước nhảy 32 → mỗi luồng một deliver dịch riêng");
+                   "bước nhảy 32 → mỗi luồng một giao dịch riêng");
     }
 
     #[test]
@@ -720,7 +720,7 @@ mod tests {
             let p = bank_analysis(&access_cap_col_lat(be_rong));
             assert!(!p.has_conflict, "bề rộng {} không nên xung đột", be_rong);
         }
-        // Bề rộng chẵn có ước shared với 32 thì xung đột
+        // Bề rộng chẵn có ước chung với 32 thì xung đột
         for be_rong in [2usize, 4, 8, 16, 32] {
             assert!(bank_analysis(&access_cap_col_lat(be_rong)).has_conflict,
                     "bề rộng {} phải xung đột", be_rong);

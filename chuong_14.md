@@ -291,7 +291,7 @@ pub fn reduce_range(s: String) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
-/// Viết uppercase chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
+/// Viết hoa chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
 pub fn capitalize_first(s: String) -> String {
     let mut all_ky_from = s.chars();
     match all_ky_from.next() {
@@ -452,7 +452,7 @@ fn main() {
         println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
     }
 
-    println!("   Nhật ký attempt được ({} dòng):", num_log.len());
+    println!("   Nhật ký thu được ({} dòng):", num_log.len());
     for sell_record in &num_log {
         println!("     - Bình luận #{}: {}", sell_record.ma_binh_luan, sell_record.ket_luan);
     }

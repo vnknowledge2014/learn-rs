@@ -196,7 +196,7 @@ impl Escrow {
         })
     }
 
-    /// Người bid hoặc trọng tài có quyền giải ngân cho người bán.
+    /// Người mua hoặc trọng tài có quyền giải ngân cho người bán.
     pub fn release(&mut self, info: &ThongTinGoi) -> Result<Response, ContractError> {
         if self.state != StateEscrow::DangGiu { return Err(ContractError::AlreadySettled); }
         if info.sender != self.buyer && info.sender != self.in_tai {
@@ -416,13 +416,13 @@ fn main() {
     let info_mua = ThongTinGoi { sender: "NguoiMua".into(), attached_funds: 500 };
     let mut kq = Escrow::block_make(&info_mua, "NguoiBan", "TrongTai", 2000).unwrap();
     let som = NewField { timestamp: 1500, ..env.clone() };
-    println!("   Người bid đòi hoàn tiền trước hạn → {:?}",
+    println!("   Người mua đòi hoàn tiền trước hạn → {:?}",
              kq.clone().refund(&som, &info_mua).unwrap_err());
     let ke_is = ThongTinGoi { sender: "NguoiLa".into(), attached_funds: 0 };
     println!("   Người lạ đòi giải ngân            → {:?}",
              kq.clone().release(&ke_is).unwrap_err());
     let r = kq.release(&info_mua).unwrap();
-    println!("   Người bid giải ngân → {:?} · thông điệp tiếp: {:?}",
+    println!("   Người mua giải ngân → {:?} · thông điệp tiếp: {:?}",
              kq.state, r.thong_message_cont);
     println!("   Giải ngân lần hai                 → {:?}",
              kq.release(&info_mua).unwrap_err());

@@ -226,7 +226,7 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM MÔ THỨC CACHE-ASIDE VÀ HẾT HẠN TTL
     // -------------------------------------------------------------
-    println!("\n[1] Kiem attempt mo thuc Cache-Aside kem TTL Expiration:");
+    println!("\n[1] Kiem thu mo thuc Cache-Aside kem TTL Expiration:");
     let cache = SafeCacheEngine::new();
 
     // Lần gọi 1: Chưa có trong cache -> Cache Miss
@@ -252,7 +252,7 @@ fn main() {
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM HÀNG ĐỢI THÔNG ĐIỆP ĐA LUỒNG PRODUCER-CONSUMER
     // -------------------------------------------------------------
-    println!("\n[2] Kiem attempt Hang doi Thong diep phan tan (Message Queue):");
+    println!("\n[2] Kiem thu Hang doi Thong diep phan tan (Message Queue):");
     let message_queue = Arc::new(DistributedMessageQueue::<String>::new(5));
 
     // Luồng Producer: Đẩy việc vào hàng đợi

@@ -109,7 +109,7 @@ pub struct ProductEntity {
     pub in_stock: bool,
 }
 
-/// Trạng thái dùng shared toàn dịch vụ (Shared Application State)
+/// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
 pub struct SharedAppState {
     pub catalog: Mutex<HashMap<u64, ProductEntity>>,
 }
@@ -264,7 +264,7 @@ fn main() {
     println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
     println!("==================================================================");
 
-    // 1. Khởi tạo trạng thái dùng shared được bọc trong con trỏ Arc
+    // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
     let shared_state = Arc::new(SharedAppState::new());
     let router = TypeSafeServiceRouter::new(shared_state);
 

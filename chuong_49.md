@@ -235,7 +235,7 @@ fn create_dummy_waker() -> Waker {
     unsafe { Waker::from_raw(raw_waker) }
 }
 
-/// Động cơ điều phối attempt nhỏ thực thi một Future cho đến khi hoàn tất
+/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất
 pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
     let waker = create_dummy_waker();
     let mut context = Context::from_waker(&waker);
@@ -280,7 +280,7 @@ fn main() {
     println!("\n[3] Phan products so sanh kien truc tai nguyen bo nho:");
     println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
     println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
-    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu attempt RAM it hon ~7,000 LAN!");
+    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
     println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
 
     println!("\n==================================================================");

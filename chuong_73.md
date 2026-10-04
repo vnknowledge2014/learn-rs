@@ -114,7 +114,7 @@ Chạy bằng `cargo run -p ch73`, kiểm thử bằng `cargo test -p ch73`.
 ```rust
 #![allow(dead_code)]
 //! Chương 73 — Nói chuyện với EVM bằng Rust: Keccak-256, mã hoá ABI, chữ ký hàm,
-//! mã hoá RLP và cấu trúc deliver dịch EIP-1559.
+//! mã hoá RLP và cấu trúc giao dịch EIP-1559.
 //!
 //! Đây là lõi của hệ sinh thái [alloy-rs](https://github.com/alloy-rs) — bộ thư
 //! viện Ethereum bằng Rust. Ta cài lại từ đầu để thấy macro `sol!` thật ra chỉ
@@ -204,7 +204,7 @@ pub fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect(
 ///
 /// Chỉ 4 byte nghĩa là VA CHẠM CÓ THẬT: xác suất hai hàm khác nhau trùng
 /// chữ ký chỉ khoảng 1/2³². Đã có người cố tình tìm hàm trùng để đánh lừa
-/// deliver diện ví — đó là lý do ví hiện đại hiển thị cả chữ ký đầy đủ.
+/// giao diện ví — đó là lý do ví hiện đại hiển thị cả chữ ký đầy đủ.
 pub fn selector(period: &str) -> [u8; 4] {
     let b = keccak256(period.as_bytes());
     [b[0], b[1], b[2], b[3]]
@@ -395,7 +395,7 @@ pub struct Tx1559 {
 }
 
 impl Tx1559 {
-    /// Tải trọng để ký: 0x02 || rlp([...]). Byte 0x02 là "loại deliver dịch",
+    /// Tải trọng để ký: 0x02 || rlp([...]). Byte 0x02 là "loại giao dịch",
     /// thêm vào từ EIP-2718 để chuỗi phân biệt được các định dạng khác nhau.
     pub fn load_in_period(&self) -> Vec<u8> {
         let list = Rlp::DanhSach(vec![
@@ -431,7 +431,7 @@ impl Tx1559 {
 }
 
 // ============================================================================
-// 6. RÀNG BUỘC KIỂU — "macro sol!" attempt nhỏ
+// 6. RÀNG BUỘC KIỂU — "macro sol!" thu nhỏ
 // ============================================================================
 // alloy sinh ra kiểu Rust từ ABI để bạn không tự tay ghép byte. Đây là bản
 // làm tay của cùng ý tưởng: mỗi hàm hợp đồng là một phương thức có kiểu rõ ràng.
@@ -522,7 +522,7 @@ fn main() {
         gas_limit: 65_000,
         den: Some(token.address), value: 0, data: cd.clone(),
     };
-    println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại deliver dịch)",
+    println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại giao dịch)",
              gd.load_in_period().len(), gd.load_in_period()[0]);
     println!("   Băm để ký   : 0x{}", hex(&gd.id_hash_ky()));
     println!("   Chi phí tối đa bị khoá: {} wei", gd.chi_phi_toi_da());
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn changing_any_field_changes_the_hash() {
-        // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung deliver dịch.
+        // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung giao dịch.
         // Nếu một trường lọt ra ngoài, kẻ tấn công sửa được nó mà chữ ký vẫn hợp lệ.
         let root = trade_mau();
         let b0 = root.id_hash_ky();
@@ -845,7 +845,7 @@ mod tests {
     fn base_fee_above_cap_does_not_overflow() {
         let gd = trade_mau();
         assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
-                   "deliver dịch này sẽ không được chọn vào khối, nhưng không được panic");
+                   "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");
     }
 }
 ```
@@ -899,7 +899,7 @@ pub fn checksum_eip55(dia_chi_20_byte: &[u8; 20]) -> String {
         // nibble thứ i của băm: byte i/2, nửa cao nếu i chẵn
         let nibble = if i % 2 == 0 { bam[i / 2] >> 4 } else { bam[i / 2] & 0x0f };
         if c.is_ascii_digit() {
-            ra.push(c);                       // chữ số không có uppercase/thường
+            ra.push(c);                       // chữ số không có hoa/thường
         } else if nibble >= 8 {
             ra.push(c.to_ascii_uppercase());
         } else {
@@ -912,7 +912,7 @@ pub fn checksum_eip55(dia_chi_20_byte: &[u8; 20]) -> String {
 pub fn verify_checksum(address: &str) -> bool {
     let s = address.strip_prefix("0x").unwrap_or(address);
     if s.len() != 40 { return false; }
-    // Địa chỉ toàn thường hoặc toàn uppercase: hợp lệ nhưng KHÔNG có checksum
+    // Địa chỉ toàn thường hoặc toàn hoa: hợp lệ nhưng KHÔNG có checksum
     if s.chars().all(|c| !c.is_ascii_uppercase())
         || s.chars().all(|c| !c.is_ascii_lowercase()) { return true; }
     let mut byte = [0u8; 20];
@@ -941,7 +941,7 @@ Quy tắc của Geth: giao dịch thay thế phải có **cả** `max_fee` **và
 use std::collections::BTreeMap;
 
 pub struct PendingPool {
-    /// số thứ tự (nonce) → deliver dịch đang chờ; một nonce chỉ một deliver dịch
+    /// số thứ tự (nonce) → giao dịch đang chờ; một nonce chỉ một giao dịch
     pub dang_cho: BTreeMap<u64, Tx1559>,
     /// phần trăm tối thiểu phải tăng, ví dụ 10
     pub bump_percent: u128,

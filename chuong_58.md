@@ -113,7 +113,7 @@ impl Value {
 }
 
 /// Bảng dữ liệu lưu theo CỘT: mỗi cột là một Vec cùng kiểu, nằm liền nhau
-/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh attempt) cực nhanh —
+/// trên bộ nhớ. Đây là lý do phân tích cột (tính tổng doanh thu) cực nhanh —
 /// CPU quét một vùng nhớ liên tục, thân thiện với cache (Chương 25).
 #[derive(Debug, Clone)]
 pub struct Bang {
@@ -293,7 +293,7 @@ pub fn emit_normal(data: &[f64], threshold: f64) -> Vec<usize> {
 }
 
 // ============================================================================
-// 6. JOIN — ghép hai bảng theo khóa shared
+// 6. JOIN — ghép hai bảng theo khóa chung
 // ============================================================================
 
 /// Inner join: chỉ giữ hàng có khóa khớp ở CẢ HAI bảng.
@@ -358,7 +358,7 @@ fn main() {
                  r.key, r.count, r.tong, r.mean, r.min, r.max);
     }
 
-    println!("\n4. LỌC: chỉ giữ doanh attempt > 1000");
+    println!("\n4. LỌC: chỉ giữ doanh thu > 1000");
     let large = bang.filter(|h| h["doanh_thu"].so().map(|x| x > 1000.0).unwrap_or(false));
     println!("   Còn {} hàng", large.num_queue());
 
@@ -368,7 +368,7 @@ fn main() {
              moving_average(&series, 3).iter().map(|x| (x * 10.0).round() / 10.0).collect::<Vec<_>>());
     println!("   Vị trí bất thường (>2σ): {:?}", emit_normal(&series, 2.0));
 
-    println!("\n6. JOIN: ghép doanh attempt với dân số khu vực");
+    println!("\n6. JOIN: ghép doanh thu với dân số khu vực");
     let mut list = Bang::new(vec!["khu_vuc", "dan_so_trieu"]);
     list.add_queue(vec![Value::Text("Hà Nội".into()), Value::So(8.4)]);
     list.add_queue(vec![Value::Text("TP.HCM".into()), Value::So(9.3)]);

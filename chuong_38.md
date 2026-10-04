@@ -217,7 +217,7 @@ fn main() {
         // giai phong region nho mot cach sach se. Trinh bien dich Rust tuyet doi
         // CAM moi hanh vi giu lai con tro tham chieu den session sau khi no da chet!
     }
-    println!("    - [UAF ELIMINATED] Vung nho da duoc attempt hoi tu dong.");
+    println!("    - [UAF ELIMINATED] Vung nho da duoc thu hoi tu dong.");
     println!("    - Trinh bien dich dam bao 100% khong con con tro lo lung ton tai!");
 
     // -------------------------------------------------------------

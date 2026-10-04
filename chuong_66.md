@@ -144,7 +144,7 @@ Mẫu Singleton cần một cờ toàn cục "đã giao ngoại vi chưa". Viế
 ```rust
 // ❌ SAI — có cửa sổ đua
 if !DA_LAY { DA_LAY = true; giao_ngoai_vi() }
-//         ▲ một ngắt chen vào ĐÂY sẽ khiến ngoại vi bị deliver HAI lần
+//         ▲ một ngắt chen vào ĐÂY sẽ khiến ngoại vi bị giao HAI lần
 ```
 
 `AtomicBool::swap` làm cả hai việc trong **một** thao tác không thể bị cắt ngang: đặt giá trị mới *và* trả về giá trị cũ. Nếu giá trị cũ là `true`, ta biết chắc có người lấy trước — không có khe hở nào.
@@ -272,7 +272,7 @@ pub struct UnitOutPos {
 /// Cờ nguyên tử thay cho `static mut`: an toàn cả khi có ngắt xen giữa.
 /// `swap` là thao tác ĐỌC-VÀ-ĐẶT không thể bị cắt ngang — nếu dùng
 /// `if !DA_LAY { DA_LAY = true }` thì một ngắt chen vào giữa hai câu lệnh
-/// có thể khiến ngoại vi bị deliver HAI lần.
+/// có thể khiến ngoại vi bị giao HAI lần.
 static DA_LAY: AtomicBool = AtomicBool::new(false);
 
 impl UnitOutPos {
@@ -319,7 +319,7 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 }
 
 // ============================================================================
-// 5. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT — `heapless` attempt nhỏ
+// 5. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT — `heapless` thu nhỏ
 // ============================================================================
 
 /// Không `Vec`, không `Box`, không heap. Bộ nhớ nằm gọn trong struct,

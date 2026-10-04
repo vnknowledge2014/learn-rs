@@ -131,7 +131,7 @@ impl Default for OrderBookHardware {
 }
 
 impl OrderBookHardware {
-    /// Bộ mã hoá ưu tiên: tìm mức bid có giá CAO nhất. Trên phần cứng đây là
+    /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
     /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
@@ -522,7 +522,7 @@ mod tests {
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
             s.update(false, g, kl);
         }
-        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên bid lấy giá CAO nhất");
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
         assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
         assert_eq!(s.spread(), Some(10));
     }

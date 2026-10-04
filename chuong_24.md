@@ -191,7 +191,7 @@ pub fn safe_transfer(
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO ĐẦU HÀM]:
     println!("[BẢO VỆ ATTRIBUTE] Đang xác thực quyền hạn của vai trò: '{}'", executor_role);
     if executor_role != "QuanTriVien" && executor_role != "ChuTaiKhoan" {
-        return Err("Từ chối truy cập: Bạn không có quyền thực hiện deliver dịch này!");
+        return Err("Từ chối truy cập: Bạn không có quyền thực hiện giao dịch này!");
     }
 
     // [THÂN HÀM NGUYÊN BẢN CỦA LẬP TRÌNH VIÊN]:
@@ -200,7 +200,7 @@ pub fn safe_transfer(
 
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO CUỐI HÀM]:
     println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", id_trade);
-    Ok(format!("Chuyển tiền thành công! Mã deliver dịch: {}", id_trade))
+    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", id_trade))
 }
 
 // ============================================================================

@@ -185,7 +185,7 @@ fn main() {
         },
     ];
 
-    println!("Số lượng bản ghi attempt thập được: {}", raw_data.len());
+    println!("Số lượng bản ghi thu thập được: {}", raw_data.len());
 
     // ------------------------------------------------------------------------
     // KỸ THUẬT 1: Dùng .iter_mut() để hiệu chỉnh dữ liệu trực tiếp tại chỗ
@@ -262,7 +262,7 @@ fn main() {
         .map(|bg| bg.ma_cam_bien) // Đoạt quyền sở hữu trường String mà không cần clone!
         .collect();
 
-    println!("-> Danh sách mã thiết bị sau khi attempt hồi: {:?}", ma_tat_ca_cam_bien);
+    println!("-> Danh sách mã thiết bị sau khi thu hồi: {:?}", ma_tat_ca_cam_bien);
     // raw_data đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
 
     println!("\n============================================================");
@@ -324,10 +324,10 @@ Phần trên đã dạy bộ khung. Nhưng trong công việc thực tế, phầ
 ```rust
 let so = [10i32, 3, 2];
 
-// Phép CỘNG: deliver hoán + kết hợp -> hai chiều cho CÙNG kết quả
+// Phép CỘNG: giao hoán + kết hợp -> hai chiều cho CÙNG kết quả
 assert_eq!(so.iter().fold(0, |a, b| a + b), so.iter().rfold(0, |a, b| a + b)); // 15 == 15
 
-// NỐI CHUỖI: kết hợp nhưng KHÔNG deliver hoán -> hai chiều cho kết quả KHÁC NHAU
+// NỐI CHUỖI: kết hợp nhưng KHÔNG giao hoán -> hai chiều cho kết quả KHÁC NHAU
 let left: String = so.iter().fold(String::new(), |a, b| a + &b.to_string());   // "1032"
 let right: String = so.iter().rfold(String::new(), |a, b| a + &b.to_string());  // "2310"
 assert_ne!(left, right);
@@ -591,10 +591,10 @@ fn main() {
     // 2. any / all / find / position — ĐỀU NGẮN MẠCH
     // ------------------------------------------------------------------
     println!("\n2. any / all / find / position (đều dừng sớm)");
-    println!("   Có deliver dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
-    println!("   Mọi deliver dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
+    println!("   Có giao dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
+    println!("   Mọi giao dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
     println!("   Giao dịch đầu ở Đà Nẵng         : {:?}", gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.id));
-    println!("   Vị trí deliver dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
+    println!("   Vị trí giao dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
 
     // ------------------------------------------------------------------
     // 3. min_by_key / max_by_key
@@ -719,7 +719,7 @@ fn main() {
     // ------------------------------------------------------------------
     // 11. TỔNG HỢP THEO NHÓM — MẪU DÙNG HẰNG NGÀY
     // ------------------------------------------------------------------
-    println!("\n11. Tổng doanh attempt theo khu vực (fold + entry API)");
+    println!("\n11. Tổng doanh thu theo khu vực (fold + entry API)");
     let theo_kv: HashMap<&str, u64> =
         gd.iter().fold(HashMap::new(), |mut bang, g| {
             *bang.entry(g.khu_vuc.as_str()).or_insert(0) += g.so_tien;
@@ -736,11 +736,11 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n12. fold vs rfold");
     let m = [10i32, 3, 2];
-    println!("   Phép CỘNG (deliver hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
+    println!("   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
              m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
     let folded_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
     let folded_right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
-    println!("   NỐI CHUỖI (không deliver hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
+    println!("   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
              folded_left, folded_right);
     println!("   → Trước khi song song hóa, phải biết phép gộp của mình có tính gì!");
 
@@ -827,7 +827,7 @@ mod tests {
         let m = [10i32, 3, 2];
         // Phép cộng GIAO HOÁN -> duyệt hai chiều cho cùng kết quả
         assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
-        // Nối chuỗi KHÔNG deliver hoán -> duyệt hai chiều cho kết quả khác nhau
+        // Nối chuỗi KHÔNG giao hoán -> duyệt hai chiều cho kết quả khác nhau
         let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
         let right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
         assert_eq!(left, "1032");

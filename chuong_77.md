@@ -126,7 +126,7 @@ Chạy bằng `cargo run -p ch77`, kiểm thử bằng `cargo test -p ch77`.
 ```rust
 #![allow(dead_code)]
 //! Chương 77 — Chiến lược & Quản trị rủi ro thời gian thực: cổng rủi ro trước
-//! deliver dịch, tín hiệu từ sổ lệnh, arbitrage thống kê theo cặp, định cỡ vị thế,
+//! giao dịch, tín hiệu từ sổ lệnh, arbitrage thống kê theo cặp, định cỡ vị thế,
 //! và các thước đo rủi ro.
 //!
 //! Nguyên tắc xuyên suốt: **cổng rủi ro là thứ DUY NHẤT không được phép có
@@ -276,7 +276,7 @@ impl RiskGate {
     /// Ghi nhận một lần khớp — cập nhật vị thế, giá vốn và lãi/lỗ đã chốt.
     ///
     /// Điểm dễ sai nhất trong cả chương: lãi/lỗ KHÔNG phải dòng tiền của lệnh
-    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu bid vào ở 90,00 thì
+    /// đóng. Bán 100 cổ giá 88,00 mang về tiền, nhưng nếu mua vào ở 90,00 thì
     /// đó là một khoản LỖ. Muốn biết lãi hay lỗ, bắt buộc phải nhớ GIÁ VỐN.
     pub fn record_recv_fill(&mut self, side: Side, price: Price, quantity: Quantity) {
         let prev = self.position;
@@ -314,7 +314,7 @@ impl RiskGate {
 // ============================================================================
 
 /// Mất cân bằng khối lượng hai bên, chuẩn hoá về [-1, 1].
-/// Dương = áp lực bid. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
+/// Dương = áp lực mua. Đây là tín hiệu đơn giản nhất mà vẫn có sức dự báo thật.
 pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return 0.0; }
@@ -322,7 +322,7 @@ pub fn imbalance(qty_buy: u64, qty_sell: u64) -> f64 {
 }
 
 /// Giá vi mô: giá giữa có gia quyền theo khối lượng ĐỐI ỨNG.
-/// Nhiều người muốn bid → giá vi mô lệch về phía giá bán.
+/// Nhiều người muốn mua → giá vi mô lệch về phía giá bán.
 pub fn price_pos_open(price_buy: Price, qty_buy: u64, price_sell: Price, qty_sell: u64) -> Option<f64> {
     let tong = qty_buy + qty_sell;
     if tong == 0 { return None; }
@@ -459,7 +459,7 @@ pub fn fractional_kelly(xac_suat_thang: f64, ty_le_thang_thua: f64, part: f64) -
     (kelly_fraction(xac_suat_thang, ty_le_thang_thua) * part).clamp(0.0, 1.0)
 }
 
-/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì bid càng ít,
+/// Định cỡ theo mục tiêu biến động: mã càng dao động mạnh thì mua càng ít,
 /// sao cho rủi ro tính bằng tiền là như nhau ở mọi mã.
 pub fn has_theo_volatility(capital: i64, bien_dong_muc_tieu: f64,
                          volatility_default_peak: f64, price: Price) -> Quantity {
@@ -513,7 +513,7 @@ pub fn risk_level(equity_curve: &[i64]) -> RiskOwned {
 // 6. SINH DỮ LIỆU TẤT ĐỊNH
 // ============================================================================
 
-/// Hai chuỗi giá đồng liên kết: chúng cùng đi theo một nhân tố shared, cộng
+/// Hai chuỗi giá đồng liên kết: chúng cùng đi theo một nhân tố chung, cộng
 /// thêm nhiễu riêng. Đây đúng là tình huống mà arbitrage cặp khai thác.
 pub fn gen_cap_price(n: usize, hat_giong: u64, beta: f64) -> (Vec<Price>, Vec<Price>) {
     let mut s = hat_giong;
@@ -575,7 +575,7 @@ fn main() {
     println!("   Lệnh tiếp theo → {:?}",
              c3.check(Side::Buy, 8_400, 1, tc, 2_000_000_000).unwrap_err());
     c3.operator_flips_switch();
-    println!("   Người vận hành gỡ công tắc → deliver dịch lại được: {}",
+    println!("   Người vận hành gỡ công tắc → giao dịch lại được: {}",
              c3.check(Side::Buy, 8_400, 1, tc, 3_000_000_000).is_ok());
 
     println!("\n4. TÍN HIỆU TỪ SỔ LỆNH");
@@ -583,7 +583,7 @@ fn main() {
         println!("   bid {:>4} / bán {:>4} → mất cân bằng {:>6.2} · giá vi mô {:>8.2}",
                  m, b, imbalance(m, b), price_pos_open(8_400, m, 8_410, b).unwrap());
     }
-    println!("   → Nhiều người chờ bid thì giá vi mô lệch LÊN phía giá bán.");
+    println!("   → Nhiều người chờ mua thì giá vi mô lệch LÊN phía giá bán.");
 
     println!("\n5. ARBITRAGE CẶP");
     let (ga, gb) = gen_cap_price(3_000, 2024, 1.5);
@@ -628,7 +628,7 @@ fn main() {
     }
     println!("   → Đường xóc lãi NHIỀU HƠN, nhưng Sharpe thấp hơn ~35 lần và có");
     println!("     những cú sụt 8.000 giữa đường. Phần lớn người sẽ bỏ cuộc trước khi");
-    println!("     nó kịp về đích — lợi nhuận trên giấy không phải lợi nhuận attempt được.");
+    println!("     nó kịp về đích — lợi nhuận trên giấy không phải lợi nhuận thu được.");
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   CHIẾN LƯỢC ĐƯỢC PHÉP SAI. CỔNG RỦI RO THÌ KHÔNG.         ");
@@ -698,7 +698,7 @@ mod tests {
                          RejectReason::ExceedsPosition { next_order: 501, tran: 500 }));
         assert!(matches!(c.check(Side::Sell, 8_400, 501, 8_400, 1).unwrap_err(),
                          RejectReason::ExceedsPosition { next_order: -501, tran: 500 }),
-                "bán khống cũng phải bị chặn, không chỉ bid");
+                "bán khống cũng phải bị chặn, không chỉ mua");
     }
 
     #[test]
@@ -796,7 +796,7 @@ mod tests {
         c.record_recv_fill(Side::Sell, 9_000, 100);
         assert_eq!(c.position, -100);
         c.record_recv_fill(Side::Buy, 8_500, 100);
-        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 bid lại 85.00 → lãi");
+        assert_eq!(c.realized_pnl, 50_000, "bán khống 90.00 mua lại 85.00 → lãi");
     }
 
     #[test]
@@ -837,7 +837,7 @@ mod tests {
         let many_buy = price_pos_open(8_400, 9_000, 8_410, 1_000).unwrap();
         let many_sell = price_pos_open(8_400, 1_000, 8_410, 9_000).unwrap();
         let can_bang = price_pos_open(8_400, 1_000, 8_410, 1_000).unwrap();
-        assert!(many_buy > can_bang, "áp lực bid đẩy giá vi mô lên");
+        assert!(many_buy > can_bang, "áp lực mua đẩy giá vi mô lên");
         assert!(many_sell < can_bang, "áp lực bán kéo xuống");
         assert!((can_bang - 8_405.0).abs() < 1e-9, "cân bằng thì đúng giá giữa");
         assert!(many_buy > 8_400.0 && many_buy < 8_410.0, "luôn nằm trong chênh lệch");
@@ -912,7 +912,7 @@ mod tests {
         for i in 0..20 { a.update(10_000 + (i % 3), 10_000); }
         // rồi một cú giãn mạnh
         let th = a.update(10_100, 10_000);
-        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A bid B");
+        assert_eq!(th, SignalCap::MoDaiB, "A đắt bất thường → bán A mua B");
         assert_eq!(a.is_open, Some(SignalCap::MoDaiB));
     }
 
@@ -996,14 +996,14 @@ mod tests {
         let capital = 1_000_000i64;
         let a = has_theo_volatility(capital, 0.10, 0.10, 100);
         let b = has_theo_volatility(capital, 0.10, 0.40, 100);
-        assert!(b < a, "mã dao động mạnh gấp 4 thì bid ít hơn hẳn");
+        assert!(b < a, "mã dao động mạnh gấp 4 thì mua ít hơn hẳn");
         assert_eq!(a, 10_000, "biến động khớp mục tiêu → dùng toàn bộ vốn");
         assert_eq!(b, 2_500, "gấp 4 lần biến động → 1/4 tỉ trọng");
     }
 
     #[test]
     fn vol_sizing_never_levers_beyond_capital() {
-        // Mã êm hơn mục tiêu KHÔNG được dẫn tới bid vượt vốn.
+        // Mã êm hơn mục tiêu KHÔNG được dẫn tới mua vượt vốn.
         let c = has_theo_volatility(1_000_000, 0.40, 0.05, 100);
         assert_eq!(c, 10_000, "tỉ trọng bị chặn ở 1.0, không dùng đòn bẩy ngầm");
     }

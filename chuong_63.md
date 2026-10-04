@@ -225,7 +225,7 @@ impl OpenImage {
 // ============================================================================
 // 2. CẦU IPC — frontend gọi backend (như Tauri command)
 // ============================================================================
-// Trong Tauri, deliver diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", param)`.
+// Trong Tauri, giao diện (JS/Svelte) gọi hàm Rust qua `invoke("ten", param)`.
 // Ta mô phỏng cầu đó: một bộ điều phối nhận tên lệnh + tham số, trả kết quả JSON.
 
 #[derive(Debug, PartialEq)]
@@ -426,7 +426,7 @@ Cùng lõi trên, đóng gói bằng Tauri với giao diện Svelte:
 // src-tauri/src/lib.rs  (lõi Rust)
 use std::sync::Mutex;
 
-// Lệnh backend: deliver diện gọi qua invoke("add_task", {...})
+// Lệnh backend: giao diện gọi qua invoke("add_task", {...})
 #[tauri::command]
 fn add_task(
     title: String,
@@ -471,7 +471,7 @@ Chạy `cargo tauri dev` để phát triển, `cargo tauri build` để đóng g
 ## Mã gpui (giao diện native, như Zed)
 
 ```rust
-// gpui: deliver diện vẽ bằng GPU, không dùng webview
+// gpui: giao diện vẽ bằng GPU, không dùng webview
 use gpui::*;
 
 struct Counter { so: i64 }

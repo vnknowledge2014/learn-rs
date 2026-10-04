@@ -322,12 +322,12 @@ pub fn fault_tolerance(n: usize) -> usize { (n - 1) / 3 }
 ///
 /// Nó chỉ đúng khi n ĐÚNG BẰNG 3f+1. Với n bất kỳ, quy tắc tổng quát là:
 ///
-///   an toàn : hai quorum bất kỳ phải deliver nhau ở nhiều hơn f nút
+///   an toàn : hai quorum bất kỳ phải giao nhau ở nhiều hơn f nút
 ///             ⟹ 2q − n > f  ⟺  q > (n+f)/2
 ///   sống còn: phải gom đủ phiếu dù f nút im lặng  ⟹  q ≤ n − f
 ///
 /// Ví dụ n = 5, f = 1: công thức "2f+1" cho q = 3. Nhưng hai quorum 3 trên 5
-/// chỉ deliver nhau ĐÚNG MỘT nút — và nút đó có thể chính là kẻ phản bội. Khi ấy
+/// chỉ giao nhau ĐÚNG MỘT nút — và nút đó có thể chính là kẻ phản bội. Khi ấy
 /// hai nhóm chốt hai giá trị khác nhau: chuỗi rẽ đôi. Đáp số đúng là q = 4.
 pub fn quorum_threshold(n: usize) -> usize {
     let f = fault_tolerance(n);
@@ -706,7 +706,7 @@ mod tests {
             let q = quorum_threshold(n);
             assert!(3 * f + 1 <= n, "n={} phải chứa nổi 3f+1 với f={}", n, f);
 
-            // AN TOÀN: hai quorum deliver nhau ở nhiều hơn f nút, nên luôn có ít
+            // AN TOÀN: hai quorum giao nhau ở nhiều hơn f nút, nên luôn có ít
             // nhất một nút TRUNG THỰC nằm trong cả hai → không thể chốt hai
             // giá trị mâu thuẫn.
             let deliver = 2 * q as i64 - n as i64;
@@ -728,8 +728,8 @@ mod tests {
         // Trường hợp "xấu": n = 5, f = 1 → 2f+1 = 3 là KHÔNG AN TOÀN
         assert_eq!(fault_tolerance(5), 1);
         assert_eq!(quorum_threshold(5), 4, "phải là 4, không phải 3");
-        assert!(2 * 3 - 5 <= 1, "quorum 3 chỉ deliver 1 nút — có thể chính là kẻ gian");
-        assert!(2 * 4 - 5 > 1, "quorum 4 deliver 3 nút — chắc chắn có nút trung thực");
+        assert!(2 * 3 - 5 <= 1, "quorum 3 chỉ giao 1 nút — có thể chính là kẻ gian");
+        assert!(2 * 4 - 5 > 1, "quorum 4 giao 3 nút — chắc chắn có nút trung thực");
     }
 
     #[test]

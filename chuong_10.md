@@ -111,7 +111,7 @@ Cụm từ *Kiểu dữ liệu đại số* nghe rất kêu, nhưng ý nghĩa c�
 ```rust
 // ❌ Kiểu TÍCH: có 2 tổ hợp VÔ NGHĨA
 struct DonQueue { is_paid: bool, id_trade: Option<String> }
-//   (true, None)      -> đã trả tiền mà không có mã deliver dịch?!
+//   (true, None)      -> đã trả tiền mà không có mã giao dịch?!
 //   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
 
 // ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
@@ -247,12 +247,12 @@ fn update_process(don_hang: &StateDonQueue) {
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
         StateDonQueue::InTransit { ma_van_don, ten_tai_xe } => {
-            println!("[VẬN CHUYỂN] Đơn đang trên đường deliver!");
+            println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
             println!("  + Mã vận đơn : {}", ma_van_don);
             println!("  + Shipper    : {}", ten_tai_xe);
         }
         StateDonQueue::Delivered { recipient, time_time_recv } => {
-            println!("[THÀNH CÔNG] Đơn hàng đã deliver thành công!");
+            println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
             println!("  + Người ký nhận: {}", recipient);
             println!("  + Thời điểm    : {}", time_time_recv);
         }

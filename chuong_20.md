@@ -123,7 +123,7 @@ struct MalformedOrder {
     id_trade: Option<String>,
 }
 // Tổ hợp 1: is_paid = true,  id_trade = None      → Đã trả tiền mà không có mã?!
-// Tổ hợp 2: is_paid = false, id_trade = Some(...) → Chưa trả mà có mã deliver dịch?!
+// Tổ hợp 2: is_paid = false, id_trade = Some(...) → Chưa trả mà có mã giao dịch?!
 // Hệ quả: mọi hàm đọc struct này phải viết `if` phòng thủ cho hai trường hợp không thể xảy ra.
 
 // ✅ Kiểu TỔNG: 1 + n = KHÔNG CÒN tổ hợp vô nghĩa nào
@@ -131,7 +131,7 @@ enum PaymentState {
     ChuaTra,
     DaTra { id_trade: String },
 }
-// Trình biên dịch bảo đảm: có mã deliver dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
+// Trình biên dịch bảo đảm: có mã giao dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
 ```
 
 ### 2. Kiểu bọc (Newtype) + Hàm khởi tạo có kiểm chứng (Smart Constructor)
@@ -489,7 +489,7 @@ pub struct DonQueue<TT> {
     _state: PhantomData<TT>,
 }
 
-/// Các phương thức dùng shared cho MỌI trạng thái.
+/// Các phương thức dùng chung cho MỌI trạng thái.
 impl<TT> DonQueue<TT> {
     pub fn id(&self) -> &str {
         &self.id
@@ -556,7 +556,7 @@ impl DonQueue<Authenticated> {
     }
 }
 
-/// Trạng thái ĐÃ THANH TOÁN: chỉ có thể deliver hàng.
+/// Trạng thái ĐÃ THANH TOÁN: chỉ có thể giao hàng.
 impl DonQueue<MathDone> {
     pub fn payment_method(&self) -> &MathOp {
         // An toàn tuyệt đối: chỉ trạng thái này mới tồn tại, và nó LUÔN có thanh toán.
@@ -782,7 +782,7 @@ fn main() {
     println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
 
     let _delivered_order: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
-    println!("   [Đã deliver]       hoàn tất quy trình ✓");
+    println!("   [Đã giao]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
     // 5. NHỮNG GÌ TRÌNH BIÊN DỊCH TỪ CHỐI
@@ -1149,7 +1149,7 @@ fn main() {
 
     // Các dòng sau KHÔNG biên dịch được — và đó chính là mục đích:
     // Connection::moi("...").query("SELECT 1");  // chưa kết nối
-    // kn.commit();                              // không ở trong deliver dịch
+    // kn.commit();                              // không ở trong giao dịch
 }
 ```
 

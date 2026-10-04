@@ -307,7 +307,7 @@ impl Escrow {
         })
     }
 
-    /// Người bid hoặc trọng tài có quyền giải ngân cho người bán.
+    /// Người mua hoặc trọng tài có quyền giải ngân cho người bán.
     pub fn release(&mut self, info: &ThongTinGoi) -> Result<Response, ContractError> {
         if self.state != StateEscrow::DangGiu { return Err(ContractError::AlreadySettled); }
         if info.sender != self.buyer && info.sender != self.in_tai {
@@ -342,8 +342,8 @@ impl Escrow {
 // PHẦN II — MÔ HÌNH SOLANA: chương trình KHÔNG có trạng thái
 // ============================================================================
 // Solana lật ngược mọi thứ: chương trình chỉ là mã THUẦN TÚY, mọi dữ liệu nằm
-// trong "tài khoản" do người gọi liệt kê SẴN trong deliver dịch. Nhờ biết trước
-// deliver dịch sẽ chạm tài khoản nào, Solana chạy song song các deliver dịch không
+// trong "tài khoản" do người gọi liệt kê SẴN trong giao dịch. Nhờ biết trước
+// giao dịch sẽ chạm tài khoản nào, Solana chạy song song các giao dịch không
 // đụng nhau — đó là nguồn gốc thông lượng của nó.
 
 #[derive(Debug, Clone, PartialEq)]
@@ -354,7 +354,7 @@ pub struct Account {
     pub lamports: u64,
     pub data: Vec<u8>,
     pub is_signer: bool,      // người gọi đã ký cho tài khoản này chưa
-    pub is_writable: bool,   // deliver dịch có khai báo sẽ ghi vào đây không
+    pub is_writable: bool,   // giao dịch có khai báo sẽ ghi vào đây không
     pub is_executable: bool,
 }
 
@@ -468,7 +468,7 @@ pub struct AnalyzeParallel {
     pub lo: Vec<Vec<usize>>,
 }
 
-/// Vì Solana bắt khai báo trước tài khoản sẽ ghi, ta xếp lịch được các deliver
+/// Vì Solana bắt khai báo trước tài khoản sẽ ghi, ta xếp lịch được các giao
 /// dịch KHÔNG đụng nhau vào cùng một lô chạy song song. CosmWasm/EVM không
 /// biết trước nên phải chạy tuần tự tuyệt đối.
 pub fn arrange_schedule_parallel(trade: &[Vec<Address>]) -> AnalyzeParallel {
@@ -527,13 +527,13 @@ fn main() {
     let buyer_info = ThongTinGoi { sender: "NguoiMua".into(), attached_funds: 500 };
     let mut kq = Escrow::block_make(&buyer_info, "NguoiBan", "TrongTai", 2000).unwrap();
     let som = NewField { timestamp: 1500, ..env.clone() };
-    println!("   Người bid đòi hoàn tiền trước hạn → {:?}",
+    println!("   Người mua đòi hoàn tiền trước hạn → {:?}",
              kq.clone().refund(&som, &buyer_info).unwrap_err());
     let ke_is = ThongTinGoi { sender: "NguoiLa".into(), attached_funds: 0 };
     println!("   Người lạ đòi giải ngân            → {:?}",
              kq.clone().release(&ke_is).unwrap_err());
     let r = kq.release(&buyer_info).unwrap();
-    println!("   Người bid giải ngân → {:?} · thông điệp tiếp: {:?}",
+    println!("   Người mua giải ngân → {:?} · thông điệp tiếp: {:?}",
              kq.state, r.thong_message_cont);
     println!("   Giải ngân lần hai                 → {:?}",
              kq.release(&buyer_info).unwrap_err());
@@ -575,7 +575,7 @@ fn main() {
         vec!["A".into(), "F".into()],   // đụng cả A lẫn F
     ];
     let pt = arrange_schedule_parallel(&gd);
-    println!("   {} deliver dịch → {} lô: {:?}", pt.num_trade, pt.so_lo_song_song, pt.lo);
+    println!("   {} giao dịch → {} lô: {:?}", pt.num_trade, pt.so_lo_song_song, pt.lo);
     println!("   CosmWasm/EVM sẽ cần {} bước tuần tự.", gd.len());
 
     println!("\n═══════════════════════════════════════════════════════════");

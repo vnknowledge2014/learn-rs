@@ -329,7 +329,7 @@ impl<T, U, E> HKT<U> for Result<T, E> {
     type DichDen = Result<U, E>;
 }
 
-/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng shared cho Option, Result và Vec.
+/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
 pub trait Functor<U>: HKT<U> {
     fn mapping<F>(self, f: F) -> Self::DichDen
     where

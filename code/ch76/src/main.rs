@@ -461,7 +461,7 @@ impl Replayer {
 // 7. CHIẾN LƯỢC MẪU
 // ============================================================================
 
-/// Tạo lập thị trường: đặt lệnh bid dưới và bán trên giá giữa, ăn chênh lệch.
+/// Tạo lập thị trường: đặt lệnh mua dưới và bán trên giá giữa, ăn chênh lệch.
 pub struct NaiveMaker {
     pub tick_offset: Price,
     pub has_order: Quantity,
@@ -485,7 +485,7 @@ impl StrategyReplay for NaiveMaker {
         if b <= m { return vec![]; } // sổ chéo hoặc khoá → đứng ngoài
         let mid = (m + b) / 2;
         let mut ra = Vec::new();
-        // Kiểm soát tồn kho: đã ôm nhiều thì thôi bid thêm
+        // Kiểm soát tồn kho: đã ôm nhiều thì thôi mua thêm
         if vt.quantity < self.max_position {
             ra.push((Side::Buy, mid - self.tick_offset, self.has_order));
         }
@@ -941,7 +941,7 @@ mod tests {
         let mut s = Soi { last_bid: None, last_ask: None };
         Replayer::new(LatencyModel::no_latency(), ReplaySpeed::AsFastAsPossible)
             .run(&frame, &mut s);
-        assert_eq!(s.last_bid, None, "lệnh bid đã bị huỷ, bên bid phải rỗng");
+        assert_eq!(s.last_bid, None, "lệnh mua đã bị huỷ, bên mua phải rỗng");
         assert_eq!(s.last_ask, Some(8_410), "lệnh bán không bị đụng tới");
     }
 

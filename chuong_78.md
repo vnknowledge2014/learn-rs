@@ -127,7 +127,7 @@ Chạy bằng `cargo run -p ch78`, kiểm thử bằng `cargo test -p ch78`.
 //! với sàn phi tập trung.
 //!
 //! Khác biệt cốt lõi so với thị trường truyền thống (Chương 75–77): ở đây
-//! **mọi deliver dịch đều công khai TRƯỚC khi được thực thi**. Ai cũng đọc được
+//! **mọi giao dịch đều công khai TRƯỚC khi được thực thi**. Ai cũng đọc được
 //! hàng chờ, và ai trả phí cao hơn thì được xếp trước. Đó là mảnh đất của MEV.
 //!
 //! ⚠️ Đây là tài liệu KỸ THUẬT nhằm giúp người đọc TỰ BẢO VỆ và hiểu rủi ro,
@@ -138,7 +138,7 @@ Chạy bằng `cargo run -p ch78`, kiểm thử bằng `cargo test -p ch78`.
 // ============================================================================
 // Toàn bộ Uniswap v2 gói gọn trong một bất biến: x · y = k.
 // Không sổ lệnh, không người khớp lệnh, không ai phải chờ đối tác.
-// Giá được suy ra từ tỉ lệ dự trữ, và tự động điều chỉnh sau mỗi deliver dịch.
+// Giá được suy ra từ tỉ lệ dự trữ, và tự động điều chỉnh sau mỗi giao dịch.
 
 pub type Quantity = u128;
 
@@ -155,7 +155,7 @@ pub enum SwapError {
     ZeroInput,
     EmptyPool,
     InsufficientLiquidity,
-    /// Người dùng đặt sàn nhận tối thiểu, mà kết quả thấp hơn → huỷ deliver dịch.
+    /// Người dùng đặt sàn nhận tối thiểu, mà kết quả thấp hơn → huỷ giao dịch.
     SlippageTooHigh { received: Quantity, min: Quantity },
 }
 
@@ -220,9 +220,9 @@ impl Pool {
         Ok(ra)
     }
 
-    /// Trượt giá: chênh lệch giữa giá thực nhận và giá niêm yết trước deliver dịch.
+    /// Trượt giá: chênh lệch giữa giá thực nhận và giá niêm yết trước giao dịch.
     /// Đây KHÔNG phải phí — nó là hệ quả toán học của đường cong x·y = k,
-    /// và nó lớn dần theo quy mô deliver dịch so với bể.
+    /// và nó lớn dần theo quy mô giao dịch so với bể.
     pub fn slippage(&self, x_in: Quantity) -> Option<f64> {
         let ra = self.try_swap_x_for_y(x_in).ok()?;
         let gia_niem_yet = self.price_x();
@@ -240,7 +240,7 @@ impl Pool {
 ///     2·√r / (1 + r) − 1
 ///
 /// Luôn ≤ 0, và bằng 0 chỉ khi r = 1 (giá không đổi). Nghĩa là: giá càng
-/// biến động, người góp vốn càng thiệt so với người chỉ ngồi im — và phí attempt
+/// biến động, người góp vốn càng thiệt so với người chỉ ngồi im — và phí thu
 /// được phải bù nổi khoản đó thì góp vốn mới có lãi.
 ///
 /// Chữ "tạm thời" gây hiểu lầm: nó chỉ tạm thời nếu giá QUAY VỀ mức cũ.
@@ -253,7 +253,7 @@ pub fn impermanent_loss(ty_le_gia: f64) -> f64 {
 // ============================================================================
 // 3. HÀNG CHỜ CÔNG KHAI & TẤN CÔNG KẸP
 // ============================================================================
-// Trên blockchain, deliver dịch nằm trong hàng chờ CÔNG KHAI trước khi vào khối,
+// Trên blockchain, giao dịch nằm trong hàng chờ CÔNG KHAI trước khi vào khối,
 // và người xây khối sắp xếp theo phí ưu tiên. Ai trả cao hơn được xếp trước.
 // Hệ quả: bất kỳ ai cũng thấy trước bạn định làm gì, và chen lên trước được.
 
@@ -288,8 +288,8 @@ pub struct KetQuaKep {
 
 /// Mô phỏng một cú kẹp để thấy **vì sao phải đặt sàn nhận tối thiểu chặt**.
 ///
-/// Kịch bản: kẻ tấn công thấy deliver dịch của nạn nhân trong hàng chờ, trả phí
-/// cao hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
+/// Kịch bản: kẻ tấn công thấy giao dịch của nạn nhân trong hàng chờ, trả phí
+/// cao hơn để mua TRƯỚC (đẩy giá lên), để nạn nhân mua ở giá xấu, rồi bán
 /// NGAY SAU đó ăn chênh lệch.
 pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity)
     -> KetQuaKep
@@ -297,18 +297,18 @@ pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity
     // (a) Nếu không ai chen ngang
     let clean = be.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
 
-    // (b) Có kẻ chen ngang, bid trước để đẩy giá
+    // (b) Có kẻ chen ngang, mua trước để đẩy giá
     let mut b = *be;
     let prev_out = b.swap_x_for_y(von_tan_cong, 0).unwrap_or(0);
 
     let receive_when_sandwiched = b.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
-    // ĐÂY là chỗ sàn nhận tối thiểu cứu nạn nhân: deliver dịch bị huỷ, không mất vốn
+    // ĐÂY là chỗ sàn nhận tối thiểu cứu nạn nhân: giao dịch bị huỷ, không mất vốn
     let is_block = receive_when_sandwiched < nan_nhan.min_y;
     if !is_block {
         let _ = b.swap_x_for_y(nan_nhan.x_in, nan_nhan.min_y);
     }
 
-    // (c) Kẻ tấn công bán lại phần vừa bid
+    // (c) Kẻ tấn công bán lại phần vừa mua
     let received = if is_block { 0 } else { b.try_swap_y_for_x(prev_out).unwrap_or(0) };
     let lai = if is_block { 0 } else { received as i128 - von_tan_cong as i128 };
 
@@ -422,7 +422,7 @@ fn main() {
     for r in [0.25f64, 0.5, 0.8, 1.0, 1.25, 2.0, 4.0, 10.0] {
         println!("   {:>13.2}x {:>17.2}%", r, impermanent_loss(r) * 100.0);
     }
-    println!("   → Luôn ≤ 0, chỉ bằng 0 khi giá không đổi. Phí attempt được phải bù nổi");
+    println!("   → Luôn ≤ 0, chỉ bằng 0 khi giá không đổi. Phí thu được phải bù nổi");
     println!("     khoản này thì góp vốn mới thật sự có lãi.");
 
     println!("\n5. HÀNG CHỜ CÔNG KHAI — phí quyết định thứ tự, không phải thời gian tới");
@@ -466,7 +466,7 @@ fn main() {
     if ch.has_has_hoi {
         println!("   Khối lượng tối ưu: {} Y → lãi ước tính {} Y",
                  ch.quantity_toi_uu, ch.estimated_return);
-        println!("   Giá DEX sau deliver dịch: {:.2} (đã kéo về gần CEX)", ch.dex_price_after);
+        println!("   Giá DEX sau giao dịch: {:.2} (đã kéo về gần CEX)", ch.dex_price_after);
     }
     println!("   → Chính đội arbitrage giữ cho giá DEX bám sát thị trường.");
     println!("     Họ không làm từ thiện — họ được trả công bằng khoảng lệch đó.");
@@ -541,7 +541,7 @@ mod tests {
             prev = t;
         }
         assert!(b.slippage(500_000).unwrap() > 0.3,
-                "deliver dịch bằng nửa bể phải mất hơn 30%");
+                "giao dịch bằng nửa bể phải mất hơn 30%");
     }
 
     #[test]
@@ -591,7 +591,7 @@ mod tests {
         let prev = b;
         let e = b.swap_x_for_y(10_000, amount_in + 1).unwrap_err();
         assert!(matches!(e, SwapError::SlippageTooHigh { .. }));
-        assert_eq!(b, prev, "deliver dịch hỏng phải KHÔNG để lại thay đổi nào");
+        assert_eq!(b, prev, "giao dịch hỏng phải KHÔNG để lại thay đổi nào");
     }
 
     #[test]
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn a_tight_min_out_reverts_instead_of_being_exploited() {
-        // Bị huỷ deliver dịch là KẾT QUẢ TỐT: bạn chỉ mất phí gas, không mất vốn.
+        // Bị huỷ giao dịch là KẾT QUẢ TỐT: bạn chỉ mất phí gas, không mất vốn.
         let b = sample_pool();
         let amount_in = b.try_swap_x_for_y(50_000).unwrap();
         let nn = TradeWait { sender: "can-than".into(), x_in: 50_000,
@@ -923,7 +923,7 @@ pub struct KetQuaLo {
 pub fn solve_batch(cac_lenh: &[LenhLo], be: &Pool) -> KetQuaLo {
     let gia_be = be.price_x();
 
-    // Lệnh nào chấp nhận được giá thanh toán shared thì tham gia lô.
+    // Lệnh nào chấp nhận được giá thanh toán chung thì tham gia lô.
     let buy: Vec<&LenhLo> = cac_lenh.iter()
         .filter(|l| l.mua_token_x && l.gia_gioi_han >= gia_be).collect();
     let ban: Vec<&LenhLo> = cac_lenh.iter()

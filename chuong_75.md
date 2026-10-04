@@ -105,7 +105,7 @@ Chạy bằng `cargo run -p ch75`, kiểm thử bằng `cargo test -p ch75`.
 
 ```rust
 #![allow(dead_code)]
-//! Chương 75 — Xử lý luồng dữ liệu thị trường: deliver thức nhị phân kiểu ITCH,
+//! Chương 75 — Xử lý luồng dữ liệu thị trường: giao thức nhị phân kiểu ITCH,
 //! phát hiện khe số thứ tự, dựng sổ lệnh L2/L3 từ bản tin gia tăng, và kiểm
 //! tra chất lượng dữ liệu.
 //!
@@ -157,7 +157,7 @@ pub enum ErrorAnalyze {
 /// Phân tích một bản tin nhị phân. Không cấp phát, không sao chép — chỉ đọc
 /// số nguyên từ các vị trí cố định. Đây là ý nghĩa của "phân tích zero-copy".
 ///
-/// Bố cục dây (big-endian, như mọi deliver thức mạng):
+/// Bố cục dây (big-endian, như mọi giao thức mạng):
 /// ```text
 ///  0        1        9           17     25      29      30       38
 ///  +--------+--------+-----------+------+-------+-------+--------+

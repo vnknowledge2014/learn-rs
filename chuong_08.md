@@ -65,7 +65,7 @@ Hãy xem xét đoạn mã bị cấm sau đây để hiểu vì sao Rust lại c
 fn make_greeting_unsafe() -> &String {
     let s = String::from("Chào bạn"); // s sinh ra trên Stack Frame của hàm này
     &s // Cố tình trả về địa chỉ của biến cục bộ s
-} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị attempt hồi!
+} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị thu hồi!
 ```
 Trong các ngôn ngữ như C/C++, trình biên dịch vẫn để bạn chạy đoạn mã trên, dẫn đến con trỏ trỏ vào vùng nhớ rác (Dangling Pointer) gây sập chương trình ngẫu nhiên.
 Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
@@ -126,7 +126,7 @@ Chương trình dưới đây là một "Bộ phân tích cấu hình hệ thố
 // Ứng dụng thực chiến làm chủ Vòng đời (Lifetimes) trong Rust
 
 // 1. Hàm so sánh hai chuỗi và trả về chuỗi dài hơn
-// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng deliver nhau giữa x và y
+// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng giao nhau giữa x và y
 fn pick_longer_message<'a>(x: &'a str, y: &'a str) -> &'a str {
     if x.len() > y.len() {
         x

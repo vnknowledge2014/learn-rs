@@ -34,7 +34,7 @@ impl Side {
     pub fn inverse_lai(self) -> Side {
         match self { Side::Buy => Side::Sell, Side::Sell => Side::Buy }
     }
-    /// Dấu của vị thế: bid làm vị thế tăng, bán làm giảm.
+    /// Dấu của vị thế: mua làm vị thế tăng, bán làm giảm.
     pub fn first(self) -> i64 { match self { Side::Buy => 1, Side::Sell => -1 } }
 }
 
@@ -138,7 +138,7 @@ pub struct Fill {
 /// duyệt các mức giá theo THỨ TỰ — đúng thứ động cơ khớp lệnh cần.
 /// `VecDeque` ở mỗi mức giá giữ ưu tiên THỜI GIAN: ai đặt trước khớp trước.
 pub struct OrderBook {
-    /// Bên bid: khóa là giá ÂM để `BTreeMap` (vốn tăng dần) trả giá CAO nhất trước.
+    /// Bên mua: khóa là giá ÂM để `BTreeMap` (vốn tăng dần) trả giá CAO nhất trước.
     side_buy: BTreeMap<Price, VecDeque<Order<Sent>>>,
     ben_ban: BTreeMap<Price, VecDeque<Order<Sent>>>,
 }
@@ -146,7 +146,7 @@ pub struct OrderBook {
 impl OrderBook {
     pub fn new() -> Self { OrderBook { side_buy: BTreeMap::new(), ben_ban: BTreeMap::new() } }
 
-    /// Giá bid cao nhất — cái giá tốt nhất mà người bán có thể nhận ngay.
+    /// Giá mua cao nhất — cái giá tốt nhất mà người bán có thể nhận ngay.
     pub fn best_bid(&self) -> Option<Price> {
         self.side_buy.keys().next().map(|k| -k)
     }
@@ -154,7 +154,7 @@ impl OrderBook {
     pub fn best_ask(&self) -> Option<Price> {
         self.ben_ban.keys().next().copied()
     }
-    /// Chênh lệch bid-bán: chi phí ẩn của mọi giao dịch.
+    /// Chênh lệch mua-bán: chi phí ẩn của mọi giao dịch.
     pub fn spread(&self) -> Option<Price> {
         Some(self.best_ask()? - self.best_bid()?)
     }
@@ -347,7 +347,7 @@ pub fn run_test(
                 Signal::Giu => { equity_curve.push(position.value_empty(data[i].dong)); continue; }
             };
             if amount > 0 {
-                // Trượt giá: ta luôn bid đắt hơn và bán rẻ hơn giá lý thuyết.
+                // Trượt giá: ta luôn mua đắt hơn và bán rẻ hơn giá lý thuyết.
                 let price = nen_sau.mo + side.first() * slippage_ticks;
                 position = position.compose(Position::from_fill(side, price, amount));
                 position.tien_mat -= phi_new_don_pos * amount;
@@ -432,9 +432,9 @@ fn main() {
              tick_to_string(so.best_bid().unwrap()),
              tick_to_string(so.best_ask().unwrap()),
              so.spread().unwrap());
-    println!("   Khối lượng chờ bid ở {}: {}", tick_to_string(8_400), so.qty_at(Side::Buy, 8_400));
+    println!("   Khối lượng chờ mua ở {}: {}", tick_to_string(8_400), so.qty_at(Side::Buy, 8_400));
 
-    println!("\n4. KHỚP LỆNH — lệnh bán 250 quét qua bên bid");
+    println!("\n4. KHỚP LỆNH — lệnh bán 250 quét qua bên mua");
     let fill = so.nap(send(30, Side::Sell, 8_390, 250));
     for k in &fill {
         println!("   {} đơn vị @ {} (đối tác lệnh #{})",
@@ -525,7 +525,7 @@ mod tests {
     fn book_reports_best_on_both_sides() {
         let mut s = OrderBook::new();
         s.nap(order_sent(1, Side::Buy, 100, 10));
-        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên bid
+        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên mua
         s.nap(order_sent(3, Side::Sell, 120, 10));
         s.nap(order_sent(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(105));
@@ -569,7 +569,7 @@ mod tests {
     fn later_arrival_gets_price_improvement() {
         let mut s = OrderBook::new();
         s.nap(order_sent(1, Side::Sell, 100, 10)); // ai đó chào bán rẻ
-        // ta sẵn sàng bid tới 120, nhưng chỉ phải trả 100
+        // ta sẵn sàng mua tới 120, nhưng chỉ phải trả 100
         let fill = s.nap(order_sent(2, Side::Buy, 120, 10));
         assert_eq!(fill[0].price, 100, "khớp ở giá của lệnh nằm sẵn trong sổ");
     }
@@ -594,7 +594,7 @@ mod tests {
         s.nap(order_sent(1, Side::Sell, 100, 10));
         let fill = s.nap(order_sent(2, Side::Buy, 100, 30));
         assert_eq!(fill.iter().map(|k| k.quantity).sum::<i64>(), 10);
-        assert_eq!(s.best_bid(), Some(100), "20 đơn vị còn lại thành lệnh chờ bid");
+        assert_eq!(s.best_bid(), Some(100), "20 đơn vị còn lại thành lệnh chờ mua");
         assert_eq!(s.qty_at(Side::Buy, 100), 20);
     }
 
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     fn open_position_is_marked_to_market() {
         let v = Position::from_fill(Side::Buy, 8_000, 100);
-        assert_eq!(v.value_empty(8_000), 0, "vừa bid xong thì hòa vốn");
+        assert_eq!(v.value_empty(8_000), 0, "vừa mua xong thì hòa vốn");
         assert_eq!(v.value_empty(8_100), 10_000, "giá lên 100 tick → lãi 10 000");
         assert_eq!(v.value_empty(7_900), -10_000, "giá xuống thì lỗ đối xứng");
     }
@@ -764,7 +764,7 @@ mod tests {
         let data = gen_data(30, 8_000, 3);
         struct AlwaysBuy;
         impl Strategy for AlwaysBuy {
-            fn name(&self) -> &str { "luôn bid" }
+            fn name(&self) -> &str { "luôn mua" }
             fn decide(&mut self, _: &[Candle], _: &Position) -> Signal { Signal::Buy(1) }
         }
         let kq = run_test(&data, &mut AlwaysBuy, 0, 0);

@@ -186,7 +186,7 @@ impl GoiTin {
     pub fn size(&self) -> usize { self.header.len() + self.tai.len() }
 }
 
-/// Dựng chồng deliver thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
+/// Dựng chồng giao thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
 pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
     let http = GoiTin { tang: Tang::Application, header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
                         tai: du_lieu_ung_dung.to_vec() };
@@ -460,7 +460,7 @@ fn main() {
     println!("   MẠNG MÁY TÍNH: PHÂN TẦNG · TCP · TẮC NGHẼN · CIDR · DNS  ");
     println!("═══════════════════════════════════════════════════════════");
 
-    println!("\n1. ĐÓNG GÓI THEO TẦNG — 5 byte dữ liệu đi hết chồng deliver thức");
+    println!("\n1. ĐÓNG GÓI THEO TẦNG — 5 byte dữ liệu đi hết chồng giao thức");
     let goi = dong_goi_xuong(b"hello");
     println!("   Gói cuối ở {} — tổng {} byte", goi.tang, goi.size());
     println!("   Chi phí phần đầu = {} byte cho 5 byte dữ liệu ({}% là bao bì)",
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn checksum_misses_word_transposition() {
-        // Điểm YẾU đã biết: phép cộng có tính deliver hoán nên đảo chỗ hai từ 16-bit
+        // Điểm YẾU đã biết: phép cộng có tính giao hoán nên đảo chỗ hai từ 16-bit
         // cho ra cùng checksum. Đây là lý do tầng ứng dụng vẫn cần CRC/hash mạnh.
         let a = [0x11u8, 0x22, 0x33, 0x44];
         let b = [0x33u8, 0x44, 0x11, 0x22];
@@ -701,7 +701,7 @@ mod tests {
     #[test]
     fn go_back_n_delivers_every_packet_in_order() {
         let kq = go_back_n(10, 4, &[2, 6]);
-        assert_eq!(kq.da_nhan, (0..10).collect::<Vec<u32>>(), "phải deliver đủ và đúng thứ tự");
+        assert_eq!(kq.da_nhan, (0..10).collect::<Vec<u32>>(), "phải giao đủ và đúng thứ tự");
     }
 
     #[test]

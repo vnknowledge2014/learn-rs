@@ -129,7 +129,7 @@ Chương trình hoàn chỉnh dưới đây mô phỏng một hệ thống quả
 // 1. Tuple Struct: Biểu diễn tọa độ GPS của trụ sở ngân hàng (Kinh độ, Vĩ độ)
 struct GpsCoord(f64, f64);
 
-// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật deliver dịch
+// 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
 struct LostReport;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
@@ -202,7 +202,7 @@ fn main() {
 
     // Sử dụng Tuple Struct để lưu tọa độ chi nhánh ngân hàng
     let hanoi_branch = GpsCoord(21.0285, 105.8542);
-    println!("Tọa độ chi nhánh deliver dịch: Vĩ độ {}, Kinh độ {}", 
+    println!("Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}", 
              hanoi_branch.0, hanoi_branch.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
@@ -219,12 +219,12 @@ fn main() {
     // Tra cứu thông tin (gọi phương thức &self)
     account_hidden.tra_cuu_thong_tin();
 
-    // Thực hiện các deliver dịch làm biến đổi số dư (gọi phương thức &mut self)
+    // Thực hiện các giao dịch làm biến đổi số dư (gọi phương thức &mut self)
     account_hidden.nap_tien(500_000.0);
     account_hidden.rut_tien(200_000.0);
     account_hidden.rut_tien(2_000_000.0); // Thử rút vượt số dư
 
-    // Tra cứu lại thông tin sau deliver dịch
+    // Tra cứu lại thông tin sau giao dịch
     account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)

@@ -155,10 +155,10 @@ impl<T> DeriveExport<T> {
 }
 
 // ============================================================================
-// 2. VIRTUAL DOM — cây mô tả deliver diện, và thuật toán DIFF
+// 2. VIRTUAL DOM — cây mô tả giao diện, và thuật toán DIFF
 // ============================================================================
 
-/// Một nút trong cây deliver diện ảo. Framework dựng cây này từ trạng thái,
+/// Một nút trong cây giao diện ảo. Framework dựng cây này từ trạng thái,
 /// so nó với cây cũ, rồi chỉ cập nhật phần THAY ĐỔI lên DOM thật (tốn kém).
 #[derive(Debug, Clone, PartialEq)]
 pub enum VirtualNode {
@@ -269,8 +269,8 @@ pub struct StateCount {
     pub so: Signal<i64>,
 }
 
-/// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây deliver diện ảo.
-/// Đây là bản chất của UI khai báo (declarative): deliver diện là HÀM của trạng thái.
+/// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây giao diện ảo.
+/// Đây là bản chất của UI khai báo (declarative): giao diện là HÀM của trạng thái.
 pub fn counter_view(tt: &StateCount) -> VirtualNode {
     VirtualNode::the("div", vec![("class", "dem")], vec![
         VirtualNode::the("h1", vec![], vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))]),

@@ -476,7 +476,7 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Đồng hồ ảo | Virtual clock | Nguồn thời gian **duy nhất** |
 | Đẩy tốc độ phát | Replay speed scaling | ×1, ×1000, vô hạn |
 | Mô hình độ trễ | Latency model | Có cả jitter, không chỉ hằng số |
-| Nhìn trộm tương lai | Look-ahead bias | Bỏ qua độ trễ là dạng compute vi nhất |
+| Nhìn trộm tương lai | Look-ahead bias | Bỏ qua độ trễ là dạng tinh vi nhất |
 | Tính tất định | Determinism | `BTreeMap`, không `HashMap` |
 | Tác động thị trường | Market impact | Quy luật căn bậc hai |
 | Cổng rủi ro trước lệnh | Pre-trade risk gate | Không được có đường vòng |

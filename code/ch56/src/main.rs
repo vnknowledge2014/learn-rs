@@ -355,7 +355,7 @@ fn main() {
     println!("\n4. ĐỒ THỊ TRI THỨC — truy xuất lan tỏa 2 bước");
     let mut g = RealValueGraph::new();
     g.add_entity("DonHang", "Đơn hàng của khách");
-    g.add_entity("KhachHang", "Người bid");
+    g.add_entity("KhachHang", "Người mua");
     g.add_entity("ThanhToan", "Giao dịch trừ tiền");
     g.add_entity("VanDon", "Phiếu giao hàng");
     g.add_entity("Kho", "Kho hàng vật lý");

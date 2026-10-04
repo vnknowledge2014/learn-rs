@@ -158,7 +158,7 @@ impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
             }
             BPlusNode::Internal { keys, children } => {
                 for (i, child) in children.iter().enumerate() {
-                    // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có deliver thoa
+                    // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có giao thoa
                     let lower_bound_ok = if i == 0 { true } else { keys[i - 1] <= *max_key };
                     let upper_bound_ok = if i == keys.len() { true } else { keys[i] >= *min_key };
                     if lower_bound_ok && upper_bound_ok {

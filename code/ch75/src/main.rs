@@ -232,7 +232,7 @@ pub struct PriceLevel { pub price: Price, pub quantity: u64, pub so_lenh: u32 }
 
 #[derive(Debug, Default)]
 pub struct L2Book {
-    /// Bên bid lưu khoá ÂM để `BTreeMap` trả giá cao nhất trước.
+    /// Bên mua lưu khoá ÂM để `BTreeMap` trả giá cao nhất trước.
     buy: BTreeMap<Price, (u64, u32)>,
     ban: BTreeMap<Price, (u64, u32)>,
 }
@@ -302,10 +302,10 @@ impl L2Book {
 
     // ---- Kiểm tra chất lượng dữ liệu ----
 
-    /// Sổ "khoá" (locked): giá bid = giá bán. Hiếm nhưng hợp lệ ở vài thị trường.
+    /// Sổ "khoá" (locked): giá mua = giá bán. Hiếm nhưng hợp lệ ở vài thị trường.
     pub fn is_key(&self) -> bool { self.spread() == Some(0) }
 
-    /// Sổ "chéo" (crossed): giá bid > giá bán. LUÔN LUÔN là dấu hiệu dữ liệu
+    /// Sổ "chéo" (crossed): giá mua > giá bán. LUÔN LUÔN là dấu hiệu dữ liệu
     /// hỏng hoặc mất bản tin — phải dừng giao dịch ngay, đừng cố khai thác.
     pub fn is_crossed(&self) -> bool { self.spread().is_some_and(|c| c < 0) }
 
@@ -426,7 +426,7 @@ pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<FieldPacket> {
         // Giữ sổ có ít nhất vài lệnh trước khi bắt đầu huỷ/khớp
         let bt = if is_open.len() < 4 || r < 55 {
             let side = if (s >> 40) % 2 == 0 { Side::Buy } else { Side::Sell };
-            // Bên bid đặt dưới 8400, bên bán đặt trên 8400 → sổ không bao giờ chéo
+            // Bên mua đặt dưới 8400, bên bán đặt trên 8400 → sổ không bao giờ chéo
             let lech = ((s >> 44) % 20) as i64;
             let price = match side {
                 Side::Buy => 8_400 - 1 - lech,
@@ -491,7 +491,7 @@ fn main() {
     let mut so = L3Book::new();
     for g in generate_session(5_000, 42) { so.apply(&g.ban_tin); }
     let (buy, ban) = so.l2.peak_num(5);
-    println!("   {} lệnh đang mở · {} mức bid · {} mức bán",
+    println!("   {} lệnh đang mở · {} mức mua · {} mức bán",
              so.order_book_dang_open(), so.l2.num_level(Side::Buy), so.l2.num_level(Side::Sell));
     println!("   ── 5 MỨC TỐT NHẤT ──");
     for m in ban.iter().rev() {
@@ -710,7 +710,7 @@ mod tests {
     fn l2_reports_best_on_both_sides() {
         let mut s = L2Book::new();
         s.them(Side::Buy, 8_390, 100);
-        s.them(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên bid
+        s.them(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên mua
         s.them(Side::Sell, 8_420, 150);
         s.them(Side::Sell, 8_410, 50);  // thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(8_400));
@@ -775,13 +775,13 @@ mod tests {
 
     #[test]
     fn fair_price_leans_toward_the_thin_side() {
-        // Nhiều người muốn bid hơn bán → áp lực đẩy giá lên → giá cân bằng
+        // Nhiều người muốn mua hơn bán → áp lực đẩy giá lên → giá cân bằng
         // phải gần giá BÁN hơn.
         let mut s = L2Book::new();
         s.them(Side::Buy, 8_400, 900);
         s.them(Side::Sell, 8_410, 100);
         let cb = s.price_can_table().unwrap();
-        assert!(cb > 8_405.0, "áp lực bid mạnh → giá cân bằng {} phải lệch lên trên", cb);
+        assert!(cb > 8_405.0, "áp lực mua mạnh → giá cân bằng {} phải lệch lên trên", cb);
         assert!(cb < 8_410.0);
     }
 
@@ -792,7 +792,7 @@ mod tests {
         for g in [8_430, 8_420, 8_410] { s.them(Side::Sell, g, 100); }
         let (m, b) = s.peak_num(3);
         assert_eq!(m.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_400, 8_390, 8_380],
-                   "bên bid: giá cao xuống thấp");
+                   "bên mua: giá cao xuống thấp");
         assert_eq!(b.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_410, 8_420, 8_430],
                    "bên bán: giá thấp lên cao");
     }

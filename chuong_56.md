@@ -280,7 +280,7 @@ impl UnitFrame {
         self.legacy_tool.push(cc);
         self
     }
-    /// Bản mô tả công cụ để nhét vào ngữ cảnh — đây là "deliver diện" tác tử nhìn thấy.
+    /// Bản mô tả công cụ để nhét vào ngữ cảnh — đây là "giao diện" tác tử nhìn thấy.
     pub fn legacy_open_gate(&self) -> String {
         self.legacy_tool.iter()
             .map(|c| format!("- {}: {}", c.name(), c.description()))
@@ -490,9 +490,9 @@ fn main() {
     println!("\n4. ĐỒ THỊ TRI THỨC — truy xuất lan tỏa 2 bước");
     let mut g = RealValueGraph::new();
     g.add_entity("DonHang", "Đơn hàng của khách");
-    g.add_entity("KhachHang", "Người bid");
+    g.add_entity("KhachHang", "Người mua");
     g.add_entity("ThanhToan", "Giao dịch trừ tiền");
-    g.add_entity("VanDon", "Phiếu deliver hàng");
+    g.add_entity("VanDon", "Phiếu giao hàng");
     g.add_entity("Kho", "Kho hàng vật lý");
     g.add_relation("DonHang", "thuoc_ve", "KhachHang");
     g.add_relation("DonHang", "duoc_tra_boi", "ThanhToan");

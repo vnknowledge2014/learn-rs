@@ -395,7 +395,7 @@ impl LuoiBam {
             }
         }
         cap.sort_unstable();
-        cap.dedup(); // một cặp có thể xuất hiện ở nhiều ô shared
+        cap.dedup(); // một cặp có thể xuất hiện ở nhiều ô chung
         cap
     }
 }
@@ -486,7 +486,7 @@ pub fn gravity_system(tg: &mut BoundedPos, g: f32, dt: f32) {
     }
 }
 
-/// Va chạm gây sát thương, rồi attempt dọn xác. Trả về số thực thể đã chết.
+/// Va chạm gây sát thương, rồi thu dọn xác. Trả về số thực thể đã chết.
 pub fn collision_damage_system(tg: &mut BoundedPos) -> usize {
     let list: Vec<RealPosition> = {
         let mut v: Vec<RealPosition> = tg.con_song.iter().copied()
@@ -767,7 +767,7 @@ mod tests {
         let a = HopReport::self_centered(Vec2::KHONG, Vec2::new(1.0, 1.0));      // [-1,1]²
         let slow_peak = HopReport::self_centered(Vec2::new(2.0, 2.0), Vec2::new(1.0, 1.0));
         let disjoint = HopReport::self_centered(Vec2::new(2.1, 0.0), Vec2::new(1.0, 1.0));
-        assert!(a.intersect(&slow_peak), "chạm đúng một điểm vẫn tính là deliver");
+        assert!(a.intersect(&slow_peak), "chạm đúng một điểm vẫn tính là giao");
         assert!(!a.intersect(&disjoint));
     }
 

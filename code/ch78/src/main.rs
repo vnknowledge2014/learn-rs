@@ -166,7 +166,7 @@ pub struct KetQuaKep {
 /// Mô phỏng một cú kẹp để thấy **vì sao phải đặt sàn nhận tối thiểu chặt**.
 ///
 /// Kịch bản: kẻ tấn công thấy giao dịch của nạn nhân trong hàng chờ, trả phí
-/// cao hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
+/// cao hơn để mua TRƯỚC (đẩy giá lên), để nạn nhân mua ở giá xấu, rồi bán
 /// NGAY SAU đó ăn chênh lệch.
 pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity)
     -> KetQuaKep
@@ -174,7 +174,7 @@ pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity
     // (a) Nếu không ai chen ngang
     let clean = be.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
 
-    // (b) Có kẻ chen ngang, bid trước để đẩy giá
+    // (b) Có kẻ chen ngang, mua trước để đẩy giá
     let mut b = *be;
     let prev_out = b.swap_x_for_y(von_tan_cong, 0).unwrap_or(0);
 
@@ -185,7 +185,7 @@ pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity
         let _ = b.swap_x_for_y(nan_nhan.x_in, nan_nhan.min_y);
     }
 
-    // (c) Kẻ tấn công bán lại phần vừa bid
+    // (c) Kẻ tấn công bán lại phần vừa mua
     let thu_ve = if is_block { 0 } else { b.try_swap_y_for_x(prev_out).unwrap_or(0) };
     let lai = if is_block { 0 } else { thu_ve as i128 - von_tan_cong as i128 };
 

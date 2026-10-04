@@ -218,7 +218,7 @@ pub fn regression(x: &[f64], y: &[f64]) -> Option<ResultRegression> {
                         sai_num_standard: stddev(&du), so_quan_sat: n })
 }
 
-/// Phần dư của hồi quy — chính là CHÊNH LỆCH mà arbitrage cặp deliver dịch.
+/// Phần dư của hồi quy — chính là CHÊNH LỆCH mà arbitrage cặp giao dịch.
 pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
     let n = x.len().min(y.len());
     (0..n).map(|i| y[i] - (kq.alpha + kq.beta * x[i])).collect()
@@ -288,7 +288,7 @@ impl KalmanFilter {
     }
 
     /// Cập nhật với một cặp quan sát (x, y). Trả về sai số dự báo — chính là
-    /// tín hiệu deliver dịch: y lệch bao nhiêu so với mức beta·x dự đoán.
+    /// tín hiệu giao dịch: y lệch bao nhiêu so với mức beta·x dự đoán.
     pub fn update(&mut self, x: f64, y: f64) -> f64 {
         // Dự đoán: beta không đổi, nhưng độ bất định lớn thêm
         let p_prev = self.estimated_variance + self.process_noise;
@@ -375,7 +375,7 @@ pub fn expected_shortfall(loi_suat: &[f64], muc_tin_cay: f64) -> Option<f64> {
 // Tối ưu tham số trên toàn bộ dữ liệu rồi khoe kết quả là tự lừa mình. Kiểm
 // định tiến chia dữ liệu thành nhiều đoạn: chọn tham số trên đoạn TRONG MẪU,
 // rồi chấm điểm trên đoạn NGOÀI MẪU ngay sau đó — mô phỏng đúng cách ta thật
-// sự deliver dịch: chỉ biết quá khứ.
+// sự giao dịch: chỉ biết quá khứ.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestSegment {
@@ -447,7 +447,7 @@ pub fn deterministic_noise(segment: usize, param: usize) -> f64 {
 // 8. SINH DỮ LIỆU TẤT ĐỊNH
 // ============================================================================
 
-/// Hai chuỗi ĐỒNG LIÊN KẾT: cùng theo một nhân tố shared, chênh lệch quay về 0.
+/// Hai chuỗi ĐỒNG LIÊN KẾT: cùng theo một nhân tố chung, chênh lệch quay về 0.
 pub fn sinh_cap_dong_lien_ket(n: usize, hat_giong: u64, beta: f64)
     -> (Vec<f64>, Vec<f64>)
 {
@@ -508,7 +508,7 @@ fn main() {
     println!("   beta {:.4} (đúng phải là 1.5) · alpha {:.4} · R² {:.4}",
              hq.beta, hq.alpha, hq.r_squared);
     println!("   Tương quan: {:.4}", correlation(&a, &b).unwrap());
-    println!("   → beta chính là số lượng mã B cần bán khi bid 1 mã A để trung hoà.");
+    println!("   → beta chính là số lượng mã B cần bán khi mua 1 mã A để trung hoà.");
 
     println!("\n2. TƯƠNG QUAN CAO KHÔNG BẰNG ĐỒNG LIÊN KẾT");
     let (c, d) = gen_cap_price_cointegration(1_000, 7);
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn residuals_are_uncorrelated_with_the_regressor() {
-        // Tính chất thứ hai: phần dư trực deliver với biến giải thích. Nếu còn
+        // Tính chất thứ hai: phần dư trực giao với biến giải thích. Nếu còn
         // tương quan thì vẫn còn thông tin chưa khai thác hết.
         let (a, b) = sinh_cap_dong_lien_ket(500, 13, 1.5);
         let h = regression(&a, &b).unwrap();

@@ -216,13 +216,13 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống kiểm
 mod thiet_bi_thong_minh {
     use std::fmt::Display;
 
-    // 1. Định nghĩa Trait deliver ước cho mọi cảm biến trong tòa nhà
+    // 1. Định nghĩa Trait giao ước cho mọi cảm biến trong tòa nhà
     pub trait Sensor: Display {
         // Phương thức bắt buộc mọi cảm biến phải tự hiện thực
         fn read_value(&self) -> f64;
         fn don_pos_do(&self) -> &str;
 
-        // Phương thức mặc định (Default implementation): Dùng shared cho tất cả cảm biến
+        // Phương thức mặc định (Default implementation): Dùng chung cho tất cả cảm biến
         fn check_computed_state(&self) {
             println!("-> Cảm biến [{}] đang hoạt động bình thường.", self);
         }

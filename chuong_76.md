@@ -116,11 +116,11 @@ Chạy bằng `cargo run -p ch76`, kiểm thử bằng `cargo test -p ch76`.
 
 ```rust
 #![allow(dead_code)]
-//! Chương 76 — Ghi & Phát lại phiên deliver dịch: định dạng bản ghi, đồng hồ ảo,
+//! Chương 76 — Ghi & Phát lại phiên giao dịch: định dạng bản ghi, đồng hồ ảo,
 //! phát lại đúng dòng thời gian hoặc tua nhanh, mô hình độ trễ, và mô phỏng
 //! khớp lệnh có xét vị trí hàng đợi.
 //!
-//! Đây là "phòng thí nghiệm" của mọi đội deliver dịch nghiêm túc: ghi lại phiên
+//! Đây là "phòng thí nghiệm" của mọi đội giao dịch nghiêm túc: ghi lại phiên
 //! thật một lần, rồi chạy lại hàng nghìn lần với các chiến lược khác nhau,
 //! kết quả TÁI LẬP TUYỆT ĐỐI.
 
@@ -131,7 +131,7 @@ use std::collections::BTreeMap;
 // ============================================================================
 // Mỗi khung: [độ dài u32 BE][thời điểm ns u64 BE][thân bản tin].
 // Tiền tố độ dài cho phép đọc tuần tự mà không cần phân tích thân — nên bộ
-// ghi có thể lưu BẤT KỲ deliver thức nào mà không cần hiểu nó.
+// ghi có thể lưu BẤT KỲ giao thức nào mà không cần hiểu nó.
 
 pub type Price = i64;
 pub type Quantity = u32;
@@ -578,7 +578,7 @@ impl Replayer {
 // 7. CHIẾN LƯỢC MẪU
 // ============================================================================
 
-/// Tạo lập thị trường: đặt lệnh bid dưới và bán trên giá giữa, ăn chênh lệch.
+/// Tạo lập thị trường: đặt lệnh mua dưới và bán trên giá giữa, ăn chênh lệch.
 pub struct NaiveMaker {
     pub tick_offset: Price,
     pub has_order: Quantity,
@@ -602,7 +602,7 @@ impl StrategyReplay for NaiveMaker {
         if b <= m { return vec![]; } // sổ chéo hoặc khoá → đứng ngoài
         let mid = (m + b) / 2;
         let mut ra = Vec::new();
-        // Kiểm soát tồn kho: đã ôm nhiều thì thôi bid thêm
+        // Kiểm soát tồn kho: đã ôm nhiều thì thôi mua thêm
         if vt.quantity < self.max_position {
             ra.push((Side::Buy, mid - self.tick_offset, self.has_order));
         }
@@ -1058,7 +1058,7 @@ mod tests {
         let mut s = Soi { last_bid: None, last_ask: None };
         Replayer::new(LatencyModel::no_latency(), ReplaySpeed::AsFastAsPossible)
             .run(&frame, &mut s);
-        assert_eq!(s.last_bid, None, "lệnh bid đã bị huỷ, bên bid phải rỗng");
+        assert_eq!(s.last_bid, None, "lệnh mua đã bị huỷ, bên mua phải rỗng");
         assert_eq!(s.last_ask, Some(8_410), "lệnh bán không bị đụng tới");
     }
 
@@ -1175,7 +1175,7 @@ mod tests {
             .run(&p, &mut c);
         assert!(kq.last_position.quantity.abs() <= tran,
                 "vị thế cuối {} phải nằm trong trần {}", kq.last_position.quantity, tran);
-        assert!(kq.orders_sent > 0, "vẫn phải deliver dịch được, không phải đứng im");
+        assert!(kq.orders_sent > 0, "vẫn phải giao dịch được, không phải đứng im");
     }
 
     #[test]
@@ -1296,7 +1296,7 @@ impl ImpactModel {
         let bp = self.impact_bps(quantity);
         let dich = gia_yet as f64 * bp / 10_000.0;
         match side {
-            Side::Buy => (gia_yet as f64 + dich) as Price,   // bid thì đẩy giá lên
+            Side::Buy => (gia_yet as f64 + dich) as Price,   // mua thì đẩy giá lên
             Side::Sell => (gia_yet as f64 - dich) as Price,
         }
     }

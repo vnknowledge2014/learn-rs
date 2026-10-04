@@ -123,7 +123,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 
 ```rust
 #![allow(dead_code)]
-//! Chương 79 — FPGA cho deliver dịch: bộ xử lý luồng dữ liệu bằng phần cứng, sổ
+//! Chương 79 — FPGA cho giao dịch: bộ xử lý luồng dữ liệu bằng phần cứng, sổ
 //! lệnh trên thanh ghi, đường ống kiểm tra rủi ro, và ngân sách tick-to-trade
 //! tính bằng CHU KỲ thay vì micro-giây.
 //!
@@ -140,7 +140,7 @@ Chạy bằng `cargo run -p ch79`, kiểm thử bằng `cargo test -p ch79`.
 // quan trọng hơn — độ trễ gần như KHÔNG DAO ĐỘNG. Trong đấu giá theo thứ tự
 // tới, người ổn định thắng người nhanh-nhưng-thất-thường.
 
-/// Chu kỳ xung nhịp của FPGA deliver dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
+/// Chu kỳ xung nhịp của FPGA giao dịch điển hình: 250 MHz → 4 ns mỗi chu kỳ.
 pub const NS_MOI_CHU_KY: f64 = 4.0;
 
 pub fn cycles_to_ns(period: u32) -> f64 { period as f64 * NS_MOI_CHU_KY }
@@ -255,7 +255,7 @@ impl Default for OrderBookHardware {
 }
 
 impl OrderBookHardware {
-    /// Bộ mã hoá ưu tiên: tìm mức bid có giá CAO nhất. Trên phần cứng đây là
+    /// Bộ mã hoá ưu tiên: tìm mức mua có giá CAO nhất. Trên phần cứng đây là
     /// một cây so sánh độ sâu log₂(8) = 3 tầng, chạy trong MỘT chu kỳ.
     /// Phần mềm phải duyệt 8 phần tử — 8 lần so sánh phụ thuộc nhau.
     pub fn best_bid(&self) -> Option<HwPriceLevel> {
@@ -370,7 +370,7 @@ pub struct PipelineStage { pub name: String, pub period: u32 }
 pub struct HwPipeline { pub tang: Vec<PipelineStage> }
 
 impl HwPipeline {
-    /// Đường ống điển hình của một hệ thống deliver dịch trên FPGA.
+    /// Đường ống điển hình của một hệ thống giao dịch trên FPGA.
     pub fn typical() -> Self {
         HwPipeline {
             tang: vec![
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn the_xor_tree_matches_sequential_xor() {
         // Bất biến: song song hoá KHÔNG được đổi kết quả. XOR có tính kết hợp
-        // và deliver hoán nên gộp theo cây hay theo chuỗi đều như nhau.
+        // và giao hoán nên gộp theo cây hay theo chuỗi đều như nhau.
         for n in [0usize, 1, 2, 3, 4, 7, 16, 17, 64, 255, 256] {
             let d: Vec<u8> = (0..n).map(|i| (i * 37 % 251) as u8).collect();
             assert_eq!(xor_tree(&d), xor_tuan_tu(&d), "n={}", n);
@@ -646,7 +646,7 @@ mod tests {
         for (g, kl) in [(8_430i64, 100u32), (8_410, 400), (8_420, 250)] {
             s.update(false, g, kl);
         }
-        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên bid lấy giá CAO nhất");
+        assert_eq!(s.best_bid().unwrap().price, 8_400, "bên mua lấy giá CAO nhất");
         assert_eq!(s.best_ask().unwrap().price, 8_410, "bên bán lấy giá THẤP nhất");
         assert_eq!(s.spread(), Some(10));
     }

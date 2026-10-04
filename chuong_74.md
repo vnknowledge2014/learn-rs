@@ -467,7 +467,7 @@ fn main() {
              bd.percentile(0.999), bd.max);
     println!("   — gấp {:.0} lần trung bình. (Phân vị là cận TRÊN của xô log.)",
              bd.max as f64 / bd.mean());
-    println!("   Trong deliver dịch, chính CÁI ĐUÔI đó là lúc bạn mất tiền.");
+    println!("   Trong giao dịch, chính CÁI ĐUÔI đó là lúc bạn mất tiền.");
 
     println!("\n2. CHIA SẺ GIẢ — kích thước quyết định tốc độ");
     println!("   BoDemChungDong: {} byte (hai bộ đếm CÙNG một dòng cache)",

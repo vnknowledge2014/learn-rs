@@ -123,7 +123,7 @@ pub enum RaftRole {
     Leader,
 }
 
-/// Một bản ghi nhật ký deliver dịch trong sổ cái Raft
+/// Một bản ghi nhật ký giao dịch trong sổ cái Raft
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogEntry {
     pub term: u64,
@@ -290,7 +290,7 @@ fn main() {
     assert_eq!(node1.role, RaftRole::Leader);
 
     // 3. Mô phỏng Client gửi lệnh ghi dữ liệu tới Leader
-    println!("\n[3] Mo phong Client gui deliver dich 'CHUYEN_TIEN_100K' toi Leader:");
+    println!("\n[3] Mo phong Client gui giao dich 'CHUYEN_TIEN_100K' toi Leader:");
     let log_idx = node1.append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K").unwrap();
 
     // Leader sao chép sang Node 2 thành công
@@ -335,7 +335,7 @@ fn update_broken(node: &mut ViDuNode) {
     // println!("Lệnh: {:?}", first_cmd);
 }
 
-// Cách sửa chữa đúng chuẩn: Sao chép dữ liệu hoặc attempt hẹp phạm vi mượn
+// Cách sửa chữa đúng chuẩn: Sao chép dữ liệu hoặc thu hẹp phạm vi mượn
 fn update_correct(node: &mut ViDuNode) {
     let first_cmd = node.log.first().cloned(); // Sao chép giá trị ra biến riêng
     node.term += 1;                            // Sửa term an toàn 100%

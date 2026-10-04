@@ -319,7 +319,7 @@ impl<const N: usize> IntoRecordDich<N> {
     pub fn doc(&self) -> Vec<Signal> { self.o.iter().map(|f| f.q()).collect() }
 }
 
-/// Máy trạng thái hữu hạn có xung nhịp — đèn deliver thông.
+/// Máy trạng thái hữu hạn có xung nhịp — đèn giao thông.
 /// Đây là dạng mạch mà FPGA làm tốt nhất: điều khiển tất định, độ trễ đếm được.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrafficLight { Do, DoVang, Xanh, Vang }

@@ -277,7 +277,7 @@ mod bdd {
         fn debit(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
     }
 
-    /// Kịch bản: "Khách VIP bid hàng và được giảm 15%".
+    /// Kịch bản: "Khách VIP mua hàng và được giảm 15%".
     #[test]
     fn vip_gets_15_percent_off() {
         // GIVEN — một giỏ hàng trị giá 1.000.000đ và một cổng thanh toán

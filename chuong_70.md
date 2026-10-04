@@ -208,7 +208,7 @@ pub fn sha256(data: &[u8]) -> Bam {
 pub fn sha256d(data: &[u8]) -> Bam { sha256(&sha256(data).0) }
 
 // ============================================================================
-// 2. CÂY MERKLE — chứng minh "deliver dịch này có trong khối" mà không cần tải khối
+// 2. CÂY MERKLE — chứng minh "giao dịch này có trong khối" mà không cần tải khối
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,7 +239,7 @@ impl MerkleTree {
     pub fn root(&self) -> Bam { *self.all_up.last().unwrap().first().unwrap() }
 
     /// Bằng chứng gộp: chỉ log₂(n) giá trị băm là đủ chứng minh một lá thuộc cây.
-    /// 1 triệu deliver dịch → chỉ 20 giá trị băm = 640 byte. Đây là nền của ví nhẹ (SPV).
+    /// 1 triệu giao dịch → chỉ 20 giá trị băm = 640 byte. Đây là nền của ví nhẹ (SPV).
     pub fn prove(&self, mut chi_so: usize) -> Option<Vec<ProofStep>> {
         if chi_so >= self.all_up[0].len() { return None; }
         let mut positive = Vec::new();
@@ -286,7 +286,7 @@ pub struct Trade {
 
 impl Trade {
     /// Giao dịch tạo tiền (coinbase): không có đầu vào, sinh tiền từ hư không.
-    /// Đây là deliver dịch DUY NHẤT được phép làm vậy, và chỉ một lần mỗi khối.
+    /// Đây là giao dịch DUY NHẤT được phép làm vậy, và chỉ một lần mỗi khối.
     pub fn tao_tien(recipient: &str, value: u64, height: u64) -> Trade {
         Trade {
             input: vec![],
@@ -327,7 +327,7 @@ impl TapUtxo {
         self.o.values().filter(|d| d.owner.starts_with(owner)).map(|d| d.value).sum()
     }
 
-    /// Kiểm tra một deliver dịch mà KHÔNG thay đổi trạng thái. Trả về phí thợ đào.
+    /// Kiểm tra một giao dịch mà KHÔNG thay đổi trạng thái. Trả về phí thợ đào.
     pub fn check(&self, gd: &Trade, da_tieu_trong_khoi: &HashSet<OnlyDeriveOutput>)
         -> Result<u64, ErrorTrade>
     {
@@ -337,7 +337,7 @@ impl TapUtxo {
         let mut total_in = 0u64;
         let mut seen_in_trade = HashSet::new();
         for cd in &gd.input {
-            // Tiêu hai lần TRONG CÙNG một deliver dịch hoặc cùng một khối
+            // Tiêu hai lần TRONG CÙNG một giao dịch hoặc cùng một khối
             if da_tieu_trong_khoi.contains(cd) || !seen_in_trade.insert(*cd) {
                 return Err(ErrorTrade::DoubleSpend(*cd));
             }
@@ -497,7 +497,7 @@ impl Chain {
             return Err(ErrorBlock::TimestampWentBackwards);
         }
 
-        // --- Kiểm tra deliver dịch trên UTXO của nhánh cha ---
+        // --- Kiểm tra giao dịch trên UTXO của nhánh cha ---
         let so_tao_tien = khoi.trade.iter().filter(|g| g.la_tao_tien()).count();
         if so_tao_tien > 1 { return Err(ErrorBlock::MoreThanOneCoinbase); }
         let u = self.utxo_tai(prev);
@@ -884,7 +884,7 @@ mod tests {
     fn reject_block_has_merkle_root_sai() {
         let mut c = Chain::new(8, 50);
         let mut k = c.new_mine_block("An", vec![], 1).unwrap();
-        // Nhét thêm deliver dịch mà không cập nhật gốc Merkle — đúng kiểu tấn công
+        // Nhét thêm giao dịch mà không cập nhật gốc Merkle — đúng kiểu tấn công
         // "đổi nội dung nhưng giữ nguyên bằng chứng công việc"
         k.trade.push(Trade::tao_tien("KeGian", 1000, 99));
         assert!(matches!(c.them(k), Err(ErrorBlock::WrongMerkleRoot) | Err(ErrorBlock::BelowDifficulty{..})));
@@ -1067,7 +1067,7 @@ Ví nhẹ (Light client) chỉ tải **phần đầu khối** (80 byte mỗi kh�
 
 ```rust
 pub struct LightClient {
-    /// Chỉ lưu phần đầu khối, không lưu deliver dịch. 80 byte mỗi khối.
+    /// Chỉ lưu phần đầu khối, không lưu giao dịch. 80 byte mỗi khối.
     pub headers: Vec<BlockHeader>,
 }
 

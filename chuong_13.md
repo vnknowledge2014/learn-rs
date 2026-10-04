@@ -261,7 +261,7 @@ pub fn xu_ly_menh_lenh(list: &[MatQueue]) -> (f64, Vec<String>) {
 /// CÁCH 2: Phong cách Lập trình Hàm Khai báo (Declarative Pipeline)
 /// Dữ liệu chảy qua chuỗi lọc và ánh xạ, không dùng biến mut nào trong quá trình xử lý!
 pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
-    // 1. Nhánh tính tổng doanh attempt thông qua đường ống (Pipeline)
+    // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
     let total_revenue: f64 = list
         .iter()
         .filter(|queue| queue.is_paid)             // Bước 1: Lọc hàng đã trả tiền
@@ -321,13 +321,13 @@ fn main() {
     // 1. Chạy theo phong cách mệnh lệnh
     let (doanh_thu_1, ten_1) = xu_ly_menh_lenh(&cart);
     println!("\n[Kết quả Mệnh lệnh]:");
-    println!("- Tổng doanh attempt đạt chuẩn : {:.2} nghìn đồng", doanh_thu_1);
+    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_1);
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_1);
 
     // 2. Chạy theo phong cách khai báo đường ống
     let (doanh_thu_2, ten_2) = handle_declaration(&cart);
     println!("\n[Kết quả Khai báo Đường ống]:");
-    println!("- Tổng doanh attempt đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
+    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
     println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_2);
 
     // Xác thực hai cách tiếp cận cho ra cùng một kết quả nhất quán
@@ -336,7 +336,7 @@ fn main() {
 
     // Minh họa hàm thuần túy tính chiết khấu khuyến mãi độc lập
     let total_next_down = apply_down_price(doanh_thu_2, 10.0); // Giảm giá 10%
-    println!("\n-> Doanh attempt sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
+    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
     println!("============================================================");
 }
 ```

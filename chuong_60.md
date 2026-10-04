@@ -153,7 +153,7 @@ pub fn swap_tien(cac_menh_gia: &[u64], so_tien: u64) -> Option<u64> {
     if dp[n] == u64::MAX { None } else { Some(dp[n]) }
 }
 
-/// Dãy con shared dài nhất (Longest Common Subsequence) — LeetCode 1143.
+/// Dãy con chung dài nhất (Longest Common Subsequence) — LeetCode 1143.
 /// Nền tảng của công cụ `diff` và tin sinh học (so sánh chuỗi DNA).
 pub fn longest_common_subsequence(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
@@ -272,7 +272,7 @@ pub fn greedy_change(mut menh_gia: Vec<u64>, mut so_tien: u64) -> u64 {
 // 4. LÝ THUYẾT SỐ (Number Theory)
 // ============================================================================
 
-/// Ước shared lớn nhất — thuật toán Euclid, O(log min(a,b)).
+/// Ước chung lớn nhất — thuật toán Euclid, O(log min(a,b)).
 pub fn ucln(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
         let t = b;
@@ -281,7 +281,7 @@ pub fn ucln(mut a: u64, mut b: u64) -> u64 {
     }
     a
 }
-/// Bội shared nhỏ nhất.
+/// Bội chung nhỏ nhất.
 pub fn bcnn(a: u64, b: u64) -> u64 {
     if a == 0 || b == 0 { 0 } else { a / ucln(a, b) * b }
 }

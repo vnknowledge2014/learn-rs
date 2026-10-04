@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 //! Chương 83 — Quyền chọn & Phái sinh bằng Rust: công thức Black–Scholes,
-//! các tham số nhạy (Greeks), ngang giá bid-bán, chiến lược quyền chọn, và
+//! các tham số nhạy (Greeks), ngang giá mua-bán, chiến lược quyền chọn, và
 //! biến động ngụ ý.
 //!
 //! Chương thứ hai chuyển giáo trình *learn* của OpenAlgo sang Rust
 //! (Options Basics + Options Strategies).
 //!
 //! Điểm khác biệt so với cách dạy thông thường: mọi công thức ở đây đều kèm
-//! một BẤT BIẾN KIỂM CHỨNG ĐƯỢC. Ngang giá bid-bán, dấu của delta, tính đối
+//! một BẤT BIẾN KIỂM CHỨNG ĐƯỢC. Ngang giá mua-bán, dấu của delta, tính đối
 //! xứng của gamma — nếu cài sai, bài kiểm thử bắt được ngay.
 //!
 //! ⚠️ Tài liệu KỸ THUẬT, không phải lời khuyên đầu tư. Quyền chọn có thể mất
@@ -103,7 +103,7 @@ impl OptionParams {
     /// **Quyền BÁN châu Âu sâu trong tiền có thể rẻ hơn giá trị nội tại.**
     ///
     /// Ví dụ: S = 50, K = 100, r = 5%, còn 2 năm. Nội tại là 50, nhưng cận
-    /// dưới chỉ là 100·e^(−0,1) − 50 ≈ 40,5. Bạn không thể "bid rẻ rồi thực
+    /// dưới chỉ là 100·e^(−0,1) − 50 ≈ 40,5. Bạn không thể "mua rẻ rồi thực
     /// hiện ngay ăn chênh" vì không được phép thực hiện sớm.
     ///
     /// Chính khoảng chênh này là GIÁ TRỊ CỦA QUYỀN THỰC HIỆN SỚM, và là lý do
@@ -174,8 +174,8 @@ pub fn greeks(t: &OptionParams, kind: OptionKind) -> Greeks {
     let md = mat_do_standard(d1);
     let k_ck = t.discounted_strike();
 
-    // Gamma và vega GIỐNG HỆT NHAU cho quyền bid và quyền bán cùng tham số —
-    // hệ quả trực tiếp của ngang giá bid-bán.
+    // Gamma và vega GIỐNG HỆT NHAU cho quyền mua và quyền bán cùng tham số —
+    // hệ quả trực tiếp của ngang giá mua-bán.
     let gamma = md / (t.spot * t.bien_dong * sqrt_t);
     let vega = t.spot * md * sqrt_t / 100.0; // trên 1 điểm phần trăm
 
@@ -307,11 +307,11 @@ impl OptionStrategy {
 
 // --- Các chiến lược dựng sẵn ---
 
-/// Mua cả quyền bid lẫn quyền bán cùng giá thực hiện: cược GIÁ SẼ ĐỘNG MẠNH,
+/// Mua cả quyền mua lẫn quyền bán cùng giá thực hiện: cược GIÁ SẼ ĐỘNG MẠNH,
 /// không quan tâm hướng nào. Lỗ tối đa = tổng phí, xảy ra khi giá đứng yên.
 pub fn straddle(strike: f64, phi_mua: f64, phi_ban: f64) -> OptionStrategy {
     OptionStrategy {
-        name: "Straddle (bid đôi cùng giá)".into(),
+        name: "Straddle (mua đôi cùng giá)".into(),
         leg: vec![
             Leg { kind: KindLeg::Call, quantity: 1.0, strike,
                       premium: phi_mua },
@@ -327,7 +327,7 @@ pub fn strangle(price_sell: f64, price_buy: f64, phi_mua: f64, phi_ban: f64)
     -> OptionStrategy
 {
     OptionStrategy {
-        name: "Strangle (bid đôi khác giá)".into(),
+        name: "Strangle (mua đôi khác giá)".into(),
         leg: vec![
             Leg { kind: KindLeg::Call, quantity: 1.0,
                       strike: price_buy, premium: phi_mua },
@@ -337,7 +337,7 @@ pub fn strangle(price_sell: f64, price_buy: f64, phi_mua: f64, phi_ban: f64)
     }
 }
 
-/// Mua quyền bid giá thấp, bán quyền bid giá cao: cược giá TĂNG VỪA PHẢI.
+/// Mua quyền mua giá thấp, bán quyền mua giá cao: cược giá TĂNG VỪA PHẢI.
 /// Cả lãi lẫn lỗ đều có trần — đây là điểm hấp dẫn của chênh lệch giá.
 pub fn spread_price_up(gia_thap: f64, gia_cao: f64, phi_thap: f64, phi_cao: f64)
     -> OptionStrategy
@@ -353,13 +353,13 @@ pub fn spread_price_up(gia_thap: f64, gia_cao: f64, phi_thap: f64, phi_cao: f64)
     }
 }
 
-/// Nắm giữ tài sản và bán quyền bid trên nó: thu thêm phí, đổi lại từ bỏ
+/// Nắm giữ tài sản và bán quyền mua trên nó: thu thêm phí, đổi lại từ bỏ
 /// phần tăng giá vượt quá giá thực hiện.
 pub fn covered_call(cost_basis: f64, strike: f64, phi: f64)
     -> OptionStrategy
 {
     OptionStrategy {
-        name: "Quyền bid có bảo đảm".into(),
+        name: "Quyền mua có bảo đảm".into(),
         leg: vec![
             Leg { kind: KindLeg::TaiSanCoSo, quantity: 1.0,
                       strike: 0.0, premium: cost_basis },
@@ -369,7 +369,7 @@ pub fn covered_call(cost_basis: f64, strike: f64, phi: f64)
     }
 }
 
-/// Bốn chân: bán một strangle hẹp, bid một strangle rộng để chặn rủi ro.
+/// Bốn chân: bán một strangle hẹp, mua một strangle rộng để chặn rủi ro.
 /// Cược giá NẰM YÊN trong một khoảng. Lãi có trần, lỗ cũng có trần.
 pub fn dieu_hau_sat(ban_thap: f64, mua_thap: f64, ban_cao: f64, mua_cao: f64,
                     phi: [f64; 4]) -> OptionStrategy
@@ -408,7 +408,7 @@ fn main() {
              t.rate * 100.0, t.bien_dong * 100.0);
     let c = gia_black_scholes(&t, OptionKind::Buy);
     let p = gia_black_scholes(&t, OptionKind::Sell);
-    println!("   Quyền bid {:.4} (nội tại {:.2} + thời gian {:.4})",
+    println!("   Quyền mua {:.4} (nội tại {:.2} + thời gian {:.4})",
              c, t.intrinsic_value(OptionKind::Buy), value_time_time(&t, OptionKind::Buy));
     println!("   Quyền bán {:.4} (nội tại {:.2} + thời gian {:.4})",
              p, t.intrinsic_value(OptionKind::Sell), value_time_time(&t, OptionKind::Sell));
@@ -425,14 +425,14 @@ fn main() {
     println!("\n4. CÁC THAM SỐ NHẠY");
     let gm = greeks(&t, OptionKind::Buy);
     let gb = greeks(&t, OptionKind::Sell);
-    println!("   {:<12} {:>14} {:>14}", "", "quyền bid", "quyền bán");
+    println!("   {:<12} {:>14} {:>14}", "", "quyền mua", "quyền bán");
     println!("   {:<12} {:>14.4} {:>14.4}", "delta", gm.delta, gb.delta);
     println!("   {:<12} {:>14.4} {:>14.4}", "gamma", gm.gamma, gb.gamma);
     println!("   {:<12} {:>14.4} {:>14.4}", "vega", gm.vega, gb.vega);
     println!("   {:<12} {:>14.4} {:>14.4}", "theta/ngày", gm.theta, gb.theta);
     println!("   {:<12} {:>14.4} {:>14.4}", "rho", gm.rho, gb.rho);
     println!("   → gamma và vega GIỐNG HỆT nhau ở hai loại — hệ quả của ngang giá.");
-    println!("   → delta quyền bid − delta quyền bán = {:.4} (luôn bằng 1).",
+    println!("   → delta quyền mua − delta quyền bán = {:.4} (luôn bằng 1).",
              gm.delta - gb.delta);
 
     println!("\n5. DELTA THEO GIÁ CƠ SỞ");
@@ -448,7 +448,7 @@ fn main() {
     println!("     đó là chỗ delta thay đổi nhanh nhất, và cũng nguy hiểm nhất.");
 
     println!("\n6. THỜI GIAN TAN DẦN");
-    println!("   {:>14} {:>16} {:>18}", "còn lại", "giá quyền bid", "giá trị thời gian");
+    println!("   {:>14} {:>16} {:>18}", "còn lại", "giá quyền mua", "giá trị thời gian");
     for ngay in [90.0f64, 60.0, 30.0, 7.0, 1.0, 0.0] {
         let x = OptionParams { years: ngay / 365.0, ..t };
         println!("   {:>11.0} ngày {:>16.4} {:>18.4}",
@@ -456,7 +456,7 @@ fn main() {
                  value_time_time(&x, OptionKind::Buy));
     }
     println!("   → Giá trị thời gian tan NHANH DẦN về cuối. Đó là lý do người bán");
-    println!("     quyền chọn thích những tuần cuối, còn người bid thì sợ chúng.");
+    println!("     quyền chọn thích những tuần cuối, còn người mua thì sợ chúng.");
 
     println!("\n7. BIẾN ĐỘNG NGỤ Ý");
     for bd_that in [0.10f64, 0.20, 0.35, 0.60] {
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn european_calls_stay_above_intrinsic_value() {
         // Với quyền MUA thì cận dưới châu Âu còn CHẶT HƠN nội tại (vì
-        // K·e^(−rT) < K), nên quyền bid không bao giờ rẻ hơn nội tại.
+        // K·e^(−rT) < K), nên quyền mua không bao giờ rẻ hơn nội tại.
         for s in [60.0f64, 100.0, 200.0] {
             let t = OptionParams { spot: s, ..ts() };
             assert!(t.european_lower_bound(OptionKind::Buy)
@@ -646,7 +646,7 @@ mod tests {
         for s in [50.0f64, 80.0, 100.0, 120.0, 200.0] {
             let g = gia_black_scholes(&OptionParams { spot: s, ..ts() },
                                       OptionKind::Buy);
-            assert!(g > prev, "quyền bid phải đắt dần theo giá cơ sở");
+            assert!(g > prev, "quyền mua phải đắt dần theo giá cơ sở");
             prev = g;
         }
     }
@@ -702,8 +702,8 @@ mod tests {
 
     #[test]
     fn gamma_and_vega_are_identical_for_calls_and_puts() {
-        // Hệ quả trực tiếp của ngang giá bid-bán: đạo hàm bậc hai theo giá và
-        // đạo hàm theo biến động không phân biệt quyền bid hay quyền bán.
+        // Hệ quả trực tiếp của ngang giá mua-bán: đạo hàm bậc hai theo giá và
+        // đạo hàm theo biến động không phân biệt quyền mua hay quyền bán.
         for s in [70.0f64, 100.0, 130.0] {
             let t = OptionParams { spot: s, ..ts() };
             let a = greeks(&t, OptionKind::Buy);
@@ -922,7 +922,7 @@ mod tests {
         let ban = Leg { quantity: -1.0, ..buy };
         for s in [80.0f64, 100.0, 130.0] {
             assert!((buy.pnl(s) + ban.pnl(s)).abs() < 1e-12,
-                    "bid và bán cùng hợp đồng phải triệt tiêu nhau");
+                    "mua và bán cùng hợp đồng phải triệt tiêu nhau");
         }
     }
 

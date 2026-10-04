@@ -172,7 +172,7 @@ Chương trình hoàn chỉnh dưới đây xây dựng một **Hệ thống Qu�
 // CÁC HÀM NHẬN CLOSURE LÀM THAM SỐ VỚI RÀNG BUỘC TRAIT (TRAIT BOUNDS)
 // ============================================================================
 
-/// Hàm 1: Nhận closure thực hiện deliver ước Fn (Chỉ đọc môi trường)
+/// Hàm 1: Nhận closure thực hiện giao ước Fn (Chỉ đọc môi trường)
 /// Có thể gọi closure này nhiều lần liên tiếp một cách an toàn tuyệt đối
 pub fn exec_read<F>(ten_tac_vu: &str, hanh_dong: F)
 where
@@ -184,7 +184,7 @@ where
     println!("--- HOÀN THÀNH TÁC VỤ CHỈ ĐỌC ---");
 }
 
-/// Hàm 2: Nhận closure thực hiện deliver ước FnMut (Sửa đổi môi trường)
+/// Hàm 2: Nhận closure thực hiện giao ước FnMut (Sửa đổi môi trường)
 /// Bắt buộc tham số hanh_dong phải mang từ khóa mut vì trạng thái nội bộ thay đổi
 pub fn exec_swap<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
 where
@@ -197,7 +197,7 @@ where
     println!("--- HOÀN THÀNH TÁC VỤ SỬA ĐỔI TRẠNG THÁI ---");
 }
 
-/// Hàm 3: Nhận closure thực hiện deliver ước FnOnce (Tiêu thụ tài nguyên)
+/// Hàm 3: Nhận closure thực hiện giao ước FnOnce (Tiêu thụ tài nguyên)
 /// Closure này tự hủy ngay sau khi được gọi vì quyền sở hữu đã bị đoạt lấy
 pub fn exec_consume<F>(ten_tac_vu: &str, hanh_dong: F)
 where
@@ -262,7 +262,7 @@ fn main() {
     // Dùng từ khóa move để ép closure chiếm trọn quyền sở hữu của secret_token
     let end_session = move || {
         // Biến secret_token bị di chuyển vào đây và tiêu thụ
-        let thong_report = format!("Khóa [{}] đã bị attempt hồi vĩnh viễn.", secret_token);
+        let thong_report = format!("Khóa [{}] đã bị thu hồi vĩnh viễn.", secret_token);
         thong_report // Trả về chuỗi thông báo, secret_token bị Drop tại đây
     };
 
