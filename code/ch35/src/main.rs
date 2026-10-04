@@ -120,7 +120,8 @@ impl MvccStore {
 
     /// Kiểm xung đột ghi–ghi trên phiên bản đầu của khoá. Ghi đè lên một thay đổi mà ta
     /// KHÔNG nhìn thấy (chưa commit, hoặc commit sau khi ta bắt đầu) chính là "lost update".
-    /// Ta từ chối ngay lúc ghi (giống PostgreSQL ở mức REPEATABLE READ): nhờ vậy không bao giờ
+    /// Ta từ chối NGAY lúc ghi (first-updater-wins, không chờ). PostgreSQL ở mức REPEATABLE READ
+    /// thì CHỜ giao dịch kia kết thúc và chỉ báo lỗi nếu nó commit. Cả hai đều bảo đảm không bao giờ
     /// có hai giao dịch đồng thời cùng commit thay đổi trên một khoá (first-committer-wins).
     fn check_write_conflict(&self, tx: &Transaction, key: &str) -> Result<(), MvccError> {
         let Some(i) = self.head_index(key) else {

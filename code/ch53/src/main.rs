@@ -187,7 +187,12 @@ impl RaftNode {
         if leader_term < self.current_term {
             return false; // Leader cũ đã bị lật đổ
         }
-        self.current_term = leader_term;
+        if leader_term > self.current_term {
+            // Sang term mới: lá phiếu của term cũ hết hiệu lực. Không xoá thì nút có thể
+            // từ chối nhầm ứng viên hợp lệ ở term mới (hại tính sống, dù vẫn an toàn).
+            self.current_term = leader_term;
+            self.voted_for = None;
+        }
         self.role = RaftRole::Follower;
 
         // Kiểm tra tính nhất quán: phải có bản ghi prev_log_index với đúng term
@@ -352,6 +357,17 @@ mod tests {
         assert!(!voter.handle_request_vote(3, 3, 1, 1));
         // Nhật ký dài bằng nhưng term cuối thấp hơn cũng bị từ chối
         assert!(!voter.handle_request_vote(3, 3, 5, 1));
+    }
+
+    #[test]
+    fn heartbeat_from_newer_term_clears_old_vote() {
+        let mut node = RaftNode::new(2);
+        // Term 1: đã bầu cho nút 1
+        assert!(node.handle_request_vote(1, 1, 0, 0));
+        // Leader term 2 (không phải nút ta đã bầu) gửi nhịp tim
+        assert!(node.handle_append_entries(2, 0, 0, &[], 0));
+        // Term 3: nút 3 ứng cử — lá phiếu term 1 không được chặn lá phiếu term 3
+        assert!(node.handle_request_vote(3, 3, 0, 0));
     }
 
     #[test]

@@ -120,7 +120,7 @@ Khi Giao dịch có mã số `3` (bắt đầu lúc giao dịch 1 đã commit) �
 
 > **Cái bẫy kinh điển:** chỉ so sánh `created_by_tx <= current_tx` là **chưa đủ**. Giả sử giao dịch 2 ghi một phiên bản rồi *chưa commit* (hoặc sẽ bị huỷ). Giao dịch 3 có `2 <= 3` nên sẽ đọc được phiên bản đó — đó chính là **Dirty Read**. Ngược lại, giao dịch 2 commit *sau khi* 3 bắt đầu cũng không được hiện ra với 3, nếu không ảnh chụp sẽ "trôi". Vì vậy ảnh chụp phải ghi nhớ tập giao dịch đang chạy, và hệ thống phải biết trạng thái commit của từng giao dịch.
 
-**Chống Lost Update**: trước khi ghi đè một khoá, giao dịch kiểm tra phiên bản mới nhất của khoá đó. Nếu nó do một giao dịch mà ta **không nhìn thấy** tạo ra (đang chạy, hoặc commit sau khi ta bắt đầu) thì ta đang định ghi đè lên một thay đổi mình chưa từng đọc — giao dịch bị từ chối với lỗi xung đột ghi–ghi và phải thử lại với ảnh chụp mới. PostgreSQL ở mức `REPEATABLE READ` làm đúng như vậy (*"could not serialize access due to concurrent update"*).
+**Chống Lost Update**: trước khi ghi đè một khoá, giao dịch kiểm tra phiên bản mới nhất của khoá đó. Nếu nó do một giao dịch mà ta **không nhìn thấy** tạo ra (đang chạy, hoặc commit sau khi ta bắt đầu) thì ta đang định ghi đè lên một thay đổi mình chưa từng đọc — giao dịch bị từ chối với lỗi xung đột ghi–ghi và phải thử lại với ảnh chụp mới. PostgreSQL ở mức `REPEATABLE READ` cũng chặn trường hợp này (*"could not serialize access due to concurrent update"*), nhưng tinh tế hơn: nếu giao dịch kia **chưa kết thúc**, PostgreSQL **chờ** nó — kia abort thì ta ghi tiếp bình thường, kia commit thì ta mới bị báo lỗi. Store của chương này đơn giản hoá bằng cách từ chối ngay (first-updater-wins), chấp nhận đôi khi huỷ oan một giao dịch mà lẽ ra đã chạy được.
 
 ### 4. Mối liên hệ tự nhiên giữa MVCC và LSM-Tree
 
@@ -258,7 +258,8 @@ impl MvccStore {
 
     /// Kiểm xung đột ghi–ghi trên phiên bản đầu của khoá. Ghi đè lên một thay đổi mà ta
     /// KHÔNG nhìn thấy (chưa commit, hoặc commit sau khi ta bắt đầu) chính là "lost update".
-    /// Ta từ chối ngay lúc ghi (giống PostgreSQL ở mức REPEATABLE READ): nhờ vậy không bao giờ
+    /// Ta từ chối NGAY lúc ghi (first-updater-wins, không chờ). PostgreSQL ở mức REPEATABLE READ
+    /// thì CHỜ giao dịch kia kết thúc và chỉ báo lỗi nếu nó commit. Cả hai đều bảo đảm không bao giờ
     /// có hai giao dịch đồng thời cùng commit thay đổi trên một khoá (first-committer-wins).
     fn check_write_conflict(&self, tx: &Transaction, key: &str) -> Result<(), MvccError> {
         let Some(i) = self.head_index(key) else {

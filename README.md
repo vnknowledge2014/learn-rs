@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**85 chương · 25 chủ đề · 90 crate · 992 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 75/90 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
+**85 chương · 25 chủ đề · 90 crate · 994 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 75/90 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
 
 ---
 
@@ -166,7 +166,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 ## ✅ Cam Kết Chất Lượng
 
 - **Toàn bộ mã nguồn biên dịch được** bằng `rustc` bản ổn định, Rust 2024 Edition — và bạn có thể tự kiểm chứng bằng `cargo build --workspace`.
-- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 992 passed, 0 failed.
+- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 994 passed, 0 failed.
 - **`cargo clippy --workspace --all-targets -- -D warnings` sạch.** Những chỗ cố ý viết dài để *dạy* (ví dụ `assert_eq!(x.and_then(f), x.map(f).flatten())` kiểm chứng **luật Monad**) được giữ nguyên bằng `#[allow(clippy::…)]` cục bộ kèm chú thích giải thích vì sao. Đừng chạy `clippy --fix` mù quáng trên kho này.
 - **`cargo fmt --check` sạch**, và GitHub Actions chạy cả bốn bước (fmt, clippy, build, test) trên mỗi push/PR.
 - Các đoạn mã **cố tình sai** (dùng để minh họa lỗi biên dịch) đều được đánh dấu rõ bằng ký hiệu `❌` và đóng trong dấu chú thích, để chúng không phá vỡ quá trình biên dịch.

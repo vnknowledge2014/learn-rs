@@ -288,23 +288,50 @@ impl DistributedOrderEngine {
     /// Phát lại toàn bộ tệp nhật ký WAL để phục hồi trạng thái sau sự cố (Crash Recovery):
     /// đơn hàng (bản ghi sau đè bản ghi trước), khóa chống trùng lặp, và tồn kho.
     fn recover_from_wal(&mut self) -> io::Result<()> {
-        let reader = BufReader::new(File::open(&self.wal_path)?);
+        let mut reader = BufReader::new(File::open(&self.wal_path)?);
 
         let orders = self.orders.get_mut().unwrap();
         let keys = self.idempotency_keys.get_mut().unwrap();
         let mut skipped = 0;
-        for line in reader.lines() {
-            match OrderEntity::from_wal_line(&line?) {
+        // Số byte của phần nhật ký còn nguyên vẹn (chỉ tính dòng có '\n' và đọc được)
+        let mut valid_len: u64 = 0;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let n = reader.read_line(&mut line)?;
+            if n == 0 {
+                break;
+            }
+            let parsed = if line.ends_with('\n') {
+                OrderEntity::from_wal_line(line.trim_end())
+            } else {
+                None
+            };
+            match parsed {
                 Some(order) => {
                     keys.insert(
                         order.idempotency_key.clone(),
                         IdempotencyState::Completed(order.order_id),
                     );
                     orders.insert(order.order_id, order);
+                    valid_len += n as u64;
                 }
-                // Dòng cuối ghi dở khi mất điện: bỏ qua, KHÔNG đoán bừa giá trị 0
-                None => skipped += 1,
+                // Dòng ghi dở khi mất điện: KHÔNG đoán bừa giá trị 0, và dừng ở đây —
+                // mọi thứ phía sau một dòng hỏng đều không đáng tin.
+                None => {
+                    skipped += 1;
+                    break;
+                }
             }
+        }
+
+        // CẮT BỎ đuôi rách khỏi tệp. Nếu chỉ bỏ qua khi đọc mà để nguyên trên đĩa, bản ghi
+        // kế tiếp (mở ở chế độ append) sẽ dính liền vào rác thành MỘT dòng hỏng — và một
+        // đơn hàng đã fsync, đã trả Ok cho khách sẽ biến mất ở lần khôi phục sau.
+        if skipped > 0 {
+            let file = self.wal_file.get_mut().unwrap();
+            file.set_len(valid_len)?;
+            file.sync_all()?;
         }
 
         // Tồn kho không được lưu riêng: suy ra từ các đơn đang giữ hàng
@@ -670,6 +697,24 @@ mod tests {
         let engine = DistributedOrderEngine::open(&path, Arc::clone(&inventory)).unwrap();
         assert_eq!(engine.total_orders(), 1);
         assert_eq!(inventory.get_available_stock(7), 4);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn order_written_after_torn_tail_survives_next_restart() {
+        let path = temp_wal("torn_then_write");
+        std::fs::write(&path, "1|1|7|10|PAID|A\n2|1|7|1").unwrap();
+        {
+            let inventory = Arc::new(InventoryManager::with_stock(&[(7, 5)]));
+            let engine = DistributedOrderEngine::open(&path, inventory).unwrap();
+            // Ghi một đơn mới SAU đuôi rách và nhận Ok (đã fsync)
+            assert!(engine.submit_order("C", 3, 1, 7, 10).is_ok());
+        }
+        // Khởi động lại lần nữa: đơn #3 đã được xác nhận phải còn nguyên
+        let inventory = Arc::new(InventoryManager::with_stock(&[(7, 5)]));
+        let engine = DistributedOrderEngine::open(&path, Arc::clone(&inventory)).unwrap();
+        assert_eq!(engine.total_orders(), 2);
+        assert_eq!(inventory.get_available_stock(7), 3);
         let _ = std::fs::remove_file(&path);
     }
 
