@@ -7,7 +7,7 @@
 // ============================================================================
 
 macro_rules! phep_tinh_noi_bo {
-    ( $input:expr_2021 ) => {{
+    ( $input:expr ) => {{
         // Khai báo biến tạm mang tên 'temp_value' bên trong macro
         let temp_value = $input * 2;
         println!("  [Trong Macro] gia_tri_tam = {}", temp_value);
@@ -23,7 +23,7 @@ macro_rules! phep_tinh_noi_bo {
 macro_rules! tao_ma_tran {
     (
         $(
-            [ $( $phan_tu:expr_2021 ),* $(,)? ]
+            [ $( $phan_tu:expr ),* $(,)? ]
         ),*
         $(,)?
     ) => {
@@ -42,22 +42,22 @@ macro_rules! tao_ma_tran {
 /// Macro đệ quy phân tích chuỗi phép toán từ trái sang phải
 macro_rules! tinh_bieu_thuc_chuoi {
     // Nhánh dừng cơ sở: Chỉ còn lại duy nhất một giá trị
-    ( $value:expr_2021 ) => {
+    ( $value:expr ) => {
         $value
     };
 
     // Nhánh đệ quy phép cộng: (x + y + rest...) -> tinh_bieu_thuc_chuoi!((x + y) + rest...)
-    ( $x:expr_2021, +, $y:expr_2021 $(, $below:tt )* ) => {
+    ( $x:expr, +, $y:expr $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x + $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép nhân: (x * y * rest...)
-    ( $x:expr_2021, *, $y:expr_2021 $(, $below:tt )* ) => {
+    ( $x:expr, *, $y:expr $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x * $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép trừ: (x - y - rest...)
-    ( $x:expr_2021, -, $y:expr_2021 $(, $below:tt )* ) => {
+    ( $x:expr, -, $y:expr $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x - $y) $(, $below )* )
     };
 }

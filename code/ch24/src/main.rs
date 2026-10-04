@@ -80,7 +80,7 @@ pub fn safe_transfer(
 
 /// Macro dạng hàm phân tích chuỗi cấu hình dạng "KEY=VALUE;KEY=VALUE" lúc biên dịch
 macro_rules! phan_tich_cau_hinh {
-    ( $( $key:ident = $value:expr_2021 );* $(;)? ) => {
+    ( $( $key:ident = $value:expr );* $(;)? ) => {
         {
             let mut ban_do = HashMap::new();
             $(

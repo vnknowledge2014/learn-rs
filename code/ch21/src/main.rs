@@ -13,7 +13,7 @@ use std::time::Instant;
 /// Hỗ trợ dấu phẩy tùy chọn ở cuối cùng $(,)?
 macro_rules! tao_ban_do {
     // Nhánh xử lý: $( $khoa:expr => $value:expr ),*
-    ( $( $key:expr_2021 => $value:expr_2021 ),* $(,)? ) => {
+    ( $( $key:expr => $value:expr ),* $(,)? ) => {
         {
             let mut ban_do = HashMap::new();
             $(
@@ -40,7 +40,7 @@ macro_rules! kiem_toan_bien {
             line!()
         );
     };
-    ( $nhan_dan:expr_2021, $bieu_thuc:expr_2021 ) => {
+    ( $nhan_dan:expr, $bieu_thuc:expr ) => {
         println!(
             "[KIỂM TOÁN: {}] Biểu thức `{}` có giá trị = {:?} (Dòng: {})",
             $nhan_dan,
@@ -58,7 +58,7 @@ macro_rules! kiem_toan_bien {
 /// Macro nhận một nhãn mô tả $ten:expr và một khối mã $khoi:block
 /// Trả về trực tiếp kết quả của khối mã đó!
 macro_rules! do_luong_thoi_gian {
-    ( $name:expr_2021, $khoi:block ) => {{
+    ( $name:expr, $khoi:block ) => {{
         println!(">>> [BẮT ĐẦU ĐO] {}", $name);
         let start = Instant::now();
         let ket_qua = $khoi; // Thực thi khối lệnh
