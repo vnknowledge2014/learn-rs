@@ -105,7 +105,11 @@ pub fn ghep2<A, B>(a: Validation<A>, b: Validation<B>) -> Validation<(A, B)> {
 }
 
 /// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
-pub fn ghep3<A, B, C>(a: Validation<A>, b: Validation<B>, c: Validation<C>) -> Validation<(A, B, C)> {
+pub fn ghep3<A, B, C>(
+    a: Validation<A>,
+    b: Validation<B>,
+    c: Validation<C>,
+) -> Validation<(A, B, C)> {
     ghep2(ghep2(a, b), c).fmap(|((x, y), z)| (x, y, z))
 }
 
@@ -218,8 +222,16 @@ fn main() {
     let hop_result: Result<i32, String> = Ok(21);
     let hop_vec: Vec<i32> = vec![1, 2, 3];
 
-    println!("   Option : {:?} -> {:?}", hop_option, hop_option.map(|x| x * 2));
-    println!("   Result : {:?} -> {:?}", hop_result.clone(), hop_result.map(|x| x * 2));
+    println!(
+        "   Option : {:?} -> {:?}",
+        hop_option,
+        hop_option.map(|x| x * 2)
+    );
+    println!(
+        "   Result : {:?} -> {:?}",
+        hop_result.clone(),
+        hop_result.map(|x| x * 2)
+    );
     println!(
         "   Vec    : {:?} -> {:?}",
         hop_vec.clone(),
@@ -227,7 +239,11 @@ fn main() {
     );
 
     let hop_rong: Option<i32> = None;
-    println!("   Hộp rỗng vẫn rỗng: {:?} -> {:?}", hop_rong, hop_rong.map(|x| x * 2));
+    println!(
+        "   Hộp rỗng vẫn rỗng: {:?} -> {:?}",
+        hop_rong,
+        hop_rong.map(|x| x * 2)
+    );
 
     // Dùng trait Functor tổng quát tự viết (mô phỏng HKT)
     println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
@@ -303,7 +319,10 @@ fn main() {
     let result_good: Result<Vec<i32>, _> = tot.iter().map(|s| s.parse::<i32>()).collect();
     let result_hong: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
     println!("   Vec<Result> -> Result<Vec> (tốt) : {:?}", result_good);
-    println!("   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}", result_hong.is_err());
+    println!(
+        "   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}",
+        result_hong.is_err()
+    );
 
     let has_empty: Option<Vec<i32>> = vec![Some(1), None, Some(3)].into_iter().collect();
     let no_empty: Option<Vec<i32>> = vec![Some(1), Some(2)].into_iter().collect();
@@ -311,7 +330,10 @@ fn main() {
     println!("   Vec<Option> -> Option<Vec> (đủ)     : {:?}", no_empty);
 
     let lat: Option<Result<i32, String>> = Some(Ok(9));
-    println!("   Option<Result> --transpose--> Result<Option>: {:?}", lat.transpose());
+    println!(
+        "   Option<Result> --transpose--> Result<Option>: {:?}",
+        lat.transpose()
+    );
 
     // ------------------------------------------------------------------
     // 7. ALTERNATIVE: chuỗi phương án dự phòng
@@ -320,16 +342,19 @@ fn main() {
     let missing_field: Option<&str> = None;
     let from_config_file: Option<&str> = Some("8080");
     let gate = missing_field.or(from_config_file).unwrap_or("3000");
-    println!("   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)", gate);
+    println!(
+        "   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)",
+        gate
+    );
 
     // ------------------------------------------------------------------
     // 8. SO SÁNH TRỰC DIỆN: MONAD NGẮN MẠCH vs APPLICATIVE TÍCH LŨY
     // ------------------------------------------------------------------
     println!("\n8. NGẮN MẠCH (Monad) vs TÍCH LŨY LỖI (Applicative)");
     let don_hong = DonTho {
-        name: "An".into(),             // quá ngắn
+        name: "An".into(),            // quá ngắn
         email: "an-tai-gmail".into(), // thiếu @
-        age: "mười tám".into(),      // không phải số
+        age: "mười tám".into(),       // không phải số
     };
 
     println!("\n   [A] Dùng toán tử `?` (Monad — dừng ở lỗi đầu tiên):");
@@ -356,7 +381,10 @@ fn main() {
         age: " 28 ".into(),
     };
     println!("       Ngắn mạch: {:?}", register_short_circuit(&don_tot));
-    println!("       Tích lũy : hợp lệ = {}", register_accumulate(&don_tot).is_set());
+    println!(
+        "       Tích lũy : hợp lệ = {}",
+        register_accumulate(&don_tot).is_set()
+    );
 
     println!("\n============================================================");
     println!("  map = SƠN TRONG HỘP · zip = GỘP HỘP · and_then = MỞ HỘP   ");
@@ -457,7 +485,11 @@ mod tests {
         };
         // Toán tử `?` dừng ngay ở lỗi đầu tiên: chỉ nhận được 1 thông báo.
         let error = register_short_circuit(&don).unwrap_err();
-        assert!(error.contains("quá ngắn"), "Phải là lỗi ĐẦU TIÊN, nhận: {}", error);
+        assert!(
+            error.contains("quá ngắn"),
+            "Phải là lỗi ĐẦU TIÊN, nhận: {}",
+            error
+        );
     }
 
     #[test]

@@ -130,11 +130,11 @@ fn main() {
     // 2. Kiểm thử Mạng lưới Đồ thị và Thuật toán BFS
     println!("\n[2] Mô phỏng mạng xã hội kết nối bạn bè bằng Đồ thị & BFS:");
     let mut array_remote_hoi = Graph::new();
-    let an = array_remote_hoi.add_vertex("An");       // Đỉnh 0
-    let binh = array_remote_hoi.add_vertex("Bình");   // Đỉnh 1
-    let chi = array_remote_hoi.add_vertex("Chi");     // Đỉnh 2
-    let dung = array_remote_hoi.add_vertex("Dũng");   // Đỉnh 3
-    let hoa = array_remote_hoi.add_vertex("Hoa");     // Đỉnh 4 (ở xa)
+    let an = array_remote_hoi.add_vertex("An"); // Đỉnh 0
+    let binh = array_remote_hoi.add_vertex("Bình"); // Đỉnh 1
+    let chi = array_remote_hoi.add_vertex("Chi"); // Đỉnh 2
+    let dung = array_remote_hoi.add_vertex("Dũng"); // Đỉnh 3
+    let hoa = array_remote_hoi.add_vertex("Hoa"); // Đỉnh 4 (ở xa)
 
     // Thiết lập các mối quan hệ bạn bè (Cạnh)
     // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
@@ -143,17 +143,34 @@ fn main() {
     array_remote_hoi.add_edge(chi, dung);
     array_remote_hoi.add_edge(an, dung); // Lối tắt trực tiếp từ An đến Dũng!
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", array_remote_hoi.lay_ten(an), array_remote_hoi.lay_ten(chi));
+    println!(
+        "    - Tìm khoảng cách kết nối giữa '{}' và '{}':",
+        array_remote_hoi.lay_ten(an),
+        array_remote_hoi.lay_ten(chi)
+    );
     let distance_hidden_only = array_remote_hoi.bfs_shortest_distance(an, chi);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng", distance_hidden_only);
+    println!(
+        "      => Khoảng cách ngắn nhất: {:?} chặng",
+        distance_hidden_only
+    );
     assert_eq!(distance_hidden_only, Some(2)); // An -> Bình -> Chi hoặc An -> Dũng -> Chi
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", array_remote_hoi.lay_ten(an), array_remote_hoi.lay_ten(dung));
+    println!(
+        "    - Tìm khoảng cách kết nối giữa '{}' và '{}':",
+        array_remote_hoi.lay_ten(an),
+        array_remote_hoi.lay_ten(dung)
+    );
     let distance_hidden_use = array_remote_hoi.bfs_shortest_distance(an, dung);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", distance_hidden_use);
+    println!(
+        "      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)",
+        distance_hidden_use
+    );
     assert_eq!(distance_hidden_use, Some(1));
 
-    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(hoa));
+    println!(
+        "    - Tìm khoảng cách đến '{}' (Chưa có kết nối):",
+        array_remote_hoi.lay_ten(hoa)
+    );
     let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, hoa);
     println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
     assert_eq!(distance_to_c, None);
@@ -171,7 +188,6 @@ fn main() {
     println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 26               ");
     println!("============================================================");
 }
-
 
 #[cfg(test)]
 mod tests {

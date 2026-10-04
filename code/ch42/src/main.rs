@@ -133,7 +133,10 @@ fn main() {
     }
 
     let overflow_dos_attempt = "A".repeat(128);
-    println!("    - Thu gui chuoi tan cong DoS dai {} bytes...", overflow_dos_attempt.len());
+    println!(
+        "    - Thu gui chuoi tan cong DoS dai {} bytes...",
+        overflow_dos_attempt.len()
+    );
     match security_gate.sanitize_command_input(&overflow_dos_attempt) {
         Ok(_) => println!("    [!] [CANH BAO] Payload DoS da duoc chap nhan!"),
         Err(err) => println!("    [+] [CHAN DUNG AN TOAN] {}", err),

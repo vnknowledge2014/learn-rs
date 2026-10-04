@@ -64,17 +64,17 @@ pub fn handle_declaration(list: &[Item]) -> (f64, Vec<String>) {
     // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
     let tong_doanh_thu: f64 = list
         .iter()
-        .filter(|queue| queue.is_paid)             // Bước 1: Lọc hàng đã trả tiền
-        .map(|queue| to_money(queue))             // Bước 2: Chuyển đổi thành tiền
-        .filter(|&tien| tien >= 50.0)                  // Bước 3: Chỉ lấy món từ 50k trở lên
-        .sum();                                        // Bước 4: Gom tụ tính tổng
+        .filter(|queue| queue.is_paid) // Bước 1: Lọc hàng đã trả tiền
+        .map(|queue| to_money(queue)) // Bước 2: Chuyển đổi thành tiền
+        .filter(|&tien| tien >= 50.0) // Bước 3: Chỉ lấy món từ 50k trở lên
+        .sum(); // Bước 4: Gom tụ tính tổng
 
     // 2. Nhánh trích xuất danh sách tên mặt hàng
     let names: Vec<String> = list
         .iter()
         .filter(|queue| queue.is_paid && to_money(queue) >= 50.0)
-        .map(|queue| queue.product_name.clone())             // Ánh xạ sang chuỗi tên
-        .collect();                                    // Gom vào vector mới
+        .map(|queue| queue.product_name.clone()) // Ánh xạ sang chuỗi tên
+        .collect(); // Gom vào vector mới
 
     (tong_doanh_thu, names)
 }
@@ -136,6 +136,9 @@ fn main() {
 
     // Minh họa hàm thuần túy tính chiết khấu khuyến mãi độc lập
     let total_next_down = apply_down_price(doanh_thu_2, 10.0); // Giảm giá 10%
-    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
+    println!(
+        "\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng",
+        total_next_down
+    );
     println!("============================================================");
 }

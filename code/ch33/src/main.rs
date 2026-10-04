@@ -11,10 +11,7 @@ pub enum BPlusNode<K: Ord + Copy, V: Clone> {
         children: Vec<Box<BPlusNode<K, V>>>,
     },
     /// NÚT LÁ (Leaf Node): Chứa Khóa và Dữ liệu thực tế
-    Leaf {
-        keys: Vec<K>,
-        values: Vec<V>,
-    },
+    Leaf { keys: Vec<K>, values: Vec<V> },
 }
 
 impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
@@ -61,8 +58,16 @@ impl<K: Ord + Copy, V: Clone> BPlusNode<K, V> {
             BPlusNode::Internal { keys, children } => {
                 for (i, child) in children.iter().enumerate() {
                     // Tối ưu hóa: Chỉ đi xuống nhánh con nếu khoảng khóa có giao thoa
-                    let gioi_han_duoi_thoa = if i == 0 { true } else { keys[i - 1] <= *max_key };
-                    let gioi_han_tren_thoa = if i == keys.len() { true } else { keys[i] >= *min_key };
+                    let gioi_han_duoi_thoa = if i == 0 {
+                        true
+                    } else {
+                        keys[i - 1] <= *max_key
+                    };
+                    let gioi_han_tren_thoa = if i == keys.len() {
+                        true
+                    } else {
+                        keys[i] >= *min_key
+                    };
                     if gioi_han_duoi_thoa && gioi_han_tren_thoa {
                         child.range_scan(min_key, max_key, ket_qua);
                     }

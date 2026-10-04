@@ -14,17 +14,37 @@
 // nhưng cho ra kết quả hoàn toàn khác. Nhầm lẫn này làm hỏng vô số thư viện.
 
 const RC: [u64; 24] = [
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
-    0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
-    0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
-    0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
-    0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
+    0x0000000000000001,
+    0x0000000000008082,
+    0x800000000000808a,
+    0x8000000080008000,
+    0x000000000000808b,
+    0x0000000080000001,
+    0x8000000080008081,
+    0x8000000000008009,
+    0x000000000000008a,
+    0x0000000000000088,
+    0x0000000080008009,
+    0x000000008000000a,
+    0x000000008000808b,
+    0x800000000000008b,
+    0x8000000000008089,
+    0x8000000000008003,
+    0x8000000000008002,
+    0x8000000000000080,
+    0x000000000000800a,
+    0x800000008000000a,
+    0x8000000080008081,
+    0x8000000000008080,
+    0x0000000080000001,
+    0x8000000080008008,
 ];
-const ROTC: [u32; 24] = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14,
-                         27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44];
-const PIL: [usize; 24] = [10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4,
-                          15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];
+const ROTC: [u32; 24] = [
+    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
+];
+const PIL: [usize; 24] = [
+    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
+];
 
 /// Hoán vị Keccak-f[1600] — 24 vòng trên trạng thái 5×5 lane 64-bit.
 fn keccak_f(a: &mut [u64; 25]) {
@@ -36,7 +56,9 @@ fn keccak_f(a: &mut [u64; 25]) {
         }
         for x in 0..5 {
             let t = bc[(x + 4) % 5] ^ bc[(x + 1) % 5].rotate_left(1);
-            for y in (0..25).step_by(5) { a[y + x] ^= t; }
+            for y in (0..25).step_by(5) {
+                a[y + x] ^= t;
+            }
         }
         // ρ (rho) + π (pi): xoay từng lane rồi hoán vị vị trí
         let mut t = a[1];
@@ -48,8 +70,12 @@ fn keccak_f(a: &mut [u64; 25]) {
         }
         // χ (chi): phi tuyến — đây là bước DUY NHẤT không tuyến tính
         for y in (0..25).step_by(5) {
-            for x in 0..5 { bc[x] = a[y + x]; }
-            for x in 0..5 { a[y + x] ^= (!bc[(x + 1) % 5]) & bc[(x + 2) % 5]; }
+            for x in 0..5 {
+                bc[x] = a[y + x];
+            }
+            for x in 0..5 {
+                a[y + x] ^= (!bc[(x + 1) % 5]) & bc[(x + 2) % 5];
+            }
         }
         // ι (iota): phá đối xứng bằng hằng số vòng
         a[0] ^= RC[round];
@@ -64,7 +90,9 @@ pub fn keccak256(data: &[u8]) -> [u8; 32] {
     count.extend_from_slice(data);
     // Đệm pad10*1 với byte miền 0x01 — CHỖ NÀY khác SHA3-256 (dùng 0x06)
     count.push(0x01);
-    while count.len() % RATE != 0 { count.push(0x00); }
+    while count.len() % RATE != 0 {
+        count.push(0x00);
+    }
     let n = count.len();
     count[n - 1] |= 0x80;
 
@@ -75,11 +103,15 @@ pub fn keccak256(data: &[u8]) -> [u8; 32] {
         keccak_f(&mut a);
     }
     let mut ra = [0u8; 32];
-    for i in 0..4 { ra[i * 8..i * 8 + 8].copy_from_slice(&a[i].to_le_bytes()); }
+    for i in 0..4 {
+        ra[i * 8..i * 8 + 8].copy_from_slice(&a[i].to_le_bytes());
+    }
     ra
 }
 
-pub fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect() }
+pub fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{:02x}", x)).collect()
+}
 
 // ============================================================================
 // 2. CHỮ KÝ HÀM — 4 byte quyết định EVM gọi hàm nào
@@ -97,7 +129,9 @@ pub fn selector(signature: &str) -> [u8; 4] {
 }
 
 /// Chủ đề sự kiện (topic0) dùng cả 32 byte, nên an toàn hơn hẳn.
-pub fn event_topic(signature: &str) -> [u8; 32] { keccak256(signature.as_bytes()) }
+pub fn event_topic(signature: &str) -> [u8; 32] {
+    keccak256(signature.as_bytes())
+}
 
 // ============================================================================
 // 3. MÃ HOÁ ABI — quy tắc xếp tham số thành các ô 32 byte
@@ -120,7 +154,10 @@ pub enum AbiValue {
 
 impl AbiValue {
     pub fn la_dong(&self) -> bool {
-        matches!(self, AbiValue::Bytes(_) | AbiValue::Text(_) | AbiValue::MangUint(_))
+        matches!(
+            self,
+            AbiValue::Bytes(_) | AbiValue::Text(_) | AbiValue::MangUint(_)
+        )
     }
 
     fn o_32(v: u128) -> [u8; 32] {
@@ -156,13 +193,17 @@ impl AbiValue {
             AbiValue::Bytes(b) => {
                 let mut v = Self::o_32(b.len() as u128).to_vec();
                 v.extend_from_slice(b);
-                while v.len() % 32 != 0 { v.push(0); }
+                while v.len() % 32 != 0 {
+                    v.push(0);
+                }
                 v
             }
             AbiValue::Text(s) => AbiValue::Bytes(s.as_bytes().to_vec()).part_below(),
             AbiValue::MangUint(m) => {
                 let mut v = Self::o_32(m.len() as u128).to_vec();
-                for x in m { v.extend_from_slice(&Self::o_32(*x)); }
+                for x in m {
+                    v.extend_from_slice(&Self::o_32(*x));
+                }
                 v
             }
             _ => Vec::new(),
@@ -202,13 +243,17 @@ pub fn dung_calldata(signature: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
 pub fn doc_uint(data: &[u8], chi_so: usize) -> Option<u128> {
     let d = data.get(chi_so * 32..chi_so * 32 + 32)?;
     // 16 byte cao phải bằng 0, nếu không thì giá trị vượt u128
-    if d[..16].iter().any(|&b| b != 0) { return None; }
+    if d[..16].iter().any(|&b| b != 0) {
+        return None;
+    }
     Some(u128::from_be_bytes(d[16..].try_into().ok()?))
 }
 
 pub fn read_address(data: &[u8], chi_so: usize) -> Option<Address> {
     let d = data.get(chi_so * 32..chi_so * 32 + 32)?;
-    if d[..12].iter().any(|&b| b != 0) { return None; } // 12 byte đệm phải là 0
+    if d[..12].iter().any(|&b| b != 0) {
+        return None;
+    } // 12 byte đệm phải là 0
     d[12..].try_into().ok()
 }
 
@@ -217,7 +262,10 @@ pub fn read_address(data: &[u8], chi_so: usize) -> Option<Address> {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Rlp { Text(Vec<u8>), DanhSach(Vec<Rlp>) }
+pub enum Rlp {
+    Text(Vec<u8>),
+    DanhSach(Vec<Rlp>),
+}
 
 impl Rlp {
     pub fn encode(&self) -> Vec<u8> {
@@ -233,7 +281,9 @@ impl Rlp {
             }
             Rlp::DanhSach(list) => {
                 let mut than = Vec::new();
-                for x in list { than.extend_from_slice(&x.encode()); }
+                for x in list {
+                    than.extend_from_slice(&x.encode());
+                }
                 let mut v = Self::prefix(than.len(), 0xC0);
                 v.extend_from_slice(&than);
                 v
@@ -257,7 +307,9 @@ impl Rlp {
     /// Số nguyên trong RLP dùng big-endian KHÔNG có số 0 thừa ở đầu.
     /// Số 0 mã hoá thành chuỗi RỖNG, không phải byte 0x00 — điểm hay bị sai.
     pub fn numerator(v: u128) -> Rlp {
-        if v == 0 { return Rlp::Text(vec![]); }
+        if v == 0 {
+            return Rlp::Text(vec![]);
+        }
         let b = v.to_be_bytes();
         let bo_qua = b.iter().position(|&x| x != 0).unwrap();
         Rlp::Text(b[bo_qua..].to_vec())
@@ -271,11 +323,11 @@ impl Rlp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tx1559 {
     pub chain_id: u64,
-    pub nonce: u64,           // nonce
+    pub nonce: u64,             // nonce
     pub max_priority_fee: u128, // tiền "boa" cho người xây khối
-    pub max_fee: u128,         // trần tổng phí mỗi đơn vị gas
+    pub max_fee: u128,          // trần tổng phí mỗi đơn vị gas
     pub gas_limit: u64,
-    pub den: Option<Address>,      // None = tạo hợp đồng mới
+    pub den: Option<Address>, // None = tạo hợp đồng mới
     pub value: u128,
     pub data: Vec<u8>,
 }
@@ -290,7 +342,10 @@ impl Tx1559 {
             Rlp::numerator(self.max_priority_fee),
             Rlp::numerator(self.max_fee),
             Rlp::numerator(self.gas_limit as u128),
-            match self.den { Some(a) => Rlp::Text(a.to_vec()), None => Rlp::Text(vec![]) },
+            match self.den {
+                Some(a) => Rlp::Text(a.to_vec()),
+                None => Rlp::Text(vec![]),
+            },
             Rlp::numerator(self.value),
             Rlp::Text(self.data.clone()),
             Rlp::DanhSach(vec![]), // danh sách truy cập (EIP-2930), để trống
@@ -300,7 +355,9 @@ impl Tx1559 {
         v
     }
 
-    pub fn id_hash_ky(&self) -> [u8; 32] { keccak256(&self.load_in_period()) }
+    pub fn id_hash_ky(&self) -> [u8; 32] {
+        keccak256(&self.load_in_period())
+    }
 
     /// Chi phí TỐI ĐA có thể bị trừ khỏi ví. Ví phải kiểm tra con số này
     /// chứ không phải phí thực tế — vì phí thực tế chỉ biết sau khi khai thác.
@@ -311,7 +368,9 @@ impl Tx1559 {
     /// Phí thực trả theo EIP-1559: phần đốt (base fee) + tiền boa, nhưng
     /// không bao giờ vượt trần người dùng đặt.
     pub fn effective_fee(&self, phi_co_ban: u128) -> u128 {
-        let boa = self.max_priority_fee.min(self.max_fee.saturating_sub(phi_co_ban));
+        let boa = self
+            .max_priority_fee
+            .min(self.max_fee.saturating_sub(phi_co_ban));
         phi_co_ban + boa
     }
 }
@@ -322,7 +381,9 @@ impl Tx1559 {
 // alloy sinh ra kiểu Rust từ ABI để bạn không tự tay ghép byte. Đây là bản
 // làm tay của cùng ý tưởng: mỗi hàm hợp đồng là một phương thức có kiểu rõ ràng.
 
-pub struct Erc20 { pub address: Address }
+pub struct Erc20 {
+    pub address: Address,
+}
 
 impl Erc20 {
     pub const CK_CHUYEN: &'static str = "transfer(address,uint256)";
@@ -331,16 +392,24 @@ impl Erc20 {
     pub const SK_CHUYEN: &'static str = "Transfer(address,address,uint256)";
 
     pub fn transfer(&self, den: Address, quantity: u128) -> Vec<u8> {
-        dung_calldata(Self::CK_CHUYEN, &[AbiValue::Address(den), AbiValue::Uint(quantity)])
+        dung_calldata(
+            Self::CK_CHUYEN,
+            &[AbiValue::Address(den), AbiValue::Uint(quantity)],
+        )
     }
     pub fn balance_of(&self, ai: Address) -> Vec<u8> {
         dung_calldata(Self::CK_SO_DU, &[AbiValue::Address(ai)])
     }
     pub fn approve(&self, ai: Address, quantity: u128) -> Vec<u8> {
-        dung_calldata(Self::CK_CHO_PHEP, &[AbiValue::Address(ai), AbiValue::Uint(quantity)])
+        dung_calldata(
+            Self::CK_CHO_PHEP,
+            &[AbiValue::Address(ai), AbiValue::Uint(quantity)],
+        )
     }
     /// Giải mã giá trị `uint256` trả về từ `eth_call`.
-    pub fn read_balance(ket_qua: &[u8]) -> Option<u128> { doc_uint(ket_qua, 0) }
+    pub fn read_balance(ket_qua: &[u8]) -> Option<u128> {
+        doc_uint(ket_qua, 0)
+    }
 }
 
 pub fn address_from_hex(s: &str) -> Address {
@@ -359,18 +428,30 @@ fn main() {
 
     println!("\n1. KECCAK-256 — đối chiếu vector chuẩn");
     println!("   keccak256(\"\")    = {}", hex(&keccak256(b"")));
-    println!("   kỳ vọng           = c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+    println!(
+        "   kỳ vọng           = c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    );
     println!("   keccak256(\"abc\") = {}", hex(&keccak256(b"abc")));
 
     println!("\n2. CHỮ KÝ HÀM — con số bạn thấy trong mọi log Ethereum");
-    for ck in [Erc20::CK_CHUYEN, Erc20::CK_SO_DU, Erc20::CK_CHO_PHEP,
-               "transferFrom(address,address,uint256)", "totalSupply()"] {
+    for ck in [
+        Erc20::CK_CHUYEN,
+        Erc20::CK_SO_DU,
+        Erc20::CK_CHO_PHEP,
+        "transferFrom(address,address,uint256)",
+        "totalSupply()",
+    ] {
         println!("   0x{} ← {}", hex(&selector(ck)), ck);
     }
-    println!("   topic0 sự kiện Transfer = 0x{}", hex(&event_topic(Erc20::SK_CHUYEN)));
+    println!(
+        "   topic0 sự kiện Transfer = 0x{}",
+        hex(&event_topic(Erc20::SK_CHUYEN))
+    );
 
     println!("\n3. MÃ HOÁ ABI");
-    let token = Erc20 { address: address_from_hex("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") };
+    let token = Erc20 {
+        address: address_from_hex("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+    };
     let den = address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
     let cd = token.transfer(den, 1_000_000);
     println!("   transfer(0x742d…f44e, 1000000) → {} byte", cd.len());
@@ -384,37 +465,66 @@ fn main() {
         AbiValue::Text("xin chao".into()),
         AbiValue::Bool(true),
     ]);
-    println!("   (uint 42, string \"xin chao\", bool true) → {} byte", id.len());
+    println!(
+        "   (uint 42, string \"xin chao\", bool true) → {} byte",
+        id.len()
+    );
     println!("   ô 0 (uint)     : {}", hex(&id[0..32]));
-    println!("   ô 1 (con trỏ)  : {} ← trỏ tới byte {}", hex(&id[32..64]), doc_uint(&id, 1).unwrap());
+    println!(
+        "   ô 1 (con trỏ)  : {} ← trỏ tới byte {}",
+        hex(&id[32..64]),
+        doc_uint(&id, 1).unwrap()
+    );
     println!("   ô 2 (bool)     : {}", hex(&id[64..96]));
     println!("   ô 3 (độ dài)   : {}", hex(&id[96..128]));
     println!("   ô 4 (dữ liệu)  : {}", hex(&id[128..160]));
 
     println!("\n5. RLP");
-    println!("   RLP(\"dog\")         = {}", hex(&Rlp::Text(b"dog".to_vec()).encode()));
-    println!("   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)", hex(&Rlp::numerator(0).encode()));
-    println!("   RLP(15)             = {}", hex(&Rlp::numerator(15).encode()));
-    println!("   RLP(1024)           = {}", hex(&Rlp::numerator(1024).encode()));
-    println!("   RLP([\"cat\",\"dog\"]) = {}",
-             hex(&Rlp::DanhSach(vec![Rlp::Text(b"cat".to_vec()),
-                                     Rlp::Text(b"dog".to_vec())]).encode()));
+    println!(
+        "   RLP(\"dog\")         = {}",
+        hex(&Rlp::Text(b"dog".to_vec()).encode())
+    );
+    println!(
+        "   RLP(0)              = {} (chuỗi RỖNG, không phải 0x00)",
+        hex(&Rlp::numerator(0).encode())
+    );
+    println!(
+        "   RLP(15)             = {}",
+        hex(&Rlp::numerator(15).encode())
+    );
+    println!(
+        "   RLP(1024)           = {}",
+        hex(&Rlp::numerator(1024).encode())
+    );
+    println!(
+        "   RLP([\"cat\",\"dog\"]) = {}",
+        hex(&Rlp::DanhSach(vec![Rlp::Text(b"cat".to_vec()), Rlp::Text(b"dog".to_vec())]).encode())
+    );
 
     println!("\n6. GIAO DỊCH EIP-1559");
     let gd = Tx1559 {
-        chain_id: 1, nonce: 42,
-        max_priority_fee: 2_000_000_000,     // 2 gwei tiền boa
-        max_fee: 100_000_000_000,           // trần 100 gwei
+        chain_id: 1,
+        nonce: 42,
+        max_priority_fee: 2_000_000_000, // 2 gwei tiền boa
+        max_fee: 100_000_000_000,        // trần 100 gwei
         gas_limit: 65_000,
-        den: Some(token.address), value: 0, data: cd.clone(),
+        den: Some(token.address),
+        value: 0,
+        data: cd.clone(),
     };
-    println!("   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại giao dịch)",
-             gd.load_in_period().len(), gd.load_in_period()[0]);
+    println!(
+        "   Tải trọng ký: {} byte, bắt đầu bằng 0x{:02x} (loại giao dịch)",
+        gd.load_in_period().len(),
+        gd.load_in_period()[0]
+    );
     println!("   Băm để ký   : 0x{}", hex(&gd.id_hash_ky()));
     println!("   Chi phí tối đa bị khoá: {} wei", gd.chi_phi_toi_da());
     for phi_co_ban in [10_000_000_000u128, 50_000_000_000, 99_000_000_000] {
-        println!("   base fee {:>3} gwei → thực trả {:>3} gwei/gas",
-                 phi_co_ban / 1_000_000_000, gd.effective_fee(phi_co_ban) / 1_000_000_000);
+        println!(
+            "   base fee {:>3} gwei → thực trả {:>3} gwei/gas",
+            phi_co_ban / 1_000_000_000,
+            gd.effective_fee(phi_co_ban) / 1_000_000_000
+        );
     }
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -430,12 +540,18 @@ mod tests {
     #[test]
     fn keccak_matches_reference_vectors() {
         // Nếu bài này hỏng thì mọi thứ phía sau đều vô nghĩa.
-        assert_eq!(hex(&keccak256(b"")),
-            "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
-        assert_eq!(hex(&keccak256(b"abc")),
-            "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45");
-        assert_eq!(hex(&keccak256(b"testing")),
-            "5f16f4c7f149ac4f9510d9cf8cf384038ad348b3bcdc01915f95de12df9d1b02");
+        assert_eq!(
+            hex(&keccak256(b"")),
+            "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        );
+        assert_eq!(
+            hex(&keccak256(b"abc")),
+            "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
+        );
+        assert_eq!(
+            hex(&keccak256(b"testing")),
+            "5f16f4c7f149ac4f9510d9cf8cf384038ad348b3bcdc01915f95de12df9d1b02"
+        );
     }
 
     #[test]
@@ -446,7 +562,11 @@ mod tests {
         for n in [0usize, 1, 135, 136, 137, 271, 272, 273, 500] {
             let b = keccak256(&vec![b'a'; n]);
             assert_eq!(b.len(), 32);
-            assert!(seen.insert(b), "độ dài {} cho ra băm trùng với độ dài khác", n);
+            assert!(
+                seen.insert(b),
+                "độ dài {} cho ra băm trùng với độ dài khác",
+                n
+            );
             // tất định
             assert_eq!(keccak256(&vec![b'a'; n]), b);
         }
@@ -461,7 +581,12 @@ mod tests {
         for index in [0usize, 135, 136, 200, 271, 272, 299] {
             let mut fix = root.clone();
             fix[index] ^= 1;
-            assert_ne!(keccak256(&fix), root_hash, "lật byte {} mà băm không đổi", index);
+            assert_ne!(
+                keccak256(&fix),
+                root_hash,
+                "lật byte {} mà băm không đổi",
+                index
+            );
         }
     }
 
@@ -471,10 +596,18 @@ mod tests {
         for i in 0..64u8 {
             let a = keccak256(&[i, 0]);
             let b = keccak256(&[i, 1]);
-            tong += a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum::<u32>();
+            tong += a
+                .iter()
+                .zip(b.iter())
+                .map(|(x, y)| (x ^ y).count_ones())
+                .sum::<u32>();
         }
         let tb = tong as f64 / 64.0;
-        assert!((tb - 128.0).abs() < 15.0, "trung bình {} bit đổi, kỳ vọng ~128", tb);
+        assert!(
+            (tb - 128.0).abs() < 15.0,
+            "trung bình {} bit đổi, kỳ vọng ~128",
+            tb
+        );
     }
 
     // ---------- Chữ ký hàm ----------
@@ -485,21 +618,28 @@ mod tests {
         assert_eq!(hex(&selector("transfer(address,uint256)")), "a9059cbb");
         assert_eq!(hex(&selector("balanceOf(address)")), "70a08231");
         assert_eq!(hex(&selector("approve(address,uint256)")), "095ea7b3");
-        assert_eq!(hex(&selector("transferFrom(address,address,uint256)")), "23b872dd");
+        assert_eq!(
+            hex(&selector("transferFrom(address,address,uint256)")),
+            "23b872dd"
+        );
         assert_eq!(hex(&selector("totalSupply()")), "18160ddd");
     }
 
     #[test]
     fn transfer_event_topic0_is_correct() {
-        assert_eq!(hex(&event_topic("Transfer(address,address,uint256)")),
-            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
+        assert_eq!(
+            hex(&event_topic("Transfer(address,address,uint256)")),
+            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        );
     }
 
     #[test]
     fn whitespace_in_signature_changes_the_selector() {
         // Chữ ký phải viết SÁT, không dấu cách. Sai chỗ này là gọi nhầm hàm.
-        assert_ne!(selector("transfer(address,uint256)"),
-                   selector("transfer(address, uint256)"));
+        assert_ne!(
+            selector("transfer(address,uint256)"),
+            selector("transfer(address, uint256)")
+        );
     }
 
     // ---------- ABI ----------
@@ -517,13 +657,20 @@ mod tests {
         let m = abi_encode(&[AbiValue::Address(a)]);
         assert!(m[..12].iter().all(|&b| b == 0), "12 byte đầu phải là đệm");
         assert_eq!(&m[12..32], &a);
-        assert_eq!(read_address(&m, 0), Some(a), "đọc ngược phải ra đúng địa chỉ");
+        assert_eq!(
+            read_address(&m, 0),
+            Some(a),
+            "đọc ngược phải ra đúng địa chỉ"
+        );
     }
 
     #[test]
     fn negative_ints_are_sign_extended_with_ff() {
         let m = abi_encode(&[AbiValue::Int(-1)]);
-        assert!(m.iter().all(|&b| b == 0xFF), "-1 trong bù hai là toàn bit 1");
+        assert!(
+            m.iter().all(|&b| b == 0xFF),
+            "-1 trong bù hai là toàn bit 1"
+        );
         let m2 = abi_encode(&[AbiValue::Int(1)]);
         assert!(m2[..31].iter().all(|&b| b == 0), "số dương thì đệm 0");
     }
@@ -542,8 +689,16 @@ mod tests {
             AbiValue::Bool(true),
         ]);
         assert_eq!(doc_uint(&m, 0), Some(42));
-        assert_eq!(doc_uint(&m, 1), Some(96), "con trỏ trỏ ngay sau phần đầu (3 ô × 32)");
-        assert_eq!(doc_uint(&m, 2), Some(1), "bool nằm ở ô 2, không bị đẩy đi đâu");
+        assert_eq!(
+            doc_uint(&m, 1),
+            Some(96),
+            "con trỏ trỏ ngay sau phần đầu (3 ô × 32)"
+        );
+        assert_eq!(
+            doc_uint(&m, 2),
+            Some(1),
+            "bool nằm ở ô 2, không bị đẩy đi đâu"
+        );
         assert_eq!(doc_uint(&m, 3), Some(8), "ô đầu phần đuôi là độ dài chuỗi");
         assert_eq!(&m[128..136], b"xin chao");
     }
@@ -552,7 +707,11 @@ mod tests {
     fn dynamic_data_is_padded_to_32_bytes() {
         let m = abi_encode(&[AbiValue::Text("a".into())]);
         assert_eq!(m.len() % 32, 0, "toàn bộ mã hoá ABI luôn là bội của 32");
-        assert_eq!(m.len(), 32 + 32 + 32, "con trỏ + độ dài + 1 ô dữ liệu đã đệm");
+        assert_eq!(
+            m.len(),
+            32 + 32 + 32,
+            "con trỏ + độ dài + 1 ô dữ liệu đã đệm"
+        );
     }
 
     #[test]
@@ -593,7 +752,11 @@ mod tests {
     fn decoding_rejects_uint_beyond_u128() {
         let mut d = [0u8; 32];
         d[0] = 1; // bit cao của uint256, vượt xa u128
-        assert_eq!(doc_uint(&d, 0), None, "phải báo lỗi chứ không cắt cụt âm thầm");
+        assert_eq!(
+            doc_uint(&d, 0),
+            None,
+            "phải báo lỗi chứ không cắt cụt âm thầm"
+        );
     }
 
     #[test]
@@ -610,11 +773,19 @@ mod tests {
         assert_eq!(hex(&Rlp::Text(b"dog".to_vec()).encode()), "83646f67");
         assert_eq!(hex(&Rlp::Text(vec![]).encode()), "80");
         assert_eq!(hex(&Rlp::DanhSach(vec![]).encode()), "c0");
-        assert_eq!(hex(&Rlp::Text(vec![0x0f]).encode()), "0f", "byte nhỏ tự mã hoá");
+        assert_eq!(
+            hex(&Rlp::Text(vec![0x0f]).encode()),
+            "0f",
+            "byte nhỏ tự mã hoá"
+        );
         assert_eq!(hex(&Rlp::Text(vec![0x04, 0x00]).encode()), "820400");
-        assert_eq!(hex(&Rlp::DanhSach(vec![
-            Rlp::Text(b"cat".to_vec()), Rlp::Text(b"dog".to_vec())]).encode()),
-            "c88363617483646f67");
+        assert_eq!(
+            hex(
+                &Rlp::DanhSach(vec![Rlp::Text(b"cat".to_vec()), Rlp::Text(b"dog".to_vec())])
+                    .encode()
+            ),
+            "c88363617483646f67"
+        );
     }
 
     #[test]
@@ -650,11 +821,14 @@ mod tests {
     // ---------- Giao dịch ----------
     fn sample_tx() -> Tx1559 {
         Tx1559 {
-            chain_id: 1, nonce: 42,
+            chain_id: 1,
+            nonce: 42,
             max_priority_fee: 2_000_000_000,
             max_fee: 100_000_000_000,
             gas_limit: 21_000,
-            den: Some(address_from_hex("0x742d35Cc6634C0532925a3b844Bc454e4438f44e")),
+            den: Some(address_from_hex(
+                "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            )),
             value: 1_000_000_000_000_000_000, // 1 ETH
             data: vec![],
         }
@@ -662,7 +836,11 @@ mod tests {
 
     #[test]
     fn signing_payload_starts_with_the_tx_type() {
-        assert_eq!(sample_tx().load_in_period()[0], 0x02, "EIP-1559 là loại 0x02");
+        assert_eq!(
+            sample_tx().load_in_period()[0],
+            0x02,
+            "EIP-1559 là loại 0x02"
+        );
     }
 
     #[test]
@@ -672,14 +850,38 @@ mod tests {
         let root = sample_tx();
         let b0 = root.id_hash_ky();
         let bien_the: Vec<Tx1559> = vec![
-            Tx1559 { chain_id: 5, ..root.clone() },
-            Tx1559 { nonce: 43, ..root.clone() },
-            Tx1559 { max_priority_fee: 3_000_000_000, ..root.clone() },
-            Tx1559 { max_fee: 90_000_000_000, ..root.clone() },
-            Tx1559 { gas_limit: 30_000, ..root.clone() },
-            Tx1559 { den: None, ..root.clone() },
-            Tx1559 { value: 2, ..root.clone() },
-            Tx1559 { data: vec![1], ..root.clone() },
+            Tx1559 {
+                chain_id: 5,
+                ..root.clone()
+            },
+            Tx1559 {
+                nonce: 43,
+                ..root.clone()
+            },
+            Tx1559 {
+                max_priority_fee: 3_000_000_000,
+                ..root.clone()
+            },
+            Tx1559 {
+                max_fee: 90_000_000_000,
+                ..root.clone()
+            },
+            Tx1559 {
+                gas_limit: 30_000,
+                ..root.clone()
+            },
+            Tx1559 {
+                den: None,
+                ..root.clone()
+            },
+            Tx1559 {
+                value: 2,
+                ..root.clone()
+            },
+            Tx1559 {
+                data: vec![1],
+                ..root.clone()
+            },
         ];
         for (i, v) in bien_the.iter().enumerate() {
             assert_ne!(v.id_hash_ky(), b0, "biến thể {} phải cho mã băm khác", i);
@@ -688,7 +890,10 @@ mod tests {
 
     #[test]
     fn contract_creation_encodes_empty_destination() {
-        let tao = Tx1559 { den: None, ..sample_tx() };
+        let tao = Tx1559 {
+            den: None,
+            ..sample_tx()
+        };
         let send = sample_tx();
         assert_ne!(tao.load_in_period(), send.load_in_period());
         // `den: None` phải thành 0x80 (chuỗi rỗng), không phải 20 byte 0
@@ -698,17 +903,23 @@ mod tests {
     #[test]
     fn max_cost_matches_the_locking_formula() {
         let gd = sample_tx();
-        assert_eq!(gd.chi_phi_toi_da(),
-                   1_000_000_000_000_000_000 + 100_000_000_000 * 21_000);
+        assert_eq!(
+            gd.chi_phi_toi_da(),
+            1_000_000_000_000_000_000 + 100_000_000_000 * 21_000
+        );
     }
 
     #[test]
     fn effective_fee_never_exceeds_the_user_cap() {
         let gd = sample_tx();
         for base in [1u128, 50_000_000_000, 99_000_000_000, 100_000_000_000] {
-            assert!(gd.effective_fee(base) <= gd.max_fee,
-                    "base {} → thực trả {} vượt trần {}",
-                    base, gd.effective_fee(base), gd.max_fee);
+            assert!(
+                gd.effective_fee(base) <= gd.max_fee,
+                "base {} → thực trả {} vượt trần {}",
+                base,
+                gd.effective_fee(base),
+                gd.max_fee
+            );
         }
     }
 
@@ -723,14 +934,20 @@ mod tests {
     fn base_fee_near_cap_squeezes_the_tip() {
         let gd = sample_tx();
         let base = 99_000_000_000u128; // trần 100 gwei, chỉ còn 1 gwei cho boa
-        assert_eq!(gd.effective_fee(base), 100_000_000_000,
-                   "tiền boa bị cắt xuống 1 gwei chứ không phải 2");
+        assert_eq!(
+            gd.effective_fee(base),
+            100_000_000_000,
+            "tiền boa bị cắt xuống 1 gwei chứ không phải 2"
+        );
     }
 
     #[test]
     fn base_fee_above_cap_does_not_overflow() {
         let gd = sample_tx();
-        assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
-                   "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");
+        assert_eq!(
+            gd.effective_fee(200_000_000_000),
+            200_000_000_000,
+            "giao dịch này sẽ không được chọn vào khối, nhưng không được panic"
+        );
     }
 }

@@ -68,7 +68,9 @@ impl<'a> IntoIterator for &'a Cart {
 /// Và nhờ FromIterator, `collect()` gom thẳng được vào Cart.
 impl FromIterator<String> for Cart {
     fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
-        Cart { items: iter.into_iter().collect() }
+        Cart {
+            items: iter.into_iter().collect(),
+        }
     }
 }
 
@@ -126,7 +128,11 @@ fn main() {
     // 1. filter_map — LỌC VÀ BIẾN ĐỔI CÙNG LÚC
     // ------------------------------------------------------------------
     let gd: Vec<Trade> = tho.iter().filter_map(|d| analyze_close(d)).collect();
-    println!("\n1. filter_map: {} dòng hợp lệ / {} dòng thô", gd.len(), tho.len());
+    println!(
+        "\n1. filter_map: {} dòng hợp lệ / {} dòng thô",
+        gd.len(),
+        tho.len()
+    );
     for g in gd.iter().take(3) {
         println!("   {:?}", g);
     }
@@ -136,24 +142,49 @@ fn main() {
     // 2. any / all / find / position — ĐỀU NGẮN MẠCH
     // ------------------------------------------------------------------
     println!("\n2. any / all / find / position (đều dừng sớm)");
-    println!("   Có giao dịch nào > 2 triệu?     : {}", gd.iter().any(|g| g.so_tien > 2_000_000));
-    println!("   Mọi giao dịch đều > 100 nghìn?  : {}", gd.iter().all(|g| g.so_tien > 100_000));
-    println!("   Giao dịch đầu ở Đà Nẵng         : {:?}", gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.id));
-    println!("   Vị trí giao dịch đầu ở TP.HCM   : {:?}", gd.iter().position(|g| g.khu_vuc == "TP.HCM"));
+    println!(
+        "   Có giao dịch nào > 2 triệu?     : {}",
+        gd.iter().any(|g| g.so_tien > 2_000_000)
+    );
+    println!(
+        "   Mọi giao dịch đều > 100 nghìn?  : {}",
+        gd.iter().all(|g| g.so_tien > 100_000)
+    );
+    println!(
+        "   Giao dịch đầu ở Đà Nẵng         : {:?}",
+        gd.iter().find(|g| g.khu_vuc == "Đà Nẵng").map(|g| &g.id)
+    );
+    println!(
+        "   Vị trí giao dịch đầu ở TP.HCM   : {:?}",
+        gd.iter().position(|g| g.khu_vuc == "TP.HCM")
+    );
 
     // ------------------------------------------------------------------
     // 3. min_by_key / max_by_key
     // ------------------------------------------------------------------
     println!("\n3. min_by_key / max_by_key");
-    println!("   Giao dịch nhỏ nhất: {:?}", gd.iter().min_by_key(|g| g.so_tien).map(|g| (&g.id, g.so_tien)));
-    println!("   Giao dịch lớn nhất: {:?}", gd.iter().max_by_key(|g| g.so_tien).map(|g| (&g.id, g.so_tien)));
+    println!(
+        "   Giao dịch nhỏ nhất: {:?}",
+        gd.iter()
+            .min_by_key(|g| g.so_tien)
+            .map(|g| (&g.id, g.so_tien))
+    );
+    println!(
+        "   Giao dịch lớn nhất: {:?}",
+        gd.iter()
+            .max_by_key(|g| g.so_tien)
+            .map(|g| (&g.id, g.so_tien))
+    );
 
     // ------------------------------------------------------------------
     // 4. partition — CHIA ĐÔI TRONG MỘT LƯỢT
     // ------------------------------------------------------------------
-    let (large, small): (Vec<&Trade>, Vec<&Trade>) =
-        gd.iter().partition(|g| g.so_tien >= 800_000);
-    println!("\n4. partition: {} đơn lớn (>=800k), {} đơn nhỏ", large.len(), small.len());
+    let (large, small): (Vec<&Trade>, Vec<&Trade>) = gd.iter().partition(|g| g.so_tien >= 800_000);
+    println!(
+        "\n4. partition: {} đơn lớn (>=800k), {} đơn nhỏ",
+        large.len(),
+        small.len()
+    );
 
     // ------------------------------------------------------------------
     // 5. fold / reduce / try_fold — BA KIỂU GỘP
@@ -165,15 +196,22 @@ fn main() {
     println!("   reduce(không có, trả Option) : {:?}", tong_reduce);
 
     let rong: Vec<u64> = Vec::new();
-    println!("   Trên danh sách RỖNG -> fold: {}, reduce: {:?}",
-             rong.iter().fold(0u64, |a, b| a + b),
-             rong.iter().copied().reduce(|a: u64, b: u64| a + b));
+    println!(
+        "   Trên danh sách RỖNG -> fold: {}, reduce: {:?}",
+        rong.iter().fold(0u64, |a, b| a + b),
+        rong.iter().copied().reduce(|a: u64, b: u64| a + b)
+    );
 
     // try_fold: gộp CÓ THỂ THẤT BẠI, dừng ngay ở lỗi đầu tiên
     let safe: Option<u64> = gd.iter().try_fold(0u64, |a, g| a.checked_add(g.so_tien));
     println!("   try_fold (chống tràn số)     : {:?}", safe);
-    let se_tran: Option<u64> = [u64::MAX, 1].iter().try_fold(0u64, |a, b| a.checked_add(*b));
-    println!("   try_fold khi tràn số         : {:?} (dừng ngay, không panic)", se_tran);
+    let se_tran: Option<u64> = [u64::MAX, 1]
+        .iter()
+        .try_fold(0u64, |a, b| a.checked_add(*b));
+    println!(
+        "   try_fold khi tràn số         : {:?} (dừng ngay, không panic)",
+        se_tran
+    );
 
     // ------------------------------------------------------------------
     // 6. scan — GIỐNG fold NHƯNG NHẢ RA TỪNG BƯỚC TRUNG GIAN
@@ -195,8 +233,14 @@ fn main() {
     let tw: Vec<i32> = so.iter().copied().take_while(|x| x % 2 == 1).collect();
     let ft: Vec<i32> = so.iter().copied().filter(|x| x % 2 == 1).collect();
     println!("   dãy gốc              : {:?}", so);
-    println!("   take_while(lẻ)       : {:?}  ← DỪNG ngay khi gặp số chẵn đầu tiên", tw);
-    println!("   filter(lẻ)           : {:?}  ← duyệt HẾT, giữ mọi số lẻ", ft);
+    println!(
+        "   take_while(lẻ)       : {:?}  ← DỪNG ngay khi gặp số chẵn đầu tiên",
+        tw
+    );
+    println!(
+        "   filter(lẻ)           : {:?}  ← duyệt HẾT, giữ mọi số lẻ",
+        ft
+    );
     let sw: Vec<i32> = so.iter().copied().skip_while(|x| x % 2 == 1).collect();
     println!("   skip_while(lẻ)       : {:?}", sw);
 
@@ -211,7 +255,11 @@ fn main() {
 
     let (lai_ma, lai_tien): (Vec<&str>, Vec<u64>) =
         id.iter().copied().zip(tien.iter().copied()).unzip();
-    println!("   unzip tách lại: {} mã, {} số tiền", lai_ma.len(), lai_tien.len());
+    println!(
+        "   unzip tách lại: {} mã, {} số tiền",
+        lai_ma.len(),
+        lai_tien.len()
+    );
 
     let concat: Vec<i32> = (1..3).chain(10..12).collect();
     println!("   chain         : {:?}", concat);
@@ -220,7 +268,11 @@ fn main() {
     // `Countdown::moi(5).rev()` KHÔNG biên dịch được:
     //     error[E0277]: the trait bound `Countdown: DoubleEndedIterator` is not satisfied
     // `Vec` thì có, nên ta gom lại trước rồi mới đảo:
-    let inverse: Vec<u32> = Countdown::new(5).collect::<Vec<u32>>().into_iter().rev().collect();
+    let inverse: Vec<u32> = Countdown::new(5)
+        .collect::<Vec<u32>>()
+        .into_iter()
+        .rev()
+        .collect();
     println!("   rev (cần DoubleEndedIterator): {:?}", inverse);
     let cach_quang: Vec<i32> = (0..10).step_by(3).collect();
     println!("   step_by(3)    : {:?}", cach_quang);
@@ -254,7 +306,10 @@ fn main() {
     println!("   -> HashSet    : {:?} ({} khu vực)", kv, khu_vuc.len());
 
     let bang: HashMap<&str, u64> = gd.iter().map(|g| (g.id.as_str(), g.so_tien)).collect();
-    println!("   -> HashMap    : tra cứu GD-003 = {:?}", bang.get("GD-003"));
+    println!(
+        "   -> HashMap    : tra cứu GD-003 = {:?}",
+        bang.get("GD-003")
+    );
 
     let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
     let xau: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
@@ -265,11 +320,10 @@ fn main() {
     // 11. TỔNG HỢP THEO NHÓM — MẪU DÙNG HẰNG NGÀY
     // ------------------------------------------------------------------
     println!("\n11. Tổng doanh thu theo khu vực (fold + entry API)");
-    let theo_kv: HashMap<&str, u64> =
-        gd.iter().fold(HashMap::new(), |mut bang, g| {
-            *bang.entry(g.khu_vuc.as_str()).or_insert(0) += g.so_tien;
-            bang
-        });
+    let theo_kv: HashMap<&str, u64> = gd.iter().fold(HashMap::new(), |mut bang, g| {
+        *bang.entry(g.khu_vuc.as_str()).or_insert(0) += g.so_tien;
+        bang
+    });
     let mut cac_kv: Vec<(&&str, &u64)> = theo_kv.iter().collect();
     cac_kv.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     for (k, v) in cac_kv {
@@ -281,12 +335,17 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n12. fold vs rfold");
     let m = [10i32, 3, 2];
-    println!("   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
-             m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
+    println!(
+        "   Phép CỘNG (giao hoán)      : fold={}, rfold={}  -> GIỐNG nhau",
+        m.iter().fold(0, |a, b| a + b),
+        m.iter().rfold(0, |a, b| a + b)
+    );
     let folded_left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
     let folded_right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());
-    println!("   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
-             folded_left, folded_right);
+    println!(
+        "   NỐI CHUỖI (không giao hoán): fold={:?}, rfold={:?}  -> KHÁC nhau",
+        folded_left, folded_right
+    );
     println!("   → Trước khi song song hóa, phải biết phép gộp của mình có tính gì!");
 
     // ------------------------------------------------------------------
@@ -295,7 +354,10 @@ fn main() {
     println!("\n13. Iterator và IntoIterator tự cài đặt");
     let count: Vec<u32> = Countdown::new(5).collect();
     println!("   DemNguoc(5)                 : {:?}", count);
-    println!("   Miễn phí luôn map/filter/sum: {}", Countdown::new(100).filter(|x| x % 7 == 0).sum::<u32>());
+    println!(
+        "   Miễn phí luôn map/filter/sum: {}",
+        Countdown::new(100).filter(|x| x % 7 == 0).sum::<u32>()
+    );
 
     let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into(), "Màn hình".into()]);
     print!("   for x in &gio_hang -> ");
@@ -304,10 +366,7 @@ fn main() {
     }
     println!();
 
-    let gio_moi: Cart = gio
-        .into_iter()
-        .filter(|m| m.chars().count() > 5)
-        .collect(); // ← nhờ FromIterator tự cài
+    let gio_moi: Cart = gio.into_iter().filter(|m| m.chars().count() > 5).collect(); // ← nhờ FromIterator tự cài
     println!("   collect() thẳng vào GioHang : {:?}", gio_moi);
 
     // ------------------------------------------------------------------
@@ -354,7 +413,9 @@ mod tests {
 
     #[test]
     fn try_fold_stops_on_overflow() {
-        let kq: Option<u64> = [u64::MAX, 1, 2].iter().try_fold(0u64, |a, b| a.checked_add(*b));
+        let kq: Option<u64> = [u64::MAX, 1, 2]
+            .iter()
+            .try_fold(0u64, |a, b| a.checked_add(*b));
         assert_eq!(kq, None);
     }
 
@@ -362,7 +423,10 @@ mod tests {
     fn scan_emits_intermediate_steps() {
         let cumulative: Vec<i32> = [1, 2, 3, 4]
             .iter()
-            .scan(0, |t, x| { *t += x; Some(*t) })
+            .scan(0, |t, x| {
+                *t += x;
+                Some(*t)
+            })
             .collect();
         assert_eq!(cumulative, vec![1, 3, 6, 10]);
     }
@@ -371,7 +435,10 @@ mod tests {
     fn fold_and_rfold_differ_only_when_non_commutative() {
         let m = [10i32, 3, 2];
         // Phép cộng GIAO HOÁN -> duyệt hai chiều cho cùng kết quả
-        assert_eq!(m.iter().fold(0, |a, b| a + b), m.iter().rfold(0, |a, b| a + b));
+        assert_eq!(
+            m.iter().fold(0, |a, b| a + b),
+            m.iter().rfold(0, |a, b| a + b)
+        );
         // Nối chuỗi KHÔNG giao hoán -> duyệt hai chiều cho kết quả khác nhau
         let left: String = m.iter().fold(String::new(), |a, b| a + &b.to_string());
         let right: String = m.iter().rfold(String::new(), |a, b| a + &b.to_string());

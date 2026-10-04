@@ -22,8 +22,7 @@ pub trait Monoid: Semigroup + Sized {
 /// Hàm gộp vạn năng: dùng được cho MỌI vị nhóm.
 /// Nó thay thế cho tinh_tong, noi_chuoi, gop_mang, tim_max... tất cả.
 pub fn combine_all<M: Monoid>(list: impl IntoIterator<Item = M>) -> M {
-    list
-        .into_iter()
+    list.into_iter()
         .fold(M::empty(), |accumulate, x| accumulate.compose(x))
 }
 
@@ -141,11 +140,7 @@ impl Monoid for Any {
 pub struct First<T>(pub Option<T>);
 impl<T> Semigroup for First<T> {
     fn compose(self, k: Self) -> Self {
-        if self.0.is_some() {
-            self
-        } else {
-            k
-        }
+        if self.0.is_some() { self } else { k }
     }
 }
 impl<T> Monoid for First<T> {
@@ -245,7 +240,10 @@ where
         let left = a.clone().compose(b.clone()).compose(c.clone());
         let right = a.clone().compose(b.clone().compose(c.clone()));
         if left != right {
-            println!("  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}", name, left, right);
+            println!(
+                "  ✗ {} VI PHẠM luật kết hợp: {:?} vs {:?}",
+                name, left, right
+            );
             return false;
         }
     }
@@ -316,7 +314,10 @@ fn main() {
     println!("\n2. VÌ SAO CẦN PHẦN TỬ ĐƠN VỊ?");
     let empty_sum: Vec<Tong> = Vec::new();
     let rong_nhan: Vec<Product> = Vec::new();
-    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", combine_all(empty_sum));
+    println!(
+        "   Tổng của danh sách RỖNG: {:?}  (đúng: 0)",
+        combine_all(empty_sum)
+    );
     println!(
         "   Tích của danh sách RỖNG: {:?}  (đúng: 1, KHÔNG phải 0!)",
         combine_all(rong_nhan)
@@ -327,11 +328,31 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n3. VỊ NHÓM TÍCH — 4 CHỈ SỐ, 1 LƯỢT DUYỆT");
     let log = vec![
-        AccessRecord { path: "/api/don-hang".into(), status_code: 200, time_ms: 42 },
-        AccessRecord { path: "/api/thanh-toan".into(), status_code: 500, time_ms: 1350 },
-        AccessRecord { path: "/api/san-pham".into(), status_code: 200, time_ms: 17 },
-        AccessRecord { path: "/api/kho".into(), status_code: 404, time_ms: 8 },
-        AccessRecord { path: "/api/don-hang".into(), status_code: 200, time_ms: 63 },
+        AccessRecord {
+            path: "/api/don-hang".into(),
+            status_code: 200,
+            time_ms: 42,
+        },
+        AccessRecord {
+            path: "/api/thanh-toan".into(),
+            status_code: 500,
+            time_ms: 1350,
+        },
+        AccessRecord {
+            path: "/api/san-pham".into(),
+            status_code: 200,
+            time_ms: 17,
+        },
+        AccessRecord {
+            path: "/api/kho".into(),
+            status_code: 404,
+            time_ms: 8,
+        },
+        AccessRecord {
+            path: "/api/don-hang".into(),
+            status_code: 200,
+            time_ms: 63,
+        },
     ];
 
     let (tong, cham_nhat, nhanh_nhat, co_loi_may_chu): ThongKe =
@@ -457,9 +478,21 @@ mod tests {
     #[test]
     fn product_monoid_aggregates_four_metrics() {
         let log = vec![
-            AccessRecord { path: "/a".into(), status_code: 200, time_ms: 10 },
-            AccessRecord { path: "/b".into(), status_code: 503, time_ms: 40 },
-            AccessRecord { path: "/c".into(), status_code: 200, time_ms: 25 },
+            AccessRecord {
+                path: "/a".into(),
+                status_code: 200,
+                time_ms: 10,
+            },
+            AccessRecord {
+                path: "/b".into(),
+                status_code: 503,
+                time_ms: 40,
+            },
+            AccessRecord {
+                path: "/c".into(),
+                status_code: 200,
+                time_ms: 25,
+            },
         ];
         let (tong, max, min, error): ThongKe = combine_all(log.iter().map(to_stats));
         assert_eq!(tong, Tong(75));

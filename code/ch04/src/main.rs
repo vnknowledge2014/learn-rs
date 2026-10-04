@@ -35,7 +35,10 @@ fn main() {
             break current_pressure;
         }
     };
-    println!("==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI", ap_suat_chot);
+    println!(
+        "==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI",
+        ap_suat_chot
+    );
 
     // 3. Sử dụng vòng lặp 'while' để nạp năng lượng bình ắc-quy phụ
     let mut battery_capacity = 85;
@@ -55,8 +58,10 @@ fn main() {
         for cam_bien in 1..=4 {
             if tang == 2 && cam_bien == 3 {
                 has_emitted = true; // Kích hoạt sự cố mô phỏng!
-                println!("  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!", 
-                         tang, cam_bien);
+                println!(
+                    "  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!",
+                    tang, cam_bien
+                );
                 // Thoát thẳng ra ngoài cả hai vòng lặp nhờ nhãn:
                 break 'kiem_tra_tang_ten_lua;
             }

@@ -116,7 +116,10 @@ fn main() {
         MetricRecord::new("AnalyticsService", 990, false), // Chậm nhưng thất bại -> bỏ qua
     ];
 
-    println!("Tập dữ liệu đầu vào gồm {} bản ghi đo lường.", metrics.len());
+    println!(
+        "Tập dữ liệu đầu vào gồm {} bản ghi đo lường.",
+        metrics.len()
+    );
 
     // 1. Chạy phương pháp cũ
     let slow_old = filter_slow_services_old(&metrics, 300);
@@ -124,7 +127,10 @@ fn main() {
 
     // 2. Chạy phương pháp mới sau tái cấu trúc (Zero-copy)
     let slow_idiomatic = filter_slow_services_idiomatic(&metrics, 300);
-    println!("[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}", slow_idiomatic);
+    println!(
+        "[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}",
+        slow_idiomatic
+    );
 
     // Xác nhận hai phương pháp cho cùng kết quả nghiệp vụ chính xác
     assert_eq!(slow_old.len(), slow_idiomatic.len());
@@ -135,8 +141,13 @@ fn main() {
     // 3. Phân tích thống kê với MetricsAnalyzer
     let analyzer = MetricsAnalyzer::new(&metrics);
     if let Some(avg) = analyzer.calculate_average_success_time() {
-        println!("\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms", avg);
+        println!(
+            "\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms",
+            avg
+        );
     }
 
-    println!("\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!");
+    println!(
+        "\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!"
+    );
 }

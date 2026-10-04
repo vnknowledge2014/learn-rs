@@ -33,7 +33,10 @@ impl MiniLsmEngine {
                     }
                 }
             }
-            println!("    [RECOVERY]: Đã phục hồi thành công {} khóa từ tệp WAL!", memtable.len());
+            println!(
+                "    [RECOVERY]: Đã phục hồi thành công {} khóa từ tệp WAL!",
+                memtable.len()
+            );
         }
 
         // 2. Mở tệp WAL ở chế độ ghi chèn (Append-only)
@@ -102,23 +105,26 @@ fn main() -> io::Result<()> {
     println!("[1] Khởi động động cơ MiniLsmEngine lần đầu:");
     {
         let mut engine = MiniLsmEngine::open(duong_dan_wal)?;
-        
+
         println!("    - Ghi khóa 'user:1' -> 'Alice'");
         engine.set("user:1", "Alice")?;
-        
+
         println!("    - Ghi khóa 'user:2' -> 'Bob'");
         engine.set("user:2", "Bob")?;
-        
+
         println!("    - Ghi đè khóa 'user:1' -> 'Alice Nguyen'");
         engine.set("user:1", "Alice Nguyen")?;
-        
+
         println!("    - Ghi khóa 'user:3' -> 'Charlie'");
         engine.set("user:3", "Charlie")?;
-        
+
         println!("    - Xóa khóa 'user:2' (Ghi Tombstone vào WAL)");
         engine.delete("user:2")?;
 
-        println!("    - Tổng số khóa hợp lệ trên RAM: {}", engine.total_keys());
+        println!(
+            "    - Tổng số khóa hợp lệ trên RAM: {}",
+            engine.total_keys()
+        );
         assert_eq!(engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
         assert_eq!(engine.get("user:2"), None);
         assert_eq!(engine.get("user:3"), Some(&"Charlie".to_string()));
@@ -131,18 +137,21 @@ fn main() -> io::Result<()> {
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
         let recovered_engine = MiniLsmEngine::open(duong_dan_wal)?;
-        
+
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
         println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
         println!("      + 'user:2' = {:?}", recovered_engine.get("user:2"));
         println!("      + 'user:3' = {:?}", recovered_engine.get("user:3"));
 
         // Xác nhận dữ liệu được phục hồi chuẩn xác 100%
-        assert_eq!(recovered_engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
+        assert_eq!(
+            recovered_engine.get("user:1"),
+            Some(&"Alice Nguyen".to_string())
+        );
         assert_eq!(recovered_engine.get("user:2"), None);
         assert_eq!(recovered_engine.get("user:3"), Some(&"Charlie".to_string()));
         assert_eq!(recovered_engine.total_keys(), 2);
-        
+
         println!("    => Toàn bộ trạng thái dữ liệu đã được phục hồi hoàn hảo nhờ WAL!");
     }
 

@@ -5,11 +5,7 @@
 // 1. Hàm so sánh hai chuỗi và trả về chuỗi dài hơn
 // Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng giao nhau giữa x và y
 fn pick_longer_message<'a>(x: &'a str, y: &'a str) -> &'a str {
-    if x.len() > y.len() {
-        x
-    } else {
-        y
-    }
+    if x.len() > y.len() { x } else { y }
 }
 
 // 2. Struct nắm giữ tham chiếu mượn dữ liệu nguồn (&'a str)
@@ -27,8 +23,10 @@ impl<'a> SystemConfig<'a> {
     }
 
     fn print_info(&self) {
-        println!("- Ứng dụng: '{}' | Phí duy trì: {:.2} USD/tháng", 
-                 self.name_resp_use, self.phi_dich_vu);
+        println!(
+            "- Ứng dụng: '{}' | Phí duy trì: {:.2} USD/tháng",
+            self.name_resp_use, self.phi_dich_vu
+        );
     }
 }
 
@@ -43,10 +41,8 @@ fn main() {
     let thong_message_2 = String::from("Cảnh báo pin yếu");
 
     // Cả thong_message_1 và thong_message_2 đều đang sống trong cùng phạm vi main
-    let thong_message_main = pick_longer_message(
-        thong_message_1.as_str(), 
-        thong_message_2.as_str()
-    );
+    let thong_message_main =
+        pick_longer_message(thong_message_1.as_str(), thong_message_2.as_str());
     println!("- Thông điệp dài hơn được chọn: '{}'", thong_message_main);
 
     // --- PHẦN 2: CHỨNG MINH TÍNH AN TOÀN TRƯỚC VÒNG ĐỜI NGẮN HƠN ---
@@ -55,7 +51,10 @@ fn main() {
     {
         let series_con = String::from("Dữ liệu tạm");
         let ket_qua_tam = pick_longer_message(chuoi_me.as_str(), series_con.as_str());
-        println!("- [Bên trong phạm vi con]: Kết quả chọn là: '{}'", ket_qua_tam);
+        println!(
+            "- [Bên trong phạm vi con]: Kết quả chọn là: '{}'",
+            ket_qua_tam
+        );
         // ket_qua_tam chỉ được phép dùng bên trong dấu ngoặc nhọn này!
         // Nếu cố tình mang ket_qua_tam ra ngoài phạm vi con, compiler sẽ chặn đứng ngay!
     }
@@ -73,7 +72,10 @@ fn main() {
     };
 
     cau_hinh.print_info();
-    println!("- Tên ứng dụng trích xuất qua getter: '{}'", cau_hinh.lay_ten());
+    println!(
+        "- Tên ứng dụng trích xuất qua getter: '{}'",
+        cau_hinh.lay_ten()
+    );
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");

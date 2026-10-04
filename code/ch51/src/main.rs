@@ -174,13 +174,22 @@ fn main() {
     println!("\n[1] Xu ly qua cong REST API (JSON Text Format):");
     let rest_response = router.handle_rest_get_product(101).unwrap();
     println!("    - Payload REST JSON nhan duoc: {}", rest_response);
-    println!("    - Dung luong payload JSON    : {} bytes", rest_response.len());
+    println!(
+        "    - Dung luong payload JSON    : {} bytes",
+        rest_response.len()
+    );
 
     // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
     println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
     let grpc_binary = router.handle_grpc_get_product(101).unwrap();
-    println!("    - Payload gRPC Binary nhan duoc (Hex): {:02X?}", grpc_binary);
-    println!("    - Dung luong payload gRPC             : {} bytes", grpc_binary.len());
+    println!(
+        "    - Payload gRPC Binary nhan duoc (Hex): {:02X?}",
+        grpc_binary
+    );
+    println!(
+        "    - Dung luong payload gRPC             : {} bytes",
+        grpc_binary.len()
+    );
 
     // So sánh kích thước truyền tải
     let savings = ((rest_response.len() as f64 - grpc_binary.len() as f64)

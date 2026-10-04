@@ -17,7 +17,11 @@ impl std::fmt::Display for PaymentError {
             PaymentError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
             PaymentError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
             PaymentError::InsufficientBalance { balance, can_rut } => {
-                write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
+                write!(
+                    f,
+                    "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})",
+                    balance, can_rut
+                )
             }
         }
     }
@@ -30,7 +34,9 @@ fn check_num_tien(input_buffer: &str) -> Result<f64, PaymentError> {
     })?;
 
     if so_tien <= 0.0 {
-        return Err(PaymentError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(PaymentError::InvalidAmount(String::from(
+            "Số tiền phải lớn hơn 0!",
+        )));
     }
 
     Ok(so_tien)
@@ -38,9 +44,9 @@ fn check_num_tien(input_buffer: &str) -> Result<f64, PaymentError> {
 
 // 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
 fn execute_trade(
-    input_buffer: &str, 
-    mut so_du_hien_tai: f64, 
-    is_account_active: bool
+    input_buffer: &str,
+    mut so_du_hien_tai: f64,
+    is_account_active: bool,
 ) -> Result<f64, PaymentError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
     if !is_account_active {
@@ -74,7 +80,10 @@ fn main() {
     // --- KỊCH BẢN 1: GIAO DỊCH THÀNH CÔNG HỢP LỆ ---
     println!("\n[Kịch bản 1] Rút 1.500.000 VND hợp lệ:");
     match execute_trade("1500000", initial_balance, true) {
-        Ok(new_balance) => println!("-> Giao dịch THÀNH CÔNG! Số dư còn lại: {:.2} VND", new_balance),
+        Ok(new_balance) => println!(
+            "-> Giao dịch THÀNH CÔNG! Số dư còn lại: {:.2} VND",
+            new_balance
+        ),
         Err(e) => println!("-> Giao dịch THẤT BẠI: {}", e),
     }
 
@@ -103,5 +112,8 @@ fn main() {
     println!("\n[Kịch bản 5] Sử dụng unwrap_or để lấy giá trị mặc định an toàn:");
     let result_error: Result<f64, &str> = Err("Mất kết nối máy chủ");
     let num_tien_last_same = result_error.unwrap_or(0.0);
-    println!("- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)", num_tien_last_same);
+    println!(
+        "- Giá trị an toàn thu được: {:.2} VND (không hề bị sập ứng dụng!)",
+        num_tien_last_same
+    );
 }

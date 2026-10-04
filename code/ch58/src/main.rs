@@ -18,10 +18,16 @@ pub enum Value {
 
 impl Value {
     pub fn so(&self) -> Option<f64> {
-        match self { Value::So(x) => Some(*x), _ => None }
+        match self {
+            Value::So(x) => Some(*x),
+            _ => None,
+        }
     }
     pub fn as_str(&self) -> Option<&str> {
-        match self { Value::Text(s) => Some(s), _ => None }
+        match self {
+            Value::Text(s) => Some(s),
+            _ => None,
+        }
     }
 }
 
@@ -53,7 +59,8 @@ impl Bang {
         self.cot.first().map(|c| c.len()).unwrap_or(0)
     }
     pub fn lay(&self, queue: usize, ten_cot: &str) -> Option<&Value> {
-        self.chi_so_cot(ten_cot).and_then(|c| self.cot[c].get(queue))
+        self.chi_so_cot(ten_cot)
+            .and_then(|c| self.cot[c].get(queue))
     }
 }
 
@@ -76,9 +83,13 @@ pub fn extract_csv(dong: &[&str]) -> Result<Bang, String> {
     let mut bang = Bang::new(ten_cot);
 
     for &d in it {
-        if d.trim().is_empty() { continue; }
+        if d.trim().is_empty() {
+            continue;
+        }
         let o = tach_dong_csv(d);
-        if o.len() != so_cot { continue; } // bỏ dòng lệch cột
+        if o.len() != so_cot {
+            continue;
+        } // bỏ dòng lệch cột
         let queue: Vec<Value> = o.into_iter().map(infer_type).collect();
         bang.add_row(queue);
     }
@@ -106,10 +117,18 @@ impl Bang {
     pub fn filter(&self, giu: impl Fn(&HashMap<&str, &Value>) -> bool) -> Bang {
         let mut new = Bang::new(self.ten_cot.iter().map(|s| s.as_str()).collect());
         for h in 0..self.num_rows() {
-            let queue: HashMap<&str, &Value> = self.ten_cot.iter().enumerate()
-                .map(|(i, name)| (name.as_str(), &self.cot[i][h])).collect();
+            let queue: HashMap<&str, &Value> = self
+                .ten_cot
+                .iter()
+                .enumerate()
+                .map(|(i, name)| (name.as_str(), &self.cot[i][h]))
+                .collect();
             if giu(&queue) {
-                new.add_row((0..self.ten_cot.len()).map(|i| self.cot[i][h].clone()).collect());
+                new.add_row(
+                    (0..self.ten_cot.len())
+                        .map(|i| self.cot[i][h].clone())
+                        .collect(),
+                );
             }
         }
         new
@@ -157,23 +176,28 @@ impl Bang {
                 Value::Rong => "(thiếu)".to_string(),
             };
             if let Value::So(v) = self.cot[c_tren][h] {
-                let e = gom.entry(key).or_insert((0.0, 0, f64::INFINITY, f64::NEG_INFINITY));
+                let e = gom
+                    .entry(key)
+                    .or_insert((0.0, 0, f64::INFINITY, f64::NEG_INFINITY));
                 e.0 += v;
                 e.1 += 1;
                 e.2 = e.2.min(v);
                 e.3 = e.3.max(v);
             }
         }
-        let mut kq: Vec<GroupResult> = gom.into_iter().map(|(k, (tong, count, min, max))| {
-            GroupResult {
-                key: k, count, tong,
+        let mut kq: Vec<GroupResult> = gom
+            .into_iter()
+            .map(|(k, (tong, count, min, max))| GroupResult {
+                key: k,
+                count,
+                tong,
                 mean: tong / count as f64,
-                min: min, max: max,
-            }
-        }).collect();
+                min: min,
+                max: max,
+            })
+            .collect();
         // sắp xếp tất định: theo tổng giảm dần, rồi theo khóa
-        kq.sort_by(|a, b| b.tong.partial_cmp(&a.tong).unwrap()
-            .then(a.key.cmp(&b.key)));
+        kq.sort_by(|a, b| b.tong.partial_cmp(&a.tong).unwrap().then(a.key.cmp(&b.key)));
         kq
     }
 }
@@ -188,19 +212,26 @@ pub fn moving_average(data: &[f64], w: usize) -> Vec<f64> {
     if w == 0 || data.len() < w {
         return Vec::new();
     }
-    data.windows(w).map(|cua| cua.iter().sum::<f64>() / w as f64).collect()
+    data.windows(w)
+        .map(|cua| cua.iter().sum::<f64>() / w as f64)
+        .collect()
 }
 
 /// Phát hiện điểm bất thường: lệch quá `nguong` lần độ lệch chuẩn khỏi trung bình.
 pub fn detect_anomalies(data: &[f64], threshold: f64) -> Vec<usize> {
     let n = data.len();
-    if n == 0 { return Vec::new(); }
+    if n == 0 {
+        return Vec::new();
+    }
     let tb = data.iter().sum::<f64>() / n as f64;
     let variance = data.iter().map(|x| (x - tb).powi(2)).sum::<f64>() / n as f64;
     let do_lech = variance.sqrt();
-    if do_lech == 0.0 { return Vec::new(); }
-    data.iter().enumerate()
-        .filter(|(_, &x)| (x - tb).abs() > threshold * do_lech)
+    if do_lech == 0.0 {
+        return Vec::new();
+    }
+    data.iter()
+        .enumerate()
+        .filter(|&(_, &x)| (x - tb).abs() > threshold * do_lech)
         .map(|(i, _)| i)
         .collect()
 }
@@ -224,7 +255,9 @@ pub fn inner_join(left: &Bang, right: &Bang, key: &str) -> Bang {
     // Cột kết quả: cột trái + cột phải (bỏ cột khóa trùng ở bảng phải)
     let mut name: Vec<String> = left.ten_cot.clone();
     for (i, t) in right.ten_cot.iter().enumerate() {
-        if i != cp { name.push(format!("{}_phai", t)); }
+        if i != cp {
+            name.push(format!("{}_phai", t));
+        }
     }
     let mut kq = Bang::new(name.iter().map(|s| s.as_str()).collect());
 
@@ -232,10 +265,13 @@ pub fn inner_join(left: &Bang, right: &Bang, key: &str) -> Bang {
         let k = format!("{:?}", left.cot[ct][h]);
         if let Some(hang_phai) = only_level.get(&k) {
             for &hp in hang_phai {
-                let mut queue: Vec<Value> =
-                    (0..left.ten_cot.len()).map(|i| left.cot[i][h].clone()).collect();
+                let mut queue: Vec<Value> = (0..left.ten_cot.len())
+                    .map(|i| left.cot[i][h].clone())
+                    .collect();
                 for i in 0..right.ten_cot.len() {
-                    if i != cp { queue.push(right.cot[i][hp].clone()); }
+                    if i != cp {
+                        queue.push(right.cot[i][hp].clone());
+                    }
                 }
                 kq.add_row(queue);
             }
@@ -255,20 +291,25 @@ fn main() {
         "2026-01,TP.HCM,2200",
         "dòng hỏng thiếu cột",
         "2026-01,Hà Nội,800",
-        "2026-02,TP.HCM,NA",     // giá trị thiếu
+        "2026-02,TP.HCM,NA", // giá trị thiếu
         "2026-02,Hà Nội,1200",
         "2026-02,Đà Nẵng,600",
     ];
     let mut bang = extract_csv(&csv).unwrap();
-    println!("\n1. EXTRACT: {} dòng hợp lệ (đã bỏ dòng lỗi + tiêu đề)", bang.num_rows());
+    println!(
+        "\n1. EXTRACT: {} dòng hợp lệ (đã bỏ dòng lỗi + tiêu đề)",
+        bang.num_rows()
+    );
 
     println!("\n2. TRANSFORM: điền giá trị thiếu bằng 0");
     bang.missing_signal("doanh_thu", 0.0);
 
     println!("\n3. PHÂN TÍCH: GROUP BY khu_vuc, tổng hợp doanh_thu");
     for r in bang.group_and_total_hop("khu_vuc", "doanh_thu") {
-        println!("   {:<10} | {} bản ghi | tổng {:>6.0} | TB {:>6.1} | [{:.0}–{:.0}]",
-                 r.key, r.count, r.tong, r.mean, r.min, r.max);
+        println!(
+            "   {:<10} | {} bản ghi | tổng {:>6.0} | TB {:>6.1} | [{:.0}–{:.0}]",
+            r.key, r.count, r.tong, r.mean, r.min, r.max
+        );
     }
 
     println!("\n4. LỌC: chỉ giữ doanh thu > 1000");
@@ -277,17 +318,28 @@ fn main() {
 
     println!("\n5. XỬ LÝ LUỒNG: trung bình trượt & phát hiện bất thường");
     let as_str = [10.0, 11.0, 9.0, 10.0, 50.0, 11.0, 10.0]; // 50 là điểm lạ
-    println!("   Trung bình trượt (w=3): {:?}",
-             moving_average(&as_str, 3).iter().map(|x| (x * 10.0).round() / 10.0).collect::<Vec<_>>());
-    println!("   Vị trí bất thường (>2σ): {:?}", detect_anomalies(&as_str, 2.0));
+    println!(
+        "   Trung bình trượt (w=3): {:?}",
+        moving_average(&as_str, 3)
+            .iter()
+            .map(|x| (x * 10.0).round() / 10.0)
+            .collect::<Vec<_>>()
+    );
+    println!(
+        "   Vị trí bất thường (>2σ): {:?}",
+        detect_anomalies(&as_str, 2.0)
+    );
 
     println!("\n6. JOIN: ghép doanh thu với dân số khu vực");
     let mut list = Bang::new(vec!["khu_vuc", "dan_so_trieu"]);
     list.add_row(vec![Value::Text("Hà Nội".into()), Value::So(8.4)]);
     list.add_row(vec![Value::Text("TP.HCM".into()), Value::So(9.3)]);
     let compose = inner_join(&bang, &list, "khu_vuc");
-    println!("   Kết quả join có {} hàng, {} cột (Đà Nẵng bị loại vì không có dân số)",
-             compose.num_rows(), compose.ten_cot.len());
+    println!(
+        "   Kết quả join có {} hàng, {} cột (Đà Nẵng bị loại vì không có dân số)",
+        compose.num_rows(),
+        compose.ten_cot.len()
+    );
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   DỮ LIỆU DẠNG CỘT + ĐƯỜNG ỐNG HÀM = PHÂN TÍCH NHANH & AN TOÀN ");
@@ -299,10 +351,7 @@ mod tests {
     use super::*;
 
     fn bang_mau() -> Bang {
-        let csv = vec![
-            "khu,thu",
-            "A,100", "B,200", "A,50", "C,NA", "A,30", "B,80",
-        ];
+        let csv = vec!["khu,thu", "A,100", "B,200", "A,50", "C,NA", "A,30", "B,80"];
         extract_csv(&csv).unwrap()
     }
 
@@ -357,7 +406,10 @@ mod tests {
 
     #[test]
     fn moving_average_is_correct() {
-        assert_eq!(moving_average(&[1.0, 2.0, 3.0, 4.0], 2), vec![1.5, 2.5, 3.5]);
+        assert_eq!(
+            moving_average(&[1.0, 2.0, 3.0, 4.0], 2),
+            vec![1.5, 2.5, 3.5]
+        );
         assert_eq!(moving_average(&[1.0], 3), Vec::<f64>::new()); // ngắn hơn cửa sổ
         assert_eq!(moving_average(&[1.0, 2.0], 0), Vec::<f64>::new());
     }

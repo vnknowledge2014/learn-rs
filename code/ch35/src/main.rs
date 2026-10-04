@@ -10,7 +10,7 @@ static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub struct VersionedRecord {
     pub created_by_tx: u64,         // Giao dịch tạo ra bản ghi
     pub deleted_by_tx: Option<u64>, // Giao dịch xóa bản ghi (None nếu còn hiệu lực)
-    pub value: String,            // Dữ liệu thực tế
+    pub value: String,              // Dữ liệu thực tế
 }
 
 /// Hệ thống lưu trữ dữ liệu đa phiên bản MVCC Store
@@ -78,11 +78,9 @@ impl MvccStore {
         for list in self.data.values_mut() {
             let first_sell = list.len();
             // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc giao dịch cũ nhất còn sống
-            list.retain(|pb| {
-                match pb.deleted_by_tx {
-                    None => true,
-                    Some(del_tx) => del_tx >= oldest_active_tx,
-                }
+            list.retain(|pb| match pb.deleted_by_tx {
+                None => true,
+                Some(del_tx) => del_tx >= oldest_active_tx,
             });
             num_sell_record_da_remove += first_sell - list.len();
         }
@@ -106,7 +104,10 @@ fn main() {
     // 1. Dữ liệu ban đầu được nạp bởi Giao dịch số 1 (Giao dịch khởi tạo hệ thống)
     let tx_block_make = 1;
     kho_mvcc.record("tai_khoan:A", "1000", tx_block_make);
-    println!("[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000", tx_block_make);
+    println!(
+        "[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000",
+        tx_block_make
+    );
 
     // 2. Kịch bản chạy đồng thời hai giao dịch:
     // - Giao dịch Đọc (TX_DOC = 2): Bắt đầu kiểm toán báo cáo tài chính
@@ -115,22 +116,34 @@ fn main() {
     let tx_record = kho_mvcc.start_trade(); // tx = 3
     println!("\n[2] Hai giao dịch đồng thời xuất hiện:");
     println!("    - Giao dịch Đọc khởi động tại mốc: tx_id = {}", tx_read);
-    println!("    - Giao dịch Ghi khởi động tại mốc : tx_id = {}", tx_record);
+    println!(
+        "    - Giao dịch Ghi khởi động tại mốc : tx_id = {}",
+        tx_record
+    );
 
     // Giao dịch Ghi cập nhật số dư lên 1500 (Tạo phiên bản mới)
-    println!("\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...", tx_record);
+    println!(
+        "\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...",
+        tx_record
+    );
     kho_mvcc.record("tai_khoan:A", "1500", tx_record);
 
     // 3. Kiểm tra tính cô lập Snapshot Isolation của MVCC:
     // Giao dịch Đọc (tx = 2) đọc lại tài khoản A
     println!("\n[3] Kiểm tra tính cô lập Snapshot Isolation:");
     let balance_read = kho_mvcc.doc("tai_khoan:A", tx_read);
-    println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
+    println!(
+        "    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}",
+        tx_read, balance_read
+    );
 
     // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
     let future_tx = kho_mvcc.start_trade(); // tx = 4
     let new_balance = kho_mvcc.doc("tai_khoan:A", future_tx);
-    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
+    println!(
+        "    - Giao dịch mới #{} nhìn thấy số dư : {:?}",
+        future_tx, new_balance
+    );
 
     // Xác nhận tính chính xác tuyệt đối:
     // Người đọc cũ (tx = 2) nhìn thấy phiên bản cũ "1000" mà không bị chặn bởi người ghi!
@@ -142,7 +155,10 @@ fn main() {
     println!("\n[4] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Compaction):");
     // Khi giao dịch cũ tx=2 đã kết thúc, giao dịch cũ nhất hiện tại là tx=4
     let so_rac_da_don = kho_mvcc.don_dep_rac(4);
-    println!("    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!", so_rac_da_don);
+    println!(
+        "    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!",
+        so_rac_da_don
+    );
     assert_eq!(so_rac_da_don, 1); // Phiên bản v1 đã bị dọn dẹp
 
     println!("============================================================");

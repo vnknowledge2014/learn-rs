@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{Sender, channel};
 use std::thread;
 use std::time::Duration;
 
@@ -117,13 +117,19 @@ fn main() {
         start_port: 75,
         end_port: 85,
         timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
-        thread_count: 4,  // 4 luồng quét song song
+        thread_count: 4, // 4 luồng quét song song
     };
 
     println!("    - Dia chi IP muc tieu : {}", config.target_ip);
-    println!("    - Pham vi cong quet   : {} -> {}", config.start_port, config.end_port);
+    println!(
+        "    - Pham vi cong quet   : {} -> {}",
+        config.start_port, config.end_port
+    );
     println!("    - So luong luong chay : {}", config.thread_count);
-    println!("    - Thoi gian cho toi da: {} ms/port\n", config.timeout_ms);
+    println!(
+        "    - Thoi gian cho toi da: {} ms/port\n",
+        config.timeout_ms
+    );
 
     // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
     let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();

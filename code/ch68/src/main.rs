@@ -13,23 +13,44 @@ use std::collections::HashMap;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Vec2 { pub x: f32, pub y: f32 }
+pub struct Vec2 {
+    pub x: f32,
+    pub y: f32,
+}
 
 impl Vec2 {
     pub const KHONG: Vec2 = Vec2 { x: 0.0, y: 0.0 };
-    pub fn new(x: f32, y: f32) -> Vec2 { Vec2 { x, y } }
-    pub fn gate(self, k: Vec2) -> Vec2 { Vec2::new(self.x + k.x, self.y + k.y) }
-    pub fn subtract(self, k: Vec2) -> Vec2 { Vec2::new(self.x - k.x, self.y - k.y) }
-    pub fn nhan(self, s: f32) -> Vec2 { Vec2::new(self.x * s, self.y * s) }
-    pub fn dot(self, k: Vec2) -> f32 { self.x * k.x + self.y * k.y }
+    pub fn new(x: f32, y: f32) -> Vec2 {
+        Vec2 { x, y }
+    }
+    pub fn gate(self, k: Vec2) -> Vec2 {
+        Vec2::new(self.x + k.x, self.y + k.y)
+    }
+    pub fn subtract(self, k: Vec2) -> Vec2 {
+        Vec2::new(self.x - k.x, self.y - k.y)
+    }
+    pub fn nhan(self, s: f32) -> Vec2 {
+        Vec2::new(self.x * s, self.y * s)
+    }
+    pub fn dot(self, k: Vec2) -> f32 {
+        self.x * k.x + self.y * k.y
+    }
     /// Bình phương độ dài — dùng nó thay `length()` khi CHỈ cần so sánh,
     /// vì `sqrt` đắt và ta so sánh khoảng cách hàng nghìn lần mỗi khung hình.
-    pub fn length_squared(self) -> f32 { self.dot(self) }
-    pub fn length(self) -> f32 { self.length_squared().sqrt() }
+    pub fn length_squared(self) -> f32 {
+        self.dot(self)
+    }
+    pub fn length(self) -> f32 {
+        self.length_squared().sqrt()
+    }
     /// Chuẩn hóa an toàn: vector không thì trả về không, không sinh NaN.
     pub fn normalize(self) -> Vec2 {
         let d = self.length();
-        if d < 1e-6 { Vec2::KHONG } else { self.nhan(1.0 / d) }
+        if d < 1e-6 {
+            Vec2::KHONG
+        } else {
+            self.nhan(1.0 / d)
+        }
     }
     /// Nội suy tuyến tính — dùng để LÀM MƯỢT hình ảnh giữa hai bước vật lý.
     pub fn lerp(self, den: Vec2, t: f32) -> Vec2 {
@@ -66,7 +87,11 @@ pub struct FrameClock {
 
 impl Accumulator {
     pub fn new(hz: f32) -> Self {
-        Accumulator { fixed_step: 1.0 / hz, accumulate: 0.0, max_step_one_frame: 5 }
+        Accumulator {
+            fixed_step: 1.0 / hz,
+            accumulate: 0.0,
+            max_step_one_frame: 5,
+        }
     }
     pub fn new_frame(&mut self, delta_thuc: f32) -> FrameClock {
         self.accumulate += delta_thuc;
@@ -78,7 +103,9 @@ impl Accumulator {
         // "Xoắn ốc tử thần": máy quá chậm → nợ thời gian chồng chất → càng chậm.
         // Cắt nợ để game giữ được phản hồi, chấp nhận chạy chậm hơn thời gian thật.
         let dropped = self.accumulate >= self.fixed_step;
-        if dropped { self.accumulate = 0.0; }
+        if dropped {
+            self.accumulate = 0.0;
+        }
         FrameClock {
             physics_steps: num_steps,
             lerp_factor: self.accumulate / self.fixed_step,
@@ -101,7 +128,11 @@ pub struct IntegerAccumulator {
 
 impl IntegerAccumulator {
     pub fn new(hz: u64) -> Self {
-        IntegerAccumulator { step_nanos: 1_000_000_000 / hz, accumulated_nanos: 0, max_step_one_frame: 5 }
+        IntegerAccumulator {
+            step_nanos: 1_000_000_000 / hz,
+            accumulated_nanos: 0,
+            max_step_one_frame: 5,
+        }
     }
     pub fn new_frame(&mut self, delta_ns: u64) -> FrameClock {
         self.accumulated_nanos += delta_ns;
@@ -111,7 +142,9 @@ impl IntegerAccumulator {
             num_steps += 1;
         }
         let dropped = self.accumulated_nanos >= self.step_nanos;
-        if dropped { self.accumulated_nanos = 0; }
+        if dropped {
+            self.accumulated_nanos = 0;
+        }
         FrameClock {
             physics_steps: num_steps,
             lerp_factor: self.accumulated_nanos as f32 / self.step_nanos as f32,
@@ -135,7 +168,7 @@ pub struct PhysicsBody {
 /// TÍCH LŨY NĂNG LƯỢNG — quỹ đạo tròn dần biến thành xoắn ốc bay ra ngoài.
 pub fn explicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> PhysicsBody {
     PhysicsBody {
-        position: t.position.gate(t.velocity.nhan(dt)),      // dùng vận tốc CŨ
+        position: t.position.gate(t.velocity.nhan(dt)), // dùng vận tốc CŨ
         velocity: t.velocity.gate(gia_toc.nhan(dt)),
         ..t
     }
@@ -147,7 +180,7 @@ pub fn explicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> PhysicsBod
 pub fn semi_implicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> PhysicsBody {
     let new_velocity = t.velocity.gate(gia_toc.nhan(dt));
     PhysicsBody {
-        position: t.position.gate(new_velocity.nhan(dt)),    // dùng vận tốc MỚI
+        position: t.position.gate(new_velocity.nhan(dt)), // dùng vận tốc MỚI
         velocity: new_velocity,
         ..t
     }
@@ -158,25 +191,37 @@ pub fn semi_implicit_euler_step(t: PhysicsBody, gia_toc: Vec2, dt: f32) -> Physi
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Aabb { pub min: Vec2, pub max: Vec2 }
+pub struct Aabb {
+    pub min: Vec2,
+    pub max: Vec2,
+}
 
 impl Aabb {
     pub fn from_center(tam: Vec2, half_extent: Vec2) -> Aabb {
-        Aabb { min: tam.subtract(half_extent), max: tam.gate(half_extent) }
+        Aabb {
+            min: tam.subtract(half_extent),
+            max: tam.gate(half_extent),
+        }
     }
     /// Định lý trục tách: hai hộp KHÔNG chạm nhau nếu tồn tại MỘT trục mà
     /// hình chiếu của chúng rời nhau. Với AABB chỉ cần thử 2 trục X và Y.
     pub fn intersects(&self, k: &Aabb) -> bool {
-        self.min.x <= k.max.x && self.max.x >= k.min.x &&
-        self.min.y <= k.max.y && self.max.y >= k.min.y
+        self.min.x <= k.max.x
+            && self.max.x >= k.min.x
+            && self.min.y <= k.max.y
+            && self.max.y >= k.min.y
     }
     pub fn contains_point(&self, p: Vec2) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
     }
-    pub fn tam(&self) -> Vec2 { self.min.gate(self.max).nhan(0.5) }
+    pub fn tam(&self) -> Vec2 {
+        self.min.gate(self.max).nhan(0.5)
+    }
     /// Vector đẩy tối thiểu: đẩy hộp ra khỏi nhau theo trục CHỒNG LẤN ÍT NHẤT.
     pub fn day_ra(&self, k: &Aabb) -> Option<Vec2> {
-        if !self.intersects(k) { return None; }
+        if !self.intersects(k) {
+            return None;
+        }
         let chong_x = (self.max.x - k.min.x).min(k.max.x - self.min.x);
         let chong_y = (self.max.y - k.min.y).min(k.max.y - self.min.y);
         Some(if chong_x < chong_y {
@@ -208,10 +253,16 @@ pub struct LuoiBam {
 
 impl LuoiBam {
     pub fn new(cell_size: f32) -> Self {
-        LuoiBam { cell_size, o: HashMap::new() }
+        LuoiBam {
+            cell_size,
+            o: HashMap::new(),
+        }
     }
     fn toa_do_o(&self, p: Vec2) -> (i32, i32) {
-        ((p.x / self.cell_size).floor() as i32, (p.y / self.cell_size).floor() as i32)
+        (
+            (p.x / self.cell_size).floor() as i32,
+            (p.y / self.cell_size).floor() as i32,
+        )
     }
     pub fn build_use(&mut self, hop: &[Aabb]) {
         self.o.clear();
@@ -248,7 +299,9 @@ pub fn va_cham_vet_can(hop: &[Aabb]) -> Vec<(usize, usize)> {
     let mut kq = Vec::new();
     for i in 0..hop.len() {
         for j in (i + 1)..hop.len() {
-            if hop[i].intersects(&hop[j]) { kq.push((i, j)); }
+            if hop[i].intersects(&hop[j]) {
+                kq.push((i, j));
+            }
         }
     }
     kq
@@ -259,7 +312,8 @@ pub fn va_cham_qua_luoi(hop: &[Aabb], cell_size: f32) -> (Vec<(usize, usize)>, u
     luoi.build_use(hop);
     let kha_nghi = luoi.suspicious_pairs();
     let num_op_thu = kha_nghi.len();
-    let that: Vec<(usize, usize)> = kha_nghi.into_iter()
+    let that: Vec<(usize, usize)> = kha_nghi
+        .into_iter()
         .filter(|&(a, b)| hop[a].intersects(&hop[b]))
         .collect();
     (that, num_op_thu)
@@ -287,7 +341,9 @@ pub struct World {
 }
 
 impl World {
-    pub fn new() -> Self { World::default() }
+    pub fn new() -> Self {
+        World::default()
+    }
 
     pub fn tao(&mut self) -> Entity {
         let e = self.next;
@@ -306,7 +362,10 @@ impl World {
     /// Truy vấn: các thực thể có ĐỦ cả vị trí lẫn vận tốc.
     /// Trong ECS thật, đây là chỗ dùng "archetype" để duyệt liên tiếp.
     pub fn has_position_and_velocity(&self) -> Vec<Entity> {
-        let mut v: Vec<Entity> = self.con_song.iter().copied()
+        let mut v: Vec<Entity> = self
+            .con_song
+            .iter()
+            .copied()
             .filter(|e| self.position.contains_key(e) && self.velocity.contains_key(e))
             .collect();
         v.sort_unstable(); // tất định — điều kiện tiên quyết để kiểm thử được
@@ -319,40 +378,65 @@ impl World {
 pub fn he_thong_move(tg: &mut World, dt: f32) {
     for e in tg.has_position_and_velocity() {
         let v = tg.velocity[&e];
-        if let Some(p) = tg.position.get_mut(&e) { *p = p.gate(v.nhan(dt)); }
+        if let Some(p) = tg.position.get_mut(&e) {
+            *p = p.gate(v.nhan(dt));
+        }
     }
 }
 
 pub fn gravity_system(tg: &mut World, g: f32, dt: f32) {
     for e in tg.con_song.clone() {
-        if let Some(v) = tg.velocity.get_mut(&e) { v.y -= g * dt; }
+        if let Some(v) = tg.velocity.get_mut(&e) {
+            v.y -= g * dt;
+        }
     }
 }
 
 /// Va chạm gây sát thương, rồi thu dọn xác. Trả về số thực thể đã chết.
 pub fn collision_damage_system(tg: &mut World) -> usize {
     let list: Vec<Entity> = {
-        let mut v: Vec<Entity> = tg.con_song.iter().copied()
+        let mut v: Vec<Entity> = tg
+            .con_song
+            .iter()
+            .copied()
             .filter(|e| tg.position.contains_key(e) && tg.ban_kinh.contains_key(e))
             .collect();
-        v.sort_unstable(); v
+        v.sort_unstable();
+        v
     };
     let mut sat_thuong: HashMap<Entity, i32> = HashMap::new();
     for i in 0..list.len() {
         for j in (i + 1)..list.len() {
             let (a, b) = (list[i], list[j]);
-            if intersect_merge(tg.position[&a], tg.ban_kinh[&a], tg.position[&b], tg.ban_kinh[&b]) {
-                if let Some(&st) = tg.contact_damage.get(&a) { *sat_thuong.entry(b).or_insert(0) += st; }
-                if let Some(&st) = tg.contact_damage.get(&b) { *sat_thuong.entry(a).or_insert(0) += st; }
+            if intersect_merge(
+                tg.position[&a],
+                tg.ban_kinh[&a],
+                tg.position[&b],
+                tg.ban_kinh[&b],
+            ) {
+                if let Some(&st) = tg.contact_damage.get(&a) {
+                    *sat_thuong.entry(b).or_insert(0) += st;
+                }
+                if let Some(&st) = tg.contact_damage.get(&b) {
+                    *sat_thuong.entry(a).or_insert(0) += st;
+                }
             }
         }
     }
     for (e, st) in sat_thuong {
-        if let Some(m) = tg.mau.get_mut(&e) { *m -= st; }
+        if let Some(m) = tg.mau.get_mut(&e) {
+            *m -= st;
+        }
     }
-    let chet: Vec<Entity> = tg.con_song.iter().copied()
-        .filter(|e| tg.mau.get(e).map_or(false, |&m| m <= 0)).collect();
-    for e in &chet { tg.cancel(*e); }
+    let chet: Vec<Entity> = tg
+        .con_song
+        .iter()
+        .copied()
+        .filter(|e| tg.mau.get(e).map_or(false, |&m| m <= 0))
+        .collect();
+    for e in &chet {
+        tg.cancel(*e);
+    }
     chet.len()
 }
 
@@ -363,16 +447,31 @@ fn main() {
 
     println!("\n1. VÒNG LẶP BƯỚC CỐ ĐỊNH 60 Hz");
     let mut bt = Accumulator::new(60.0);
-    for (name, dt) in [("máy mạnh 144 fps", 1.0 / 144.0), ("máy yếu 30 fps", 1.0 / 30.0),
-                      ("khựng 0.5 giây", 0.5)] {
+    for (name, dt) in [
+        ("máy mạnh 144 fps", 1.0 / 144.0),
+        ("máy yếu 30 fps", 1.0 / 30.0),
+        ("khựng 0.5 giây", 0.5),
+    ] {
         let n = bt.new_frame(dt);
-        println!("   {:<18} → {} bước vật lý, nội suy {:.2}{}",
-                 name, n.physics_steps, n.lerp_factor,
-                 if n.steps_dropped { "  ⚠ cắt nợ để tránh xoắn ốc tử thần" } else { "" });
+        println!(
+            "   {:<18} → {} bước vật lý, nội suy {:.2}{}",
+            name,
+            n.physics_steps,
+            n.lerp_factor,
+            if n.steps_dropped {
+                "  ⚠ cắt nợ để tránh xoắn ốc tử thần"
+            } else {
+                ""
+            }
+        );
     }
 
     println!("\n2. HAI BỘ TÍCH PHÂN — vật rơi tự do 1 giây, dt = 1/60");
-    let bd = PhysicsBody { position: Vec2::new(0.0, 100.0), velocity: Vec2::KHONG, quantity: 1.0 };
+    let bd = PhysicsBody {
+        position: Vec2::new(0.0, 100.0),
+        velocity: Vec2::KHONG,
+        quantity: 1.0,
+    };
     let g = Vec2::new(0.0, -9.81);
     let (mut a, mut b) = (bd, bd);
     for _ in 0..60 {
@@ -381,29 +480,56 @@ fn main() {
     }
     let that = 100.0 - 0.5 * 9.81;
     println!("   Nghiệm giải tích : y = {:.4}", that);
-    println!("   Euler tường minh : y = {:.4} (lệch {:.4})", a.position.y, (a.position.y - that).abs());
-    println!("   Euler nửa ẩn     : y = {:.4} (lệch {:.4})", b.position.y, (b.position.y - that).abs());
+    println!(
+        "   Euler tường minh : y = {:.4} (lệch {:.4})",
+        a.position.y,
+        (a.position.y - that).abs()
+    );
+    println!(
+        "   Euler nửa ẩn     : y = {:.4} (lệch {:.4})",
+        b.position.y,
+        (b.position.y - that).abs()
+    );
 
     println!("\n3. VA CHẠM & VECTOR ĐẨY TỐI THIỂU");
     let h1 = Aabb::from_center(Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0));
     let h2 = Aabb::from_center(Vec2::new(1.5, 0.2), Vec2::new(1.0, 1.0));
-    println!("   Hai hộp chồng nhau: {} | đẩy ra: {:?}", h1.intersects(&h2), h1.day_ra(&h2));
-    println!("   Bóng bay (1,-1) đập sàn (pháp tuyến 0,1) → {:?}",
-             Vec2::new(1.0, -1.0).part_remote(Vec2::new(0.0, 1.0)));
+    println!(
+        "   Hai hộp chồng nhau: {} | đẩy ra: {:?}",
+        h1.intersects(&h2),
+        h1.day_ra(&h2)
+    );
+    println!(
+        "   Bóng bay (1,-1) đập sàn (pháp tuyến 0,1) → {:?}",
+        Vec2::new(1.0, -1.0).part_remote(Vec2::new(0.0, 1.0))
+    );
 
     println!("\n4. BĂM KHÔNG GIAN — 400 vật thể rải trên lưới 100×100");
-    let hop: Vec<Aabb> = (0..400).map(|i| {
-        let x = (i % 20) as f32 * 5.0;
-        let y = (i / 20) as f32 * 5.0;
-        Aabb::from_center(Vec2::new(x, y), Vec2::new(1.2, 1.2))
-    }).collect();
+    let hop: Vec<Aabb> = (0..400)
+        .map(|i| {
+            let x = (i % 20) as f32 * 5.0;
+            let y = (i / 20) as f32 * 5.0;
+            Aabb::from_center(Vec2::new(x, y), Vec2::new(1.2, 1.2))
+        })
+        .collect();
     let vet_can = va_cham_vet_can(&hop);
     let (qua_luoi, so_thu) = va_cham_qua_luoi(&hop, 6.0);
     let cap_vet_can = hop.len() * (hop.len() - 1) / 2;
-    println!("   Vét cạn : {} phép thử → {} va chạm", cap_vet_can, vet_can.len());
-    println!("   Lưới băm: {} phép thử → {} va chạm", so_thu, qua_luoi.len());
-    println!("   Cùng kết quả: {} | giảm {:.0}% khối lượng tính toán",
-             vet_can == qua_luoi, 100.0 - so_thu as f64 * 100.0 / cap_vet_can as f64);
+    println!(
+        "   Vét cạn : {} phép thử → {} va chạm",
+        cap_vet_can,
+        vet_can.len()
+    );
+    println!(
+        "   Lưới băm: {} phép thử → {} va chạm",
+        so_thu,
+        qua_luoi.len()
+    );
+    println!(
+        "   Cùng kết quả: {} | giảm {:.0}% khối lượng tính toán",
+        vet_can == qua_luoi,
+        100.0 - so_thu as f64 * 100.0 / cap_vet_can as f64
+    );
 
     println!("\n5. ECS — 1 người chơi, 3 quái, mô phỏng 3 khung hình");
     let mut tg = World::new();
@@ -423,9 +549,14 @@ fn main() {
     for frame in 1..=3 {
         he_thong_move(&mut tg, 1.0);
         let chet = collision_damage_system(&mut tg);
-        println!("   Khung {}: người chơi ở x={:.1} · máu {:?} · {} thực thể chết · còn {} sống",
-                 frame, tg.position.get(&nguoi_choi).map_or(0.0, |p| p.x),
-                 tg.mau.get(&nguoi_choi), chet, tg.con_song.len());
+        println!(
+            "   Khung {}: người chơi ở x={:.1} · máu {:?} · {} thực thể chết · còn {} sống",
+            frame,
+            tg.position.get(&nguoi_choi).map_or(0.0, |p| p.x),
+            tg.mau.get(&nguoi_choi),
+            chet,
+            tg.con_song.len()
+        );
     }
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -437,7 +568,9 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn gan_bang(a: f32, b: f32) -> bool { (a - b).abs() < 1e-4 }
+    fn gan_bang(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-4
+    }
 
     // ---------- Vector ----------
     #[test]
@@ -449,7 +582,11 @@ mod tests {
 
     #[test]
     fn normalize_yields_unit_length() {
-        for v in [Vec2::new(3.0, 4.0), Vec2::new(-7.0, 0.5), Vec2::new(0.0, -2.0)] {
+        for v in [
+            Vec2::new(3.0, 4.0),
+            Vec2::new(-7.0, 0.5),
+            Vec2::new(0.0, -2.0),
+        ] {
             assert!(gan_bang(v.normalize().length(), 1.0));
         }
     }
@@ -465,9 +602,15 @@ mod tests {
     fn reflect_preserves_magnitude_and_flips_axis() {
         let toi = Vec2::new(1.0, -1.0);
         let ra = toi.part_remote(Vec2::new(0.0, 1.0));
-        assert!(gan_bang(ra.x, 1.0), "thành phần song song mặt phẳng giữ nguyên");
+        assert!(
+            gan_bang(ra.x, 1.0),
+            "thành phần song song mặt phẳng giữ nguyên"
+        );
         assert!(gan_bang(ra.y, 1.0), "thành phần vuông góc đổi dấu");
-        assert!(gan_bang(ra.length(), toi.length()), "va chạm đàn hồi giữ nguyên tốc độ");
+        assert!(
+            gan_bang(ra.length(), toi.length()),
+            "va chạm đàn hồi giữ nguyên tốc độ"
+        );
     }
 
     #[test]
@@ -487,8 +630,13 @@ mod tests {
         // nên mất hẳn một bước vật lý sau mỗi giây.
         let mut bt = Accumulator::new(60.0);
         bt.max_step_one_frame = 1000;
-        let tong: u32 = (0..144).map(|_| bt.new_frame(1.0 / 144.0).physics_steps).sum();
-        assert_eq!(tong, 59, "đáng lẽ 60 — một bước bị nuốt mất vì trôi dấu phẩy động");
+        let tong: u32 = (0..144)
+            .map(|_| bt.new_frame(1.0 / 144.0).physics_steps)
+            .sum();
+        assert_eq!(
+            tong, 59,
+            "đáng lẽ 60 — một bước bị nuốt mất vì trôi dấu phẩy động"
+        );
     }
 
     #[test]
@@ -516,7 +664,11 @@ mod tests {
         let n = bt.new_frame(2_000_000_000); // khựng 2 giây
         assert_eq!(n.physics_steps, 5);
         assert!(n.steps_dropped);
-        assert_eq!(bt.new_frame(16_666_666).physics_steps, 1, "không mang nợ sang khung sau");
+        assert_eq!(
+            bt.new_frame(16_666_666).physics_steps,
+            1,
+            "không mang nợ sang khung sau"
+        );
     }
 
     #[test]
@@ -524,8 +676,11 @@ mod tests {
         let mut bt = Accumulator::new(60.0);
         for i in 0..200 {
             let n = bt.new_frame(0.001 * (i % 37) as f32);
-            assert!((0.0..1.0).contains(&n.lerp_factor),
-                    "hệ số nội suy {} nằm ngoài [0,1)", n.lerp_factor);
+            assert!(
+                (0.0..1.0).contains(&n.lerp_factor),
+                "hệ số nội suy {} nằm ngoài [0,1)",
+                n.lerp_factor
+            );
         }
     }
 
@@ -537,7 +692,10 @@ mod tests {
         assert!(n.steps_dropped);
         // Khung sau phải trở lại bình thường, không mang theo nợ
         let next = bt.new_frame(1.0 / 60.0);
-        assert_eq!(next.physics_steps, 1, "nợ đã bị cắt, không dồn sang khung sau");
+        assert_eq!(
+            next.physics_steps, 1,
+            "nợ đã bị cắt, không dồn sang khung sau"
+        );
     }
 
     // ---------- Vật lý ----------
@@ -548,7 +706,11 @@ mod tests {
         // một cái hụt — vì sai số đều là 0.5·g·dt².
         // Ưu thế của nửa ẩn nằm ở chỗ khác: sự ỔN ĐỊNH của hệ dao động,
         // xem bài kiểm thử quỹ đạo tròn ngay bên dưới.
-        let bd = PhysicsBody { position: Vec2::new(0.0, 100.0), velocity: Vec2::KHONG, quantity: 1.0 };
+        let bd = PhysicsBody {
+            position: Vec2::new(0.0, 100.0),
+            velocity: Vec2::KHONG,
+            quantity: 1.0,
+        };
         let g = Vec2::new(0.0, -9.81);
         let (mut a, mut b) = (bd, bd);
         for _ in 0..60 {
@@ -560,8 +722,12 @@ mod tests {
         let sai_b = b.position.y - that;
         assert!(sai_a > 0.0, "tường minh rơi CHẬM hơn thực tế");
         assert!(sai_b < 0.0, "nửa ẩn rơi NHANH hơn thực tế");
-        assert!((sai_a.abs() - sai_b.abs()).abs() < 1e-3,
-                "hai sai số phải bằng nhau về độ lớn: {} vs {}", sai_a, sai_b);
+        assert!(
+            (sai_a.abs() - sai_b.abs()).abs() < 1e-3,
+            "hai sai số phải bằng nhau về độ lớn: {} vs {}",
+            sai_a,
+            sai_b
+        );
     }
 
     #[test]
@@ -569,20 +735,32 @@ mod tests {
         // Cùng bài toán khiến Euler tường minh văng ra ngoài (xem bên dưới),
         // nửa ẩn giữ bán kính dao động trong biên hẹp — đây mới là lý do
         // thật sự khiến mọi game engine chọn nó.
-        let mut t = PhysicsBody { position: Vec2::new(1.0, 0.0), velocity: Vec2::new(0.0, 1.0), quantity: 1.0 };
+        let mut t = PhysicsBody {
+            position: Vec2::new(1.0, 0.0),
+            velocity: Vec2::new(0.0, 1.0),
+            quantity: 1.0,
+        };
         let mut r_lon_nhat: f32 = 0.0;
         for _ in 0..1000 {
             let huong_tam = t.position.normalize().nhan(-1.0);
             t = semi_implicit_euler_step(t, huong_tam, 0.01);
             r_lon_nhat = r_lon_nhat.max(t.position.length());
         }
-        assert!(r_lon_nhat < 1.02, "bán kính phải bị chặn, thực tế phình tới {}", r_lon_nhat);
+        assert!(
+            r_lon_nhat < 1.02,
+            "bán kính phải bị chặn, thực tế phình tới {}",
+            r_lon_nhat
+        );
     }
 
     #[test]
     fn both_integrators_agree_on_velocity() {
         // Chỉ VỊ TRÍ khác nhau — vận tốc cập nhật giống hệt nhau.
-        let bd = PhysicsBody { position: Vec2::KHONG, velocity: Vec2::new(1.0, 0.0), quantity: 1.0 };
+        let bd = PhysicsBody {
+            position: Vec2::KHONG,
+            velocity: Vec2::new(1.0, 0.0),
+            quantity: 1.0,
+        };
         let g = Vec2::new(0.0, -10.0);
         let a = explicit_euler_step(bd, g, 0.1);
         let b = semi_implicit_euler_step(bd, g, 0.1);
@@ -594,23 +772,34 @@ mod tests {
     fn explicit_euler_injects_energy_in_circular_orbit() {
         // Bài kiểm chứng kinh điển: vật quay quanh tâm bằng lực hướng tâm.
         // Euler tường minh làm bán kính LỚN DẦN — vật văng ra ngoài.
-        let mut t = PhysicsBody { position: Vec2::new(1.0, 0.0), velocity: Vec2::new(0.0, 1.0), quantity: 1.0 };
+        let mut t = PhysicsBody {
+            position: Vec2::new(1.0, 0.0),
+            velocity: Vec2::new(0.0, 1.0),
+            quantity: 1.0,
+        };
         let r_dau = t.position.length();
         for _ in 0..1000 {
             let huong_tam = t.position.normalize().nhan(-1.0);
             t = explicit_euler_step(t, huong_tam, 0.01);
         }
-        assert!(t.position.length() > r_dau * 1.01,
-                "bán kính phải phình ra: {} → {}", r_dau, t.position.length());
+        assert!(
+            t.position.length() > r_dau * 1.01,
+            "bán kính phải phình ra: {} → {}",
+            r_dau,
+            t.position.length()
+        );
     }
 
     // ---------- Va chạm ----------
     #[test]
     fn aabb_overlap_handles_touching_edges() {
-        let a = Aabb::from_center(Vec2::KHONG, Vec2::new(1.0, 1.0));      // [-1,1]²
+        let a = Aabb::from_center(Vec2::KHONG, Vec2::new(1.0, 1.0)); // [-1,1]²
         let slow_peak = Aabb::from_center(Vec2::new(2.0, 2.0), Vec2::new(1.0, 1.0));
         let roi_nhau = Aabb::from_center(Vec2::new(2.1, 0.0), Vec2::new(1.0, 1.0));
-        assert!(a.intersects(&slow_peak), "chạm đúng một điểm vẫn tính là giao");
+        assert!(
+            a.intersects(&slow_peak),
+            "chạm đúng một điểm vẫn tính là giao"
+        );
         assert!(!a.intersects(&roi_nhau));
     }
 
@@ -637,10 +826,17 @@ mod tests {
         let a = Aabb::from_center(Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0));
         let b = Aabb::from_center(Vec2::new(1.5, 0.3), Vec2::new(1.0, 1.0));
         let d = a.day_ra(&b).unwrap();
-        let a_moi = Aabb { min: a.min.gate(d), max: a.max.gate(d) };
+        let a_moi = Aabb {
+            min: a.min.gate(d),
+            max: a.max.gate(d),
+        };
         // sau khi đẩy, hai hộp chỉ còn chạm nhau chứ không chồng lên nhau
-        assert!(gan_bang(a_moi.max.x, b.min.x) || gan_bang(a_moi.min.x, b.max.x)
-                || gan_bang(a_moi.max.y, b.min.y) || gan_bang(a_moi.min.y, b.max.y));
+        assert!(
+            gan_bang(a_moi.max.x, b.min.x)
+                || gan_bang(a_moi.min.x, b.max.x)
+                || gan_bang(a_moi.max.y, b.min.y)
+                || gan_bang(a_moi.min.y, b.max.y)
+        );
     }
 
     #[test]
@@ -652,51 +848,87 @@ mod tests {
 
     #[test]
     fn circle_collision_at_exact_contact() {
-        assert!(intersect_merge(Vec2::KHONG, 1.0, Vec2::new(2.0, 0.0), 1.0), "chạm nhau vừa đúng");
-        assert!(!intersect_merge(Vec2::KHONG, 1.0, Vec2::new(2.01, 0.0), 1.0));
+        assert!(
+            intersect_merge(Vec2::KHONG, 1.0, Vec2::new(2.0, 0.0), 1.0),
+            "chạm nhau vừa đúng"
+        );
+        assert!(!intersect_merge(
+            Vec2::KHONG,
+            1.0,
+            Vec2::new(2.01, 0.0),
+            1.0
+        ));
     }
 
     // ---------- Băm không gian ----------
     #[test]
     fn luoi_bam_cho_ket_qua_y_het_vet_can() {
-        let hop: Vec<Aabb> = (0..200).map(|i| {
-            let x = ((i * 37) % 100) as f32;
-            let y = ((i * 53) % 100) as f32;
-            Aabb::from_center(Vec2::new(x, y), Vec2::new(2.0, 2.0))
-        }).collect();
+        let hop: Vec<Aabb> = (0..200)
+            .map(|i| {
+                let x = ((i * 37) % 100) as f32;
+                let y = ((i * 53) % 100) as f32;
+                Aabb::from_center(Vec2::new(x, y), Vec2::new(2.0, 2.0))
+            })
+            .collect();
         let (qua_luoi, _) = va_cham_qua_luoi(&hop, 8.0);
-        assert_eq!(qua_luoi, va_cham_vet_can(&hop),
-                   "tăng tốc KHÔNG được đổi kết quả — đây là bất biến quan trọng nhất");
+        assert_eq!(
+            qua_luoi,
+            va_cham_vet_can(&hop),
+            "tăng tốc KHÔNG được đổi kết quả — đây là bất biến quan trọng nhất"
+        );
     }
 
     #[test]
     fn spatial_hash_cuts_pair_tests() {
-        let hop: Vec<Aabb> = (0..400).map(|i| {
-            Aabb::from_center(Vec2::new((i % 20) as f32 * 5.0, (i / 20) as f32 * 5.0),
-                           Vec2::new(1.2, 1.2))
-        }).collect();
+        let hop: Vec<Aabb> = (0..400)
+            .map(|i| {
+                Aabb::from_center(
+                    Vec2::new((i % 20) as f32 * 5.0, (i / 20) as f32 * 5.0),
+                    Vec2::new(1.2, 1.2),
+                )
+            })
+            .collect();
         let vet_can = hop.len() * (hop.len() - 1) / 2; // 79 800
         let (_, so_thu) = va_cham_qua_luoi(&hop, 6.0);
-        assert!(so_thu * 10 < vet_can,
-                "lưới băm phải cắt hơn 90% phép thử: {} so với {}", so_thu, vet_can);
+        assert!(
+            so_thu * 10 < vet_can,
+            "lưới băm phải cắt hơn 90% phép thử: {} so với {}",
+            so_thu,
+            vet_can
+        );
     }
 
     #[test]
     fn spatial_hash_catches_multi_cell_bodies() {
         // Một vật RẤT LỚN trải qua nhiều ô phải va chạm được với mọi vật nhỏ.
-        let mut hop = vec![Aabb::from_center(Vec2::new(25.0, 25.0), Vec2::new(25.0, 25.0))];
+        let mut hop = vec![Aabb::from_center(
+            Vec2::new(25.0, 25.0),
+            Vec2::new(25.0, 25.0),
+        )];
         for i in 0..10 {
-            hop.push(Aabb::from_center(Vec2::new(i as f32 * 5.0, i as f32 * 5.0), Vec2::new(0.5, 0.5)));
+            hop.push(Aabb::from_center(
+                Vec2::new(i as f32 * 5.0, i as f32 * 5.0),
+                Vec2::new(0.5, 0.5),
+            ));
         }
         let (qua_luoi, _) = va_cham_qua_luoi(&hop, 5.0);
-        assert_eq!(qua_luoi, va_cham_vet_can(&hop), "vật lớn phải được ghi vào MỌI ô nó chạm");
+        assert_eq!(
+            qua_luoi,
+            va_cham_vet_can(&hop),
+            "vật lớn phải được ghi vào MỌI ô nó chạm"
+        );
     }
 
     #[test]
     fn no_duplicate_pairs_in_result() {
-        let hop: Vec<Aabb> = (0..50).map(|i| {
-            Aabb::from_center(Vec2::new((i % 5) as f32, (i / 5) as f32), Vec2::new(3.0, 3.0))
-        }).collect();
+        let hop: Vec<Aabb> = (0..50)
+            .map(|i| {
+                Aabb::from_center(
+                    Vec2::new((i % 5) as f32, (i / 5) as f32),
+                    Vec2::new(3.0, 3.0),
+                )
+            })
+            .collect();
         let (kq, _) = va_cham_qua_luoi(&hop, 4.0);
         let mut sap = kq.clone();
         sap.sort_unstable();
@@ -713,7 +945,10 @@ mod tests {
         let b = tg.tao();
         tg.cancel(a);
         let c = tg.tao();
-        assert_ne!(c, a, "ID đã hủy không được cấp lại — tránh lỗi 'con trỏ ma'");
+        assert_ne!(
+            c, a,
+            "ID đã hủy không được cấp lại — tránh lỗi 'con trỏ ma'"
+        );
         assert_eq!(tg.con_song, vec![b, c]);
     }
 
@@ -727,7 +962,11 @@ mod tests {
         tg.position.insert(compute, Vec2::new(9.0, 9.0)); // KHÔNG có vận tốc
         he_thong_move(&mut tg, 1.0);
         assert_eq!(tg.position[&dong], Vec2::new(2.0, 0.0));
-        assert_eq!(tg.position[&compute], Vec2::new(9.0, 9.0), "thiếu thành phần thì hệ thống bỏ qua");
+        assert_eq!(
+            tg.position[&compute],
+            Vec2::new(9.0, 9.0),
+            "thiếu thành phần thì hệ thống bỏ qua"
+        );
     }
 
     #[test]
@@ -738,8 +977,12 @@ mod tests {
         tg.velocity.insert(e, Vec2::KHONG);
         tg.mau.insert(e, 5);
         tg.cancel(e);
-        assert!(!tg.position.contains_key(&e) && !tg.velocity.contains_key(&e)
-                && !tg.mau.contains_key(&e), "không được để lại thành phần mồ côi");
+        assert!(
+            !tg.position.contains_key(&e)
+                && !tg.velocity.contains_key(&e)
+                && !tg.mau.contains_key(&e),
+            "không được để lại thành phần mồ côi"
+        );
     }
 
     #[test]

@@ -2,7 +2,6 @@
 //! Chương 60 — Khoa học máy tính: Quy hoạch động, Quay lui, Tham lam, Lý thuyết số.
 //! Theo tinh thần TheAlgorithms/Rust và Rusty-CS, giải các bài LeetCode kinh điển.
 
-
 // ============================================================================
 // 1. QUY HOẠCH ĐỘNG (Dynamic Programming) — ghi nhớ để không tính lại
 // ============================================================================
@@ -10,12 +9,18 @@
 /// Fibonacci: minh họa vì sao QHĐ cần thiết.
 /// Bản đệ quy ngây thơ là O(2^n) — tính lại cùng một giá trị hàng triệu lần.
 pub fn fib_naive(n: u64) -> u64 {
-    if n < 2 { n } else { fib_naive(n - 1) + fib_naive(n - 2) }
+    if n < 2 {
+        n
+    } else {
+        fib_naive(n - 1) + fib_naive(n - 2)
+    }
 }
 
 /// Bản QHĐ từ dưới lên: O(n) thời gian, O(1) không gian.
 pub fn fib_qhd(n: u64) -> u64 {
-    if n < 2 { return n; }
+    if n < 2 {
+        return n;
+    }
     let (mut a, mut b) = (0u64, 1u64);
     for _ in 2..=n {
         let c = a + b;
@@ -88,19 +93,24 @@ pub fn permutations<T: Clone>(cac_phan_tu: &[T]) -> Vec<Vec<T>> {
     ket_qua
 }
 fn backtrack_permutations<T: Clone>(
-    pt: &[T], da_dung: &mut [bool], current: &mut Vec<T>, kq: &mut Vec<Vec<T>>,
+    pt: &[T],
+    da_dung: &mut [bool],
+    current: &mut Vec<T>,
+    kq: &mut Vec<Vec<T>>,
 ) {
     if current.len() == pt.len() {
         kq.push(current.clone());
         return;
     }
     for i in 0..pt.len() {
-        if da_dung[i] { continue; }
+        if da_dung[i] {
+            continue;
+        }
         da_dung[i] = true;
         current.push(pt[i].clone());
         backtrack_permutations(pt, da_dung, current, kq);
-        current.pop();        // LÙI LẠI
-        da_dung[i] = false;    // bỏ đánh dấu
+        current.pop(); // LÙI LẠI
+        da_dung[i] = false; // bỏ đánh dấu
     }
 }
 
@@ -112,15 +122,23 @@ pub fn n_hau(n: usize) -> usize {
     set_suffix(0, n, &mut cot, &mut cheo_xuoi, &mut cheo_nguoc)
 }
 fn set_suffix(queue: usize, n: usize, cot: &mut [bool], cx: &mut [bool], cn: &mut [bool]) -> usize {
-    if queue == n { return 1; }
+    if queue == n {
+        return 1;
+    }
     let mut num_way = 0;
     for c in 0..n {
         let d1 = queue + c;
         let d2 = queue + n - 1 - c;
-        if cot[c] || cx[d1] || cn[d2] { continue; }
-        cot[c] = true; cx[d1] = true; cn[d2] = true;
+        if cot[c] || cx[d1] || cn[d2] {
+            continue;
+        }
+        cot[c] = true;
+        cx[d1] = true;
+        cn[d2] = true;
         num_way += set_suffix(queue + 1, n, cot, cx, cn);
-        cot[c] = false; cx[d1] = false; cn[d2] = false; // LÙI LẠI
+        cot[c] = false;
+        cx[d1] = false;
+        cn[d2] = false; // LÙI LẠI
     }
     num_way
 }
@@ -172,12 +190,18 @@ pub fn ucln(mut a: u64, mut b: u64) -> u64 {
 }
 /// Bội chung nhỏ nhất.
 pub fn bcnn(a: u64, b: u64) -> u64 {
-    if a == 0 || b == 0 { 0 } else { a / ucln(a, b) * b }
+    if a == 0 || b == 0 {
+        0
+    } else {
+        a / ucln(a, b) * b
+    }
 }
 
 /// Sàng Eratosthenes: liệt kê mọi số nguyên tố tới n, O(n log log n).
 pub fn sang_nguyen_to(n: usize) -> Vec<usize> {
-    if n < 2 { return Vec::new(); }
+    if n < 2 {
+        return Vec::new();
+    }
     let mut la_nt = vec![true; n + 1];
     la_nt[0] = false;
     la_nt[1] = false;
@@ -198,7 +222,9 @@ pub fn sang_nguyen_to(n: usize) -> Vec<usize> {
 /// Lũy thừa modulo nhanh (fast modular exponentiation) — nền của mật mã RSA.
 /// Tính (base^so_mu) % modulo trong O(log so_mu).
 pub fn mod_pow(mut base: u64, mut so_mu: u64, modulo: u64) -> u64 {
-    if modulo == 1 { return 0; }
+    if modulo == 1 {
+        return 0;
+    }
     let mut kq = 1u64;
     base %= modulo;
     while so_mu > 0 {
@@ -217,26 +243,53 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     println!("\n1. QUY HOẠCH ĐỘNG");
-    println!("   Fibonacci(40): ngây thơ mất O(2^n), QHĐ = {}", fib_qhd(40));
-    println!("   Đổi tiền [1,5,6,9] cho 11: {:?} xu (tối ưu)", coin_change(&[1, 5, 6, 9], 11));
-    println!("   LCS(\"ABCBDAB\", \"BDCAB\"): {}", longest_common_subsequence("ABCBDAB", "BDCAB"));
-    println!("   Ba lô (tl=[1,3,4,5], gt=[1,4,5,7], sức chứa 7): {}",
-             ba_lo(&[1, 3, 4, 5], &[1, 4, 5, 7], 7));
+    println!(
+        "   Fibonacci(40): ngây thơ mất O(2^n), QHĐ = {}",
+        fib_qhd(40)
+    );
+    println!(
+        "   Đổi tiền [1,5,6,9] cho 11: {:?} xu (tối ưu)",
+        coin_change(&[1, 5, 6, 9], 11)
+    );
+    println!(
+        "   LCS(\"ABCBDAB\", \"BDCAB\"): {}",
+        longest_common_subsequence("ABCBDAB", "BDCAB")
+    );
+    println!(
+        "   Ba lô (tl=[1,3,4,5], gt=[1,4,5,7], sức chứa 7): {}",
+        ba_lo(&[1, 3, 4, 5], &[1, 4, 5, 7], 7)
+    );
 
     println!("\n2. QUAY LUI");
-    println!("   Số hoán vị của [1,2,3]: {}", permutations(&[1, 2, 3]).len());
+    println!(
+        "   Số hoán vị của [1,2,3]: {}",
+        permutations(&[1, 2, 3]).len()
+    );
     for n in [4, 5, 6, 8] {
         println!("   {} quân hậu: {} cách đặt", n, n_hau(n));
     }
 
     println!("\n3. THAM LAM");
     let hop = vec![(1, 3), (2, 5), (4, 7), (1, 8), (5, 9), (8, 10)];
-    println!("   Xếp nhiều cuộc họp nhất: {} cuộc (=(1,3),(4,7),(8,10))", select_active(hop));
-    println!("   ⚠ Đổi tiền THAM LAM [1,3,4] cho 6: {} xu (SAI!)", greedy_change(vec![1, 3, 4], 6));
-    println!("     Đổi tiền QHĐ    [1,3,4] cho 6: {:?} xu (ĐÚNG)", coin_change(&[1, 3, 4], 6));
+    println!(
+        "   Xếp nhiều cuộc họp nhất: {} cuộc (=(1,3),(4,7),(8,10))",
+        select_active(hop)
+    );
+    println!(
+        "   ⚠ Đổi tiền THAM LAM [1,3,4] cho 6: {} xu (SAI!)",
+        greedy_change(vec![1, 3, 4], 6)
+    );
+    println!(
+        "     Đổi tiền QHĐ    [1,3,4] cho 6: {:?} xu (ĐÚNG)",
+        coin_change(&[1, 3, 4], 6)
+    );
 
     println!("\n4. LÝ THUYẾT SỐ");
-    println!("   ƯCLN(48, 36) = {}, BCNN = {}", ucln(48, 36), bcnn(48, 36));
+    println!(
+        "   ƯCLN(48, 36) = {}, BCNN = {}",
+        ucln(48, 36),
+        bcnn(48, 36)
+    );
     println!("   Số nguyên tố < 30: {:?}", sang_nguyen_to(30));
     println!("   (7^256) mod 13 = {}", mod_pow(7, 256, 13));
 
@@ -260,16 +313,16 @@ mod tests {
     #[test]
     fn coin_change_dp() {
         assert_eq!(coin_change(&[1, 5, 6, 9], 11), Some(2)); // 5+6
-        assert_eq!(coin_change(&[2], 3), None);              // không thể
-        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2));     // 3+3
-        assert_eq!(coin_change(&[1, 2, 5], 0), Some(0));     // 0 tiền = 0 xu
+        assert_eq!(coin_change(&[2], 3), None); // không thể
+        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2)); // 3+3
+        assert_eq!(coin_change(&[1, 2, 5], 0), Some(0)); // 0 tiền = 0 xu
     }
 
     #[test]
     fn greedy_coin_change_can_be_wrong() {
         // Đây là bằng chứng: tham lam KHÔNG tối ưu với mệnh giá [1,3,4]
         assert_eq!(greedy_change(vec![1, 3, 4], 6), 3); // 4+1+1
-        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2));        // 3+3 -> QHĐ đúng
+        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2)); // 3+3 -> QHĐ đúng
         assert!(greedy_change(vec![1, 3, 4], 6) as u64 > coin_change(&[1, 3, 4], 6).unwrap());
     }
 
@@ -289,9 +342,9 @@ mod tests {
 
     #[test]
     fn permutations_have_correct_count() {
-        assert_eq!(permutations(&[1, 2, 3]).len(), 6);   // 3! = 6
+        assert_eq!(permutations(&[1, 2, 3]).len(), 6); // 3! = 6
         assert_eq!(permutations(&[1, 2, 3, 4]).len(), 24); // 4! = 24
-        assert_eq!(permutations::<i32>(&[]).len(), 1);   // hoán vị của rỗng = 1 (dãy rỗng)
+        assert_eq!(permutations::<i32>(&[]).len(), 1); // hoán vị của rỗng = 1 (dãy rỗng)
     }
 
     #[test]
@@ -322,8 +375,8 @@ mod tests {
 
     #[test]
     fn mod_pow_is_correct() {
-        assert_eq!(mod_pow(2, 10, 1000), 24);   // 1024 % 1000
-        assert_eq!(mod_pow(3, 0, 7), 1);        // x^0 = 1
+        assert_eq!(mod_pow(2, 10, 1000), 24); // 1024 % 1000
+        assert_eq!(mod_pow(3, 0, 7), 1); // x^0 = 1
         assert_eq!(mod_pow(7, 256, 13), 9);
         // không tràn số dù số mũ lớn
         assert_eq!(mod_pow(123456789, 987654321, 1_000_000_007), 652541198);

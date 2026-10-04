@@ -10,10 +10,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessState {
-    Moi,        // vừa tạo
-    SanSang,    // chờ được cấp CPU
-    DangChay,   // đang giữ CPU
-    Cho,        // chờ I/O
+    Moi,      // vừa tạo
+    SanSang,  // chờ được cấp CPU
+    DangChay, // đang giữ CPU
+    Cho,      // chờ I/O
     Finished,
 }
 
@@ -22,10 +22,10 @@ pub enum ProcessState {
 pub struct Process {
     pub pid: u32,
     pub name: String,
-    pub arrives_at: u64,   // arrival time
-    pub time_needed: u64,   // burst time — tổng CPU cần
+    pub arrives_at: u64,  // arrival time
+    pub time_needed: u64, // burst time — tổng CPU cần
     pub remaining: u64,
-    pub uu_tien: u8,          // số nhỏ = ưu tiên cao
+    pub uu_tien: u8, // số nhỏ = ưu tiên cao
     pub state: ProcessState,
     pub start: Option<u64>,
     pub end: Option<u64>,
@@ -34,9 +34,15 @@ pub struct Process {
 impl Process {
     pub fn new(pid: u32, name: &str, den: u64, can: u64, uu_tien: u8) -> Self {
         Process {
-            pid, name: name.to_string(), arrives_at: den,
-            time_needed: can, remaining: can, uu_tien,
-            state: ProcessState::Moi, start: None, end: None,
+            pid,
+            name: name.to_string(),
+            arrives_at: den,
+            time_needed: can,
+            remaining: can,
+            uu_tien,
+            state: ProcessState::Moi,
+            start: None,
+            end: None,
         }
     }
     /// Thời gian hoàn thành = lúc xong - lúc đến.
@@ -139,19 +145,25 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
     let mut done = 0;
 
     // Đưa vào hàng đợi những tiến trình đã tới tại thời điểm 0
-    let nap = |clock: u64, queue: &mut VecDeque<usize>, admitted: &mut Vec<bool>, tt: &Vec<Process>| {
-        let mut new: Vec<usize> = (0..tt.len())
-            .filter(|&i| !admitted[i] && tt[i].arrives_at <= clock)
-            .collect();
-        new.sort_by_key(|&i| (tt[i].arrives_at, tt[i].pid));
-        for i in new { admitted[i] = true; queue.push_back(i); }
-    };
+    let nap =
+        |clock: u64, queue: &mut VecDeque<usize>, admitted: &mut Vec<bool>, tt: &Vec<Process>| {
+            let mut new: Vec<usize> = (0..tt.len())
+                .filter(|&i| !admitted[i] && tt[i].arrives_at <= clock)
+                .collect();
+            new.sort_by_key(|&i| (tt[i].arrives_at, tt[i].pid));
+            for i in new {
+                admitted[i] = true;
+                queue.push_back(i);
+            }
+        };
     nap(clock, &mut queue, &mut admitted, &tt);
 
     while done < n {
         match queue.pop_front() {
             Some(i) => {
-                if tt[i].start.is_none() { tt[i].start = Some(clock); }
+                if tt[i].start.is_none() {
+                    tt[i].start = Some(clock);
+                }
                 let run = luong_tu.min(tt[i].remaining);
                 for _ in 0..run {
                     dtg.push((clock, tt[i].pid));
@@ -196,14 +208,19 @@ pub fn fifo_replace(refs: &[u64], num_frames: usize) -> ReplacementResult {
         if !visited.contains(&t) {
             error += 1;
             if frame.len() == num_frames {
-                if let Some(cu) = frame.pop_front() { visited.remove(&cu); }
+                if let Some(cu) = frame.pop_front() {
+                    visited.remove(&cu);
+                }
             }
             frame.push_back(t);
             visited.insert(t);
         }
         history.push(frame.iter().copied().collect());
     }
-    ReplacementResult { page_faults: error, series_frame: history }
+    ReplacementResult {
+        page_faults: error,
+        series_frame: history,
+    }
 }
 
 /// LRU (Least Recently Used): thay trang lâu không dùng nhất.
@@ -218,8 +235,11 @@ pub fn lru_replace(refs: &[u64], num_frames: usize) -> ReplacementResult {
             error += 1;
             if frame.len() == num_frames {
                 // tìm trang có lần dùng cuối XA NHẤT
-                let nan_nhan = frame.iter().copied()
-                    .min_by_key(|p| *last_lan.get(p).unwrap_or(&0)).unwrap();
+                let nan_nhan = frame
+                    .iter()
+                    .copied()
+                    .min_by_key(|p| *last_lan.get(p).unwrap_or(&0))
+                    .unwrap();
                 frame.retain(|&p| p != nan_nhan);
                 last_lan.remove(&nan_nhan);
             }
@@ -228,7 +248,10 @@ pub fn lru_replace(refs: &[u64], num_frames: usize) -> ReplacementResult {
         last_lan.insert(t, timestamp);
         history.push(frame.clone());
     }
-    ReplacementResult { page_faults: error, series_frame: history }
+    ReplacementResult {
+        page_faults: error,
+        series_frame: history,
+    }
 }
 
 /// OPT (tối ưu, Bélády): thay trang sẽ được dùng XA NHẤT trong tương lai.
@@ -243,16 +266,26 @@ pub fn optimal_replacement(refs: &[u64], num_frames: usize) -> ReplacementResult
             error += 1;
             if frame.len() == num_frames {
                 // trang nào KHÔNG xuất hiện lại, hoặc xuất hiện muộn nhất -> loại
-                let nan_nhan = frame.iter().copied().max_by_key(|p| {
-                    refs[i + 1..].iter().position(|x| x == p).unwrap_or(usize::MAX)
-                }).unwrap();
+                let nan_nhan = frame
+                    .iter()
+                    .copied()
+                    .max_by_key(|p| {
+                        refs[i + 1..]
+                            .iter()
+                            .position(|x| x == p)
+                            .unwrap_or(usize::MAX)
+                    })
+                    .unwrap();
                 frame.retain(|&p| p != nan_nhan);
             }
             frame.push(t);
         }
         history.push(frame.clone());
     }
-    ReplacementResult { page_faults: error, series_frame: history }
+    ReplacementResult {
+        page_faults: error,
+        series_frame: history,
+    }
 }
 
 // ============================================================================
@@ -266,7 +299,11 @@ pub struct WaitForGraph {
 }
 
 impl WaitForGraph {
-    pub fn new() -> Self { WaitForGraph { edge: HashMap::new() } }
+    pub fn new() -> Self {
+        WaitForGraph {
+            edge: HashMap::new(),
+        }
+    }
     pub fn them_cho(&mut self, ai_cho: u32, cho_ai: u32) {
         self.edge.entry(ai_cho).or_default().push(cho_ai);
     }
@@ -301,7 +338,9 @@ impl WaitForGraph {
                         return Some(positive[start..].to_vec());
                     }
                     0 => {
-                        if let Some(c) = self.dfs(k, mau, positive) { return Some(c); }
+                        if let Some(c) = self.dfs(k, mau, positive) {
+                            return Some(c);
+                        }
                     }
                     _ => {}
                 }
@@ -318,12 +357,14 @@ fn main() {
     println!("   HỆ ĐIỀU HÀNH: LẬP LỊCH CPU · PHÂN TRANG · PHÁT HIỆN BẾ TẮC   ");
     println!("═══════════════════════════════════════════════════════════════");
 
-    let tao = || vec![
-        Process::new(1, "trinh-duyet", 0, 8, 2),
-        Process::new(2, "trinh-soan-thao", 1, 4, 1),
-        Process::new(3, "nen-video", 2, 9, 3),
-        Process::new(4, "dong-bo-may", 3, 5, 2),
-    ];
+    let tao = || {
+        vec![
+            Process::new(1, "trinh-duyet", 0, 8, 2),
+            Process::new(2, "trinh-soan-thao", 1, 4, 1),
+            Process::new(3, "nen-video", 2, 9, 3),
+            Process::new(4, "dong-bo-may", 3, 5, 2),
+        ]
+    };
 
     println!("\n1. LẬP LỊCH CPU — cùng 4 tiến trình, ba thuật toán");
     for (name, kq) in [
@@ -331,13 +372,17 @@ fn main() {
         ("SJF        ", lap_lich_sjf(tao())),
         ("Round-Robin", lap_lich_round_robin(tao(), 3)),
     ] {
-        println!("   {} | chờ TB = {:>5.2} | quay vòng TB = {:>5.2}",
-                 name, kq.avg_wait, kq.mean_turnaround);
+        println!(
+            "   {} | chờ TB = {:>5.2} | quay vòng TB = {:>5.2}",
+            name, kq.avg_wait, kq.mean_turnaround
+        );
     }
     println!("   → SJF tối ưu thời gian chờ, nhưng Round-Robin công bằng hơn (không ai bị đói).");
 
     println!("\n2. THAY TRANG BỘ NHỚ ẢO (3 khung nhớ)");
-    let refs = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
+    let refs = [
+        7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1,
+    ];
     for (name, kq) in [
         ("FIFO   ", fifo_replace(&refs, 3)),
         ("LRU    ", lru_replace(&refs, 3)),
@@ -349,10 +394,22 @@ fn main() {
 
     println!("\n3. NGHỊCH LÝ BÉLÁDY — thêm khung nhớ mà LỖI TRANG TĂNG!");
     let belady = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-    println!("   FIFO 3 khung: {} lỗi", fifo_replace(&belady, 3).page_faults);
-    println!("   FIFO 4 khung: {} lỗi  ← NHIỀU HƠN dù có thêm bộ nhớ!", fifo_replace(&belady, 4).page_faults);
-    println!("   LRU  3 khung: {} lỗi", lru_replace(&belady, 3).page_faults);
-    println!("   LRU  4 khung: {} lỗi  ← LRU không bị nghịch lý này", lru_replace(&belady, 4).page_faults);
+    println!(
+        "   FIFO 3 khung: {} lỗi",
+        fifo_replace(&belady, 3).page_faults
+    );
+    println!(
+        "   FIFO 4 khung: {} lỗi  ← NHIỀU HƠN dù có thêm bộ nhớ!",
+        fifo_replace(&belady, 4).page_faults
+    );
+    println!(
+        "   LRU  3 khung: {} lỗi",
+        lru_replace(&belady, 3).page_faults
+    );
+    println!(
+        "   LRU  4 khung: {} lỗi  ← LRU không bị nghịch lý này",
+        lru_replace(&belady, 4).page_faults
+    );
 
     println!("\n4. PHÁT HIỆN BẾ TẮC");
     let mut g = WaitForGraph::new();
@@ -363,7 +420,10 @@ fn main() {
     let mut g2 = WaitForGraph::new();
     g2.them_cho(1, 2);
     g2.them_cho(2, 3);
-    println!("   Đồ thị P1→P2→P3   : {:?} (không bế tắc)", g2.has_deadlock());
+    println!(
+        "   Đồ thị P1→P2→P3   : {:?} (không bế tắc)",
+        g2.has_deadlock()
+    );
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   HỆ ĐIỀU HÀNH = TRỌNG TÀI PHÂN PHỐI TÀI NGUYÊN CÓ HẠN         ");
@@ -397,8 +457,12 @@ mod tests {
         let f = lap_lich_fcfs(mau());
         let s = lap_lich_sjf(mau());
         // SJF tối ưu thời gian chờ trung bình (định lý kinh điển)
-        assert!(s.avg_wait <= f.avg_wait,
-                "SJF ({}) phải <= FCFS ({})", s.avg_wait, f.avg_wait);
+        assert!(
+            s.avg_wait <= f.avg_wait,
+            "SJF ({}) phải <= FCFS ({})",
+            s.avg_wait,
+            f.avg_wait
+        );
     }
 
     #[test]
@@ -413,14 +477,20 @@ mod tests {
 
     #[test]
     fn every_scheduler_runs_total_burst() {
-        for kq in [lap_lich_fcfs(mau()), lap_lich_sjf(mau()), lap_lich_round_robin(mau(), 3)] {
+        for kq in [
+            lap_lich_fcfs(mau()),
+            lap_lich_sjf(mau()),
+            lap_lich_round_robin(mau(), 3),
+        ] {
             assert_eq!(kq.timeline.len(), 9, "phải dùng đúng 9 đơn vị CPU");
         }
     }
 
     #[test]
     fn optimal_replacement_is_a_lower_bound() {
-        let refs = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
+        let refs = [
+            7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1,
+        ];
         let opt = optimal_replacement(&refs, 3).page_faults;
         let lru = lru_replace(&refs, 3).page_faults;
         let fifo = fifo_replace(&refs, 3).page_faults;
@@ -435,7 +505,12 @@ mod tests {
         let ba = fifo_replace(&refs, 3).page_faults;
         let bon = fifo_replace(&refs, 4).page_faults;
         // NGHỊCH LÝ: thêm khung nhớ mà lỗi trang lại TĂNG
-        assert!(bon > ba, "Bélády: FIFO 4 khung ({}) phải nhiều lỗi hơn 3 khung ({})", bon, ba);
+        assert!(
+            bon > ba,
+            "Bélády: FIFO 4 khung ({}) phải nhiều lỗi hơn 3 khung ({})",
+            bon,
+            ba
+        );
     }
 
     #[test]
@@ -444,7 +519,12 @@ mod tests {
         let ba = lru_replace(&refs, 3).page_faults;
         let bon = lru_replace(&refs, 4).page_faults;
         // LRU là thuật toán "ngăn xếp" -> thêm khung KHÔNG BAO GIỜ làm tệ hơn
-        assert!(bon <= ba, "LRU 4 khung ({}) không được tệ hơn 3 khung ({})", bon, ba);
+        assert!(
+            bon <= ba,
+            "LRU 4 khung ({}) không được tệ hơn 3 khung ({})",
+            bon,
+            ba
+        );
     }
 
     #[test]

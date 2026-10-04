@@ -115,15 +115,18 @@ fn main() {
         0x45, 0x00, 0x00, 0x18, // Ver=4, IHL=5, Total Len=24
         0x1C, 0x7B, 0x40, 0x00, // ID, Flags, Fragment Offset
         0x40, 0x06, 0x00, 0x00, // TTL=64, Protocol=6 (TCP), Checksum
-        192, 168, 1, 100,       // Source IP: 192.168.1.100
-        10, 0, 0, 1,            // Dest IP: 10.0.0.1
+        192, 168, 1, 100, // Source IP: 192.168.1.100
+        10, 0, 0, 1, // Dest IP: 10.0.0.1
         0xDE, 0xAD, 0xBE, 0xEF, // Payload du lieu
     ];
 
     match parse_ipv4_packet(&sample_packet) {
         Ok(parsed) => {
             println!("    - Phien ban IP      : IPv{}", parsed.version);
-            println!("    - Do dai Tieu de   : {} bytes", parsed.header_length_bytes);
+            println!(
+                "    - Do dai Tieu de   : {} bytes",
+                parsed.header_length_bytes
+            );
             println!("    - Thoi gian song TTL: {}", parsed.ttl);
             println!("    - Giao thuc tang 4  : {} (TCP)", parsed.protocol);
             println!(
@@ -164,7 +167,10 @@ fn main() {
             println!("    - Magic Bytes Valid : {}", elf.is_valid_elf);
             println!("    - Kien truc Chip CPU: {}", elf.bit_architecture);
             println!("    - Thu tu Byte Endian: {}", elf.endianness);
-            println!("    - Dia chi khoi chay : 0x{:012X}", elf.entry_point_address);
+            println!(
+                "    - Dia chi khoi chay : 0x{:012X}",
+                elf.entry_point_address
+            );
             println!("    => Nhan dang tep nhi phan thanh cong chi voi 64 bytes dau!");
         }
         Err(err) => println!("    [!] Failed phan tich ELF: {}", err),

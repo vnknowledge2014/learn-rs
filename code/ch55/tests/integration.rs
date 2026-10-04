@@ -3,7 +3,7 @@
 //! API CÔNG KHAI của `ch55` — đúng như một người dùng thật. Đây là điểm khác biệt
 //! cốt lõi so với unit test (nằm trong lib, thấy được cả hàm riêng tư).
 
-use ch55::{checkout, PaymentGateway, Cart};
+use ch55::{Cart, PaymentGateway, checkout};
 
 /// Cổng giả cấp module test tích hợp (không truy cập được nội bộ crate).
 struct CongGia;

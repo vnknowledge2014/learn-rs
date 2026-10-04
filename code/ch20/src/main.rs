@@ -106,7 +106,11 @@ pub mod mien {
             if n == 0 {
                 Err(DomainError::BadQuantity("phải lớn hơn 0".to_string()))
             } else if n > Self::TOI_DA {
-                Err(DomainError::BadQuantity(format!("{} vượt quá {}", n, Self::TOI_DA)))
+                Err(DomainError::BadQuantity(format!(
+                    "{} vượt quá {}",
+                    n,
+                    Self::TOI_DA
+                )))
             } else {
                 Ok(Quantity(n))
             }
@@ -412,7 +416,12 @@ fn main() {
     // 1. HÀM KHỞI TẠO CÓ KIỂM CHỨNG — PHÒNG CÔNG CHỨNG
     // ------------------------------------------------------------------
     println!("\n1. PHÒNG CÔNG CHỨNG (Smart Constructor)");
-    for tho in ["  An.Nguyen@Example.COM ", "khong-co-a-cong", "@thieu-ten.vn", ""] {
+    for tho in [
+        "  An.Nguyen@Example.COM ",
+        "khong-co-a-cong",
+        "@thieu-ten.vn",
+        "",
+    ] {
         match Email::analyze(tho) {
             Ok(e) => println!("   {:>28} -> ✓ đóng dấu: {}", format!("{:?}", tho), e),
             Err(l) => println!("   {:>28} -> ✗ từ chối: {}", format!("{:?}", tho), l),
@@ -438,8 +447,16 @@ fn main() {
         id: "ORD-0001".to_string(),
         email: "sai-email".to_string(),
         dong: vec![
-            OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 100 },
-            OrderLineDto { name: "Bàn phím cơ".to_string(), quantity: 2, unit_price: 1_200_000 },
+            OrderLineDto {
+                name: "".to_string(),
+                quantity: 0,
+                unit_price: 100,
+            },
+            OrderLineDto {
+                name: "Bàn phím cơ".to_string(),
+                quantity: 2,
+                unit_price: 1_200_000,
+            },
         ],
     };
     match Order::try_from(dto_hong) {
@@ -460,9 +477,21 @@ fn main() {
         id: "ORD-0002".to_string(),
         email: "  Khach.Hang@Shop.VN  ".to_string(),
         dong: vec![
-            OrderLineDto { name: "Bàn phím cơ không dây".to_string(), quantity: 2, unit_price: 1_200_000 },
-            OrderLineDto { name: "Chuột công thái học".to_string(), quantity: 1, unit_price: 750_000 },
-            OrderLineDto { name: "Lót chuột cỡ lớn".to_string(), quantity: 3, unit_price: 150_000 },
+            OrderLineDto {
+                name: "Bàn phím cơ không dây".to_string(),
+                quantity: 2,
+                unit_price: 1_200_000,
+            },
+            OrderLineDto {
+                name: "Chuột công thái học".to_string(),
+                quantity: 1,
+                unit_price: 750_000,
+            },
+            OrderLineDto {
+                name: "Lót chuột cỡ lớn".to_string(),
+                quantity: 3,
+                unit_price: 150_000,
+            },
         ],
     };
 
@@ -489,7 +518,10 @@ fn main() {
     let don_da_tra: Order<Paid> = don_auth.payment(PaymentMethod::Transfer {
         transaction_id: "VCB-99881234".to_string(),
     });
-    println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
+    println!(
+        "   [Đã thanh toán] cách trả = {:?}",
+        don_da_tra.payment_method()
+    );
 
     let _delivered_order: Order<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
     println!("   [Đã giao]       hoàn tất quy trình ✓");
@@ -553,7 +585,14 @@ mod tests {
 
     #[test]
     fn email_rejects_invalid_address() {
-        for xau in ["", "   ", "khong-co-a-cong", "@thieu-ten.vn", "a@b@c.vn", "a@khongcocham"] {
+        for xau in [
+            "",
+            "   ",
+            "khong-co-a-cong",
+            "@thieu-ten.vn",
+            "a@b@c.vn",
+            "a@khongcocham",
+        ] {
             assert!(Email::analyze(xau).is_err(), "phải từ chối {:?}", xau);
         }
     }
@@ -586,7 +625,11 @@ mod tests {
         let dto = OrderDto {
             id: "X".to_string(),
             email: "sai".to_string(),
-            dong: vec![OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 1 }],
+            dong: vec![OrderLineDto {
+                name: "".to_string(),
+                quantity: 0,
+                unit_price: 1,
+            }],
         };
         let error = Order::try_from(dto).unwrap_err();
         assert_eq!(error.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", error);

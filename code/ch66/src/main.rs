@@ -24,18 +24,36 @@ pub struct FakeRegisters {
 
 impl FakeRegisters {
     pub fn new(value: u32) -> Self {
-        FakeRegisters { small_cell: Cell::new(value), write_count: Cell::new(0), so_lan_doc: Cell::new(0) }
+        FakeRegisters {
+            small_cell: Cell::new(value),
+            write_count: Cell::new(0),
+            so_lan_doc: Cell::new(0),
+        }
     }
     /// Tương ứng `core::ptr::write_volatile` — MỖI lệnh ghi đều phải xảy ra thật.
-    pub fn record(&self, v: u32) { self.small_cell.set(v); self.write_count.set(self.write_count.get() + 1); }
+    pub fn record(&self, v: u32) {
+        self.small_cell.set(v);
+        self.write_count.set(self.write_count.get() + 1);
+    }
     /// Tương ứng `core::ptr::read_volatile` — không được lưu vào thanh ghi CPU dùng lại.
-    pub fn doc(&self) -> u32 { self.so_lan_doc.set(self.so_lan_doc.get() + 1); self.small_cell.get() }
+    pub fn doc(&self) -> u32 {
+        self.so_lan_doc.set(self.so_lan_doc.get() + 1);
+        self.small_cell.get()
+    }
 
     /// Đọc-Sửa-Ghi: mẫu thao tác bit chuẩn của lập trình nhúng.
-    pub fn set_bit(&self, bit: u8) { self.record(self.doc() | (1 << bit)); }
-    pub fn clear_bit(&self, bit: u8) { self.record(self.doc() & !(1 << bit)); }
-    pub fn dao_bit(&self, bit: u8) { self.record(self.doc() ^ (1 << bit)); }
-    pub fn test_bit(&self, bit: u8) -> bool { self.doc() & (1 << bit) != 0 }
+    pub fn set_bit(&self, bit: u8) {
+        self.record(self.doc() | (1 << bit));
+    }
+    pub fn clear_bit(&self, bit: u8) {
+        self.record(self.doc() & !(1 << bit));
+    }
+    pub fn dao_bit(&self, bit: u8) {
+        self.record(self.doc() ^ (1 << bit));
+    }
+    pub fn test_bit(&self, bit: u8) -> bool {
+        self.doc() & (1 << bit) != 0
+    }
 
     /// Ghi một trường nhiều bit mà KHÔNG đụng các bit khác.
     pub fn record_field(&self, lech: u8, rong: u8, value: u32) {
@@ -56,7 +74,7 @@ impl FakeRegisters {
 pub struct Unconfigured;
 pub struct Input;
 pub struct Output;
-pub struct Analog;   // analog — cho ADC
+pub struct Analog; // analog — cho ADC
 
 pub struct Pin<CheDo> {
     serial: u8,
@@ -66,37 +84,61 @@ pub struct Pin<CheDo> {
 impl Pin<Unconfigured> {
     /// `unsafe` vì tạo hai `Chan` cùng số hiệu sẽ phá vỡ độc quyền phần cứng.
     /// Trong thực tế bạn chỉ gọi nó qua Singleton ở mục 3.
-    pub unsafe fn new(serial: u8) -> Self { Pin { serial, _che_do: PhantomData } }
+    pub unsafe fn new(serial: u8) -> Self {
+        Pin {
+            serial,
+            _che_do: PhantomData,
+        }
+    }
 }
 
 impl<CheDo> Pin<CheDo> {
-    pub fn serial(&self) -> u8 { self.serial }
+    pub fn serial(&self) -> u8 {
+        self.serial
+    }
     /// Chuyển chế độ TIÊU THỤ chân cũ (`self`) và trả về chân kiểu mới.
     /// Nhờ vậy không tồn tại đồng thời hai cách nhìn về cùng một chân.
     pub fn into_output(self, tg: &FakeRegisters) -> Pin<Output> {
         tg.record_field(self.serial * 2, 2, 0b01); // MODER = 01 (output)
-        Pin { serial: self.serial, _che_do: PhantomData }
+        Pin {
+            serial: self.serial,
+            _che_do: PhantomData,
+        }
     }
     pub fn into_input(self, tg: &FakeRegisters) -> Pin<Input> {
         tg.record_field(self.serial * 2, 2, 0b00); // MODER = 00 (input)
-        Pin { serial: self.serial, _che_do: PhantomData }
+        Pin {
+            serial: self.serial,
+            _che_do: PhantomData,
+        }
     }
     pub fn into_wall(self, tg: &FakeRegisters) -> Pin<Analog> {
         tg.record_field(self.serial * 2, 2, 0b11); // MODER = 11 (analog)
-        Pin { serial: self.serial, _che_do: PhantomData }
+        Pin {
+            serial: self.serial,
+            _che_do: PhantomData,
+        }
     }
 }
 
 // CHỈ chân đầu ra mới có `bat`/`tat` — gọi trên chân đầu vào là lỗi biên dịch.
 impl Pin<Output> {
-    pub fn bat(&mut self, data: &FakeRegisters) { data.set_bit(self.serial); }
-    pub fn tat(&mut self, data: &FakeRegisters) { data.clear_bit(self.serial); }
-    pub fn dao(&mut self, data: &FakeRegisters) { data.dao_bit(self.serial); }
+    pub fn bat(&mut self, data: &FakeRegisters) {
+        data.set_bit(self.serial);
+    }
+    pub fn tat(&mut self, data: &FakeRegisters) {
+        data.clear_bit(self.serial);
+    }
+    pub fn dao(&mut self, data: &FakeRegisters) {
+        data.dao_bit(self.serial);
+    }
 }
 
 // CHỈ chân đầu vào mới có `doc`.
 impl Pin<Input> {
-    pub fn doc(&self, data: &FakeRegisters) -> bool { data.test_bit(self.serial) }
+    pub fn doc(&self, data: &FakeRegisters) -> bool {
+        data.test_bit(self.serial)
+    }
 }
 
 // ============================================================================
@@ -123,10 +165,17 @@ impl Peripherals {
             return None; // đã có người lấy trước
         }
         // An toàn: cờ trên bảo đảm đoạn này chạy đúng một lần.
-        Some(unsafe { Peripherals { gate_a: Pin::new(5), gate_b: Pin::new(13) } })
+        Some(unsafe {
+            Peripherals {
+                gate_a: Pin::new(5),
+                gate_b: Pin::new(13),
+            }
+        })
     }
     #[doc(hidden)]
-    pub fn reset_for_test() { DA_LAY.store(false, Ordering::SeqCst); }
+    pub fn reset_for_test() {
+        DA_LAY.store(false, Ordering::SeqCst);
+    }
 }
 
 // ============================================================================
@@ -140,22 +189,38 @@ pub struct Q16(pub i32);
 
 impl Q16 {
     pub const MOT: Q16 = Q16(1 << 16);
-    pub fn tu_nguyen(n: i16) -> Q16 { Q16((n as i32) << 16) }
+    pub fn tu_nguyen(n: i16) -> Q16 {
+        Q16((n as i32) << 16)
+    }
     /// Chỉ dùng khi biên dịch trên máy có dấu phẩy động (lúc thiết kế hằng số).
-    pub fn from_real(x: f64) -> Q16 { Q16((x * 65536.0).round() as i32) }
-    pub fn into_real(self) -> f64 { self.0 as f64 / 65536.0 }
-    pub fn gate(self, k: Q16) -> Q16 { Q16(self.0.wrapping_add(k.0)) }
-    pub fn subtract(self, k: Q16) -> Q16 { Q16(self.0.wrapping_sub(k.0)) }
+    pub fn from_real(x: f64) -> Q16 {
+        Q16((x * 65536.0).round() as i32)
+    }
+    pub fn into_real(self) -> f64 {
+        self.0 as f64 / 65536.0
+    }
+    pub fn gate(self, k: Q16) -> Q16 {
+        Q16(self.0.wrapping_add(k.0))
+    }
+    pub fn subtract(self, k: Q16) -> Q16 {
+        Q16(self.0.wrapping_sub(k.0))
+    }
     /// Nhân phải qua i64 rồi dịch phải 16 — nếu không sẽ tràn ngay.
-    pub fn nhan(self, k: Q16) -> Q16 { Q16(((self.0 as i64 * k.0 as i64) >> 16) as i32) }
-    pub fn chia(self, k: Q16) -> Q16 { Q16((((self.0 as i64) << 16) / k.0 as i64) as i32) }
+    pub fn nhan(self, k: Q16) -> Q16 {
+        Q16(((self.0 as i64 * k.0 as i64) >> 16) as i32)
+    }
+    pub fn chia(self, k: Q16) -> Q16 {
+        Q16((((self.0 as i64) << 16) / k.0 as i64) as i32)
+    }
 }
 
 /// Chuyển giá trị ADC 12-bit (0..4095) sang nhiệt độ °C, toàn số nguyên.
 /// Cảm biến giả định: 0 → -40 °C, 4095 → 125 °C (tuyến tính).
 pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
     let ti_le = Q16::from_real(165.0 / 4095.0);
-    Q16::tu_nguyen(adc as i16).nhan(ti_le).subtract(Q16::tu_nguyen(40))
+    Q16::tu_nguyen(adc as i16)
+        .nhan(ti_le)
+        .subtract(Q16::tu_nguyen(40))
 }
 
 // ============================================================================
@@ -175,22 +240,41 @@ pub struct RingBuffer<const N: usize> {
 }
 
 impl<const N: usize> RingBuffer<N> {
-    pub const fn new() -> Self { RingBuffer { o: [0; N], head: 0, tail: 0, quantity: 0 } }
-    pub fn capacity(&self) -> usize { N }
-    pub fn quantity(&self) -> usize { self.quantity }
-    pub fn rong(&self) -> bool { self.quantity == 0 }
-    pub fn day(&self) -> bool { self.quantity == N }
+    pub const fn new() -> Self {
+        RingBuffer {
+            o: [0; N],
+            head: 0,
+            tail: 0,
+            quantity: 0,
+        }
+    }
+    pub fn capacity(&self) -> usize {
+        N
+    }
+    pub fn quantity(&self) -> usize {
+        self.quantity
+    }
+    pub fn rong(&self) -> bool {
+        self.quantity == 0
+    }
+    pub fn day(&self) -> bool {
+        self.quantity == N
+    }
 
     /// Trả `Err` thay vì cấp phát thêm — hệ nhúng KHÔNG được phép "cứ lớn dần".
     pub fn push(&mut self, b: u8) -> Result<(), u8> {
-        if self.day() { return Err(b); }
+        if self.day() {
+            return Err(b);
+        }
         self.o[self.tail] = b;
         self.tail = (self.tail + 1) % N;
         self.quantity += 1;
         Ok(())
     }
     pub fn take(&mut self) -> Option<u8> {
-        if self.rong() { return None; }
+        if self.rong() {
+            return None;
+        }
         let b = self.o[self.head];
         self.head = (self.head + 1) % N;
         self.quantity -= 1;
@@ -219,7 +303,13 @@ pub struct ChongRung {
 }
 
 impl ChongRung {
-    pub fn new(threshold: u8) -> Self { ChongRung { is_stable: false, count: 0, threshold } }
+    pub fn new(threshold: u8) -> Self {
+        ChongRung {
+            is_stable: false,
+            count: 0,
+            threshold,
+        }
+    }
     /// Trả `Some(trạng thái mới)` chỉ tại đúng khoảnh khắc chuyển.
     pub fn update(&mut self, mau_tho: bool) -> Option<bool> {
         if mau_tho == self.is_stable {
@@ -234,7 +324,9 @@ impl ChongRung {
         }
         None
     }
-    pub fn state(&self) -> bool { self.is_stable }
+    pub fn state(&self) -> bool {
+        self.is_stable
+    }
 }
 
 fn main() {
@@ -246,44 +338,85 @@ fn main() {
     let moder = FakeRegisters::new(0);
     let odr = FakeRegisters::new(0);
     moder.record_field(10, 2, 0b01);
-    println!("   MODER sau khi đặt chân 5 thành output: 0b{:032b}", moder.doc());
-    println!("   Số lệnh ghi thực sự chạm phần cứng   : {}", moder.write_count.get());
+    println!(
+        "   MODER sau khi đặt chân 5 thành output: 0b{:032b}",
+        moder.doc()
+    );
+    println!(
+        "   Số lệnh ghi thực sự chạm phần cứng   : {}",
+        moder.write_count.get()
+    );
 
     println!("\n2. TYPESTATE GPIO — sai kiểu là không biên dịch được");
     let bo = Peripherals::lay().expect("lần đầu phải lấy được");
-    println!("   BoNgoaiVi::lay() lần hai → {:?}", Peripherals::lay().is_none());
+    println!(
+        "   BoNgoaiVi::lay() lần hai → {:?}",
+        Peripherals::lay().is_none()
+    );
     let mut den = bo.gate_a.into_output(&moder);
     let nut = bo.gate_b.into_input(&moder);
     den.bat(&odr);
-    println!("   Bật đèn chân {} → ODR = 0b{:016b}", den.serial(), odr.doc());
+    println!(
+        "   Bật đèn chân {} → ODR = 0b{:016b}",
+        den.serial(),
+        odr.doc()
+    );
     println!("   Đọc nút chân {}  → {}", nut.serial(), nut.doc(&odr));
     println!("   ❌ nut.bat(&odr)   → E0599: không có phương thức `bat` cho Chan<DauVao>");
 
     println!("\n3. SỐ DẤU PHẨY TĨNH Q16.16 (không cần FPU)");
     for adc in [0u16, 1024, 2048, 4095] {
         let t = adc_sang_nhiet_do(adc);
-        println!("   ADC {:>4} → {:>8.3} °C (bên trong chỉ là i32 = {})", adc, t.into_real(), t.0);
+        println!(
+            "   ADC {:>4} → {:>8.3} °C (bên trong chỉ là i32 = {})",
+            adc,
+            t.into_real(),
+            t.0
+        );
     }
     let a = Q16::from_real(3.5);
     let b = Q16::from_real(2.0);
-    println!("   3.5 × 2.0 = {} · 3.5 ÷ 2.0 = {}", a.nhan(b).into_real(), a.chia(b).into_real());
+    println!(
+        "   3.5 × 2.0 = {} · 3.5 ÷ 2.0 = {}",
+        a.nhan(b).into_real(),
+        a.chia(b).into_real()
+    );
 
     println!("\n4. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT (4 byte)");
     let mut count: RingBuffer<4> = RingBuffer::new();
-    for b in b"RUST" { count.push(*b).unwrap(); }
-    println!("   Đầy: {} | đẩy thêm 'X' → {:?}", count.day(), count.push(b'X').unwrap_err() as char);
-    println!("   Ghi đè 'X' → mất byte {:?}", count.overwrite_buffer(b'X').map(|b| b as char));
-    let con: Vec<char> = std::iter::from_fn(|| count.take()).map(|b| b as char).collect();
+    for b in b"RUST" {
+        count.push(*b).unwrap();
+    }
+    println!(
+        "   Đầy: {} | đẩy thêm 'X' → {:?}",
+        count.day(),
+        count.push(b'X').unwrap_err() as char
+    );
+    println!(
+        "   Ghi đè 'X' → mất byte {:?}",
+        count.overwrite_buffer(b'X').map(|b| b as char)
+    );
+    let con: Vec<char> = std::iter::from_fn(|| count.take())
+        .map(|b| b as char)
+        .collect();
     println!("   Nội dung còn lại: {:?}", con);
 
     println!("\n5. CHỐNG RUNG PHÍM (ngưỡng 3 mẫu)");
     let mut cr = ChongRung::new(3);
-    let mau = [false, true, false, true, true, true, true, false, true, false, false, false];
+    let mau = [
+        false, true, false, true, true, true, true, false, true, false, false, false,
+    ];
     let mut ket_qua = Vec::new();
     for (i, &m) in mau.iter().enumerate() {
-        if let Some(new) = cr.update(m) { ket_qua.push((i, new)); }
+        if let Some(new) = cr.update(m) {
+            ket_qua.push((i, new));
+        }
     }
-    println!("   12 mẫu nhiễu → chỉ {} sự kiện thật: {:?}", ket_qua.len(), ket_qua);
+    println!(
+        "   12 mẫu nhiễu → chỉ {} sự kiện thật: {:?}",
+        ket_qua.len(),
+        ket_qua
+    );
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   NHÚNG = KHÔNG HỆ ĐIỀU HÀNH, KHÔNG HEAP, KHÔNG THA THỨ     ");
@@ -299,7 +432,11 @@ mod tests {
     fn bit_ops_leave_other_bits_alone() {
         let tg = FakeRegisters::new(0b1010_0000);
         tg.set_bit(0);
-        assert_eq!(tg.doc(), 0b1010_0001, "đặt bit 0 phải giữ nguyên bit 5 và 7");
+        assert_eq!(
+            tg.doc(),
+            0b1010_0001,
+            "đặt bit 0 phải giữ nguyên bit 5 và 7"
+        );
         tg.clear_bit(7);
         assert_eq!(tg.doc(), 0b0010_0001);
         tg.dao_bit(5);
@@ -311,14 +448,22 @@ mod tests {
         let tg = FakeRegisters::new(0xFFFF_FFFF);
         tg.record_field(4, 3, 0b010); // đặt 3 bit tại vị trí 4
         assert_eq!(tg.read_field(4, 3), 0b010);
-        assert_eq!(tg.doc(), 0xFFFF_FFAF, "mọi bit ngoài trường phải nguyên vẹn");
+        assert_eq!(
+            tg.doc(),
+            0xFFFF_FFAF,
+            "mọi bit ngoài trường phải nguyên vẹn"
+        );
     }
 
     #[test]
     fn values_are_truncated_to_the_field_width() {
         let tg = FakeRegisters::new(0);
         tg.record_field(0, 2, 0b1111); // chỉ 2 bit chứa được
-        assert_eq!(tg.doc(), 0b11, "phần thừa bị mặt nạ chặn, không tràn sang bit 2");
+        assert_eq!(
+            tg.doc(),
+            0b11,
+            "phần thừa bị mặt nạ chặn, không tràn sang bit 2"
+        );
     }
 
     #[test]
@@ -335,7 +480,11 @@ mod tests {
         let moder = FakeRegisters::new(0);
         let c = unsafe { Pin::new(5) };
         let _ra = c.into_output(&moder);
-        assert_eq!(moder.read_field(10, 2), 0b01, "chân 5 → bit 10-11 = 01 (output)");
+        assert_eq!(
+            moder.read_field(10, 2),
+            0b01,
+            "chân 5 → bit 10-11 = 01 (output)"
+        );
     }
 
     #[test]
@@ -354,8 +503,8 @@ mod tests {
         let moder = FakeRegisters::new(0);
         let c = unsafe { Pin::new(2) };
         let ra = c.into_output(&moder);
-        let input_pin = ra.into_input(&moder);      // tiêu thụ chân đầu ra
-        let tt = input_pin.into_wall(&moder);      // rồi thành analog
+        let input_pin = ra.into_input(&moder); // tiêu thụ chân đầu ra
+        let tt = input_pin.into_wall(&moder); // rồi thành analog
         assert_eq!(tt.serial(), 2, "số hiệu chân theo suốt mọi lần đổi kiểu");
         assert_eq!(moder.read_field(4, 2), 0b11);
     }
@@ -411,7 +560,9 @@ mod tests {
     #[test]
     fn ring_buffer_is_fifo() {
         let mut d: RingBuffer<4> = RingBuffer::new();
-        for b in [1u8, 2, 3] { d.push(b).unwrap(); }
+        for b in [1u8, 2, 3] {
+            d.push(b).unwrap();
+        }
         assert_eq!(d.take(), Some(1));
         assert_eq!(d.take(), Some(2));
         assert_eq!(d.quantity(), 1);
@@ -422,7 +573,11 @@ mod tests {
         let mut d: RingBuffer<2> = RingBuffer::new();
         d.push(1).unwrap();
         d.push(2).unwrap();
-        assert_eq!(d.push(3), Err(3), "đầy thì TRẢ LẠI byte, không được lớn thêm");
+        assert_eq!(
+            d.push(3),
+            Err(3),
+            "đầy thì TRẢ LẠI byte, không được lớn thêm"
+        );
         assert_eq!(d.capacity(), 2, "sức chứa cố định lúc biên dịch");
     }
 
@@ -431,7 +586,11 @@ mod tests {
         let mut d: RingBuffer<3> = RingBuffer::new();
         for i in 0..30u8 {
             d.push(i).unwrap();
-            assert_eq!(d.take(), Some(i), "chỉ số phải quay vòng đúng qua biên mảng");
+            assert_eq!(
+                d.take(),
+                Some(i),
+                "chỉ số phải quay vòng đúng qua biên mảng"
+            );
         }
         assert!(d.rong());
     }
@@ -439,7 +598,9 @@ mod tests {
     #[test]
     fn overwrite_mode_drops_oldest() {
         let mut d: RingBuffer<3> = RingBuffer::new();
-        for b in [1u8, 2, 3] { d.push(b).unwrap(); }
+        for b in [1u8, 2, 3] {
+            d.push(b).unwrap();
+        }
         assert_eq!(d.overwrite_buffer(4), Some(1), "phần tử CŨ NHẤT bị hy sinh");
         let con: Vec<u8> = std::iter::from_fn(|| d.take()).collect();
         assert_eq!(con, vec![2, 3, 4]);
@@ -469,7 +630,11 @@ mod tests {
         assert_eq!(c.update(true), None);
         assert_eq!(c.update(true), None);
         assert_eq!(c.update(true), Some(true), "đủ 3 mẫu → chuyển trạng thái");
-        assert_eq!(c.update(true), None, "giữ nguyên thì không phát lại sự kiện");
+        assert_eq!(
+            c.update(true),
+            None,
+            "giữ nguyên thì không phát lại sự kiện"
+        );
     }
 
     #[test]

@@ -4,7 +4,10 @@
 
 // 1. Hàm tiếp nhận quyền sở hữu: Biến truyền vào sẽ bị "nuốt chửng" tại đây!
 fn consume_series(chuoi_nhan_vao: String) {
-    println!("-> [Trong hàm tieu_thu_chuoi]: Đã nhận được: '{}'", chuoi_nhan_vao);
+    println!(
+        "-> [Trong hàm tieu_thu_chuoi]: Đã nhận được: '{}'",
+        chuoi_nhan_vao
+    );
     // Khi hàm này kết thúc tại dấu ngoặc nhọn dưới, chuoi_nhan_vao đi ra khỏi scope
     // Bộ nhớ Heap của chuỗi này sẽ tự động bị giải phóng (DROP) ngay lập tức!
 }
@@ -30,7 +33,10 @@ fn main() {
     let base_score = 100;
     let point_num_copy = base_score; // Tự động nhân bản trên Stack
 
-    println!("- Điểm gốc: {}, Điểm sao chép: {}", base_score, point_num_copy);
+    println!(
+        "- Điểm gốc: {}, Điểm sao chép: {}",
+        base_score, point_num_copy
+    );
     print_int(base_score);
     // Biến base_score vẫn sử dụng hoàn toàn bình thường sau khi truyền vào hàm!
     println!("- Sau khi gọi hàm, điểm gốc vẫn còn nguyên: {}", base_score);
@@ -50,7 +56,7 @@ fn main() {
     // --- PHẦN 3: DI CHUYỂN VÀO HÀM VÀ MẤT QUYỀN SỞ HỮU ---
     println!("\n3. Chuyển quyền sở hữu vào một hàm con:");
     let greeting = String::from("Xin chào từ Hà Nội");
-    
+
     // Khi gọi hàm này, greeting bị Move vào hàm con và biến mất khỏi main!
     consume_series(greeting);
 

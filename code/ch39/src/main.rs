@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -27,8 +27,8 @@ impl SafeRawBuffer {
         }
 
         // Tạo bố cục bộ nhớ (Memory Layout) với căn lề 8 bytes
-        let layout = Layout::array::<u8>(capacity)
-            .map_err(|_| "Lỗi tính toán kích thước bố cục bộ nhớ")?;
+        let layout =
+            Layout::array::<u8>(capacity).map_err(|_| "Lỗi tính toán kích thước bố cục bộ nhớ")?;
 
         // Thao tác cấp phát thô nằm trong khối unsafe
         let raw_ptr = unsafe { alloc(layout) };
@@ -85,7 +85,10 @@ impl SafeRawBuffer {
 impl Drop for SafeRawBuffer {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            println!("    [Drop] Đang giải phóng con trỏ thô tại địa chỉ {:p}...", self.ptr);
+            println!(
+                "    [Drop] Đang giải phóng con trỏ thô tại địa chỉ {:p}...",
+                self.ptr
+            );
             unsafe {
                 dealloc(self.ptr, self.layout);
             }
@@ -95,7 +98,7 @@ impl Drop for SafeRawBuffer {
 }
 
 // Giả lập khai báo hàm FFI tương thích chuẩn C
-extern "C" {
+unsafe extern "C" {
     // Gọi hàm đo độ dài chuỗi kinh điển strlen trong thư viện C chuẩn (libc)
     fn strlen(s: *const c_char) -> usize;
 }
@@ -111,7 +114,10 @@ fn main() {
     println!("\n[1] Khoi tao SafeRawBuffer dong goi con tro tho Heap:");
     {
         let mut my_buffer = SafeRawBuffer::with_capacity(32).expect("Khoi tao that bai");
-        println!("    - Khoi tao thanh cong bo dem dung luong: {} bytes", my_buffer.capacity());
+        println!(
+            "    - Khoi tao thanh cong bo dem dung luong: {} bytes",
+            my_buffer.capacity()
+        );
 
         // Ghi dữ liệu an toàn
         my_buffer.write_byte(0, 0xDE).unwrap();
@@ -119,8 +125,14 @@ fn main() {
         my_buffer.write_byte(2, 0xBE).unwrap();
         my_buffer.write_byte(3, 0xEF).unwrap();
 
-        println!("    - Doc byte tai index 0: 0x{:02X}", my_buffer.read_byte(0).unwrap());
-        println!("    - Doc byte tai index 1: 0x{:02X}", my_buffer.read_byte(1).unwrap());
+        println!(
+            "    - Doc byte tai index 0: 0x{:02X}",
+            my_buffer.read_byte(0).unwrap()
+        );
+        println!(
+            "    - Doc byte tai index 1: 0x{:02X}",
+            my_buffer.read_byte(1).unwrap()
+        );
 
         // Thử nghiệm truy cập ngoài biên an toàn
         let out_of_bounds = my_buffer.write_byte(100, 0xFF);
@@ -153,7 +165,10 @@ fn main() {
     println!("\n[3] Kiem tra tuong thich bo cuc bo nho #[repr(C)]:");
     let pt = NativePoint { x: 100, y: 200 };
     println!("    - Toa do diem C-compatible: x = {}, y = {}", pt.x, pt.y);
-    println!("    - Kich thuoc struct NativePoint: {} bytes (dung bang 2 * i32)", std::mem::size_of::<NativePoint>());
+    println!(
+        "    - Kich thuoc struct NativePoint: {} bytes (dung bang 2 * i32)",
+        std::mem::size_of::<NativePoint>()
+    );
     assert_eq!(std::mem::size_of::<NativePoint>(), 8);
 
     println!("\n==================================================================");

@@ -32,9 +32,12 @@ fn main() {
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
     let static_array: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&static_array));
+    println!(
+        "    - Kích thước vật lý : {} bytes",
+        std::mem::size_of_val(&static_array)
+    );
     println!("    - Số lượng phần tử  : {}", static_array.len());
-    
+
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
     for i in 0..static_array.len() {
@@ -46,13 +49,17 @@ fn main() {
     // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
     let mut vec_dong: Vec<i32> = Vec::new();
-    println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
+    println!(
+        "    Ban đầu khi mới tạo: len = {}, cap = {}",
+        vec_dong.len(),
+        vec_dong.capacity()
+    );
 
     let mut prev_address: usize = 0;
     for i in 1..=9 {
         vec_dong.push(i * 10);
         let current_address = vec_dong.as_ptr() as usize;
-        
+
         // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
         let row_changed = if current_address != prev_address && prev_address != 0 {
             prev_address = current_address;
@@ -80,8 +87,19 @@ fn main() {
         vec_toi_uu.push(i);
     }
     let ptr_sau = vec_toi_uu.as_ptr() as usize;
-    println!("    - Sau khi nạp 100 phần tử: len = {}, cap = {}", vec_toi_uu.len(), vec_toi_uu.capacity());
-    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_goc == ptr_sau { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
+    println!(
+        "    - Sau khi nạp 100 phần tử: len = {}, cap = {}",
+        vec_toi_uu.len(),
+        vec_toi_uu.capacity()
+    );
+    println!(
+        "    - Địa chỉ vùng nhớ có đổi không? {}",
+        if ptr_goc == ptr_sau {
+            "KHÔNG ĐỔI (Cực kỳ tối ưu!)"
+        } else {
+            "CÓ ĐỔI"
+        }
+    );
     assert_eq!(ptr_goc, ptr_sau);
 
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép

@@ -99,7 +99,7 @@ fn main() {
     println!("    - Đã thêm 20. Đỉnh hiện tại: {:?}", list.peek_front());
     list.push_front(30);
     println!("    - Đã thêm 30. Đỉnh hiện tại: {:?}", list.peek_front());
-    
+
     println!("    => Tổng số phần tử: {}", list.len());
     assert_eq!(list.len(), 3);
     assert_eq!(list.peek_front(), Some(&30));

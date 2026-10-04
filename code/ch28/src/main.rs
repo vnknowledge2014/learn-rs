@@ -101,9 +101,21 @@ fn main() {
     let bieu_thuc_2 = "( a + b ]";
     let bieu_thuc_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
-    println!("    - Biểu thức 1 '{}': {}", bieu_thuc_1, is_balanced_brackets(bieu_thuc_1));
-    println!("    - Biểu thức 2 '{}': {}", bieu_thuc_2, is_balanced_brackets(bieu_thuc_2));
-    println!("    - Biểu thức 3 '{}': {}", bieu_thuc_3, is_balanced_brackets(bieu_thuc_3));
+    println!(
+        "    - Biểu thức 1 '{}': {}",
+        bieu_thuc_1,
+        is_balanced_brackets(bieu_thuc_1)
+    );
+    println!(
+        "    - Biểu thức 2 '{}': {}",
+        bieu_thuc_2,
+        is_balanced_brackets(bieu_thuc_2)
+    );
+    println!(
+        "    - Biểu thức 3 '{}': {}",
+        bieu_thuc_3,
+        is_balanced_brackets(bieu_thuc_3)
+    );
 
     assert!(is_balanced_brackets(bieu_thuc_1));
     assert!(!is_balanced_brackets(bieu_thuc_2));
@@ -125,7 +137,10 @@ fn main() {
         tong_tien: 80.0,
     });
 
-    println!("    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}", he_thong.so_don_dang_cho());
+    println!(
+        "    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}",
+        he_thong.so_don_dang_cho()
+    );
 
     // Đơn hàng hỏa tốc VIP xuất hiện! Đưa thẳng vào đầu hàng đợi
     he_thong.them_don_vip(Order {
@@ -137,7 +152,10 @@ fn main() {
 
     // Xem trước đơn hàng kế tiếp
     if let Some(don_dau) = he_thong.first_view_don() {
-        println!("    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})", don_dau.order_code, don_dau.customer_name);
+        println!(
+            "    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})",
+            don_dau.order_code, don_dau.customer_name
+        );
         assert_eq!(don_dau.order_code, 999);
     }
 
@@ -145,7 +163,10 @@ fn main() {
     println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
     let mut handles = Vec::new();
     while let Some(don) = he_thong.process_next_order() {
-        println!("    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k", don.order_code, don.customer_name, don.tong_tien);
+        println!(
+            "    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k",
+            don.order_code, don.customer_name, don.tong_tien
+        );
         handles.push(don.order_code);
     }
 
@@ -159,13 +180,16 @@ fn main() {
     println!("============================================================");
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn don(id: u32, name: &str) -> Order {
-        Order { order_code: id, customer_name: name.into(), tong_tien: 100.0 }
+        Order {
+            order_code: id,
+            customer_name: name.into(),
+            tong_tien: 100.0,
+        }
     }
 
     #[test]

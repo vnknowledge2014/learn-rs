@@ -24,7 +24,10 @@ pub fn exec_swap<F>(ten_tac_vu: &str, mut hanh_dong: F, so_vong_lap: usize)
 where
     F: FnMut(usize),
 {
-    println!("\n--- BẮT ĐẦU TÁC VỤ SỬA ĐỔI TRẠNG THÁI: [{}] ---", ten_tac_vu);
+    println!(
+        "\n--- BẮT ĐẦU TÁC VỤ SỬA ĐỔI TRẠNG THÁI: [{}] ---",
+        ten_tac_vu
+    );
     for step in 1..=so_vong_lap {
         hanh_dong(step); // Gọi nhiều lần, mỗi lần biến nội bộ bên ngoài sẽ biến đổi
     }
@@ -37,7 +40,10 @@ pub fn exec_consume<F>(ten_tac_vu: &str, hanh_dong: F)
 where
     F: FnOnce() -> String,
 {
-    println!("\n--- BẮT ĐẦU TÁC VỤ TIÊU THỤ MỘT LẦN: [{}] ---", ten_tac_vu);
+    println!(
+        "\n--- BẮT ĐẦU TÁC VỤ TIÊU THỤ MỘT LẦN: [{}] ---",
+        ten_tac_vu
+    );
     let ket_qua = hanh_dong(); // Gọi DUY NHẤT một lần tại đây
     // hanh_dong(); // Nếu bỏ dấu chú thích dòng này, rustc sẽ chặn ngay lập tức!
     println!("Kết quả nhận được sau khi tiêu thụ: {}", ket_qua);
@@ -57,7 +63,7 @@ fn main() {
     // TÌNH HUỐNG 1: Giao ước Fn - Bắt giữ tham chiếu chỉ đọc (&T)
     // ------------------------------------------------------------------------
     let thong_tin_he_thong = String::from("Máy chủ Cổng thanh toán (Gateway-01)");
-    
+
     // Closure print_info chỉ mượn đọc thong_tin_he_thong
     let print_info = || {
         println!("[GIÁM SÁT] Trạng thái hiện tại của: {}", thong_tin_he_thong);
@@ -66,7 +72,10 @@ fn main() {
     // Truyền closure vào hàm exec_read (chứng minh gọi được nhiều lần)
     exec_read("Kiểm tra sức khỏe định kỳ", print_info);
     // Biến thong_tin_he_thong vẫn hoàn toàn nguyên vẹn ở phạm vi ngoài:
-    println!("Biến gốc bên ngoài vẫn truy cập bình thường: {}", thong_tin_he_thong);
+    println!(
+        "Biến gốc bên ngoài vẫn truy cập bình thường: {}",
+        thong_tin_he_thong
+    );
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Giao ước FnMut - Bắt giữ tham chiếu sửa đổi (&mut T)
@@ -78,7 +87,10 @@ fn main() {
     let ghi_nhan_luot_xem = |lan_lap: usize| {
         total_traffic += 10;
         nhat_ky_hoat_dong.push(format!("Đợt ghi nhận #{}: +10 yêu cầu", lan_lap));
-        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", total_traffic);
+        println!(
+            "  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}",
+            total_traffic
+        );
     };
 
     // Thực thi 3 vòng lặp tích lũy

@@ -59,12 +59,18 @@ fn main() {
 
     let safe_payload = b"MatKhauAnToan"; // 13 bytes (< 16 bytes)
     match manager.safe_write(safe_payload) {
-        Ok(bytes_written) => println!("    - Ghi payload hop le thanh cong: {} bytes", bytes_written),
+        Ok(bytes_written) => println!(
+            "    - Ghi payload hop le thanh cong: {} bytes",
+            bytes_written
+        ),
         Err(err) => println!("    - Failed: {}", err),
     }
 
     let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 55 bytes
-    println!("    - Thu gui payload tan cong co do dai {} bytes...", exploit_payload.len());
+    println!(
+        "    - Thu gui payload tan cong co do dai {} bytes...",
+        exploit_payload.len()
+    );
     match manager.safe_write(exploit_payload) {
         Ok(_) => println!("    - [NGUY HIEM] Payload da ghi de thanh cong!"),
         Err(err) => println!("    - [CHẶN ĐỨNG AN TOÀN] Trinh quan ly tu choi: '{}'", err),
@@ -83,8 +89,14 @@ fn main() {
     println!("\n[2] Thu nghiem phong chong Use-After-Free (UAF):");
     {
         let session = Box::new(SafeUserSession::new("ChuyenGiaBaoMat", false));
-        println!("    - Khoi tao phien lam viec tai Heap: {:p}", session.as_ref());
-        println!("    - Nguoi dung: {}, Admin: {}", session.username, session.is_admin);
+        println!(
+            "    - Khoi tao phien lam viec tai Heap: {:p}",
+            session.as_ref()
+        );
+        println!(
+            "    - Nguoi dung: {}, Admin: {}",
+            session.username, session.is_admin
+        );
 
         // Trong Rust, khi session ra khoi khoi lenh nay, trait Drop se tu dong
         // giai phong vung nho mot cach sach se. Trinh bien dich Rust tuyet doi
@@ -99,11 +111,17 @@ fn main() {
     println!("\n[3] Thu nghiem phong chong Lo hong Text dinh dang (Format String):");
     // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
     let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
-    println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
+    println!(
+        "    - Text dau vao tu nguoi dung: '{}'",
+        malicious_user_input
+    );
 
     // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
     // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
-    println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
+    println!(
+        "    - Ket qua in qua Rust format: \"{}\"",
+        malicious_user_input
+    );
     println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
     println!("      khong bao gio phan tich cac ky tu '%' thanh lenh thuc thi!");
 

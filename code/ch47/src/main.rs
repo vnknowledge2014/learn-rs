@@ -182,9 +182,18 @@ impl ReportPrinter {
         println!("|            LOGPULSE - BÁO CÁO PHÂN TÍCH NHẬT KÝ MÁY CHỦ    |");
         println!("+-------------------------------------------------------------+");
         println!("| Tệp tin mục tiêu       : {:<34} |", config.target_file);
-        println!("| Tổng số lượt yêu cầu   : {:<34} |", analyzer.total_requests());
-        println!("| Lỗi máy chủ (5xx)      : {:<34} |", analyzer.count_server_errors());
-        println!("| Lỗi người dùng (4xx)   : {:<34} |", analyzer.count_client_errors());
+        println!(
+            "| Tổng số lượt yêu cầu   : {:<34} |",
+            analyzer.total_requests()
+        );
+        println!(
+            "| Lỗi máy chủ (5xx)      : {:<34} |",
+            analyzer.count_server_errors()
+        );
+        println!(
+            "| Lỗi người dùng (4xx)   : {:<34} |",
+            analyzer.count_client_errors()
+        );
 
         let total_kb = analyzer.total_data_transferred_bytes() as f64 / 1024.0;
         println!("| Tổng dung lượng truyền : {:<31.2} KB |", total_kb);
@@ -220,7 +229,10 @@ fn main() {
         }
     };
 
-    println!("[Khởi tạo] Đang phân tích tệp: {} (Verbose: {})", config.target_file, config.verbose);
+    println!(
+        "[Khởi tạo] Đang phân tích tệp: {} (Verbose: {})",
+        config.target_file, config.verbose
+    );
 
     // 2. Dữ liệu nhật ký mẫu mô phỏng dữ liệu đọc từ bộ nhớ đệm (buffer)
     let sample_access_log = r#"
@@ -245,7 +257,10 @@ fn main() {
     assert_eq!(analyzer.total_requests(), 8);
     assert_eq!(analyzer.count_server_errors(), 2); // Mã 500 và 503
     assert_eq!(analyzer.count_client_errors(), 2); // Mã 403 và 404
-    assert_eq!(analyzer.find_top_client_ip(), Some(("192.168.1.100".to_string(), 3)));
+    assert_eq!(
+        analyzer.find_top_client_ip(),
+        Some(("192.168.1.100".to_string(), 3))
+    );
 
     println!("\n[Thành công] Công cụ CLI đã thực thi hoàn hảo, kiểm tra Assertions vượt qua 100%!");
 }

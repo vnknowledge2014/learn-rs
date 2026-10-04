@@ -49,7 +49,9 @@ impl BankTransactionValidator {
         }
 
         if !account.starts_with("VN") {
-            return Err(ValidationError::InvalidAccountPrefix(account[0..2].to_string()));
+            return Err(ValidationError::InvalidAccountPrefix(
+                account[0..2].to_string(),
+            ));
         }
 
         // Kiểm tra 8 ký tự phía sau phải là chữ số hợp lệ
@@ -107,11 +109,25 @@ mod tests {
         let validator = BankTransactionValidator::new(50_000_000);
         // Quá ngắn
         let err_short = validator.validate_account_format("VN123").unwrap_err();
-        assert_eq!(err_short, ValidationError::InvalidAccountLength { expected: 10, actual: 5 });
+        assert_eq!(
+            err_short,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 5
+            }
+        );
 
         // Quá dài
-        let err_long = validator.validate_account_format("VN12345678999").unwrap_err();
-        assert_eq!(err_long, ValidationError::InvalidAccountLength { expected: 10, actual: 13 });
+        let err_long = validator
+            .validate_account_format("VN12345678999")
+            .unwrap_err();
+        assert_eq!(
+            err_long,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 13
+            }
+        );
     }
 
     #[test]
@@ -136,7 +152,10 @@ mod tests {
             to_account: "VN12345678".to_string(),
             amount_cents: 1_000_000,
         };
-        assert_eq!(validator.validate_transfer(&req), Err(ValidationError::SameSourceAndDestination));
+        assert_eq!(
+            validator.validate_transfer(&req),
+            Err(ValidationError::SameSourceAndDestination)
+        );
     }
 
     #[test]
@@ -149,7 +168,10 @@ mod tests {
         };
         assert_eq!(
             validator.validate_transfer(&req),
-            Err(ValidationError::AmountExceedsLimit { limit: 10_000_000, requested: 20_000_000 })
+            Err(ValidationError::AmountExceedsLimit {
+                limit: 10_000_000,
+                requested: 20_000_000
+            })
         );
     }
 
@@ -181,7 +203,10 @@ fn main() {
         amount_cents: 15_000_000,
     };
     match validator.validate_transfer(&req_ok) {
-        Ok(()) => println!("[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!", req_ok.from_account, req_ok.to_account),
+        Ok(()) => println!(
+            "[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!",
+            req_ok.from_account, req_ok.to_account
+        ),
         Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
     }
 
@@ -193,8 +218,13 @@ fn main() {
     };
     match validator.validate_transfer(&req_duplicate) {
         Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
-        Err(e) => println!("[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}", e),
+        Err(e) => println!(
+            "[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}",
+            e
+        ),
     }
 
-    println!("\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!");
+    println!(
+        "\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!"
+    );
 }

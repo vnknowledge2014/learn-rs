@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::convert::TryInto;
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 /// Kích thước trang chuẩn của cơ sở dữ liệu (4KB)
 pub const PAGE_SIZE: usize = 4096;
@@ -74,8 +74,10 @@ impl SlottedPage {
         self.data[start..end].copy_from_slice(bytes_ban_ghi);
 
         // 2. Ghi thông tin Khe vào Slot Directory ở đầu trang
-        self.data[new_slot_index..new_slot_index + 2].copy_from_slice(&offset_day_moi.to_le_bytes());
-        self.data[new_slot_index + 2..new_slot_index + 4].copy_from_slice(&do_long_record.to_le_bytes());
+        self.data[new_slot_index..new_slot_index + 2]
+            .copy_from_slice(&offset_day_moi.to_le_bytes());
+        self.data[new_slot_index + 2..new_slot_index + 4]
+            .copy_from_slice(&do_long_record.to_le_bytes());
 
         // 3. Cập nhật Header
         self.nearest_slot(current_slot_count + 1);
@@ -92,8 +94,13 @@ impl SlottedPage {
         }
 
         let slot_offset = 8 + (slot_id as usize * 4);
-        let offset = u16::from_le_bytes(self.data[slot_offset..slot_offset + 2].try_into().unwrap()) as usize;
-        let length = u16::from_le_bytes(self.data[slot_offset + 2..slot_offset + 4].try_into().unwrap()) as usize;
+        let offset = u16::from_le_bytes(self.data[slot_offset..slot_offset + 2].try_into().unwrap())
+            as usize;
+        let length = u16::from_le_bytes(
+            self.data[slot_offset + 2..slot_offset + 4]
+                .try_into()
+                .unwrap(),
+        ) as usize;
 
         Some(&self.data[offset..offset + length])
     }
@@ -146,9 +153,15 @@ impl BufferPool {
             let evict_id = self.lru_list.remove(0);
             if let Some(khung_cu) = self.frames.remove(&evict_id) {
                 if khung_cu.is_dirty {
-                    println!("    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...", evict_id);
+                    println!(
+                        "    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...",
+                        evict_id
+                    );
                 } else {
-                    println!("    [EVICT]: Trang #{} sạch (chưa sửa) -> Hủy khỏi RAM tức thì mà không cần ghi đĩa.", evict_id);
+                    println!(
+                        "    [EVICT]: Trang #{} sạch (chưa sửa) -> Hủy khỏi RAM tức thì mà không cần ghi đĩa.",
+                        evict_id
+                    );
                 }
             }
         }
@@ -170,8 +183,14 @@ fn main() {
     // 1. Khảo sát cấu trúc trang SlottedPage kích thước 4KB
     println!("[1] Thao tác trên Trang phân khe Slotted-Page (4096 bytes):");
     let mut page_1 = SlottedPage::new(1);
-    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", page_1.data.len());
-    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", page_1.tail_pointer());
+    println!(
+        "    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes",
+        page_1.data.len()
+    );
+    println!(
+        "    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)",
+        page_1.tail_pointer()
+    );
 
     // Nạp các bản ghi có kích thước chuỗi thay đổi
     let record_a = b"NguoiDung: Nguyen Van An - Ha Noi";
@@ -182,14 +201,31 @@ fn main() {
     let slot_b = page_1.add_sell_record(record_b).expect("Lỗi chèn khe B");
     let slot_c = page_1.add_sell_record(record_c).expect("Lỗi chèn khe C");
 
-    println!("    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_a);
-    println!("    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_b);
-    println!("    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_c);
-    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", page_1.slot_count(), page_1.tail_pointer());
+    println!(
+        "    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})",
+        slot_a
+    );
+    println!(
+        "    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})",
+        slot_b
+    );
+    println!(
+        "    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})",
+        slot_c
+    );
+    println!(
+        "    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}",
+        page_1.slot_count(),
+        page_1.tail_pointer()
+    );
 
     // Đọc lại nội dung qua Slot ID
     let doc_b = page_1.read_sell_record(slot_b).unwrap();
-    println!("    - Đọc nội dung qua Slot ID {}: '{}'", slot_b, String::from_utf8_lossy(doc_b));
+    println!(
+        "    - Đọc nội dung qua Slot ID {}: '{}'",
+        slot_b,
+        String::from_utf8_lossy(doc_b)
+    );
     assert_eq!(doc_b, record_b);
 
     // 2. Khảo sát hệ thống Buffer Pool và thuật toán trục xuất LRU Eviction
@@ -204,7 +240,10 @@ fn main() {
     println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
     buffer_pool.put_page(state_2, false);
 
-    println!("    - Số trang hiện có trong Buffer: {}", buffer_pool.num_state_show_has());
+    println!(
+        "    - Số trang hiện có trong Buffer: {}",
+        buffer_pool.num_state_show_has()
+    );
     assert_eq!(buffer_pool.num_state_show_has(), 2);
 
     // Người dùng truy cập lại Trang 1 -> Trang 1 trở thành trang dùng gần nhất

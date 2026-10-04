@@ -78,10 +78,10 @@ fn main() {
     println!("\n2. Trích xuất danh sách nhiệt độ hoạt động an toàn (<= 100°C):");
     let nhiet_do_an_toan: Vec<f64> = raw_data
         .iter()
-        .filter(|bg| bg.is_valid)                  // Lọc bỏ cảm biến hỏng
-        .filter(|bg| bg.temp_c <= 100.0)     // Lọc cảm biến trong ngưỡng an toàn
-        .map(|bg| bg.temp_c)                 // Chỉ trích xuất lấy số đo nhiệt độ
-        .collect();                              // Gom tụ thành Vector mới
+        .filter(|bg| bg.is_valid) // Lọc bỏ cảm biến hỏng
+        .filter(|bg| bg.temp_c <= 100.0) // Lọc cảm biến trong ngưỡng an toàn
+        .map(|bg| bg.temp_c) // Chỉ trích xuất lấy số đo nhiệt độ
+        .collect(); // Gom tụ thành Vector mới
 
     println!("-> Các mức nhiệt độ an toàn: {:?}", nhiet_do_an_toan);
 
@@ -99,7 +99,10 @@ fn main() {
 
     if quantity > 0 {
         let mean = tong_nhiet / (quantity as f64);
-        println!("-> Tổng nhiệt độ: {:.2}°C trên {} cảm biến.", tong_nhiet, quantity);
+        println!(
+            "-> Tổng nhiệt độ: {:.2}°C trên {} cảm biến.",
+            tong_nhiet, quantity
+        );
         println!("-> Nhiệt độ trung bình toàn xưởng: {:.2}°C", mean);
     }
 
@@ -114,14 +117,19 @@ fn main() {
         .filter(|(_, bg)| bg.is_valid && bg.temp_c > 100.0)
         .map(|(chi_so, bg)| DangerAlert {
             fold_records: chi_so + 1,
-            content: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.temp_c),
+            content: format!(
+                "Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C",
+                bg.ma_cam_bien, bg.temp_c
+            ),
             level_do: String::from("KHẨN CẤP"),
         })
         .collect();
 
     for cb in &list_edge_report {
-        println!("  [!] Vị trí #{}: {} (Mức độ: {})", 
-                 cb.fold_records, cb.content, cb.level_do);
+        println!(
+            "  [!] Vị trí #{}: {} (Mức độ: {})",
+            cb.fold_records, cb.content, cb.level_do
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -133,7 +141,10 @@ fn main() {
         .map(|bg| bg.ma_cam_bien) // Đoạt quyền sở hữu trường String mà không cần clone!
         .collect();
 
-    println!("-> Danh sách mã thiết bị sau khi thu hồi: {:?}", ma_tat_ca_cam_bien);
+    println!(
+        "-> Danh sách mã thiết bị sau khi thu hồi: {:?}",
+        ma_tat_ca_cam_bien
+    );
     // raw_data đã bị tiêu thụ tại đây, giải phóng bộ nhớ sạch sẽ!
 
     println!("\n============================================================");

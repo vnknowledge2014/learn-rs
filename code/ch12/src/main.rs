@@ -35,8 +35,12 @@ mod thiet_bi_thong_minh {
 
     // Triển khai Trait Sensor cho TempSensor
     impl Sensor for TempSensor {
-        fn read_value(&self) -> f64 { self.do_c }
-        fn don_pos_do(&self) -> &str { "°C" }
+        fn read_value(&self) -> f64 {
+            self.do_c
+        }
+        fn don_pos_do(&self) -> &str {
+            "°C"
+        }
     }
 
     // 3. Struct Cảm biến Khói báo cháy
@@ -52,8 +56,12 @@ mod thiet_bi_thong_minh {
     }
 
     impl Sensor for SmokeSensor {
-        fn read_value(&self) -> f64 { self.mat_do_khoi_ppm }
-        fn don_pos_do(&self) -> &str { "PPM" }
+        fn read_value(&self) -> f64 {
+            self.mat_do_khoi_ppm
+        }
+        fn don_pos_do(&self) -> &str {
+            "PPM"
+        }
     }
 }
 
@@ -79,8 +87,10 @@ mod trung_tam_dieu_khien {
         println!("Chỉ số đo được : {:.2} {}", value, unit);
 
         if value >= nguong_canh_bao {
-            println!("[CẢNH BÁO NGUY HIỂM] Chỉ số vượt ngưỡng an toàn ({:.2} {})!", 
-                     nguong_canh_bao, unit);
+            println!(
+                "[CẢNH BÁO NGUY HIỂM] Chỉ số vượt ngưỡng an toàn ({:.2} {})!",
+                nguong_canh_bao, unit
+            );
         } else {
             println!("[AN TOÀN] Chỉ số nằm trong giới hạn cho phép.");
         }
@@ -88,7 +98,7 @@ mod trung_tam_dieu_khien {
 }
 
 // Sử dụng lệnh 'use' để đưa các thành phần cần thiết vào phạm vi làm việc
-use thiet_bi_thong_minh::{TempSensor, SmokeSensor};
+use thiet_bi_thong_minh::{SmokeSensor, TempSensor};
 use trung_tam_dieu_khien::monitor_metrics;
 
 fn main() {
@@ -114,7 +124,7 @@ fn main() {
     monitor_metrics(&cb_nhiet, 35.0); // Ngưỡng cảnh báo nhiệt độ là 35°C
 
     println!("\n2. Giám sát hệ thống cảm biến khói báo cháy:");
-    monitor_metrics(&cb_khoi, 50.0);  // Ngưỡng cảnh báo mật độ khói là 50 PPM
+    monitor_metrics(&cb_khoi, 50.0); // Ngưỡng cảnh báo mật độ khói là 50 PPM
 
     println!("\n============================================================");
     println!("   CHÚC MỪNG BẠN ĐÃ HOÀN THÀNH TOÀN BỘ 12 CHƯƠNG NỀN TẢNG!  ");

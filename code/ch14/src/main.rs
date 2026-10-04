@@ -160,11 +160,20 @@ fn main() {
     // ------------------------------------------------------------------
     // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
     // ------------------------------------------------------------------
-    let cach_a = compose(compose(trim_whitespace, collapse_whitespace), capitalize_first);
-    let cach_b = compose(trim_whitespace, compose(collapse_whitespace, capitalize_first));
+    let cach_a = compose(
+        compose(trim_whitespace, collapse_whitespace),
+        capitalize_first,
+    );
+    let cach_b = compose(
+        trim_whitespace,
+        compose(collapse_whitespace, capitalize_first),
+    );
     assert_eq!(cach_a(tho), cach_b(tho));
     println!("\n2. LUẬT KẾT HỢP");
-    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", cach_a(tho));
+    println!(
+        "   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓",
+        cach_a(tho)
+    );
 
     // ------------------------------------------------------------------
     // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
@@ -179,7 +188,7 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n4. CURRY HÓA & ÁP DỤNG TỪNG PHẦN");
     let truncate = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
-    let cut_long = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
+    let cut_long = cat_bot_curry(25); // Máy đã khóa núm "25 ký tự"
 
     let cau = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
     println!("   Bản gốc   : {}", cau);
@@ -195,7 +204,11 @@ fn main() {
 
     println!("\n5. NHÀ MÁY SINH HÀM (Closure Factory)");
     let binh_luan_ban = "Đây là tin spam lừa đảo";
-    println!("   {:?} có sạch không? {}", binh_luan_ban, is_clean(binh_luan_ban));
+    println!(
+        "   {:?} có sạch không? {}",
+        binh_luan_ban,
+        is_clean(binh_luan_ban)
+    );
     println!("   Sau khi che: {}", che_di(binh_luan_ban.to_string()));
 
     // ------------------------------------------------------------------
@@ -210,12 +223,18 @@ fn main() {
         let mut validator = make_validator(&is_clean, &che_di, record_in_num);
 
         println!("   #101 -> {}", validator(101, "  Bài viết rất hay!  "));
-        println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
+        println!(
+            "   #102 -> {}",
+            validator(102, "  Cẩn thận kẻo bị lừa đảo  ")
+        );
     }
 
     println!("   Nhật ký thu được ({} dòng):", num_log.len());
     for record in &num_log {
-        println!("     - Bình luận #{}: {}", record.ma_binh_luan, record.ket_luan);
+        println!(
+            "     - Bình luận #{}: {}",
+            record.ma_binh_luan, record.ket_luan
+        );
     }
 
     // ------------------------------------------------------------------
@@ -248,13 +267,14 @@ fn main() {
         "   giáo trình  hay quá   ",
     ];
 
-    let thong_ke: HashMap<bool, usize> = binh_luan_tho
-        .iter()
-        .map(|b| normalize(b))
-        .fold(HashMap::new(), |mut bang, cau| {
-            *bang.entry(is_clean(&cau)).or_insert(0) += 1;
-            bang
-        });
+    let thong_ke: HashMap<bool, usize> =
+        binh_luan_tho
+            .iter()
+            .map(|b| normalize(b))
+            .fold(HashMap::new(), |mut bang, cau| {
+                *bang.entry(is_clean(&cau)).or_insert(0) += 1;
+                bang
+            });
 
     for b in binh_luan_tho.iter() {
         println!("   {:?} -> {:?}", b, normalize(b));
@@ -278,8 +298,14 @@ mod tests {
     fn composition_is_associative() {
         let mau = ["  a   b ", "Xin   chào", "   rust  "];
         for s in mau {
-            let a = compose(compose(trim_whitespace, collapse_whitespace), capitalize_first);
-            let b = compose(trim_whitespace, compose(collapse_whitespace, capitalize_first));
+            let a = compose(
+                compose(trim_whitespace, collapse_whitespace),
+                capitalize_first,
+            );
+            let b = compose(
+                trim_whitespace,
+                compose(collapse_whitespace, capitalize_first),
+            );
             assert_eq!(a(s), b(s), "Luật kết hợp bị vi phạm với đầu vào {:?}", s);
         }
     }

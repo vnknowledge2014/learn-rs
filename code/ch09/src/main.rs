@@ -35,7 +35,14 @@ impl BankAccount {
         println!("Số tài khoản : {}", self.account_number);
         println!("Chủ tài khoản: {}", self.account_owner);
         println!("Số dư hiện có: {:.2} VND", self.balance);
-        println!("Trạng thái   : {}", if self.activate { "Hoạt động" } else { "Đã khóa" });
+        println!(
+            "Trạng thái   : {}",
+            if self.activate {
+                "Hoạt động"
+            } else {
+                "Đã khóa"
+            }
+        );
         println!("------------------------------------------------------------");
     }
 
@@ -46,17 +53,26 @@ impl BankAccount {
             return;
         }
         self.balance += so_tien;
-        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.account_number);
+        println!(
+            "-> Nạp thành công {:.2} VND vào tài khoản {}",
+            so_tien, self.account_number
+        );
     }
 
     // D. PHƯƠNG THỨC MƯỢN SỬA (&mut self): Rút tiền có kiểm tra số dư
     fn rut_tien(&mut self, so_tien: f64) -> bool {
         if so_tien > self.balance {
-            println!("[!] Giao dịch thất bại: Số dư không đủ để rút {:.2} VND!", so_tien);
+            println!(
+                "[!] Giao dịch thất bại: Số dư không đủ để rút {:.2} VND!",
+                so_tien
+            );
             false
         } else {
             self.balance -= so_tien;
-            println!("-> Rút thành công {:.2} VND. Số dư còn lại: {:.2} VND", so_tien, self.balance);
+            println!(
+                "-> Rút thành công {:.2} VND. Số dư còn lại: {:.2} VND",
+                so_tien, self.balance
+            );
             true
         }
     }
@@ -64,9 +80,14 @@ impl BankAccount {
     // E. PHƯƠNG THỨC TIÊU THỤ SỞ HỮU (self): Đóng tài khoản vĩnh viễn
     fn all_math_and_round(self) {
         println!("\n*** TIẾN HÀNH TẤT TOÁN VÀ HỦY TÀI KHOẢN ***");
-        println!("- Hoàn trả toàn bộ số dư cuối cùng: {:.2} VND cho ông/bà {}", 
-                 self.balance, self.account_owner);
-        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.account_number);
+        println!(
+            "- Hoàn trả toàn bộ số dư cuối cùng: {:.2} VND cho ông/bà {}",
+            self.balance, self.account_owner
+        );
+        println!(
+            "- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.",
+            self.account_number
+        );
         // Khi hàm này kết thúc, self bị Drop ngay tại đây!
     }
 }
@@ -78,8 +99,10 @@ fn main() {
 
     // Sử dụng Tuple Struct để lưu tọa độ chi nhánh ngân hàng
     let chi_nhanh_ha_noi = GpsCoord(21.0285, 105.8542);
-    println!("Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}", 
-             chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
+    println!(
+        "Tọa độ chi nhánh giao dịch: Vĩ độ {}, Kinh độ {}",
+        chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1
+    );
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
     let _auth_session = SecurityAttestation;
@@ -110,7 +133,7 @@ fn main() {
         ..BankAccount::open_account(
             String::from("TEMP"),
             String::from("Nguyễn Văn An (Tài khoản tiết kiệm)"),
-            0.0
+            0.0,
         )
     };
     println!("\nTài khoản phụ được tạo tự động:");

@@ -51,7 +51,9 @@ pub struct Derived<T> {
 }
 impl<T> Derived<T> {
     pub fn new(compute: impl Fn() -> T + 'static) -> Self {
-        Derived { compute: Box::new(compute) }
+        Derived {
+            compute: Box::new(compute),
+        }
     }
     pub fn lay(&self) -> T {
         (self.compute)()
@@ -80,7 +82,10 @@ impl VirtualNode {
     pub fn the(name: &str, attribute: Vec<(&str, &str)>, con: Vec<VirtualNode>) -> Self {
         VirtualNode::The {
             name: name.to_string(),
-            attribute: attribute.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            attribute: attribute
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             con,
         }
     }
@@ -93,8 +98,13 @@ impl VirtualNode {
     pub fn to_html(&self) -> String {
         match self {
             VirtualNode::Van(s) => escape_html(s),
-            VirtualNode::The { name, attribute, con } => {
-                let tt: String = attribute.iter()
+            VirtualNode::The {
+                name,
+                attribute,
+                con,
+            } => {
+                let tt: String = attribute
+                    .iter()
                     .map(|(k, v)| format!(" {}=\"{}\"", k, escape_html(v)))
                     .collect();
                 let side_in: String = con.iter().map(|c| c.to_html()).collect();
@@ -105,17 +115,36 @@ impl VirtualNode {
 }
 
 fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Một bản vá (patch) mô tả một thay đổi cần áp lên DOM thật.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Patch {
-    Replaced { path: Vec<usize>, nut_moi: VirtualNode },
-    TextChanged { path: Vec<usize>, van_moi: String },
-    AttrChanged { path: Vec<usize>, name: String, value: String },
-    ThemCon { path: Vec<usize>, nut: VirtualNode },
-    ChildRemoved { path: Vec<usize>, chi_so: usize },
+    Replaced {
+        path: Vec<usize>,
+        nut_moi: VirtualNode,
+    },
+    TextChanged {
+        path: Vec<usize>,
+        van_moi: String,
+    },
+    AttrChanged {
+        path: Vec<usize>,
+        name: String,
+        value: String,
+    },
+    ThemCon {
+        path: Vec<usize>,
+        nut: VirtualNode,
+    },
+    ChildRemoved {
+        path: Vec<usize>,
+        chi_so: usize,
+    },
 }
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
@@ -125,21 +154,36 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<Patch>
         // Hai văn bản khác nội dung -> vá văn bản
         (VirtualNode::Van(a), VirtualNode::Van(b)) => {
             if a != b {
-                vec![Patch::TextChanged { path, van_moi: b.clone() }]
+                vec![Patch::TextChanged {
+                    path,
+                    van_moi: b.clone(),
+                }]
             } else {
                 vec![]
             }
         }
         // Hai thẻ cùng tên -> so thuộc tính và con
-        (VirtualNode::The { name: ta, attribute: tta, con: ca },
-         VirtualNode::The { name: tb, attribute: ttb, con: cb }) if ta == tb => {
+        (
+            VirtualNode::The {
+                name: ta,
+                attribute: tta,
+                con: ca,
+            },
+            VirtualNode::The {
+                name: tb,
+                attribute: ttb,
+                con: cb,
+            },
+        ) if ta == tb => {
             let mut va = Vec::new();
             // Thuộc tính thay đổi hoặc thêm
             let map_cu: HashMap<_, _> = tta.iter().cloned().collect();
             for (k, v) in ttb {
                 if map_cu.get(k) != Some(v) {
                     va.push(Patch::AttrChanged {
-                        path: path.clone(), name: k.clone(), value: v.clone(),
+                        path: path.clone(),
+                        name: k.clone(),
+                        value: v.clone(),
                     });
                 }
             }
@@ -152,15 +196,24 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<Patch>
             }
             // Con thừa ở cây mới -> thêm; thừa ở cây cũ -> xóa
             for i in chung..cb.len() {
-                va.push(Patch::ThemCon { path: path.clone(), nut: cb[i].clone() });
+                va.push(Patch::ThemCon {
+                    path: path.clone(),
+                    nut: cb[i].clone(),
+                });
             }
             for i in (chung..ca.len()).rev() {
-                va.push(Patch::ChildRemoved { path: path.clone(), chi_so: i });
+                va.push(Patch::ChildRemoved {
+                    path: path.clone(),
+                    chi_so: i,
+                });
             }
             va
         }
         // Khác loại/khác tên thẻ -> thay thế cả nút
-        _ => vec![Patch::Replaced { path, nut_moi: new.clone() }],
+        _ => vec![Patch::Replaced {
+            path,
+            nut_moi: new.clone(),
+        }],
     }
 }
 
@@ -176,11 +229,27 @@ pub struct CounterState {
 /// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây giao diện ảo.
 /// Đây là bản chất của UI khai báo (declarative): giao diện là HÀM của trạng thái.
 pub fn counter_view(tt: &CounterState) -> VirtualNode {
-    VirtualNode::the("div", vec![("class", "dem")], vec![
-        VirtualNode::the("h1", vec![], vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))]),
-        VirtualNode::the("button", vec![("id", "tang")], vec![VirtualNode::van("Tăng")]),
-        VirtualNode::the("button", vec![("id", "giam")], vec![VirtualNode::van("Giảm")]),
-    ])
+    VirtualNode::the(
+        "div",
+        vec![("class", "dem")],
+        vec![
+            VirtualNode::the(
+                "h1",
+                vec![],
+                vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))],
+            ),
+            VirtualNode::the(
+                "button",
+                vec![("id", "tang")],
+                vec![VirtualNode::van("Tăng")],
+            ),
+            VirtualNode::the(
+                "button",
+                vec![("id", "giam")],
+                vec![VirtualNode::van("Giảm")],
+            ),
+        ],
+    )
 }
 
 fn main() {
@@ -199,7 +268,10 @@ fn main() {
     println!("   sau khi đặt số = 5: tổng tự cập nhật = {}", tong.lay());
     println!("   phiên bản tín hiệu: {}", so.version());
     so.set(5); // đặt lại cùng giá trị -> KHÔNG tăng phiên bản
-    println!("   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)", so.version());
+    println!(
+        "   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)",
+        so.version()
+    );
 
     println!("\n2. COMPONENT -> VIRTUAL DOM -> HTML");
     let tt = CounterState { so: Signal::new(3) };
@@ -210,13 +282,20 @@ fn main() {
     let tt2 = CounterState { so: Signal::new(4) }; // số đổi 3 -> 4
     let cay_moi = counter_view(&tt2);
     let sell_and = diff(&cay, &cay_moi, vec![]);
-    println!("   Số bản vá cần áp lên DOM thật: {} (chỉ đổi văn bản, không dựng lại cả cây!)", sell_and.len());
+    println!(
+        "   Số bản vá cần áp lên DOM thật: {} (chỉ đổi văn bản, không dựng lại cả cây!)",
+        sell_and.len()
+    );
     for v in &sell_and {
         println!("     {:?}", v);
     }
 
     println!("\n4. CHỐNG XSS TRONG KẾT XUẤT (Chương 57)");
-    let read_two = VirtualNode::the("div", vec![], vec![VirtualNode::van("<script>hack()</script>")]);
+    let read_two = VirtualNode::the(
+        "div",
+        vec![],
+        vec![VirtualNode::van("<script>hack()</script>")],
+    );
     println!("   Đầu vào độc: <script>hack()</script>");
     println!("   Kết xuất an toàn: {}", read_two.to_html());
 
@@ -246,7 +325,11 @@ mod tests {
         s.set(2);
         assert_eq!(s.version(), 1);
         s.set(2); // cùng giá trị -> không tăng phiên bản
-        assert_eq!(s.version(), 1, "đặt cùng giá trị không được kích hoạt render");
+        assert_eq!(
+            s.version(),
+            1,
+            "đặt cùng giá trị không được kích hoạt render"
+        );
         s.set(3);
         assert_eq!(s.version(), 2);
     }
@@ -254,7 +337,10 @@ mod tests {
     #[test]
     fn derived_signal_tracks_its_source() {
         let so = Signal::new(2i64);
-        let doubled = Derived::new({ let so = so.clone(); move || so.lay() * 2 });
+        let doubled = Derived::new({
+            let so = so.clone();
+            move || so.lay() * 2
+        });
         assert_eq!(doubled.lay(), 4);
         so.set(10);
         assert_eq!(doubled.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
@@ -306,11 +392,19 @@ mod tests {
     #[test]
     fn diff_detects_child_insert_and_remove() {
         let cu = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a")]);
-        let new = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a"), VirtualNode::van("b")]);
+        let new = VirtualNode::the(
+            "ul",
+            vec![],
+            vec![VirtualNode::van("a"), VirtualNode::van("b")],
+        );
         let them = diff(&cu, &new, vec![]);
         assert!(them.iter().any(|v| matches!(v, Patch::ThemCon { .. })));
         let remove = diff(&new, &cu, vec![]);
-        assert!(remove.iter().any(|v| matches!(v, Patch::ChildRemoved { .. })));
+        assert!(
+            remove
+                .iter()
+                .any(|v| matches!(v, Patch::ChildRemoved { .. }))
+        );
     }
 
     #[test]

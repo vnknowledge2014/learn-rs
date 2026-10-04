@@ -105,7 +105,10 @@ pub fn fetch_user_data_cache_aside(
     }
 
     // 2. Cache Miss: Truy vấn cơ sở dữ liệu chính (Giả lập I/O tốn 50ms)
-    println!("    [Database Query] Đang truy vấn từ ổ đĩa CSDL cho user_id = {}...", user_id);
+    println!(
+        "    [Database Query] Đang truy vấn từ ổ đĩa CSDL cho user_id = {}...",
+        user_id
+    );
     let db_val = format!("DuLieuNguoiDung_#{}", user_id);
 
     // 3. Ghi ngược lại vào Cache với TTL = 100ms
@@ -142,7 +145,10 @@ fn main() {
 
     // Lần gọi 3: TTL đã hết hạn -> Tự động Cache Miss và nạp lại
     let (data3, source3) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 3 (Sau TTL): Nhan '{}' tu nguon: {}", data3, source3);
+    println!(
+        "    - Lan 3 (Sau TTL): Nhan '{}' tu nguon: {}",
+        data3, source3
+    );
     assert_eq!(source3, "CACHE_MISS (50ms)");
 
     // -------------------------------------------------------------
@@ -162,7 +168,10 @@ fn main() {
     });
 
     producer_handle.join().unwrap();
-    println!("    - So luong thong diep dang cho trong hang doi: {}", message_queue.len());
+    println!(
+        "    - So luong thong diep dang cho trong hang doi: {}",
+        message_queue.len()
+    );
 
     // Luồng Consumer: Rút việc ra xử lý tuần tự (Worker)
     println!("\n[3] Tien trinh Worker bat dau rut thong diep xu ly:");

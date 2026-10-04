@@ -22,10 +22,7 @@ pub struct StructAST {
 impl StructAST {
     /// Hàm mô phỏng công việc của syn: Duyệt cây AST và trích xuất danh sách tên trường
     pub fn get_list_name(&self) -> Vec<&'static str> {
-        self.field_list
-            .iter()
-            .map(|f| f.field_name)
-            .collect()
+        self.field_list.iter().map(|f| f.field_name).collect()
     }
 }
 
@@ -131,15 +128,27 @@ fn main() {
     let ast_model = StructAST {
         ten_struct: "ThietBiMang",
         field_list: vec![
-            AstDataField { field_name: "dia_chi_ip", kind_data: "String" },
-            AstDataField { field_name: "cong_dich_vu", kind_data: "u16" },
-            AstDataField { field_name: "dang_hoat_dong", kind_data: "bool" },
+            AstDataField {
+                field_name: "dia_chi_ip",
+                kind_data: "String",
+            },
+            AstDataField {
+                field_name: "cong_dich_vu",
+                kind_data: "u16",
+            },
+            AstDataField {
+                field_name: "dang_hoat_dong",
+                kind_data: "bool",
+            },
         ],
     };
 
     println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
     println!("- Tên cấu trúc được phát hiện: {}", ast_model.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", ast_model.get_list_name());
+    println!(
+        "- Danh sách các cành trường dữ liệu: {:?}",
+        ast_model.get_list_name()
+    );
 
     // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
     println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
@@ -151,7 +160,10 @@ fn main() {
 
     // Gọi phương thức được sinh tự động bởi Proc Macro
     router.in_thong_tin_chi_tiet();
-    println!("Tổng số lượng trường của thực thể: {}", NetworkDevice::field_count());
+    println!(
+        "Tổng số lượng trường của thực thể: {}",
+        NetworkDevice::field_count()
+    );
 
     println!("\n============================================================");
     println!("   XÁC MINH KIẾN TRÚC PROCEDURAL MACROS HOÀN TOÀN THÀNH CÔNG");

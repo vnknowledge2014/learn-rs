@@ -72,7 +72,16 @@ fn main() {
     // Khám phá kích thước của đối tượng String (Stack 24 bytes vs Heap)
     let mo_ta_chi_tiet = String::from("Báo cáo sức khỏe cá nhân năm 2026");
     println!("Kiểm tra ô nhớ của chuỗi mô tả:");
-    println!("- Kích thước thẻ quản lý trên STACK: {} bytes", std::mem::size_of_val(&mo_ta_chi_tiet));
-    println!("- Độ dài chuỗi nội dung trên HEAP  : {} bytes", mo_ta_chi_tiet.len());
-    println!("- Sức chứa bãi đỗ xe đã cấp phát   : {} bytes", mo_ta_chi_tiet.capacity());
+    println!(
+        "- Kích thước thẻ quản lý trên STACK: {} bytes",
+        std::mem::size_of_val(&mo_ta_chi_tiet)
+    );
+    println!(
+        "- Độ dài chuỗi nội dung trên HEAP  : {} bytes",
+        mo_ta_chi_tiet.len()
+    );
+    println!(
+        "- Sức chứa bãi đỗ xe đã cấp phát   : {} bytes",
+        mo_ta_chi_tiet.capacity()
+    );
 }

@@ -2,7 +2,6 @@
 //! Chương 57 — OSWE: Bảo mật ứng dụng Web. Mỗi lỗ hổng có bản DÍNH LỖI và bản SỬA,
 //! kèm test chứng minh bản sửa chặn được đòn tấn công. Toàn bộ chạy offline.
 
-
 // ============================================================================
 // 1. SQL INJECTION — và cách kiểu dữ liệu chặn nó
 // ============================================================================
@@ -17,8 +16,8 @@ pub fn build_vulnerable_sql(username: &str) -> String {
 /// trở thành một phần cú pháp SQL — nó chỉ là *giá trị* điền vào chỗ `?`.
 #[derive(Debug, PartialEq)]
 pub struct SafeSql {
-    pub mau: String,           // "... WHERE username = ?"
-    pub param: Vec<String>,  // giá trị điền vào, tách RỜI khỏi cú pháp
+    pub mau: String,        // "... WHERE username = ?"
+    pub param: Vec<String>, // giá trị điền vào, tách RỜI khỏi cú pháp
 }
 pub fn build_safe_sql(username: &str) -> SafeSql {
     SafeSql {
@@ -87,7 +86,10 @@ pub fn invoice_view_safe<'a>(
     id: u64,
     caller: u64,
 ) -> Result<&'a Invoice, AccessError> {
-    let hd = store.iter().find(|h| h.id == id).ok_or(AccessError::NotFound)?;
+    let hd = store
+        .iter()
+        .find(|h| h.id == id)
+        .ok_or(AccessError::NotFound)?;
     if hd.owner != caller {
         return Err(AccessError::Forbidden);
     }
@@ -108,7 +110,8 @@ pub enum UrlError {
 /// ✅ Kiểm tra URL trước khi máy chủ đi lấy nội dung (chống SSRF).
 /// Quy tắc: DANH SÁCH TRẮNG host cho phép, và chặn mọi địa chỉ mạng nội bộ.
 pub fn is_safe_url(url: &str, host_cho_phep: &[&str]) -> Result<(), UrlError> {
-    let sau_scheme = url.strip_prefix("https://")
+    let sau_scheme = url
+        .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
         .ok_or(UrlError::NotHttp)?;
 
@@ -217,23 +220,47 @@ fn main() {
 
     println!("\n3. IDOR");
     let store = vec![
-        Invoice { id: 100, owner: 1, so_tien: 500 },
-        Invoice { id: 101, owner: 2, so_tien: 999 },
+        Invoice {
+            id: 100,
+            owner: 1,
+            so_tien: 500,
+        },
+        Invoice {
+            id: 101,
+            owner: 2,
+            so_tien: 999,
+        },
     ];
     println!("   Người dùng #1 xem hóa đơn #101 (của người #2):");
-    println!("   ❌ Bản lỗi cho xem: {:?}", invoice_view_error(&store, 101).map(|h| h.so_tien));
-    println!("   ✅ Bản sửa chặn  : {:?}", invoice_view_safe(&store, 101, 1));
+    println!(
+        "   ❌ Bản lỗi cho xem: {:?}",
+        invoice_view_error(&store, 101).map(|h| h.so_tien)
+    );
+    println!(
+        "   ✅ Bản sửa chặn  : {:?}",
+        invoice_view_safe(&store, 101, 1)
+    );
 
     println!("\n4. SSRF");
     let allowed_hosts = ["api.doitac.vn", "cdn.congty.vn"];
-    for u in ["https://api.doitac.vn/data", "http://169.254.169.254/latest/meta-data/", "https://evil.com"] {
+    for u in [
+        "https://api.doitac.vn/data",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://evil.com",
+    ] {
         println!("   {:>45} -> {:?}", u, is_safe_url(u, &allowed_hosts));
     }
 
     println!("\n5. XÁC THỰC");
-    println!("   So sánh token bất biến: {}", so_sanh_bat_bien(b"secret123", b"secret123"));
+    println!(
+        "   So sánh token bất biến: {}",
+        so_sanh_bat_bien(b"secret123", b"secret123")
+    );
     println!("   Mật khẩu 'abc': {:?}", check_strength("abc").is_err());
-    println!("   Mật khẩu 'Rust@2026!Secure': {:?}", check_strength("Rust@2026!Secure"));
+    println!(
+        "   Mật khẩu 'Rust@2026!Secure': {:?}",
+        check_strength("Rust@2026!Secure")
+    );
 
     println!("\n6. PATH TRAVERSAL");
     println!("   {:?}", safe_path("/var/www/uploads", "avatar.png"));
@@ -271,15 +298,29 @@ mod tests {
     #[test]
     fn idor_blocks_cross_user_access() {
         let store = vec![
-            Invoice { id: 100, owner: 1, so_tien: 500 },
-            Invoice { id: 101, owner: 2, so_tien: 999 },
+            Invoice {
+                id: 100,
+                owner: 1,
+                so_tien: 500,
+            },
+            Invoice {
+                id: 101,
+                owner: 2,
+                so_tien: 999,
+            },
         ];
         // Người #1 xem hóa đơn của chính mình -> OK
         assert!(invoice_view_safe(&store, 100, 1).is_ok());
         // Người #1 xem hóa đơn người #2 -> BỊ CHẶN
-        assert_eq!(invoice_view_safe(&store, 101, 1), Err(AccessError::Forbidden));
+        assert_eq!(
+            invoice_view_safe(&store, 101, 1),
+            Err(AccessError::Forbidden)
+        );
         // Hóa đơn không tồn tại
-        assert_eq!(invoice_view_safe(&store, 999, 1), Err(AccessError::NotFound));
+        assert_eq!(
+            invoice_view_safe(&store, 999, 1),
+            Err(AccessError::NotFound)
+        );
     }
 
     #[test]
@@ -287,15 +328,33 @@ mod tests {
         let cp = ["api.tot.vn"];
         assert!(is_safe_url("https://api.tot.vn/x", &cp).is_ok());
         // Địa chỉ metadata đám mây — mục tiêu SSRF nguy hiểm nhất
-        assert_eq!(is_safe_url("http://169.254.169.254/", &cp), Err(UrlError::PointsToPrivateNetwork));
-        assert_eq!(is_safe_url("http://127.0.0.1:8080/admin", &cp), Err(UrlError::PointsToPrivateNetwork));
-        assert_eq!(is_safe_url("http://10.0.0.5/", &cp), Err(UrlError::PointsToPrivateNetwork));
-        assert_eq!(is_safe_url("http://172.16.0.1/", &cp), Err(UrlError::PointsToPrivateNetwork));
+        assert_eq!(
+            is_safe_url("http://169.254.169.254/", &cp),
+            Err(UrlError::PointsToPrivateNetwork)
+        );
+        assert_eq!(
+            is_safe_url("http://127.0.0.1:8080/admin", &cp),
+            Err(UrlError::PointsToPrivateNetwork)
+        );
+        assert_eq!(
+            is_safe_url("http://10.0.0.5/", &cp),
+            Err(UrlError::PointsToPrivateNetwork)
+        );
+        assert_eq!(
+            is_safe_url("http://172.16.0.1/", &cp),
+            Err(UrlError::PointsToPrivateNetwork)
+        );
         assert_eq!(is_safe_url("http://172.15.0.1/", &["172.15.0.1"]), Ok(())); // 172.15 KHÔNG nội bộ
         // Host lạ không trong danh sách trắng
-        assert_eq!(is_safe_url("https://evil.com/", &cp), Err(UrlError::HostNotAllowed));
+        assert_eq!(
+            is_safe_url("https://evil.com/", &cp),
+            Err(UrlError::HostNotAllowed)
+        );
         // Không phải http(s)
-        assert_eq!(is_safe_url("file:///etc/passwd", &cp), Err(UrlError::NotHttp));
+        assert_eq!(
+            is_safe_url("file:///etc/passwd", &cp),
+            Err(UrlError::NotHttp)
+        );
     }
 
     #[test]

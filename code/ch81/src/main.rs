@@ -30,13 +30,20 @@ impl LaunchConfig {
     /// Cách phát chuẩn: đủ luồng để phủ hết `n` phần tử, làm tròn LÊN.
     pub fn for_n_items(n: usize, threads_per_block: usize) -> Self {
         let l = threads_per_block.max(1);
-        LaunchConfig { num_blocks: n.div_ceil(l), threads_per_block: l }
+        LaunchConfig {
+            num_blocks: n.div_ceil(l),
+            threads_per_block: l,
+        }
     }
-    pub fn total_amount(&self) -> usize { self.num_blocks * self.threads_per_block }
+    pub fn total_amount(&self) -> usize {
+        self.num_blocks * self.threads_per_block
+    }
 
     /// Số warp mỗi khối. Nếu `threads_per_block` không chia hết 32 thì warp cuối
     /// chạy thiếu luồng — phần cứng vẫn tốn nguyên một warp cho nó.
-    pub fn warp_moi_khoi(&self) -> usize { self.threads_per_block.div_ceil(LUONG_MOI_WARP) }
+    pub fn warp_moi_khoi(&self) -> usize {
+        self.threads_per_block.div_ceil(LUONG_MOI_WARP)
+    }
 
     /// Số làn bị lãng phí ở warp cuối của mỗi khối.
     pub fn wasted_per_block(&self) -> usize {
@@ -44,7 +51,9 @@ impl LaunchConfig {
     }
 
     /// Số luồng chạy nhưng không có việc (vì `total_amount` > n).
-    pub fn excess_flow(&self, n: usize) -> usize { self.total_amount().saturating_sub(n) }
+    pub fn excess_flow(&self, n: usize) -> usize {
+        self.total_amount().saturating_sub(n)
+    }
 }
 
 // ============================================================================
@@ -74,11 +83,22 @@ pub fn divergence_analysis(dieu_kien: &[bool]) -> DivergenceAnalysis {
     for w in dieu_kien.chunks(LUONG_MOI_WARP) {
         let has_use = w.iter().any(|&x| x);
         let has_sai = w.iter().any(|&x| !x);
-        if has_use && has_sai { divergence += 1; luot += 2; } else { luot += 1; }
+        if has_use && has_sai {
+            divergence += 1;
+            luot += 2;
+        } else {
+            luot += 1;
+        }
     }
     DivergenceAnalysis {
-        so_warp, divergent_warps: divergence, execution_pass: luot,
-        he_so_cham: if so_warp == 0 { 1.0 } else { luot as f64 / so_warp as f64 },
+        so_warp,
+        divergent_warps: divergence,
+        execution_pass: luot,
+        he_so_cham: if so_warp == 0 {
+            1.0
+        } else {
+            luot as f64 / so_warp as f64
+        },
     }
 }
 
@@ -115,9 +135,11 @@ pub struct CoalescingAnalysis {
 }
 
 /// Đếm số giao dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
-pub fn coalescing_analysis(quantity: usize, byte_moi_phan_tu: usize, buoc_nhay: usize)
-    -> CoalescingAnalysis
-{
+pub fn coalescing_analysis(
+    quantity: usize,
+    byte_moi_phan_tu: usize,
+    buoc_nhay: usize,
+) -> CoalescingAnalysis {
     let mut all_close = std::collections::HashSet::new();
     for i in 0..quantity {
         let address = i * buoc_nhay * byte_moi_phan_tu;
@@ -127,9 +149,15 @@ pub fn coalescing_analysis(quantity: usize, byte_moi_phan_tu: usize, buoc_nhay: 
     let co_ich = quantity * byte_moi_phan_tu;
     let da_transfer = num_transactions * BYTE_MOI_GIAO_DICH;
     CoalescingAnalysis {
-        quantity, num_transactions: num_transactions,
-        byte_co_ich: co_ich, bytes_transferred: da_transfer,
-        efficiency: if da_transfer == 0 { 0.0 } else { co_ich as f64 / da_transfer as f64 },
+        quantity,
+        num_transactions: num_transactions,
+        byte_co_ich: co_ich,
+        bytes_transferred: da_transfer,
+        efficiency: if da_transfer == 0 {
+            0.0
+        } else {
+            co_ich as f64 / da_transfer as f64
+        },
     }
 }
 
@@ -151,9 +179,14 @@ pub struct BankAnalysis {
 
 pub fn bank_analysis(chi_so_o_nho: &[usize]) -> BankAnalysis {
     let mut count = [0usize; SO_NGAN_HANG];
-    for &i in chi_so_o_nho { count[i % SO_NGAN_HANG] += 1; }
+    for &i in chi_so_o_nho {
+        count[i % SO_NGAN_HANG] += 1;
+    }
     let level = count.iter().copied().max().unwrap_or(0);
-    BankAnalysis { conflict_degree: level, has_conflict: level > 1 }
+    BankAnalysis {
+        conflict_degree: level,
+        has_conflict: level > 1,
+    }
 }
 
 /// Truy cập lát ma trận theo CỘT với bề rộng 32: mọi luồng rơi vào CÙNG một
@@ -188,8 +221,12 @@ pub struct KetQuaRutGon {
 /// Rút gọn theo cây, mô phỏng đúng cách GPU làm.
 pub fn rut_gon_song_song(data: &[i64]) -> KetQuaRutGon {
     if data.is_empty() {
-        return KetQuaRutGon { tong: 0, num_steps: 0, add_op_count: 0,
-                              active_lanes_last_step: 0 };
+        return KetQuaRutGon {
+            tong: 0,
+            num_steps: 0,
+            add_op_count: 0,
+            active_lanes_last_step: 0,
+        };
     }
     let mut tang: Vec<i64> = data.to_vec();
     let mut num_steps = 0;
@@ -198,7 +235,9 @@ pub fn rut_gon_song_song(data: &[i64]) -> KetQuaRutGon {
     while tang.len() > 1 {
         let mut above = Vec::with_capacity(tang.len().div_ceil(2));
         for cap in tang.chunks(2) {
-            if cap.len() == 2 { add_op_count += 1; }
+            if cap.len() == 2 {
+                add_op_count += 1;
+            }
             above.push(cap[0] + cap.get(1).copied().unwrap_or(0));
         }
         last = tang.len() / 2;
@@ -206,16 +245,22 @@ pub fn rut_gon_song_song(data: &[i64]) -> KetQuaRutGon {
         num_steps += 1;
     }
     KetQuaRutGon {
-        tong: tang[0], num_steps, add_op_count,
+        tong: tang[0],
+        num_steps,
+        add_op_count,
         active_lanes_last_step: last.max(1),
     }
 }
 
-pub fn rut_gon_tuan_tu(data: &[i64]) -> i64 { data.iter().sum() }
+pub fn rut_gon_tuan_tu(data: &[i64]) -> i64 {
+    data.iter().sum()
+}
 
 /// Số bước lý thuyết của rút gọn cây.
 pub fn num_step_reduce(n: usize) -> usize {
-    if n <= 1 { return 0; }
+    if n <= 1 {
+        return 0;
+    }
     (n as f64).log2().ceil() as usize
 }
 
@@ -242,7 +287,9 @@ pub fn gemm_naive(n: usize) -> GemmAnalysis {
     // Mỗi phần tử kết quả cần đọc n phần tử của A và n của B, tất cả từ toàn cục
     let doc = 2 * n64 * n64 * n64;
     GemmAnalysis {
-        n, read_global: doc, doc_chia_se: 0,
+        n,
+        read_global: doc,
+        doc_chia_se: 0,
         mul_op_count: n64 * n64 * n64,
         arithmetic_intensity: n64.pow(3) as f64 / (doc * 4) as f64, // 4 byte mỗi f32
     }
@@ -255,7 +302,9 @@ pub fn tiled_gemm(n: usize, lat: usize) -> GemmAnalysis {
     let read_global = 2 * n64 * n64 * n64 / l;
     let doc_chia_se = 2 * n64 * n64 * n64;
     GemmAnalysis {
-        n, read_global, doc_chia_se,
+        n,
+        read_global,
+        doc_chia_se,
         mul_op_count: n64 * n64 * n64,
         arithmetic_intensity: n64.pow(3) as f64 / (read_global * 4) as f64,
     }
@@ -276,9 +325,11 @@ pub struct Occupancy {
     pub blocked_by: &'static str,
 }
 
-pub fn occupancy(threads_per_block: usize, thanh_ghi_moi_luong: usize,
-                           chia_se_moi_khoi_byte: usize) -> Occupancy
-{
+pub fn occupancy(
+    threads_per_block: usize,
+    thanh_ghi_moi_luong: usize,
+    chia_se_moi_khoi_byte: usize,
+) -> Occupancy {
     const WARP_TOI_DA: usize = 64;
     const THANH_GHI_MOI_SM: usize = 65_536;
     const CHIA_SE_MOI_SM: usize = 65_536;
@@ -287,21 +338,32 @@ pub fn occupancy(threads_per_block: usize, thanh_ghi_moi_luong: usize,
     let l = threads_per_block.max(1);
     let warp_moi_khoi = l.div_ceil(LUONG_MOI_WARP);
 
-    let block_theo_into_record = if thanh_ghi_moi_luong == 0 { KHOI_TOI_DA }
-        else { THANH_GHI_MOI_SM / (l * thanh_ghi_moi_luong).max(1) };
-    let khoi_theo_chia_se = if chia_se_moi_khoi_byte == 0 { KHOI_TOI_DA }
-        else { CHIA_SE_MOI_SM / chia_se_moi_khoi_byte };
+    let block_theo_into_record = if thanh_ghi_moi_luong == 0 {
+        KHOI_TOI_DA
+    } else {
+        THANH_GHI_MOI_SM / (l * thanh_ghi_moi_luong).max(1)
+    };
+    let khoi_theo_chia_se = if chia_se_moi_khoi_byte == 0 {
+        KHOI_TOI_DA
+    } else {
+        CHIA_SE_MOI_SM / chia_se_moi_khoi_byte
+    };
     let khoi_theo_warp = WARP_TOI_DA / warp_moi_khoi.max(1);
 
-    let (num_blocks, chan) = [(block_theo_into_record, "thanh ghi"),
-                           (khoi_theo_chia_se, "bộ nhớ chia sẻ"),
-                           (khoi_theo_warp, "số warp"),
-                           (KHOI_TOI_DA, "số khối")]
-        .into_iter().min_by_key(|(v, _)| *v).unwrap();
+    let (num_blocks, chan) = [
+        (block_theo_into_record, "thanh ghi"),
+        (khoi_theo_chia_se, "bộ nhớ chia sẻ"),
+        (khoi_theo_warp, "số warp"),
+        (KHOI_TOI_DA, "số khối"),
+    ]
+    .into_iter()
+    .min_by_key(|(v, _)| *v)
+    .unwrap();
 
     let concurrent_warps = (num_blocks * warp_moi_khoi).min(WARP_TOI_DA);
     Occupancy {
-        concurrent_warps, warp_toi_da: WARP_TOI_DA,
+        concurrent_warps,
+        warp_toi_da: WARP_TOI_DA,
         ratio: concurrent_warps as f64 / WARP_TOI_DA as f64,
         blocked_by: chan,
     }
@@ -313,81 +375,158 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. CẤU HÌNH PHÁT");
-    for (n, l) in [(1_000_000usize, 256usize), (1_000_000, 128), (1_000, 256), (100, 256)] {
+    for (n, l) in [
+        (1_000_000usize, 256usize),
+        (1_000_000, 128),
+        (1_000, 256),
+        (100, 256),
+    ] {
         let c = LaunchConfig::for_n_items(n, l);
-        println!("   n={:>9} khối {:>3} luồng → {:>5} khối · {:>9} luồng · thừa {:>5}",
-                 n, l, c.num_blocks, c.total_amount(), c.excess_flow(n));
+        println!(
+            "   n={:>9} khối {:>3} luồng → {:>5} khối · {:>9} luồng · thừa {:>5}",
+            n,
+            l,
+            c.num_blocks,
+            c.total_amount(),
+            c.excess_flow(n)
+        );
     }
-    let le = LaunchConfig { num_blocks: 10, threads_per_block: 100 };
-    println!("   Khối 100 luồng → {} warp, lãng phí {} làn ở warp cuối",
-             le.warp_moi_khoi(), le.wasted_per_block());
-    println!("   → Luôn chọn số luồng mỗi khối là bội số của {}.", LUONG_MOI_WARP);
+    let le = LaunchConfig {
+        num_blocks: 10,
+        threads_per_block: 100,
+    };
+    println!(
+        "   Khối 100 luồng → {} warp, lãng phí {} làn ở warp cuối",
+        le.warp_moi_khoi(),
+        le.wasted_per_block()
+    );
+    println!(
+        "   → Luôn chọn số luồng mỗi khối là bội số của {}.",
+        LUONG_MOI_WARP
+    );
 
     println!("\n2. PHÂN KỲ WARP — cùng tỉ lệ 50/50, khác hẳn tốc độ");
     let n = 1024;
-    for (name, dk) in [("rẽ theo chẵn/lẻ", branch_on_parity(n)),
-                      ("rẽ theo warp   ", branch_on_warp(n))] {
+    for (name, dk) in [
+        ("rẽ theo chẵn/lẻ", branch_on_parity(n)),
+        ("rẽ theo warp   ", branch_on_warp(n)),
+    ] {
         let p = divergence_analysis(&dk);
         let ti_le_dung = dk.iter().filter(|&&x| x).count() as f64 / n as f64;
-        println!("   {} → {:>2}/{} warp phân kỳ · chậm {:.1}x (tỉ lệ nhánh đúng {:.0}%)",
-                 name, p.divergent_warps, p.so_warp, p.he_so_cham, ti_le_dung * 100.0);
+        println!(
+            "   {} → {:>2}/{} warp phân kỳ · chậm {:.1}x (tỉ lệ nhánh đúng {:.0}%)",
+            name,
+            p.divergent_warps,
+            p.so_warp,
+            p.he_so_cham,
+            ti_le_dung * 100.0
+        );
     }
     println!("   → Cùng 50% luồng đi mỗi nhánh. Chỉ khác CÁCH NHÓM chúng.");
 
     println!("\n3. GỘP TRUY CẬP BỘ NHỚ (một warp đọc f32)");
-    println!("   {:>10} {:>14} {:>14} {:>12}",
-             "bước nhảy", "giao dịch", "byte chuyển", "hiệu suất");
+    println!(
+        "   {:>10} {:>14} {:>14} {:>12}",
+        "bước nhảy", "giao dịch", "byte chuyển", "hiệu suất"
+    );
     for b in [1usize, 2, 4, 8, 32] {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
-        println!("   {:>10} {:>14} {:>14} {:>11.1}%",
-                 b, p.num_transactions, p.bytes_transferred, p.efficiency * 100.0);
+        println!(
+            "   {:>10} {:>14} {:>14} {:>11.1}%",
+            b,
+            p.num_transactions,
+            p.bytes_transferred,
+            p.efficiency * 100.0
+        );
     }
-    println!("   → Bước nhảy 32 tốn {} giao dịch cho cùng {} byte có ích.",
-             coalescing_analysis(32, 4, 32).num_transactions, 32 * 4);
+    println!(
+        "   → Bước nhảy 32 tốn {} giao dịch cho cùng {} byte có ích.",
+        coalescing_analysis(32, 4, 32).num_transactions,
+        32 * 4
+    );
 
     println!("\n4. XUNG ĐỘT NGÂN HÀNG BỘ NHỚ CHIA SẺ");
     let a = bank_analysis(&tile_column_access(32));
     let b = bank_analysis(&access_cap_col_lat_has_count(32));
-    println!("   Lát 32x32, đọc theo cột  → xung đột {} lối", a.conflict_degree);
-    println!("   Lát 32x33 (đệm 1 cột)    → xung đột {} lối", b.conflict_degree);
-    println!("   → Thêm 1/32 bộ nhớ, nhanh gấp {} lần. Thủ thuật rẻ nhất trong GPU.",
-             a.conflict_degree / b.conflict_degree.max(1));
+    println!(
+        "   Lát 32x32, đọc theo cột  → xung đột {} lối",
+        a.conflict_degree
+    );
+    println!(
+        "   Lát 32x33 (đệm 1 cột)    → xung đột {} lối",
+        b.conflict_degree
+    );
+    println!(
+        "   → Thêm 1/32 bộ nhớ, nhanh gấp {} lần. Thủ thuật rẻ nhất trong GPU.",
+        a.conflict_degree / b.conflict_degree.max(1)
+    );
 
     println!("\n5. RÚT GỌN SONG SONG");
-    println!("   {:>10} {:>14} {:>16} {:>16}",
-             "phần tử", "bước (cây)", "bước (tuần tự)", "phép cộng");
+    println!(
+        "   {:>10} {:>14} {:>16} {:>16}",
+        "phần tử", "bước (cây)", "bước (tuần tự)", "phép cộng"
+    );
     for n in [16usize, 1024, 1_048_576] {
         let d: Vec<i64> = (1..=n as i64).collect();
         let r = rut_gon_song_song(&d);
-        println!("   {:>10} {:>14} {:>16} {:>16}", n, r.num_steps, n, r.add_op_count);
+        println!(
+            "   {:>10} {:>14} {:>16} {:>16}",
+            n, r.num_steps, n, r.add_op_count
+        );
     }
     let d: Vec<i64> = (1..=1000).collect();
-    println!("   Cùng kết quả với cách tuần tự: {}",
-             rut_gon_song_song(&d).tong == rut_gon_tuan_tu(&d));
+    println!(
+        "   Cùng kết quả với cách tuần tự: {}",
+        rut_gon_song_song(&d).tong == rut_gon_tuan_tu(&d)
+    );
     println!("   → Cùng số phép cộng, nhưng 20 bước thay vì một triệu bước.");
 
     println!("\n6. NHÂN MA TRẬN THEO LÁT (n = 1024)");
     let n = 1024;
     let nt = gemm_naive(n);
-    println!("   {:<18} {:>18} {:>24}", "cách làm", "đọc toàn cục", "cường độ tính toán");
-    println!("   {:<18} {:>18} {:>21.2} FLOP/B", "ngây thơ", nt.read_global,
-             nt.arithmetic_intensity);
+    println!(
+        "   {:<18} {:>18} {:>24}",
+        "cách làm", "đọc toàn cục", "cường độ tính toán"
+    );
+    println!(
+        "   {:<18} {:>18} {:>21.2} FLOP/B",
+        "ngây thơ", nt.read_global, nt.arithmetic_intensity
+    );
     for lat in [8usize, 16, 32] {
         let g = tiled_gemm(n, lat);
-        println!("   {:<18} {:>18} {:>21.2} FLOP/B",
-                 format!("lát {}x{}", lat, lat), g.read_global, g.arithmetic_intensity);
+        println!(
+            "   {:<18} {:>18} {:>21.2} FLOP/B",
+            format!("lát {}x{}", lat, lat),
+            g.read_global,
+            g.arithmetic_intensity
+        );
     }
-    println!("   → Cùng {} phép nhân. Lát 32 đọc ít hơn 32 lần từ bộ nhớ toàn cục.",
-             nt.mul_op_count);
+    println!(
+        "   → Cùng {} phép nhân. Lát 32 đọc ít hơn 32 lần từ bộ nhớ toàn cục.",
+        nt.mul_op_count
+    );
 
     println!("\n7. MỨC CHIẾM DỤNG");
-    println!("   {:>8} {:>10} {:>14} {:>12} {:>18}",
-             "luồng", "thanh ghi", "chia sẻ (B)", "chiếm dụng", "bị chặn bởi");
-    for (l, tg, cs) in [(256usize, 32usize, 0usize), (256, 64, 0),
-                        (256, 128, 0), (256, 32, 16_384), (1024, 32, 0)] {
+    println!(
+        "   {:>8} {:>10} {:>14} {:>12} {:>18}",
+        "luồng", "thanh ghi", "chia sẻ (B)", "chiếm dụng", "bị chặn bởi"
+    );
+    for (l, tg, cs) in [
+        (256usize, 32usize, 0usize),
+        (256, 64, 0),
+        (256, 128, 0),
+        (256, 32, 16_384),
+        (1024, 32, 0),
+    ] {
         let m = occupancy(l, tg, cs);
-        println!("   {:>8} {:>10} {:>14} {:>11.0}% {:>18}",
-                 l, tg, cs, m.ratio * 100.0, m.blocked_by);
+        println!(
+            "   {:>8} {:>10} {:>14} {:>11.0}% {:>18}",
+            l,
+            tg,
+            cs,
+            m.ratio * 100.0,
+            m.blocked_by
+        );
     }
     println!("   → Dùng nhiều thanh ghi cho mỗi luồng thì ít warp cùng chạy,");
     println!("     và GPU không còn đủ việc để che độ trễ bộ nhớ.");
@@ -404,10 +543,18 @@ mod tests {
     // ---------- Cấu hình phát ----------
     #[test]
     fn the_launch_config_covers_every_element() {
-        for (n, l) in [(1_000_000usize, 256usize), (1_000, 256), (1, 256), (257, 256)] {
+        for (n, l) in [
+            (1_000_000usize, 256usize),
+            (1_000, 256),
+            (1, 256),
+            (257, 256),
+        ] {
             let c = LaunchConfig::for_n_items(n, l);
             assert!(c.total_amount() >= n, "phải đủ luồng phủ hết {} phần tử", n);
-            assert!(c.total_amount() < n + l, "nhưng không được thừa quá một khối");
+            assert!(
+                c.total_amount() < n + l,
+                "nhưng không được thừa quá một khối"
+            );
         }
     }
 
@@ -420,10 +567,16 @@ mod tests {
 
     #[test]
     fn a_non_warp_multiple_block_wastes_lanes() {
-        let tron = LaunchConfig { num_blocks: 1, threads_per_block: 256 };
+        let tron = LaunchConfig {
+            num_blocks: 1,
+            threads_per_block: 256,
+        };
         assert_eq!(tron.warp_moi_khoi(), 8);
         assert_eq!(tron.wasted_per_block(), 0);
-        let le = LaunchConfig { num_blocks: 1, threads_per_block: 100 };
+        let le = LaunchConfig {
+            num_blocks: 1,
+            threads_per_block: 100,
+        };
         assert_eq!(le.warp_moi_khoi(), 4, "100 luồng vẫn tốn 4 warp");
         assert_eq!(le.wasted_per_block(), 28, "28 làn ngồi chơi");
     }
@@ -431,7 +584,10 @@ mod tests {
     #[test]
     fn any_multiple_of_32_wastes_nothing() {
         for l in [32usize, 64, 128, 256, 512, 1024] {
-            let c = LaunchConfig { num_blocks: 1, threads_per_block: l };
+            let c = LaunchConfig {
+                num_blocks: 1,
+                threads_per_block: l,
+            };
             assert_eq!(c.wasted_per_block(), 0, "khối {} luồng", l);
         }
     }
@@ -451,7 +607,10 @@ mod tests {
     fn branching_on_parity_diverges_every_warp() {
         let p = divergence_analysis(&branch_on_parity(1024));
         assert_eq!(p.so_warp, 32);
-        assert_eq!(p.divergent_warps, 32, "warp nào cũng có cả luồng chẵn lẫn lẻ");
+        assert_eq!(
+            p.divergent_warps, 32,
+            "warp nào cũng có cả luồng chẵn lẫn lẻ"
+        );
         assert!((p.he_so_cham - 2.0).abs() < 1e-9, "chậm gấp đôi");
     }
 
@@ -473,8 +632,10 @@ mod tests {
         dk[17] = false;
         let p = divergence_analysis(&dk);
         assert_eq!(p.divergent_warps, 1);
-        assert!((p.he_so_cham - 2.0).abs() < 1e-9,
-                "một luồng lạc điệu → cả warp chậm gấp đôi");
+        assert!(
+            (p.he_so_cham - 2.0).abs() < 1e-9,
+            "một luồng lạc điệu → cả warp chậm gấp đôi"
+        );
     }
 
     #[test]
@@ -488,8 +649,14 @@ mod tests {
     #[test]
     fn contiguous_access_coalesces_into_the_fewest_transactions() {
         let p = coalescing_analysis(LUONG_MOI_WARP, 4, 1);
-        assert_eq!(p.num_transactions, 1, "32 luồng x 4 byte = 128 byte = đúng 1 giao dịch");
-        assert!((p.efficiency - 1.0).abs() < 1e-9, "hiệu suất băng thông hoàn hảo");
+        assert_eq!(
+            p.num_transactions, 1,
+            "32 luồng x 4 byte = 128 byte = đúng 1 giao dịch"
+        );
+        assert!(
+            (p.efficiency - 1.0).abs() < 1e-9,
+            "hiệu suất băng thông hoàn hảo"
+        );
     }
 
     #[test]
@@ -497,11 +664,18 @@ mod tests {
         let mut prev = 0;
         for b in [1usize, 2, 4, 8, 16, 32] {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
-            assert!(p.num_transactions >= prev, "bước {} phải tốn ít nhất bằng bước trước", b);
+            assert!(
+                p.num_transactions >= prev,
+                "bước {} phải tốn ít nhất bằng bước trước",
+                b
+            );
             prev = p.num_transactions;
         }
-        assert_eq!(coalescing_analysis(LUONG_MOI_WARP, 4, 32).num_transactions, 32,
-                   "bước nhảy 32 → mỗi luồng một giao dịch riêng");
+        assert_eq!(
+            coalescing_analysis(LUONG_MOI_WARP, 4, 32).num_transactions,
+            32,
+            "bước nhảy 32 → mỗi luồng một giao dịch riêng"
+        );
     }
 
     #[test]
@@ -511,16 +685,22 @@ mod tests {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
             assert_eq!(p.byte_co_ich, 128, "luôn cần đúng 128 byte");
         }
-        assert!(coalescing_analysis(32, 4, 32).bytes_transferred
-                > coalescing_analysis(32, 4, 1).bytes_transferred * 30);
+        assert!(
+            coalescing_analysis(32, 4, 32).bytes_transferred
+                > coalescing_analysis(32, 4, 1).bytes_transferred * 30
+        );
     }
 
     #[test]
     fn efficiency_stays_within_zero_and_one() {
         for b in [1usize, 2, 3, 7, 16, 64, 128] {
             let p = coalescing_analysis(LUONG_MOI_WARP, 4, b);
-            assert!((0.0..=1.0).contains(&p.efficiency),
-                    "bước {} cho hiệu suất {}", b, p.efficiency);
+            assert!(
+                (0.0..=1.0).contains(&p.efficiency),
+                "bước {} cho hiệu suất {}",
+                b,
+                p.efficiency
+            );
         }
     }
 
@@ -536,7 +716,10 @@ mod tests {
     #[test]
     fn reading_a_column_of_a_32_wide_tile_conflicts_fully() {
         let p = bank_analysis(&tile_column_access(32));
-        assert_eq!(p.conflict_degree, 32, "mọi luồng rơi vào CÙNG một ngân hàng");
+        assert_eq!(
+            p.conflict_degree, 32,
+            "mọi luồng rơi vào CÙNG một ngân hàng"
+        );
         assert!(p.has_conflict);
     }
 
@@ -558,8 +741,11 @@ mod tests {
         }
         // Bề rộng chẵn có ước chung với 32 thì xung đột
         for be_rong in [2usize, 4, 8, 16, 32] {
-            assert!(bank_analysis(&tile_column_access(be_rong)).has_conflict,
-                    "bề rộng {} phải xung đột", be_rong);
+            assert!(
+                bank_analysis(&tile_column_access(be_rong)).has_conflict,
+                "bề rộng {} phải xung đột",
+                be_rong
+            );
         }
     }
 
@@ -646,25 +832,34 @@ mod tests {
     fn a_tile_of_one_is_no_better_than_naive() {
         let n = 256;
         assert_eq!(tiled_gemm(n, 1).read_global, gemm_naive(n).read_global);
-        assert_eq!(tiled_gemm(n, 0).read_global, gemm_naive(n).read_global,
-                   "lát 0 phải được chặn thành 1, không chia cho 0");
+        assert_eq!(
+            tiled_gemm(n, 0).read_global,
+            gemm_naive(n).read_global,
+            "lát 0 phải được chặn thành 1, không chia cho 0"
+        );
     }
 
     // ---------- Mức chiếm dụng ----------
     #[test]
     fn few_registers_gives_high_occupancy() {
         let m = occupancy(256, 32, 0);
-        assert!(m.ratio > 0.9, "32 thanh ghi/luồng phải cho chiếm dụng cao, thực tế {:.2}",
-                m.ratio);
+        assert!(
+            m.ratio > 0.9,
+            "32 thanh ghi/luồng phải cho chiếm dụng cao, thực tế {:.2}",
+            m.ratio
+        );
     }
 
     #[test]
     fn many_registers_drops_occupancy() {
         let it = occupancy(256, 32, 0);
         let many = occupancy(256, 128, 0);
-        assert!(many.ratio < it.ratio,
-                "dùng 128 thanh ghi phải giảm chiếm dụng: {:.2} so với {:.2}",
-                many.ratio, it.ratio);
+        assert!(
+            many.ratio < it.ratio,
+            "dùng 128 thanh ghi phải giảm chiếm dụng: {:.2} so với {:.2}",
+            many.ratio,
+            it.ratio
+        );
         assert_eq!(many.blocked_by, "thanh ghi");
     }
 
@@ -680,8 +875,13 @@ mod tests {
         for l in [32usize, 128, 256, 512, 1024] {
             for tg in [16usize, 32, 64, 128, 255] {
                 let m = occupancy(l, tg, 0);
-                assert!((0.0..=1.0).contains(&m.ratio),
-                        "luồng {} thanh ghi {} cho tỉ lệ {}", l, tg, m.ratio);
+                assert!(
+                    (0.0..=1.0).contains(&m.ratio),
+                    "luồng {} thanh ghi {} cho tỉ lệ {}",
+                    l,
+                    tg,
+                    m.ratio
+                );
                 assert!(m.concurrent_warps <= m.warp_toi_da);
             }
         }

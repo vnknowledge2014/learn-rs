@@ -60,7 +60,9 @@ impl PaymentGateway for MockBankingGateway {
     fn process_payment(&self, account_id: &str, amount_cents: u64) -> Result<String, PaymentError> {
         // Kiểm tra dữ liệu đầu vào: tài khoản không được để trống
         if account_id.is_empty() {
-            return Err(PaymentError::NetworkTimeout("Mã định danh tài khoản không hợp lệ".to_string()));
+            return Err(PaymentError::NetworkTimeout(
+                "Mã định danh tài khoản không hợp lệ".to_string(),
+            ));
         }
 
         // Kiểm tra số dư khả dụng
@@ -91,12 +93,17 @@ impl<'a, G: PaymentGateway> OrderProcessor<'a, G> {
 
     // Xử lý đơn hàng: Mượn khả biến (&mut) đơn hàng để cập nhật trạng thái
     pub fn checkout(&self, order: &mut Order, account_id: &str) -> Result<(), PaymentError> {
-        println!("[Hệ thống] Bắt đầu thanh toán đơn hàng #{} cho khách hàng: {}", order.id, order.customer_name);
+        println!(
+            "[Hệ thống] Bắt đầu thanh toán đơn hàng #{} cho khách hàng: {}",
+            order.id, order.customer_name
+        );
 
         match self.gateway.process_payment(account_id, order.amount_cents) {
             Ok(tx_id) => {
                 println!("[Hệ thống] Thanh toán thành công! Mã giao dịch: {}", tx_id);
-                order.status = OrderStatus::Paid { transaction_id: tx_id };
+                order.status = OrderStatus::Paid {
+                    transaction_id: tx_id,
+                };
                 Ok(())
             }
             Err(err) => {
@@ -136,5 +143,7 @@ fn main() {
     assert!(result_2.is_err());
     println!("Trạng thái sau thanh toán đơn #102: {:?}", order_2.status);
 
-    println!("\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!");
+    println!(
+        "\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!"
+    );
 }

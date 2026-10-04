@@ -63,11 +63,7 @@ impl RaftNode {
     }
 
     /// Xử lý yêu cầu xin phiếu bầu từ một ứng viên khác (RequestVote RPC)
-    pub fn handle_request_vote(
-        &mut self,
-        candidate_id: u64,
-        candidate_term: u64,
-    ) -> bool {
+    pub fn handle_request_vote(&mut self, candidate_id: u64, candidate_term: u64) -> bool {
         // 1. Nếu nhiệm kỳ của ứng viên thấp hơn nhiệm kỳ hiện tại: Từ chối ngay
         if candidate_term < self.current_term {
             println!(
@@ -144,9 +140,18 @@ fn main() {
     let mut node3 = RaftNode::new(3);
 
     println!("\n[1] Khoi tao cum 3 nut mang (Tat ca deu la Follower ban dau):");
-    println!("    - Node 1 Role: {:?} | Term: {}", node1.role, node1.current_term);
-    println!("    - Node 2 Role: {:?} | Term: {}", node2.role, node2.current_term);
-    println!("    - Node 3 Role: {:?} | Term: {}", node3.role, node3.current_term);
+    println!(
+        "    - Node 1 Role: {:?} | Term: {}",
+        node1.role, node1.current_term
+    );
+    println!(
+        "    - Node 2 Role: {:?} | Term: {}",
+        node2.role, node2.current_term
+    );
+    println!(
+        "    - Node 3 Role: {:?} | Term: {}",
+        node3.role, node3.current_term
+    );
 
     // 2. Mô phỏng Node 1 bị hết hạn chờ (Election Timeout) và phát động tranh cử
     println!("\n[2] Node 1 bi Timeout va khoi dong tranh cu lanh dao (Election):");
@@ -175,7 +180,9 @@ fn main() {
 
     // 3. Mô phỏng Client gửi lệnh ghi dữ liệu tới Leader
     println!("\n[3] Mo phong Client gui giao dich 'CHUYEN_TIEN_100K' toi Leader:");
-    let log_idx = node1.append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K").unwrap();
+    let log_idx = node1
+        .append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K")
+        .unwrap();
 
     // Leader sao chép sang Node 2 thành công
     println!("    - Leader Node 1 sao chep ban ghi sang Node 2...");

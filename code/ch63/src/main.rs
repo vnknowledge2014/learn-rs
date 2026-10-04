@@ -25,7 +25,11 @@ pub struct Task {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Filter { TatCa, ChuaXong, DaXong }
+pub enum Filter {
+    TatCa,
+    ChuaXong,
+    DaXong,
+}
 
 /// Mọi thứ CÓ THỂ xảy ra trong ứng dụng, liệt kê bằng enum (kiểu tổng, Chương 20).
 /// Không có hành động nào ngoài danh sách này — trạng thái thay đổi có kiểm soát.
@@ -40,7 +44,11 @@ pub enum Message {
 
 impl Model {
     pub fn new() -> Self {
-        Model { tasks: Vec::new(), filter: Filter::TatCa, next_id: 1 }
+        Model {
+            tasks: Vec::new(),
+            filter: Filter::TatCa,
+            next_id: 1,
+        }
     }
 
     /// HÀM `update` THUẦN TÚY: (trạng thái cũ, thông điệp) -> trạng thái mới.
@@ -52,7 +60,9 @@ impl Model {
                 let t = title.trim();
                 if !t.is_empty() {
                     self.tasks.push(Task {
-                        id: self.next_id, title: t.to_string(), done: false,
+                        id: self.next_id,
+                        title: t.to_string(),
+                        done: false,
                     });
                     self.next_id += 1;
                 }
@@ -77,11 +87,14 @@ impl Model {
 
     /// Dẫn xuất: danh sách hiển thị theo bộ lọc hiện tại (view thuần túy).
     pub fn display(&self) -> Vec<&Task> {
-        self.tasks.iter().filter(|c| match self.filter {
-            Filter::TatCa => true,
-            Filter::ChuaXong => !c.done,
-            Filter::DaXong => c.done,
-        }).collect()
+        self.tasks
+            .iter()
+            .filter(|c| match self.filter {
+                Filter::TatCa => true,
+                Filter::ChuaXong => !c.done,
+                Filter::DaXong => c.done,
+            })
+            .collect()
     }
 
     pub fn pending_count(&self) -> usize {
@@ -109,7 +122,9 @@ pub trait BackendCommand {
 /// Ví dụ lệnh: đọc thông tin hệ thống (backend làm việc mà webview không làm được).
 pub struct SystemInfoCommand;
 impl BackendCommand for SystemInfoCommand {
-    fn name(&self) -> &str { "thong_tin_he_thong" }
+    fn name(&self) -> &str {
+        "thong_tin_he_thong"
+    }
     fn run(&self, _: &HashMap<String, String>) -> CommandResult {
         CommandResult::Ok("os=cross-platform;kien_truc=x86_64".to_string())
     }
@@ -118,7 +133,9 @@ impl BackendCommand for SystemInfoCommand {
 /// Ví dụ lệnh: lưu tệp (thao tác hệ thống — chỉ backend được phép, vì bảo mật).
 pub struct SaveFileCommand;
 impl BackendCommand for SaveFileCommand {
-    fn name(&self) -> &str { "luu_tep" }
+    fn name(&self) -> &str {
+        "luu_tep"
+    }
     fn run(&self, param: &HashMap<String, String>) -> CommandResult {
         let name = match param.get("ten") {
             Some(t) if !t.is_empty() => t,
@@ -137,7 +154,9 @@ pub struct IpcBridge {
     order: Vec<Box<dyn BackendCommand>>,
 }
 impl IpcBridge {
-    pub fn new() -> Self { IpcBridge { order: Vec::new() } }
+    pub fn new() -> Self {
+        IpcBridge { order: Vec::new() }
+    }
     pub fn register(mut self, l: Box<dyn BackendCommand>) -> Self {
         self.order.push(l);
         self
@@ -163,22 +182,41 @@ fn main() {
         .update(Message::AddTask("Đóng gói đa nền tảng".into()))
         .update(Message::BatTat(1)); // đánh dấu việc #1 xong
 
-    println!("   Tổng công việc: {}, chưa xong: {}", m.tasks.len(), m.pending_count());
+    println!(
+        "   Tổng công việc: {}, chưa xong: {}",
+        m.tasks.len(),
+        m.pending_count()
+    );
     let m = m.update(Message::SetFilter(Filter::ChuaXong));
-    println!("   Lọc 'chưa xong': {:?}", m.display().iter().map(|c| &c.title).collect::<Vec<_>>());
+    println!(
+        "   Lọc 'chưa xong': {:?}",
+        m.display().iter().map(|c| &c.title).collect::<Vec<_>>()
+    );
 
     println!("\n2. CẦU IPC — frontend (Svelte/JS) gọi backend (Rust)");
     let cau = IpcBridge::new()
         .register(Box::new(SystemInfoCommand))
         .register(Box::new(SaveFileCommand));
 
-    println!("   invoke('thong_tin_he_thong'): {:?}", cau.invoke("thong_tin_he_thong", HashMap::new()));
+    println!(
+        "   invoke('thong_tin_he_thong'): {:?}",
+        cau.invoke("thong_tin_he_thong", HashMap::new())
+    );
     let mut ts = HashMap::new();
     ts.insert("ten".to_string(), "ghi_chu.txt".to_string());
-    println!("   invoke('luu_tep', {{name: 'ghi_chu.txt'}}): {:?}", cau.invoke("luu_tep", ts.clone()));
+    println!(
+        "   invoke('luu_tep', {{name: 'ghi_chu.txt'}}): {:?}",
+        cau.invoke("luu_tep", ts.clone())
+    );
     ts.insert("ten".to_string(), "../../etc/passwd".to_string());
-    println!("   invoke('luu_tep', {{name: '../../etc/passwd'}}): {:?}", cau.invoke("luu_tep", ts));
-    println!("   invoke('lenh_la'): {:?}", cau.invoke("lenh_la", HashMap::new()));
+    println!(
+        "   invoke('luu_tep', {{name: '../../etc/passwd'}}): {:?}",
+        cau.invoke("luu_tep", ts)
+    );
+    println!(
+        "   invoke('lenh_la'): {:?}",
+        cau.invoke("lenh_la", HashMap::new())
+    );
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   MỘT LÕI RUST · NHIỀU NỀN TẢNG · GIAO DIỆN WEB HAY NATIVE      ");
@@ -240,9 +278,26 @@ mod tests {
             .update(Message::AddTask("A".into()))
             .update(Message::AddTask("B".into()))
             .update(Message::BatTat(1)); // A xong
-        assert_eq!(m.clone().update(Message::SetFilter(Filter::TatCa)).display().len(), 2);
-        assert_eq!(m.clone().update(Message::SetFilter(Filter::DaXong)).display().len(), 1);
-        assert_eq!(m.update(Message::SetFilter(Filter::ChuaXong)).display().len(), 1);
+        assert_eq!(
+            m.clone()
+                .update(Message::SetFilter(Filter::TatCa))
+                .display()
+                .len(),
+            2
+        );
+        assert_eq!(
+            m.clone()
+                .update(Message::SetFilter(Filter::DaXong))
+                .display()
+                .len(),
+            1
+        );
+        assert_eq!(
+            m.update(Message::SetFilter(Filter::ChuaXong))
+                .display()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -254,7 +309,11 @@ mod tests {
             Message::AddTask("B".into()),
             Message::BatTat(1),
         ];
-        let dung = |list: &[Message]| list.iter().cloned().fold(Model::new(), |m, td| m.update(td));
+        let dung = |list: &[Message]| {
+            list.iter()
+                .cloned()
+                .fold(Model::new(), |m, td| m.update(td))
+        };
         // Phát lại hai lần cho CÙNG kết quả (tất định)
         assert_eq!(dung(&history), dung(&history));
     }
@@ -264,8 +323,14 @@ mod tests {
         let cau = IpcBridge::new()
             .register(Box::new(SystemInfoCommand))
             .register(Box::new(SaveFileCommand));
-        assert!(matches!(cau.invoke("thong_tin_he_thong", HashMap::new()), CommandResult::Ok(_)));
-        assert!(matches!(cau.invoke("lenh_khong_co", HashMap::new()), CommandResult::Failed(_)));
+        assert!(matches!(
+            cau.invoke("thong_tin_he_thong", HashMap::new()),
+            CommandResult::Ok(_)
+        ));
+        assert!(matches!(
+            cau.invoke("lenh_khong_co", HashMap::new()),
+            CommandResult::Failed(_)
+        ));
     }
 
     #[test]
@@ -278,6 +343,9 @@ mod tests {
         let mut xau = HashMap::new();
         xau.insert("ten".into(), "../../../etc/passwd".to_string());
         // Cầu IPC chặn — webview KHÔNG được ghi ra ngoài thư mục app (bảo mật)
-        assert!(matches!(cau.invoke("luu_tep", xau), CommandResult::Failed(_)));
+        assert!(matches!(
+            cau.invoke("luu_tep", xau),
+            CommandResult::Failed(_)
+        ));
     }
 }

@@ -51,14 +51,23 @@ fn main() {
     // 1. Phân đoạn Mã lệnh (.text)
     let text_addr = sample_target_function as fn() as usize;
     println!("\n[1] Phan doan Ma may (.text segment):");
-    println!("    - Dia chi ham sample_target_function: 0x{:012x}", text_addr);
+    println!(
+        "    - Dia chi ham sample_target_function: 0x{:012x}",
+        text_addr
+    );
 
     // 2. Phân đoạn Dữ liệu (.data & .rodata)
     let data_addr = &GLOBAL_DATA_VAR as *const i32 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
     println!("\n[2] Phan doan Du lieu toan cuc (.data & .rodata segments):");
-    println!("    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
-    println!("    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
+    println!(
+        "    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}",
+        data_addr
+    );
+    println!(
+        "    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}",
+        rodata_addr
+    );
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
     println!("\n[3] Phan doan Vung nho dong (Heap segment):");
@@ -93,7 +102,10 @@ fn main() {
 
     // 5. Tổng kết so sánh khoảng cách địa chỉ ảo
     println!("\n[5] So sanh tuong quan ban do dia chi ao:");
-    println!("    - Dinh cao nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
+    println!(
+        "    - Dinh cao nhat (Stack)   : ~0x{:012x}",
+        &main_stack_var as *const u64 as usize
+    );
     println!("    - Vung trung tam (Heap)   : ~0x{:012x}", heap_addr_1);
     println!("    - Vung thap (Data)        : ~0x{:012x}", data_addr);
     println!("    - Vung day co so (Text)   : ~0x{:012x}", text_addr);

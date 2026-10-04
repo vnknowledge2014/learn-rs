@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 /// Các loại mệnh lệnh thông điệp có thể gửi tới Actor
@@ -13,9 +13,7 @@ pub enum AccountMessage {
         respond_to: Sender<Result<u64, &'static str>>,
     },
     /// Vấn tin số dư: Kèm theo kênh hồi âm trả về số dư hiện tại
-    GetBalance {
-        respond_to: Sender<u64>,
-    },
+    GetBalance { respond_to: Sender<u64> },
 }
 
 /// Thực thể Actor quản lý tài khoản ngân hàng (Sở hữu trạng thái riêng biệt)
@@ -58,11 +56,15 @@ impl BankAccountActor {
                             "    [Actor] Từ chối rút {}đ: Số dư không đủ (Hiện có {}đ)!",
                             amount, self.balance
                         );
-                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
+                        let _ =
+                            respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
                     }
                 }
                 AccountMessage::GetBalance { respond_to } => {
-                    println!("    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...", self.balance);
+                    println!(
+                        "    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...",
+                        self.balance
+                    );
                     let _ = respond_to.send(self.balance);
                 }
             }
@@ -143,9 +145,15 @@ fn main() {
         let client_handle = handle.clone();
         let t = thread::spawn(move || {
             let withdraw_amount = 150_000;
-            println!("    - Khach hang #{} bat dau gui lenh rut {}d...", client_id, withdraw_amount);
+            println!(
+                "    - Khach hang #{} bat dau gui lenh rut {}d...",
+                client_id, withdraw_amount
+            );
             match client_handle.withdraw(withdraw_amount) {
-                Ok(remaining) => println!("      + Khach hang #{} rut THANH CONG! So du con: {}d", client_id, remaining),
+                Ok(remaining) => println!(
+                    "      + Khach hang #{} rut THANH CONG! So du con: {}d",
+                    client_id, remaining
+                ),
                 Err(err) => println!("      + Khach hang #{} rut THAT BAI: {}", client_id, err),
             }
         });
@@ -158,7 +166,10 @@ fn main() {
 
     // Kiểm tra số dư cuối cùng
     let final_balance = handle.get_balance();
-    println!("\n[3] So du cuoi cung trong so cai Actor: {}d", final_balance);
+    println!(
+        "\n[3] So du cuoi cung trong so cai Actor: {}d",
+        final_balance
+    );
     assert_eq!(final_balance, 50_000);
 
     // Tiêu hủy handle để đóng mailbox, luồng Actor sẽ kết thúc êm ái

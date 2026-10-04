@@ -10,10 +10,10 @@ use std::collections::VecDeque;
 // Mỗi phần của ngữ cảnh có mức độ ưu tiên khác nhau khi ngân sách bộ nhớ bị giới hạn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PriorityTier {
-    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
-    High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
-    Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
-    Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
+    Critical, // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
+    High,     // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
+    Medium,   // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
+    Low,      // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
 }
 
 #[derive(Debug, Clone)]
@@ -86,7 +86,10 @@ impl ContextEngine {
                     assembled_prompt.push_str(&format!("### [{}]\n{}\n\n", seg.name, seg.content));
                     used_tokens += seg.estimated_tokens;
                 } else {
-                    println!("[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!", seg.name);
+                    println!(
+                        "[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!",
+                        seg.name
+                    );
                 }
             }
         };
@@ -141,12 +144,17 @@ fn main() {
 
     println!("\n--- KẾT QUẢ PROMPT HOÀN CHỈNH ĐƯỢC CHẮT LỌC ---");
     println!("{}", final_prompt);
-    println!("Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa", total_tokens, engine.max_token_budget);
+    println!(
+        "Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa",
+        total_tokens, engine.max_token_budget
+    );
 
     // Kiểm tra tính đúng đắn của logic
     assert!(total_tokens <= engine.max_token_budget);
     assert!(final_prompt.contains("RÀNG BUỘC KỸ THUẬT BẤT BIẾN"));
     assert!(final_prompt.contains("GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ"));
 
-    println!("\n[Kiểm chứng thành công] Prompt đã được tối ưu hóa hoàn hảo, loại bỏ 100% tạp âm ngữ cảnh!");
+    println!(
+        "\n[Kiểm chứng thành công] Prompt đã được tối ưu hóa hoàn hảo, loại bỏ 100% tạp âm ngữ cảnh!"
+    );
 }

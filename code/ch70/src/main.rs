@@ -32,45 +32,63 @@ impl Bam {
     pub fn hex(&self) -> String {
         self.0.iter().map(|b| format!("{:02x}", b)).collect()
     }
-    pub fn rut_gon(&self) -> String { self.hex()[..12].to_string() }
+    pub fn rut_gon(&self) -> String {
+        self.hex()[..12].to_string()
+    }
     /// Đếm số bit 0 ở đầu — thước đo "độ khó" của bằng chứng công việc.
     pub fn leading_zero_bits(&self) -> u32 {
         let mut n = 0;
         for b in self.0 {
-            if b == 0 { n += 8; } else { return n + b.leading_zeros(); }
+            if b == 0 {
+                n += 8;
+            } else {
+                return n + b.leading_zeros();
+            }
         }
         n
     }
 }
 
 impl fmt::Debug for Bam {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Bam({})", self.rut_gon()) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Bam({})", self.rut_gon())
+    }
 }
 
 pub fn sha256(data: &[u8]) -> Bam {
     // Giá trị khởi tạo = 32 bit đầu phần thập phân của căn bậc hai 8 số nguyên tố đầu
     let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
     ];
 
     // Đệm: thêm bit 1, rồi các bit 0, rồi độ dài 64-bit — sao cho chia hết 512 bit
     let mut m = data.to_vec();
     let bit_length = (data.len() as u64) * 8;
     m.push(0x80);
-    while m.len() % 64 != 56 { m.push(0); }
+    while m.len() % 64 != 56 {
+        m.push(0);
+    }
     m.extend_from_slice(&bit_length.to_be_bytes());
 
     for khoi in m.chunks(64) {
         // Mở rộng 16 từ thành 64 từ
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([khoi[i*4], khoi[i*4+1], khoi[i*4+2], khoi[i*4+3]]);
+            w[i] = u32::from_be_bytes([
+                khoi[i * 4],
+                khoi[i * 4 + 1],
+                khoi[i * 4 + 2],
+                khoi[i * 4 + 3],
+            ]);
         }
         for i in 16..64 {
-            let s0 = w[i-15].rotate_right(7) ^ w[i-15].rotate_right(18) ^ (w[i-15] >> 3);
-            let s1 = w[i-2].rotate_right(17) ^ w[i-2].rotate_right(19) ^ (w[i-2] >> 10);
-            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
 
         // 64 vòng nén
@@ -79,14 +97,21 @@ pub fn sha256(data: &[u8]) -> Bam {
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ ((!e) & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(ch)
-                       .wrapping_add(HANG_SO_K[i]).wrapping_add(w[i]);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(HANG_SO_K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let t2 = s0.wrapping_add(maj);
-            hh = g; g = f; f = e;
+            hh = g;
+            g = f;
+            f = e;
             e = d.wrapping_add(t1);
-            d = c; c = b; b = a;
+            d = c;
+            c = b;
+            b = a;
             a = t1.wrapping_add(t2);
         }
         for (i, v) in [a, b, c, d, e, f, g, hh].iter().enumerate() {
@@ -95,26 +120,39 @@ pub fn sha256(data: &[u8]) -> Bam {
     }
 
     let mut ra = [0u8; 32];
-    for (i, v) in h.iter().enumerate() { ra[i*4..i*4+4].copy_from_slice(&v.to_be_bytes()); }
+    for (i, v) in h.iter().enumerate() {
+        ra[i * 4..i * 4 + 4].copy_from_slice(&v.to_be_bytes());
+    }
     Bam(ra)
 }
 
 /// Bitcoin dùng SHA-256 HAI LẦN. Lý do lịch sử: phòng tấn công mở rộng độ dài
 /// (length-extension) vốn có của cấu trúc Merkle–Damgård.
-pub fn sha256d(data: &[u8]) -> Bam { sha256(&sha256(data).0) }
+pub fn sha256d(data: &[u8]) -> Bam {
+    sha256(&sha256(data).0)
+}
 
 // ============================================================================
 // 2. CÂY MERKLE — chứng minh "giao dịch này có trong khối" mà không cần tải khối
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProofStep { pub sibling_hash: Bam, pub is_right: bool }
+pub struct ProofStep {
+    pub sibling_hash: Bam,
+    pub is_right: bool,
+}
 
-pub struct MerkleTree { pub layers: Vec<Vec<Bam>> }
+pub struct MerkleTree {
+    pub layers: Vec<Vec<Bam>>,
+}
 
 impl MerkleTree {
     pub fn build(la: &[Bam]) -> MerkleTree {
-        if la.is_empty() { return MerkleTree { layers: vec![vec![Bam::KHONG]] }; }
+        if la.is_empty() {
+            return MerkleTree {
+                layers: vec![vec![Bam::KHONG]],
+            };
+        }
         let mut layers = vec![la.to_vec()];
         while layers.last().unwrap().len() > 1 {
             let below = layers.last().unwrap();
@@ -124,7 +162,8 @@ impl MerkleTree {
                 // "CVE-2012-2459" của Bitcoin: hai cây khác nhau cho cùng gốc.
                 let (t, p) = (cap[0], *cap.get(1).unwrap_or(&cap[0]));
                 let mut v = Vec::with_capacity(64);
-                v.extend_from_slice(&t.0); v.extend_from_slice(&p.0);
+                v.extend_from_slice(&t.0);
+                v.extend_from_slice(&p.0);
                 above.push(sha256d(&v));
             }
             layers.push(above);
@@ -132,17 +171,28 @@ impl MerkleTree {
         MerkleTree { layers }
     }
 
-    pub fn root(&self) -> Bam { *self.layers.last().unwrap().first().unwrap() }
+    pub fn root(&self) -> Bam {
+        *self.layers.last().unwrap().first().unwrap()
+    }
 
     /// Bằng chứng gộp: chỉ log₂(n) giá trị băm là đủ chứng minh một lá thuộc cây.
     /// 1 triệu giao dịch → chỉ 20 giá trị băm = 640 byte. Đây là nền của ví nhẹ (SPV).
     pub fn prove(&self, mut chi_so: usize) -> Option<Vec<ProofStep>> {
-        if chi_so >= self.layers[0].len() { return None; }
+        if chi_so >= self.layers[0].len() {
+            return None;
+        }
         let mut positive = Vec::new();
         for tang in &self.layers[..self.layers.len() - 1] {
-            let chi_so_anh_em = if chi_so % 2 == 0 { chi_so + 1 } else { chi_so - 1 };
+            let chi_so_anh_em = if chi_so % 2 == 0 {
+                chi_so + 1
+            } else {
+                chi_so - 1
+            };
             let anh_em = *tang.get(chi_so_anh_em).unwrap_or(&tang[chi_so]);
-            positive.push(ProofStep { sibling_hash: anh_em, is_right: chi_so % 2 == 0 });
+            positive.push(ProofStep {
+                sibling_hash: anh_em,
+                is_right: chi_so % 2 == 0,
+            });
             chi_so /= 2;
         }
         Some(positive)
@@ -154,9 +204,11 @@ impl MerkleTree {
         for b in positive {
             let mut v = Vec::with_capacity(64);
             if b.is_right {
-                v.extend_from_slice(&current.0); v.extend_from_slice(&b.sibling_hash.0);
+                v.extend_from_slice(&current.0);
+                v.extend_from_slice(&b.sibling_hash.0);
             } else {
-                v.extend_from_slice(&b.sibling_hash.0); v.extend_from_slice(&current.0);
+                v.extend_from_slice(&b.sibling_hash.0);
+                v.extend_from_slice(&current.0);
             }
             current = sha256d(&v);
         }
@@ -169,10 +221,16 @@ impl MerkleTree {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OutPoint { pub transaction_id: Bam, pub chi_so: u32 }
+pub struct OutPoint {
+    pub transaction_id: Bam,
+    pub chi_so: u32,
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Output { pub value: u64, pub owner: String }
+pub struct Output {
+    pub value: u64,
+    pub owner: String,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transaction {
@@ -187,10 +245,15 @@ impl Transaction {
         Transaction {
             input: vec![],
             // Thêm chiều cao vào tên chủ sở hữu để hai coinbase khác khối có mã khác nhau
-            output: vec![Output { value, owner: format!("{recipient}#{height}") }],
+            output: vec![Output {
+                value,
+                owner: format!("{recipient}#{height}"),
+            }],
         }
     }
-    pub fn la_tao_tien(&self) -> bool { self.input.is_empty() }
+    pub fn la_tao_tien(&self) -> bool {
+        self.input.is_empty()
+    }
 
     pub fn id(&self) -> Bam {
         let mut v = Vec::new();
@@ -208,7 +271,9 @@ impl Transaction {
 
 /// Tập các đầu ra chưa tiêu — TOÀN BỘ trạng thái của một blockchain kiểu Bitcoin.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct TapUtxo { pub o: HashMap<OutPoint, Output> }
+pub struct TapUtxo {
+    pub o: HashMap<OutPoint, Output>,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionError {
@@ -220,15 +285,25 @@ pub enum TransactionError {
 
 impl TapUtxo {
     pub fn balance(&self, owner: &str) -> u64 {
-        self.o.values().filter(|d| d.owner.starts_with(owner)).map(|d| d.value).sum()
+        self.o
+            .values()
+            .filter(|d| d.owner.starts_with(owner))
+            .map(|d| d.value)
+            .sum()
     }
 
     /// Kiểm tra một giao dịch mà KHÔNG thay đổi trạng thái. Trả về phí thợ đào.
-    pub fn check(&self, gd: &Transaction, da_tieu_trong_khoi: &HashSet<OutPoint>)
-        -> Result<u64, TransactionError>
-    {
-        if gd.output.is_empty() { return Err(TransactionError::NoOutputs); }
-        if gd.la_tao_tien() { return Ok(0); }
+    pub fn check(
+        &self,
+        gd: &Transaction,
+        da_tieu_trong_khoi: &HashSet<OutPoint>,
+    ) -> Result<u64, TransactionError> {
+        if gd.output.is_empty() {
+            return Err(TransactionError::NoOutputs);
+        }
+        if gd.la_tao_tien() {
+            return Ok(0);
+        }
 
         let mut total_in = 0u64;
         let mut seen_in_trade = HashSet::new();
@@ -244,16 +319,27 @@ impl TapUtxo {
         }
         let tong_ra: u64 = gd.output.iter().map(|d| d.value).sum();
         if tong_ra > total_in {
-            return Err(TransactionError::SpendsMoreThanReceives { total_in: total_in, ra: tong_ra });
+            return Err(TransactionError::SpendsMoreThanReceives {
+                total_in: total_in,
+                ra: tong_ra,
+            });
         }
         Ok(total_in - tong_ra) // phần chênh là PHÍ, thợ đào được lấy
     }
 
     pub fn apply(&mut self, gd: &Transaction) {
-        for cd in &gd.input { self.o.remove(cd); }
+        for cd in &gd.input {
+            self.o.remove(cd);
+        }
         let id = gd.id();
         for (i, d) in gd.output.iter().enumerate() {
-            self.o.insert(OutPoint { transaction_id: id, chi_so: i as u32 }, d.clone());
+            self.o.insert(
+                OutPoint {
+                    transaction_id: id,
+                    chi_so: i as u32,
+                },
+                d.clone(),
+            );
         }
     }
 }
@@ -267,7 +353,7 @@ pub struct BlockHeader {
     pub prev_block_hash: Bam,
     pub merkle_root: Bam,
     pub timestamp: u64,
-    pub difficulty: u32,   // số bit 0 đầu tối thiểu
+    pub difficulty: u32, // số bit 0 đầu tối thiểu
     pub so_ngau_nhien: u64,
 }
 
@@ -281,7 +367,9 @@ impl BlockHeader {
         v.extend_from_slice(&self.so_ngau_nhien.to_be_bytes());
         sha256d(&v)
     }
-    pub fn meets_difficulty(&self) -> bool { self.id().leading_zero_bits() >= self.difficulty }
+    pub fn meets_difficulty(&self) -> bool {
+        self.id().leading_zero_bits() >= self.difficulty
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,7 +379,9 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn id(&self) -> Bam { self.header.id() }
+    pub fn id(&self) -> Bam {
+        self.header.id()
+    }
 
     pub fn recompute_merkle_root(&self) -> Bam {
         let la: Vec<Bam> = self.transactions.iter().map(|g| g.id()).collect();
@@ -303,7 +393,9 @@ impl Block {
     pub fn dao(&mut self, so_lan_thu_toi_da: u64) -> Option<u64> {
         for n in 0..so_lan_thu_toi_da {
             self.header.so_ngau_nhien = n;
-            if self.header.meets_difficulty() { return Some(n); }
+            if self.header.meets_difficulty() {
+                return Some(n);
+            }
         }
         None
     }
@@ -337,8 +429,11 @@ impl Chain {
     pub fn new(difficulty: u32, block_reward: u64) -> Chain {
         let mut root = Block {
             header: BlockHeader {
-                prev_block_hash: Bam::KHONG, merkle_root: Bam::KHONG,
-                timestamp: 0, difficulty, so_ngau_nhien: 0,
+                prev_block_hash: Bam::KHONG,
+                merkle_root: Bam::KHONG,
+                timestamp: 0,
+                difficulty,
+                so_ngau_nhien: 0,
             },
             transactions: vec![Transaction::tao_tien("khoi-thuy", block_reward, 0)],
         };
@@ -346,8 +441,11 @@ impl Chain {
         root.dao(1 << 22);
         let id = root.id();
         let mut c = Chain {
-            blocks: HashMap::new(), height: HashMap::new(),
-            work: HashMap::new(), peak: id, block_reward,
+            blocks: HashMap::new(),
+            height: HashMap::new(),
+            work: HashMap::new(),
+            peak: id,
+            block_reward,
         };
         c.height.insert(id, 0);
         c.work.insert(id, 1u128 << root.header.difficulty);
@@ -355,7 +453,9 @@ impl Chain {
         c
     }
 
-    pub fn peak_height(&self) -> u64 { self.height[&self.peak] }
+    pub fn peak_height(&self) -> u64 {
+        self.height[&self.peak]
+    }
 
     /// Dựng tập UTXO bằng cách phát lại chuỗi từ khối thuỷ tới `tu_khoi`.
     /// Đây là lý do node "lưu trữ đầy đủ" phải giữ toàn bộ lịch sử.
@@ -363,28 +463,40 @@ impl Chain {
         let mut positive = Vec::new();
         let mut current = tu_khoi;
         loop {
-            let k = match self.blocks.get(&current) { Some(k) => k, None => break };
+            let k = match self.blocks.get(&current) {
+                Some(k) => k,
+                None => break,
+            };
             positive.push(current);
-            if k.header.prev_block_hash == Bam::KHONG { break; }
+            if k.header.prev_block_hash == Bam::KHONG {
+                break;
+            }
             current = k.header.prev_block_hash;
         }
         positive.reverse();
         let mut u = TapUtxo::default();
         for id in positive {
-            for gd in &self.blocks[&id].transactions { u.apply(gd); }
+            for gd in &self.blocks[&id].transactions {
+                u.apply(gd);
+            }
         }
         u
     }
 
     pub fn them(&mut self, khoi: Block) -> Result<bool, BlockError> {
         let prev = khoi.header.prev_block_hash;
-        let prev_block = self.blocks.get(&prev)
+        let prev_block = self
+            .blocks
+            .get(&prev)
             .ok_or(BlockError::UnknownParent(prev))?;
 
         // --- Kiểm tra phần đầu ---
         let set = khoi.id().leading_zero_bits();
         if set < khoi.header.difficulty {
-            return Err(BlockError::BelowDifficulty { set, can: khoi.header.difficulty });
+            return Err(BlockError::BelowDifficulty {
+                set,
+                can: khoi.header.difficulty,
+            });
         }
         if khoi.recompute_merkle_root() != khoi.header.merkle_root {
             return Err(BlockError::WrongMerkleRoot);
@@ -395,20 +507,26 @@ impl Chain {
 
         // --- Kiểm tra giao dịch trên UTXO của nhánh cha ---
         let so_tao_tien = khoi.transactions.iter().filter(|g| g.la_tao_tien()).count();
-        if so_tao_tien > 1 { return Err(BlockError::MoreThanOneCoinbase); }
+        if so_tao_tien > 1 {
+            return Err(BlockError::MoreThanOneCoinbase);
+        }
         let u = self.utxo_tai(prev);
         let mut spent: HashSet<OutPoint> = HashSet::new();
         let mut tong_phi = 0u64;
         for gd in &khoi.transactions {
             let phi = u.check(gd, &spent).map_err(BlockError::TransactionError)?;
             tong_phi += phi;
-            for cd in &gd.input { spent.insert(*cd); }
+            for cd in &gd.input {
+                spent.insert(*cd);
+            }
         }
         // Thợ đào chỉ được lấy phần thưởng + phí, không hơn một xu
         if let Some(tt) = khoi.transactions.iter().find(|g| g.la_tao_tien()) {
             let lay: u64 = tt.output.iter().map(|d| d.value).sum();
             let can = self.block_reward + tong_phi;
-            if lay > can { return Err(BlockError::CoinbaseOverpays { lay, can }); }
+            if lay > can {
+                return Err(BlockError::CoinbaseOverpays { lay, can });
+            }
         }
 
         // --- Ghi nhận ---
@@ -434,9 +552,13 @@ impl Chain {
     /// một nhánh rẽ ta buộc phải gán tay `self.dinh`, và thế là phá vỡ bất biến
     /// "đỉnh luôn là khối nhiều công việc nhất". Chính bất biến đó là thứ hàm
     /// `them` dựa vào để quyết định có tái tổ chức hay không.
-    pub fn mine_on(&self, cha: Bam, nguoi_dao: &str, transactions: Vec<Transaction>, timestamp: u64)
-        -> Option<Block>
-    {
+    pub fn mine_on(
+        &self,
+        cha: Bam,
+        nguoi_dao: &str,
+        transactions: Vec<Transaction>,
+        timestamp: u64,
+    ) -> Option<Block> {
         let peak = self.blocks.get(&cha)?;
         let cc = self.height.get(&cha)? + 1;
         let u = self.utxo_tai(cha);
@@ -444,15 +566,23 @@ impl Chain {
         let mut phi = 0u64;
         for gd in &transactions {
             phi += u.check(gd, &spent).ok()?;
-            for cd in &gd.input { spent.insert(*cd); }
+            for cd in &gd.input {
+                spent.insert(*cd);
+            }
         }
-        let mut all = vec![Transaction::tao_tien(nguoi_dao, self.block_reward + phi, cc)];
+        let mut all = vec![Transaction::tao_tien(
+            nguoi_dao,
+            self.block_reward + phi,
+            cc,
+        )];
         all.extend(transactions);
         let mut k = Block {
             header: BlockHeader {
-                prev_block_hash: cha, merkle_root: Bam::KHONG,
+                prev_block_hash: cha,
+                merkle_root: Bam::KHONG,
                 timestamp: timestamp.max(peak.header.timestamp),
-                difficulty: peak.header.difficulty, so_ngau_nhien: 0,
+                difficulty: peak.header.difficulty,
+                so_ngau_nhien: 0,
             },
             transactions: all,
         };
@@ -462,13 +592,23 @@ impl Chain {
     }
 
     /// Tiện lợi: đào tiếp lên đỉnh hiện tại — trường hợp thường gặp nhất.
-    pub fn mine_new_block(&self, nguoi_dao: &str, transactions: Vec<Transaction>, timestamp: u64) -> Option<Block> {
+    pub fn mine_new_block(
+        &self,
+        nguoi_dao: &str,
+        transactions: Vec<Transaction>,
+        timestamp: u64,
+    ) -> Option<Block> {
         self.mine_on(self.peak, nguoi_dao, transactions, timestamp)
     }
 
     /// Mã của khối thuỷ (chiều cao 0).
     pub fn genesis(&self) -> Bam {
-        *self.height.iter().find(|(_, &v)| v == 0).map(|(m, _)| m).unwrap()
+        *self
+            .height
+            .iter()
+            .find(|&(_, &v)| v == 0)
+            .map(|(m, _)| m)
+            .unwrap()
     }
 }
 
@@ -479,37 +619,72 @@ fn main() {
 
     println!("\n1. SHA-256 TỰ CÀI — đối chiếu vector chuẩn FIPS 180-4");
     println!("   sha256(\"\")    = {}", sha256(b"").hex());
-    println!("   kỳ vọng        = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    println!(
+        "   kỳ vọng        = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
     println!("   sha256(\"abc\") = {}", sha256(b"abc").hex());
-    println!("   kỳ vọng        = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    println!(
+        "   kỳ vọng        = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 
     println!("\n2. HIỆU ỨNG TUYẾT LỞ — đổi 1 bit, nửa số bit đầu ra đổi theo");
     let a = sha256(b"Text khoi");
     let b = sha256(b"Text khoj"); // đổi đúng một ký tự
-    let other: u32 = a.0.iter().zip(b.0.iter()).map(|(x, y)| (x ^ y).count_ones()).sum();
+    let other: u32 =
+        a.0.iter()
+            .zip(b.0.iter())
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum();
     println!("   {} \n   {}", a.rut_gon(), b.rut_gon());
-    println!("   Số bit khác nhau: {}/256 ({}%)", other, other * 100 / 256);
+    println!(
+        "   Số bit khác nhau: {}/256 ({}%)",
+        other,
+        other * 100 / 256
+    );
 
     println!("\n3. CÂY MERKLE — bằng chứng gộp");
     let la: Vec<Bam> = (0..8u32).map(|i| sha256(&i.to_be_bytes())).collect();
     let cay = MerkleTree::build(&la);
-    println!("   8 lá → gốc {} ({} tầng)", cay.root().rut_gon(), cay.layers.len());
+    println!(
+        "   8 lá → gốc {} ({} tầng)",
+        cay.root().rut_gon(),
+        cay.layers.len()
+    );
     let cm = cay.prove(3).unwrap();
-    println!("   Bằng chứng cho lá #3: {} giá trị băm ({} byte) thay vì cả 8 lá",
-             cm.len(), cm.len() * 32);
-    println!("   Kiểm chứng đúng lá : {}", MerkleTree::verify(la[3], &cm, cay.root()));
-    println!("   Kiểm chứng lá giả  : {}", MerkleTree::verify(sha256(b"gia"), &cm, cay.root()));
+    println!(
+        "   Bằng chứng cho lá #3: {} giá trị băm ({} byte) thay vì cả 8 lá",
+        cm.len(),
+        cm.len() * 32
+    );
+    println!(
+        "   Kiểm chứng đúng lá : {}",
+        MerkleTree::verify(la[3], &cm, cay.root())
+    );
+    println!(
+        "   Kiểm chứng lá giả  : {}",
+        MerkleTree::verify(sha256(b"gia"), &cm, cay.root())
+    );
 
     println!("\n4. ĐÀO KHỐI — chi phí tăng theo cấp số nhân");
     for difficulty in [8u32, 12, 16] {
         let mut k = Block {
-            header: BlockHeader { prev_block_hash: Bam::KHONG, merkle_root: Bam::KHONG,
-                                    timestamp: 0, difficulty, so_ngau_nhien: 0 },
+            header: BlockHeader {
+                prev_block_hash: Bam::KHONG,
+                merkle_root: Bam::KHONG,
+                timestamp: 0,
+                difficulty,
+                so_ngau_nhien: 0,
+            },
             transactions: vec![Transaction::tao_tien("tho-dao", 50, 0)],
         };
         k.header.merkle_root = k.recompute_merkle_root();
         let n = k.dao(1 << 24).unwrap();
-        println!("   {:>2} bit 0 đầu → {:>8} lần thử · băm {}", difficulty, n, k.id().rut_gon());
+        println!(
+            "   {:>2} bit 0 đầu → {:>8} lần thử · băm {}",
+            difficulty,
+            n,
+            k.id().rut_gon()
+        );
     }
     println!("   → Mỗi bit độ khó tăng thêm, công sức NHÂN ĐÔI.");
 
@@ -520,34 +695,74 @@ fn main() {
     let k2 = c.mine_new_block("An", vec![], 2).unwrap();
     c.them(k2).unwrap();
     let u = c.utxo_tai(c.peak);
-    println!("   Chiều cao {} · số dư An = {} · số UTXO = {}",
-             c.peak_height(), u.balance("An"), u.o.len());
+    println!(
+        "   Chiều cao {} · số dư An = {} · số UTXO = {}",
+        c.peak_height(),
+        u.balance("An"),
+        u.o.len()
+    );
 
     let input = *u.o.keys().find(|k| u.o[k].owner.starts_with("An")).unwrap();
-    let gd = Transaction { input: vec![input],
-                        output: vec![Output { value: 30, owner: "Binh".into() },
-                                     Output { value: 15, owner: "An-thoi-lai".into() }] };
-    println!("   An trả Bình 30 (phí {} cho thợ đào)",
-             u.check(&gd, &HashSet::new()).unwrap());
-    let gd2 = Transaction { input: vec![input],
-                         output: vec![Output { value: 45, owner: "Cuong".into() }] };
-    let mut da = HashSet::new(); da.insert(input);
-    println!("   Tiêu lại chính đồng đó → {:?}", u.check(&gd2, &da).unwrap_err());
+    let gd = Transaction {
+        input: vec![input],
+        output: vec![
+            Output {
+                value: 30,
+                owner: "Binh".into(),
+            },
+            Output {
+                value: 15,
+                owner: "An-thoi-lai".into(),
+            },
+        ],
+    };
+    println!(
+        "   An trả Bình 30 (phí {} cho thợ đào)",
+        u.check(&gd, &HashSet::new()).unwrap()
+    );
+    let gd2 = Transaction {
+        input: vec![input],
+        output: vec![Output {
+            value: 45,
+            owner: "Cuong".into(),
+        }],
+    };
+    let mut da = HashSet::new();
+    da.insert(input);
+    println!(
+        "   Tiêu lại chính đồng đó → {:?}",
+        u.check(&gd2, &da).unwrap_err()
+    );
 
     println!("\n6. TÁI TỔ CHỨC CHUỖI — nhánh nhiều CÔNG VIỆC hơn thắng");
-    println!("   Trước : đỉnh {} cao {} · số dư An = {}",
-             c.peak.rut_gon(), c.peak_height(), c.utxo_tai(c.peak).balance("An"));
+    println!(
+        "   Trước : đỉnh {} cao {} · số dư An = {}",
+        c.peak.rut_gon(),
+        c.peak_height(),
+        c.utxo_tai(c.peak).balance("An")
+    );
     // Kẻ tấn công đào lại từ khối thuỷ, xây nhánh riêng cho tới khi vượt
     let mut cha = c.genesis();
     for t in 1..=3u64 {
         let k = c.mine_on(cha, "KeTanCong", vec![], t + 10).unwrap();
         cha = k.id();
         let swap = c.them(k).unwrap();
-        println!("   Nhánh tấn công cao {} → {}", t,
-                 if swap { "ĐÃ CHIẾM ĐỈNH" } else { "chưa đủ công việc" });
+        println!(
+            "   Nhánh tấn công cao {} → {}",
+            t,
+            if swap {
+                "ĐÃ CHIẾM ĐỈNH"
+            } else {
+                "chưa đủ công việc"
+            }
+        );
     }
-    println!("   Sau  : đỉnh {} cao {} · số dư An = {} (khối của An BỊ ĐẢO)",
-             c.peak.rut_gon(), c.peak_height(), c.utxo_tai(c.peak).balance("An"));
+    println!(
+        "   Sau  : đỉnh {} cao {} · số dư An = {} (khối của An BỊ ĐẢO)",
+        c.peak.rut_gon(),
+        c.peak_height(),
+        c.utxo_tai(c.peak).balance("An")
+    );
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   BLOCKCHAIN = CẤU TRÚC DỮ LIỆU + LUẬT + ĐỘNG CƠ KHUYẾN KHÍCH");
@@ -563,24 +778,36 @@ mod tests {
     fn sha256_matches_fips_vectors() {
         // Đây là bài kiểm thử quan trọng nhất chương: nếu sai một bit,
         // toàn bộ chuỗi khối phía trên đều vô nghĩa.
-        assert_eq!(sha256(b"").hex(),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-        assert_eq!(sha256(b"abc").hex(),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        assert_eq!(sha256(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq").hex(),
-            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+        assert_eq!(
+            sha256(b"").hex(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256(b"abc").hex(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq").hex(),
+            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+        );
     }
 
     #[test]
     fn sha256_correct_at_every_padding_boundary() {
         // 55 byte = vừa đủ đệm trong 1 khối; 56 byte = phải sang khối thứ hai.
         // Đây là chỗ cài đặt SHA-256 hay sai nhất.
-        assert_eq!(sha256(&[b'a'; 55]).hex(),
-            "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318");
-        assert_eq!(sha256(&[b'a'; 56]).hex(),
-            "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a");
-        assert_eq!(sha256(&[b'a'; 64]).hex(),
-            "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb");
+        assert_eq!(
+            sha256(&[b'a'; 55]).hex(),
+            "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"
+        );
+        assert_eq!(
+            sha256(&[b'a'; 56]).hex(),
+            "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"
+        );
+        assert_eq!(
+            sha256(&[b'a'; 64]).hex(),
+            "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"
+        );
     }
 
     #[test]
@@ -597,18 +824,28 @@ mod tests {
         for i in 0..n {
             let a = sha256(&[i as u8, 0]);
             let b = sha256(&[i as u8, 1]); // khác đúng 1 bit
-            tong += a.0.iter().zip(b.0.iter()).map(|(x, y)| (x ^ y).count_ones()).sum::<u32>();
+            tong +=
+                a.0.iter()
+                    .zip(b.0.iter())
+                    .map(|(x, y)| (x ^ y).count_ones())
+                    .sum::<u32>();
         }
         let tb = tong as f64 / n as f64;
-        assert!((tb - 128.0).abs() < 15.0, "trung bình {} bit đổi, kỳ vọng ~128", tb);
+        assert!(
+            (tb - 128.0).abs() < 15.0,
+            "trung bình {} bit đổi, kỳ vọng ~128",
+            tb
+        );
     }
 
     #[test]
     fn unsigned_bit_count_is_correct() {
         assert_eq!(Bam::KHONG.leading_zero_bits(), 256);
-        let mut b = [0u8; 32]; b[0] = 0xFF;
+        let mut b = [0u8; 32];
+        b[0] = 0xFF;
         assert_eq!(Bam(b).leading_zero_bits(), 0);
-        let mut b = [0u8; 32]; b[1] = 0x01;
+        let mut b = [0u8; 32];
+        b[1] = 0x01;
         assert_eq!(Bam(b).leading_zero_bits(), 15); // 8 bit của byte 0 + 7 bit của byte 1
     }
 
@@ -620,8 +857,12 @@ mod tests {
             let cay = MerkleTree::build(&la);
             for i in 0..n {
                 let cm = cay.prove(i).expect("phải có bằng chứng");
-                assert!(MerkleTree::verify(la[i], &cm, cay.root()),
-                        "n={} lá #{} không kiểm chứng được", n, i);
+                assert!(
+                    MerkleTree::verify(la[i], &cm, cay.root()),
+                    "n={} lá #{} không kiểm chứng được",
+                    n,
+                    i
+                );
             }
         }
     }
@@ -639,7 +880,11 @@ mod tests {
         let la: Vec<Bam> = (0..1024u32).map(|i| sha256(&i.to_be_bytes())).collect();
         let cay = MerkleTree::build(&la);
         let cm = cay.prove(500).unwrap();
-        assert_eq!(cm.len(), 10, "1024 lá → log2(1024) = 10 bước, không phải 1024");
+        assert_eq!(
+            cm.len(),
+            10,
+            "1024 lá → log2(1024) = 10 bước, không phải 1024"
+        );
         assert!(MerkleTree::verify(la[500], &cm, cay.root()));
     }
 
@@ -648,7 +893,11 @@ mod tests {
         let mut la: Vec<Bam> = (0..8u32).map(|i| sha256(&i.to_be_bytes())).collect();
         let old_root = MerkleTree::build(&la).root();
         la[5] = sha256(b"da bi sua");
-        assert_ne!(MerkleTree::build(&la).root(), old_root, "sửa bất kỳ lá nào phải lộ ra ở gốc");
+        assert_ne!(
+            MerkleTree::build(&la).root(),
+            old_root,
+            "sửa bất kỳ lá nào phải lộ ra ở gốc"
+        );
     }
 
     #[test]
@@ -663,7 +912,10 @@ mod tests {
         let k = c.mine_new_block(owner, vec![], 1).unwrap();
         c.them(k).unwrap();
         let u = c.utxo_tai(c.peak);
-        let cd = *u.o.keys().find(|k| u.o[k].owner.starts_with(owner)).unwrap();
+        let cd =
+            *u.o.keys()
+                .find(|k| u.o[k].owner.starts_with(owner))
+                .unwrap();
         (c, cd)
     }
 
@@ -671,19 +923,38 @@ mod tests {
     fn trade_hop_le_return_ve_phi() {
         let (c, cd) = chain_with_funds("An");
         let u = c.utxo_tai(c.peak);
-        let gd = Transaction { input: vec![cd],
-            output: vec![Output { value: 45, owner: "Binh".into() }] };
-        assert_eq!(u.check(&gd, &HashSet::new()), Ok(5), "50 vào - 45 ra = 5 phí");
+        let gd = Transaction {
+            input: vec![cd],
+            output: vec![Output {
+                value: 45,
+                owner: "Binh".into(),
+            }],
+        };
+        assert_eq!(
+            u.check(&gd, &HashSet::new()),
+            Ok(5),
+            "50 vào - 45 ra = 5 phí"
+        );
     }
 
     #[test]
     fn cannot_spend_more_than_received() {
         let (c, cd) = chain_with_funds("An");
         let u = c.utxo_tai(c.peak);
-        let gd = Transaction { input: vec![cd],
-            output: vec![Output { value: 999, owner: "An".into() }] };
-        assert_eq!(u.check(&gd, &HashSet::new()),
-                   Err(TransactionError::SpendsMoreThanReceives { total_in: 50, ra: 999 }));
+        let gd = Transaction {
+            input: vec![cd],
+            output: vec![Output {
+                value: 999,
+                owner: "An".into(),
+            }],
+        };
+        assert_eq!(
+            u.check(&gd, &HashSet::new()),
+            Err(TransactionError::SpendsMoreThanReceives {
+                total_in: 50,
+                ra: 999
+            })
+        );
     }
 
     #[test]
@@ -691,19 +962,38 @@ mod tests {
         let (c, cd) = chain_with_funds("An");
         let u = c.utxo_tai(c.peak);
         // Dùng CÙNG một đầu vào hai lần để "nhân đôi" tiền
-        let gd = Transaction { input: vec![cd, cd],
-            output: vec![Output { value: 100, owner: "An".into() }] };
-        assert_eq!(u.check(&gd, &HashSet::new()), Err(TransactionError::DoubleSpend(cd)));
+        let gd = Transaction {
+            input: vec![cd, cd],
+            output: vec![Output {
+                value: 100,
+                owner: "An".into(),
+            }],
+        };
+        assert_eq!(
+            u.check(&gd, &HashSet::new()),
+            Err(TransactionError::DoubleSpend(cd))
+        );
     }
 
     #[test]
     fn cannot_spend_nonexistent_input() {
         let (c, _) = chain_with_funds("An");
         let u = c.utxo_tai(c.peak);
-        let id = OutPoint { transaction_id: sha256(b"bia dat"), chi_so: 0 };
-        let gd = Transaction { input: vec![id],
-            output: vec![Output { value: 1, owner: "An".into() }] };
-        assert_eq!(u.check(&gd, &HashSet::new()), Err(TransactionError::UnknownInput(id)));
+        let id = OutPoint {
+            transaction_id: sha256(b"bia dat"),
+            chi_so: 0,
+        };
+        let gd = Transaction {
+            input: vec![id],
+            output: vec![Output {
+                value: 1,
+                owner: "An".into(),
+            }],
+        };
+        assert_eq!(
+            u.check(&gd, &HashSet::new()),
+            Err(TransactionError::UnknownInput(id))
+        );
     }
 
     #[test]
@@ -711,21 +1001,40 @@ mod tests {
         let (c, cd) = chain_with_funds("An");
         let mut u = c.utxo_tai(c.peak);
         let prev: u64 = u.o.values().map(|d| d.value).sum();
-        let gd = Transaction { input: vec![cd],
-            output: vec![Output { value: 30, owner: "Binh".into() },
-                         Output { value: 18, owner: "An2".into() }] };
+        let gd = Transaction {
+            input: vec![cd],
+            output: vec![
+                Output {
+                    value: 30,
+                    owner: "Binh".into(),
+                },
+                Output {
+                    value: 18,
+                    owner: "An2".into(),
+                },
+            ],
+        };
         let phi = u.check(&gd, &HashSet::new()).unwrap();
         u.apply(&gd);
         let next: u64 = u.o.values().map(|d| d.value).sum();
-        assert_eq!(prev - next, phi, "chênh lệch đúng bằng phí, không mất mát ở đâu khác");
+        assert_eq!(
+            prev - next,
+            phi,
+            "chênh lệch đúng bằng phí, không mất mát ở đâu khác"
+        );
     }
 
     // ---------- Khối & đào ----------
     #[test]
     fn mining_finds_a_nonce_meeting_difficulty() {
         let mut k = Block {
-            header: BlockHeader { prev_block_hash: Bam::KHONG, merkle_root: Bam::KHONG,
-                                    timestamp: 0, difficulty: 12, so_ngau_nhien: 0 },
+            header: BlockHeader {
+                prev_block_hash: Bam::KHONG,
+                merkle_root: Bam::KHONG,
+                timestamp: 0,
+                difficulty: 12,
+                so_ngau_nhien: 0,
+            },
             transactions: vec![Transaction::tao_tien("x", 50, 0)],
         };
         k.header.merkle_root = k.recompute_merkle_root();
@@ -739,14 +1048,26 @@ mod tests {
         // Bất đối xứng này là toàn bộ ý nghĩa của "bằng chứng công việc":
         // tìm thì tốn hàng nghìn lần thử, kiểm tra chỉ tốn MỘT lần băm.
         let mut k = Block {
-            header: BlockHeader { prev_block_hash: Bam::KHONG, merkle_root: Bam::KHONG,
-                                    timestamp: 0, difficulty: 14, so_ngau_nhien: 0 },
+            header: BlockHeader {
+                prev_block_hash: Bam::KHONG,
+                merkle_root: Bam::KHONG,
+                timestamp: 0,
+                difficulty: 14,
+                so_ngau_nhien: 0,
+            },
             transactions: vec![Transaction::tao_tien("x", 50, 0)],
         };
         k.header.merkle_root = k.recompute_merkle_root();
         let so_lan = k.dao(1 << 24).unwrap();
-        assert!(so_lan > 100, "độ khó 14 bit phải tốn nhiều lần thử, thực tế {}", so_lan);
-        assert!(k.header.meets_difficulty(), "nhưng kiểm tra chỉ cần 1 phép băm");
+        assert!(
+            so_lan > 100,
+            "độ khó 14 bit phải tốn nhiều lần thử, thực tế {}",
+            so_lan
+        );
+        assert!(
+            k.header.meets_difficulty(),
+            "nhưng kiểm tra chỉ cần 1 phép băm"
+        );
     }
 
     // ---------- Chuỗi ----------
@@ -782,8 +1103,12 @@ mod tests {
         let mut k = c.mine_new_block("An", vec![], 1).unwrap();
         // Nhét thêm giao dịch mà không cập nhật gốc Merkle — đúng kiểu tấn công
         // "đổi nội dung nhưng giữ nguyên bằng chứng công việc"
-        k.transactions.push(Transaction::tao_tien("KeGian", 1000, 99));
-        assert!(matches!(c.them(k), Err(BlockError::WrongMerkleRoot) | Err(BlockError::BelowDifficulty{..})));
+        k.transactions
+            .push(Transaction::tao_tien("KeGian", 1000, 99));
+        assert!(matches!(
+            c.them(k),
+            Err(BlockError::WrongMerkleRoot) | Err(BlockError::BelowDifficulty { .. })
+        ));
     }
 
     #[test]
@@ -793,7 +1118,10 @@ mod tests {
         k.transactions[0] = Transaction::tao_tien("An", 1_000_000, 1); // tham lam
         k.header.merkle_root = k.recompute_merkle_root();
         k.dao(1 << 20);
-        assert!(matches!(c.them(k), Err(BlockError::CoinbaseOverpays { .. })));
+        assert!(matches!(
+            c.them(k),
+            Err(BlockError::CoinbaseOverpays { .. })
+        ));
     }
 
     #[test]
@@ -801,8 +1129,13 @@ mod tests {
         let mut c = Chain::new(8, 50);
         let id_price = sha256(b"khong ton tai");
         let mut k = Block {
-            header: BlockHeader { prev_block_hash: id_price, merkle_root: Bam::KHONG,
-                                    timestamp: 5, difficulty: 8, so_ngau_nhien: 0 },
+            header: BlockHeader {
+                prev_block_hash: id_price,
+                merkle_root: Bam::KHONG,
+                timestamp: 5,
+                difficulty: 8,
+                so_ngau_nhien: 0,
+            },
             transactions: vec![Transaction::tao_tien("An", 50, 1)],
         };
         k.header.merkle_root = k.recompute_merkle_root();
@@ -827,12 +1160,20 @@ mod tests {
         // Nhánh rẽ dựng từ khối thuỷ — KHÔNG đụng tới self.dinh
         let d1 = c.mine_on(thuy, "Doi", vec![], 10).unwrap();
         let ma_d1 = d1.id();
-        assert_eq!(c.them(d1), Ok(false), "cao 1 < cao 2 → chưa chiếm được đỉnh");
+        assert_eq!(
+            c.them(d1),
+            Ok(false),
+            "cao 1 < cao 2 → chưa chiếm được đỉnh"
+        );
         assert_eq!(c.peak, an_tip, "đỉnh vẫn phải là nhánh nhiều công việc hơn");
 
         let d2 = c.mine_on(ma_d1, "Doi", vec![], 11).unwrap();
         let ma_d2 = d2.id();
-        assert_eq!(c.them(d2), Ok(false), "hoà 2-2 thì người tới sau KHÔNG được lật");
+        assert_eq!(
+            c.them(d2),
+            Ok(false),
+            "hoà 2-2 thì người tới sau KHÔNG được lật"
+        );
         assert_eq!(c.peak, an_tip);
 
         // Khối thứ ba mới đủ vượt
@@ -840,12 +1181,19 @@ mod tests {
         assert_eq!(c.them(d3), Ok(true), "cao 3 > cao 2 → TÁI TỔ CHỨC");
         assert_eq!(c.peak_height(), 3);
         assert_eq!(c.utxo_tai(c.peak).balance("Doi"), 150);
-        assert_eq!(c.utxo_tai(c.peak).balance("An"), 0,
-                   "toàn bộ khối của An bị ĐẢO — đó chính là ý nghĩa của 'chờ đủ xác nhận'");
+        assert_eq!(
+            c.utxo_tai(c.peak).balance("An"),
+            0,
+            "toàn bộ khối của An bị ĐẢO — đó chính là ý nghĩa của 'chờ đủ xác nhận'"
+        );
 
         // Nhánh cũ vẫn nằm trong kho, chỉ là không còn nằm trên đường tới đỉnh
         assert!(c.blocks.contains_key(&an_tip));
-        assert_eq!(c.utxo_tai(an_tip).balance("An"), 100, "phát lại nhánh cũ vẫn ra kết quả cũ");
+        assert_eq!(
+            c.utxo_tai(an_tip).balance("An"),
+            100,
+            "phát lại nhánh cũ vẫn ra kết quả cũ"
+        );
     }
 
     #[test]

@@ -65,7 +65,7 @@ impl InventoryManager {
     pub fn new() -> Self {
         let mut stock = HashMap::new();
         stock.insert(101, 10); // Sản phẩm 101 có sẵn 10 chiếc
-        stock.insert(102, 2);  // Sản phẩm 102 chỉ có sẵn 2 chiếc
+        stock.insert(102, 2); // Sản phẩm 102 chỉ có sẵn 2 chiếc
         Self {
             stock: Mutex::new(stock),
         }
@@ -153,7 +153,10 @@ impl DistributedOrderEngine {
         }
 
         if recovered_count > 0 {
-            println!("    [Crash Recovery] Đã phục hồi thành công {} đơn hàng từ tệp nhật ký WAL!", recovered_count);
+            println!(
+                "    [Crash Recovery] Đã phục hồi thành công {} đơn hàng từ tệp nhật ký WAL!",
+                recovered_count
+            );
         }
         Ok(())
     }
@@ -219,7 +222,8 @@ impl DistributedOrderEngine {
         order.status = OrderStatus::Paid;
 
         // 6. Ghi bền vững trạng thái xuống đĩa cứng (WAL)
-        self.log_event_to_disk(&order).map_err(|_| "Lỗi ghi đĩa nhật ký WAL")?;
+        self.log_event_to_disk(&order)
+            .map_err(|_| "Lỗi ghi đĩa nhật ký WAL")?;
 
         // 7. Lưu trữ trạng thái đơn hàng trên bộ nhớ RAM
         {
@@ -243,7 +247,10 @@ impl DistributedOrderEngine {
             if order.status == OrderStatus::Paid {
                 order.status = OrderStatus::Fulfilled;
                 let _ = self.log_event_to_disk(order);
-                println!("    [OrderEngine] Đơn hàng #{} đã XUẤT KHO THÀNH CÔNG (Fulfilled)!", order_id);
+                println!(
+                    "    [OrderEngine] Đơn hàng #{} đã XUẤT KHO THÀNH CÔNG (Fulfilled)!",
+                    order_id
+                );
                 return Ok(());
             } else {
                 return Err("Đơn hàng chưa thanh toán, không thể xuất kho!");
@@ -274,19 +281,32 @@ fn main() -> io::Result<()> {
     {
         let engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
 
-        println!("    - So luong ton kho San pham #101 ban dau: {} chiec", inventory.get_available_stock(101));
+        println!(
+            "    - So luong ton kho San pham #101 ban dau: {} chiec",
+            inventory.get_available_stock(101)
+        );
 
         // Khách hàng đặt hàng với Idempotency Key
         let idemp_key = "CLIENT_REQ_UUID_001";
-        let order1 = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
+        let order1 = engine
+            .submit_order(idemp_key, 1001, 888, 101, 750_000)
+            .unwrap();
         println!("    - Don hang #{} da tao thanh cong!", order1.order_id);
 
-        println!("    - So luong ton kho San pham #101 sau khi dat: {} chiec", inventory.get_available_stock(101));
+        println!(
+            "    - So luong ton kho San pham #101 sau khi dat: {} chiec",
+            inventory.get_available_stock(101)
+        );
         assert_eq!(inventory.get_available_stock(101), 9);
 
         // Khách hàng bị lag mạng và gửi lại chính xác Idempotency Key đó
-        println!("\n    - Thu gui lai chinh xac yeu cau voi Idempotency Key '{}':", idemp_key);
-        let duplicate_order = engine.submit_order(idemp_key, 1001, 888, 101, 750_000).unwrap();
+        println!(
+            "\n    - Thu gui lai chinh xac yeu cau voi Idempotency Key '{}':",
+            idemp_key
+        );
+        let duplicate_order = engine
+            .submit_order(idemp_key, 1001, 888, 101, 750_000)
+            .unwrap();
         assert_eq!(duplicate_order.order_id, 1001);
         assert_eq!(inventory.get_available_stock(101), 9); // Kho KHÔNG bị trừ lần 2!
         println!("    => Idempotency Engine da chan dung viec tru tien va tru kho trung lap!");
@@ -295,7 +315,9 @@ fn main() -> io::Result<()> {
         engine.fulfill_order(1001).unwrap();
 
         // Đặt thêm đơn hàng thứ 2
-        engine.submit_order("CLIENT_REQ_UUID_002", 1002, 999, 101, 1_200_000).unwrap();
+        engine
+            .submit_order("CLIENT_REQ_UUID_002", 1002, 999, 101, 1_200_000)
+            .unwrap();
         assert_eq!(engine.total_orders(), 2);
     } // engine đóng tệp an toàn tại đây
 
@@ -307,7 +329,10 @@ fn main() -> io::Result<()> {
         // Mở lại động cơ từ chính tệp nhật ký WAL
         let recovered_engine = DistributedOrderEngine::open(wal_file_path, Arc::clone(&inventory))?;
 
-        println!("    - Tong so don hang phuc hoi tren RAM: {}", recovered_engine.total_orders());
+        println!(
+            "    - Tong so don hang phuc hoi tren RAM: {}",
+            recovered_engine.total_orders()
+        );
         assert_eq!(recovered_engine.total_orders(), 2);
 
         // Kiểm tra chi tiết đơn hàng đã phục hồi
@@ -315,8 +340,14 @@ fn main() -> io::Result<()> {
         let restored_order_1 = orders_guard.get(&1001).unwrap();
         let restored_order_2 = orders_guard.get(&1002).unwrap();
 
-        println!("    - Kiem tra Don #1001 sau phuc hoi: {:?}", restored_order_1.status);
-        println!("    - Kiem tra Don #1002 sau phuc hoi: {:?}", restored_order_2.status);
+        println!(
+            "    - Kiem tra Don #1001 sau phuc hoi: {:?}",
+            restored_order_1.status
+        );
+        println!(
+            "    - Kiem tra Don #1002 sau phuc hoi: {:?}",
+            restored_order_2.status
+        );
 
         assert_eq!(restored_order_1.status, OrderStatus::Fulfilled);
         assert_eq!(restored_order_2.status, OrderStatus::Paid);

@@ -6,9 +6,17 @@
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
 enum OrderStatus {
     AwaitingPayment,
-    DangDongGoi { store_export_queue: String },
-    InTransit { ma_van_don: String, ten_tai_xe: String },
-    Delivered { recipient: String, time_time_recv: String },
+    DangDongGoi {
+        store_export_queue: String,
+    },
+    InTransit {
+        ma_van_don: String,
+        ten_tai_xe: String,
+    },
+    Delivered {
+        recipient: String,
+        time_time_recv: String,
+    },
     Cancelled(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
 }
 
@@ -31,15 +39,24 @@ fn update_progress(don_hang: &OrderStatus) {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
         OrderStatus::DangDongGoi { store_export_queue } => {
-            println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", store_export_queue);
+            println!(
+                "[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}",
+                store_export_queue
+            );
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
-        OrderStatus::InTransit { ma_van_don, ten_tai_xe } => {
+        OrderStatus::InTransit {
+            ma_van_don,
+            ten_tai_xe,
+        } => {
             println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
             println!("  + Mã vận đơn : {}", ma_van_don);
             println!("  + Shipper    : {}", ten_tai_xe);
         }
-        OrderStatus::Delivered { recipient, time_time_recv } => {
+        OrderStatus::Delivered {
+            recipient,
+            time_time_recv,
+        } => {
             println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
             println!("  + Người ký nhận: {}", recipient);
             println!("  + Thời điểm    : {}", time_time_recv);

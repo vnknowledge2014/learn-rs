@@ -10,13 +10,18 @@ use std::sync::{Arc, Mutex};
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Method { GET, POST, PUT, DELETE }
+pub enum Method {
+    GET,
+    POST,
+    PUT,
+    DELETE,
+}
 
 #[derive(Debug, Clone)]
 pub struct Request {
     pub method: Method,
     pub path: String,
-    pub than: String, // body (JSON dạng chuỗi cho đơn giản)
+    pub than: String,                        // body (JSON dạng chuỗi cho đơn giản)
     pub path_param: HashMap<String, String>, // /user/:id -> {id: "7"}
 }
 
@@ -27,10 +32,30 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn ok(than: impl Into<String>) -> Self { Response { id: 200, than: than.into() } }
-    pub fn tao(than: impl Into<String>) -> Self { Response { id: 201, than: than.into() } }
-    pub fn not_seen() -> Self { Response { id: 404, than: "Không tìm thấy".into() } }
-    pub fn bad_data(ly_do: impl Into<String>) -> Self { Response { id: 422, than: ly_do.into() } }
+    pub fn ok(than: impl Into<String>) -> Self {
+        Response {
+            id: 200,
+            than: than.into(),
+        }
+    }
+    pub fn tao(than: impl Into<String>) -> Self {
+        Response {
+            id: 201,
+            than: than.into(),
+        }
+    }
+    pub fn not_seen() -> Self {
+        Response {
+            id: 404,
+            than: "Không tìm thấy".into(),
+        }
+    }
+    pub fn bad_data(ly_do: impl Into<String>) -> Self {
+        Response {
+            id: 422,
+            than: ly_do.into(),
+        }
+    }
 }
 
 // ============================================================================
@@ -50,12 +75,18 @@ pub struct Router {
 }
 
 impl Router {
-    pub fn new() -> Self { Router { route: Vec::new() } }
+    pub fn new() -> Self {
+        Router { route: Vec::new() }
+    }
 
     pub fn them(mut self, pt: Method, mau: &str, handle: Handler) -> Self {
         self.route.push(Route {
             method: pt,
-            mau: mau.trim_matches('/').split('/').map(|s| s.to_string()).collect(),
+            mau: mau
+                .trim_matches('/')
+                .split('/')
+                .map(|s| s.to_string())
+                .collect(),
             handle,
         });
         self
@@ -138,8 +169,11 @@ pub fn xu_ly_liet_ke(_yc: &Request, tt: &State) -> Response {
     let store = tt.store.lock().unwrap();
     let mut list: Vec<&SanPham> = store.values().collect();
     list.sort_by_key(|s| s.id);
-    let than = list.iter().map(|s| format!("{}:{}:{}", s.id, s.name, s.price))
-        .collect::<Vec<_>>().join(",");
+    let than = list
+        .iter()
+        .map(|s| format!("{}:{}:{}", s.id, s.name, s.price))
+        .collect::<Vec<_>>()
+        .join(",");
     Response::ok(than)
 }
 
@@ -167,7 +201,10 @@ pub fn handle_make(yc: &Request, tt: &State) -> Response {
     let mut id_ke = tt.next_id.lock().unwrap();
     let id = *id_ke;
     *id_ke += 1;
-    tt.store.lock().unwrap().insert(id, SanPham { id, name, price });
+    tt.store
+        .lock()
+        .unwrap()
+        .insert(id, SanPham { id, name, price });
     Response::tao(format!("Đã tạo sản phẩm #{}", id))
 }
 
@@ -193,7 +230,12 @@ pub fn use_resp_use() -> Router {
 }
 
 fn yc(pt: Method, dd: &str, than: &str) -> Request {
-    Request { method: pt, path: dd.into(), than: than.into(), path_param: HashMap::new() }
+    Request {
+        method: pt,
+        path: dd.into(),
+        than: than.into(),
+        path_param: HashMap::new(),
+    }
 }
 
 fn main() {
@@ -206,7 +248,13 @@ fn main() {
 
     let goi = |pt, dd: &str, than: &str| {
         let r = app.handle(yc(pt, dd, than), &tt);
-        println!("   {:>6} {:<18} -> {} {}", format!("{:?}", &r.id)[0..3].to_string(), dd, r.id, r.than);
+        println!(
+            "   {:>6} {:<18} -> {} {}",
+            format!("{:?}", &r.id)[0..3].to_string(),
+            dd,
+            r.id,
+            r.than
+        );
         r
     };
 
@@ -215,10 +263,10 @@ fn main() {
     goi(Method::POST, "/san-pham", "ten=Chuột;gia=350000");
     goi(Method::GET, "/san-pham", "");
     goi(Method::GET, "/san-pham/1", "");
-    goi(Method::GET, "/san-pham/99", "");         // 404
-    goi(Method::POST, "/san-pham", "gia=xyz");     // 422 thiếu tên
+    goi(Method::GET, "/san-pham/99", ""); // 404
+    goi(Method::POST, "/san-pham", "gia=xyz"); // 422 thiếu tên
     goi(Method::DELETE, "/san-pham/2", "");
-    goi(Method::GET, "/khong-co-tuyen", "");       // 404
+    goi(Method::GET, "/khong-co-tuyen", ""); // 404
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   LÕI NGHIỆP VỤ THUẦN TÚY = KIỂM THỬ ĐƯỢC KHÔNG CẦN CHẠY SERVER ");
@@ -260,9 +308,16 @@ mod tests {
     fn invalid_payload_returns_422() {
         let (app, tt) = environment();
         // Thiếu tên
-        assert_eq!(app.handle(yc(Method::POST, "/san-pham", "gia=100"), &tt).id, 422);
+        assert_eq!(
+            app.handle(yc(Method::POST, "/san-pham", "gia=100"), &tt).id,
+            422
+        );
         // Giá không phải số
-        assert_eq!(app.handle(yc(Method::POST, "/san-pham", "ten=X;gia=abc"), &tt).id, 422);
+        assert_eq!(
+            app.handle(yc(Method::POST, "/san-pham", "ten=X;gia=abc"), &tt)
+                .id,
+            422
+        );
     }
 
     #[test]
@@ -271,22 +326,36 @@ mod tests {
         app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
         app.handle(yc(Method::POST, "/san-pham", "ten=B;gia=2"), &tt);
         // :id được trích đúng
-        assert_eq!(app.handle(yc(Method::GET, "/san-pham/2", ""), &tt).than, "2:B:2");
+        assert_eq!(
+            app.handle(yc(Method::GET, "/san-pham/2", ""), &tt).than,
+            "2:B:2"
+        );
     }
 
     #[test]
     fn delete_product() {
         let (app, tt) = environment();
         app.handle(yc(Method::POST, "/san-pham", "ten=A;gia=1"), &tt);
-        assert_eq!(app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id, 200);
+        assert_eq!(
+            app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id,
+            200
+        );
         assert_eq!(app.handle(yc(Method::GET, "/san-pham/1", ""), &tt).id, 404); // đã xóa
-        assert_eq!(app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id, 404); // xóa lại
+        assert_eq!(
+            app.handle(yc(Method::DELETE, "/san-pham/1", ""), &tt).id,
+            404
+        ); // xóa lại
     }
 
     #[test]
     fn list_is_sorted_by_id() {
         let (app, tt) = environment();
-        for i in 1..=3 { app.handle(yc(Method::POST, "/san-pham", &format!("ten=SP{};gia={}", i, i)), &tt); }
+        for i in 1..=3 {
+            app.handle(
+                yc(Method::POST, "/san-pham", &format!("ten=SP{};gia={}", i, i)),
+                &tt,
+            );
+        }
         let r = app.handle(yc(Method::GET, "/san-pham", ""), &tt);
         assert_eq!(r.than, "1:SP1:1,2:SP2:2,3:SP3:3");
     }

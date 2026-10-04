@@ -47,7 +47,10 @@ impl Cart {
     /// assert_eq!(gio.tong_tien(), 105_000);
     /// ```
     pub fn tong_tien(&self) -> u64 {
-        self.items.iter().map(|(_, price, sl)| price * *sl as u64).sum()
+        self.items
+            .iter()
+            .map(|(_, price, sl)| price * *sl as u64)
+            .sum()
     }
 
     pub fn so_dong(&self) -> usize {
@@ -80,11 +83,7 @@ impl PaymentGateway for RealGateway {
 }
 
 /// Hàm nghiệp vụ nhận phụ thuộc qua trait (tiêm phụ thuộc, Chương 14).
-pub fn checkout(
-    gio: &Cart,
-    gate: &dyn PaymentGateway,
-    discount: u32,
-) -> Result<String, String> {
+pub fn checkout(gio: &Cart, gate: &dyn PaymentGateway, discount: u32) -> Result<String, String> {
     let so_tien = gio.after_discount(discount);
     if so_tien == 0 {
         return Err("Giỏ rỗng hoặc miễn phí, không cần thanh toán".to_string());
@@ -99,13 +98,17 @@ pub fn checkout(
 /// Bộ sinh giả ngẫu nhiên tất định (LCG) — giống Chương 18, không cần crate.
 pub struct Generator(u64);
 impl Generator {
-    pub fn new(hat: u64) -> Self { Generator(hat) }
+    pub fn new(hat: u64) -> Self {
+        Generator(hat)
+    }
     pub fn so(&mut self, tran: u32) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) as u32) % tran
     }
 }
-
 
 // ============================================================================
 // TẦNG 1 — UNIT TESTS: nhanh, nhiều, kiểm một đơn vị biệt lập
@@ -187,27 +190,41 @@ mod test_double {
     fn checkout_charges_discounted_total() {
         let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
-        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
+        let spy = SpyGateway {
+            called_with: RefCell::new(vec![]),
+        };
 
         checkout(&gio, &spy, 20).unwrap(); // giảm 20% -> 80.000
 
-        assert_eq!(*spy.called_with.borrow(), vec![80_000], "phải trừ đúng số sau giảm giá");
+        assert_eq!(
+            *spy.called_with.borrow(),
+            vec![80_000],
+            "phải trừ đúng số sau giảm giá"
+        );
     }
 
     #[test]
     fn checkout_propagates_gateway_error() {
         let mut gio = Cart::new();
         gio.them("A", 100_000, 1).unwrap();
-        assert_eq!(checkout(&gio, &AlwaysFailGateway, 0), Err("Thẻ bị từ chối".to_string()));
+        assert_eq!(
+            checkout(&gio, &AlwaysFailGateway, 0),
+            Err("Thẻ bị từ chối".to_string())
+        );
     }
 
     #[test]
     fn empty_cart_skips_gateway() {
         let gio = Cart::new();
-        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
+        let spy = SpyGateway {
+            called_with: RefCell::new(vec![]),
+        };
         let kq = checkout(&gio, &spy, 0);
         assert!(kq.is_err());
-        assert!(spy.called_with.borrow().is_empty(), "cổng KHÔNG được gọi khi giỏ rỗng");
+        assert!(
+            spy.called_with.borrow().is_empty(),
+            "cổng KHÔNG được gọi khi giỏ rỗng"
+        );
     }
 }
 
@@ -227,7 +244,11 @@ mod property {
             let mut gio = Cart::new();
             let item_count = sinh.so(5) + 1;
             for i in 0..item_count {
-                let _ = gio.them(&format!("SP{}", i), (sinh.so(100_000) + 1) as u64, sinh.so(5) + 1);
+                let _ = gio.them(
+                    &format!("SP{}", i),
+                    (sinh.so(100_000) + 1) as u64,
+                    sinh.so(5) + 1,
+                );
             }
             let pt = sinh.so(150); // cố tình cho vượt 100
             let next = gio.after_discount(pt);
@@ -241,7 +262,8 @@ mod property {
         let mut sinh = Generator::new(7);
         for _ in 0..1000 {
             let mut gio = Cart::new();
-            gio.them("X", (sinh.so(50_000) + 1) as u64, sinh.so(9) + 1).unwrap();
+            gio.them("X", (sinh.so(50_000) + 1) as u64, sinh.so(9) + 1)
+                .unwrap();
             // TÍNH CHẤT: giảm 0% là phép đồng nhất
             assert_eq!(gio.after_discount(0), gio.tong_tien());
         }
@@ -274,7 +296,10 @@ mod bdd {
 
     struct OkGateway(RefCell<Vec<u64>>);
     impl PaymentGateway for OkGateway {
-        fn debit(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
+        fn debit(&self, s: u64) -> Result<String, String> {
+            self.0.borrow_mut().push(s);
+            Ok("OK".into())
+        }
     }
 
     /// Kịch bản: "Khách VIP mua hàng và được giảm 15%".

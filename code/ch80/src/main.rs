@@ -14,7 +14,15 @@ use std::collections::HashMap;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryTier { Register, L1, L2, L3, Ram, SsdNvme, DiaQuay }
+pub enum MemoryTier {
+    Register,
+    L1,
+    L2,
+    L3,
+    Ram,
+    SsdNvme,
+    DiaQuay,
+}
 
 impl MemoryTier {
     /// Độ trễ tính bằng CHU KỲ CPU. Cách nhìn này quan trọng hơn nano-giây:
@@ -32,15 +40,25 @@ impl MemoryTier {
     }
     pub fn name(self) -> &'static str {
         match self {
-            MemoryTier::Register => "Thanh ghi", MemoryTier::L1 => "Cache L1",
-            MemoryTier::L2 => "Cache L2", MemoryTier::L3 => "Cache L3",
-            MemoryTier::Ram => "RAM", MemoryTier::SsdNvme => "SSD NVMe",
+            MemoryTier::Register => "Thanh ghi",
+            MemoryTier::L1 => "Cache L1",
+            MemoryTier::L2 => "Cache L2",
+            MemoryTier::L3 => "Cache L3",
+            MemoryTier::Ram => "RAM",
+            MemoryTier::SsdNvme => "SSD NVMe",
             MemoryTier::DiaQuay => "Đĩa quay",
         }
     }
     pub fn all() -> [MemoryTier; 7] {
-        [MemoryTier::Register, MemoryTier::L1, MemoryTier::L2, MemoryTier::L3,
-         MemoryTier::Ram, MemoryTier::SsdNvme, MemoryTier::DiaQuay]
+        [
+            MemoryTier::Register,
+            MemoryTier::L1,
+            MemoryTier::L2,
+            MemoryTier::L3,
+            MemoryTier::Ram,
+            MemoryTier::SsdNvme,
+            MemoryTier::DiaQuay,
+        ]
     }
 }
 
@@ -65,7 +83,11 @@ pub struct CacheStats {
 
 impl CacheStats {
     pub fn ratio_duplicate(&self) -> f64 {
-        if self.access_count == 0 { 0.0 } else { self.hit_count as f64 / self.access_count as f64 }
+        if self.access_count == 0 {
+            0.0
+        } else {
+            self.hit_count as f64 / self.access_count as f64
+        }
     }
     /// Tổng chu kỳ phải trả — thước đo thật sự, không phải số lần trượt.
     pub fn total_period(&self) -> u64 {
@@ -89,12 +111,18 @@ impl CacheSim {
         let so_dong = kich_thuoc_byte / BYTE_MOI_DONG_CACHE;
         let so_tap = (so_dong / positive_count).max(1);
         CacheSim {
-            so_tap, positive_count,
+            so_tap,
+            positive_count,
             tap: vec![Vec::with_capacity(positive_count); so_tap],
             seen: std::collections::HashSet::new(),
             clock: 0,
-            account: CacheStats { access_count: 0, hit_count: 0, slip_count: 0,
-                               compulsory_miss: 0, capacity_miss: 0 },
+            account: CacheStats {
+                access_count: 0,
+                hit_count: 0,
+                slip_count: 0,
+                compulsory_miss: 0,
+                capacity_miss: 0,
+            },
         }
     }
 
@@ -122,7 +150,12 @@ impl CacheSim {
         }
         if t.len() == self.positive_count {
             // Đá ra đường LÂU NHẤT KHÔNG DÙNG
-            let vt = t.iter().enumerate().min_by_key(|(_, (_, d))| *d).map(|(i, _)| i).unwrap();
+            let vt = t
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, (_, d))| *d)
+                .map(|(i, _)| i)
+                .unwrap();
             t.swap_remove(vt);
         }
         t.push((the, dh));
@@ -130,11 +163,18 @@ impl CacheSim {
     }
 
     pub fn reset(&mut self) {
-        for t in self.tap.iter_mut() { t.clear(); }
+        for t in self.tap.iter_mut() {
+            t.clear();
+        }
         self.seen.clear();
         self.clock = 0;
-        self.account = CacheStats { access_count: 0, hit_count: 0, slip_count: 0,
-                                 compulsory_miss: 0, capacity_miss: 0 };
+        self.account = CacheStats {
+            access_count: 0,
+            hit_count: 0,
+            slip_count: 0,
+            compulsory_miss: 0,
+            capacity_miss: 0,
+        };
     }
 }
 
@@ -186,8 +226,7 @@ pub fn matmul_naive(mp: &mut CacheSim, n: usize, bytes_per_cell: usize) -> u64 {
 /// Nhân ma trận theo KHỐI: chia thành các khối vừa lọt cache, làm xong khối
 /// này mới sang khối khác. Cùng số phép nhân, nhưng dữ liệu được TÁI SỬ DỤNG
 /// khi còn nóng trong cache.
-pub fn blocked_matmul(mp: &mut CacheSim, n: usize, khoi: usize,
-                         bytes_per_cell: usize) -> u64 {
+pub fn blocked_matmul(mp: &mut CacheSim, n: usize, khoi: usize, bytes_per_cell: usize) -> u64 {
     mp.reset();
     let goc_a = 0usize;
     let goc_b = n * n * bytes_per_cell;
@@ -228,7 +267,11 @@ pub struct BranchPredictor {
 
 impl BranchPredictor {
     pub fn new() -> Self {
-        BranchPredictor { state: HashMap::new(), branch_count: 0, mispredictions: 0 }
+        BranchPredictor {
+            state: HashMap::new(),
+            branch_count: 0,
+            mispredictions: 0,
+        }
     }
 
     /// `id_nhanh` là vị trí lệnh nhánh; `actual` là kết quả thật.
@@ -236,17 +279,29 @@ impl BranchPredictor {
         self.branch_count += 1;
         let tt = self.state.entry(id_nhanh).or_insert(1);
         let doan = *tt >= 2;
-        if doan != actual { self.mispredictions += 1; }
+        if doan != actual {
+            self.mispredictions += 1;
+        }
         // Bão hoà: 3 không lên nữa, 0 không xuống nữa
-        if actual { *tt = (*tt + 1).min(3); } else { *tt = tt.saturating_sub(1); }
+        if actual {
+            *tt = (*tt + 1).min(3);
+        } else {
+            *tt = tt.saturating_sub(1);
+        }
         doan == actual
     }
 
     pub fn ratio_sai(&self) -> f64 {
-        if self.branch_count == 0 { 0.0 } else { self.mispredictions as f64 / self.branch_count as f64 }
+        if self.branch_count == 0 {
+            0.0
+        } else {
+            self.mispredictions as f64 / self.branch_count as f64
+        }
     }
     /// Số chu kỳ mất trắng vì đoán sai.
-    pub fn wasted_cycles(&self) -> u64 { self.mispredictions * PHAT_DU_DOAN_SAI }
+    pub fn wasted_cycles(&self) -> u64 {
+        self.mispredictions * PHAT_DU_DOAN_SAI
+    }
 }
 
 /// Đếm phần tử lớn hơn ngưỡng, CÓ nhánh. Trên dữ liệu ĐÃ SẮP XẾP, nhánh cực
@@ -257,7 +312,9 @@ pub fn branch_taken_count(data: &[i32], threshold: i32, dd: &mut BranchPredictor
     for &x in data {
         let dieu_kien = x >= threshold;
         dd.predict(0xB1, dieu_kien); // một vị trí nhánh duy nhất
-        if dieu_kien { count += 1; }
+        if dieu_kien {
+            count += 1;
+        }
     }
     (count, dd.mispredictions)
 }
@@ -310,12 +367,16 @@ pub fn analyze_multi_accumulator(n: u64, k: u64, do_rong: u64) -> IlpAnalysis {
 }
 
 /// Kiểm chứng: nhiều bộ tích luỹ phải cho CÙNG kết quả với một bộ.
-pub fn tong_mot_bien(data: &[i64]) -> i64 { data.iter().sum() }
+pub fn tong_mot_bien(data: &[i64]) -> i64 {
+    data.iter().sum()
+}
 
 pub fn total_many_bien(data: &[i64], k: usize) -> i64 {
     let k = k.max(1);
     let mut acc = vec![0i64; k];
-    for (i, &x) in data.iter().enumerate() { acc[i % k] += x; }
+    for (i, &x) in data.iter().enumerate() {
+        acc[i % k] += x;
+    }
     acc.iter().sum()
 }
 
@@ -346,8 +407,11 @@ pub fn simd_analysis(num_elements: usize, be_rong_vector: usize) -> SimdAnalysis
         be_rong_vector: w,
         so_lenh_vector,
         remainder_elements: du,
-        theoretical_speedup: if total_order == 0 { 1.0 }
-                            else { num_elements as f64 / total_order as f64 },
+        theoretical_speedup: if total_order == 0 {
+            1.0
+        } else {
+            num_elements as f64 / total_order as f64
+        },
     }
 }
 
@@ -358,9 +422,13 @@ pub fn batch_add_array(a: &[f64], b: &[f64], w: usize) -> Vec<f64> {
     let w = w.max(1);
     let het_lo = n - n % w;
     for i in (0..het_lo).step_by(w) {
-        for j in 0..w { ra[i + j] = a[i + j] + b[i + j]; }
+        for j in 0..w {
+            ra[i + j] = a[i + j] + b[i + j];
+        }
     }
-    for i in het_lo..n { ra[i] = a[i] + b[i]; }
+    for i in het_lo..n {
+        ra[i] = a[i] + b[i];
+    }
     ra
 }
 
@@ -370,10 +438,14 @@ pub fn batch_add_array(a: &[f64], b: &[f64], w: usize) -> Vec<f64> {
 
 pub fn gen_data(n: usize, hat_giong: u64) -> Vec<i32> {
     let mut s = hat_giong;
-    (0..n).map(|_| {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        ((s >> 33) % 256) as i32
-    }).collect()
+    (0..n)
+        .map(|_| {
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((s >> 33) % 256) as i32
+        })
+        .collect()
 }
 
 fn main() {
@@ -384,8 +456,12 @@ fn main() {
     println!("\n1. PHÂN CẤP BỘ NHỚ — những con số cần thuộc");
     println!("   {:<12} {:>14} {:>16}", "tầng", "chu kỳ", "so với L1");
     for t in MemoryTier::all() {
-        println!("   {:<12} {:>14} {:>15.0}x",
-                 t.name(), t.period(), t.period() as f64 / MemoryTier::L1.period() as f64);
+        println!(
+            "   {:<12} {:>14} {:>15.0}x",
+            t.name(),
+            t.period(),
+            t.period() as f64 / MemoryTier::L1.period() as f64
+        );
     }
     println!("   → Một lần trượt xuống RAM tốn bằng 50 lần chạm L1.");
 
@@ -397,10 +473,19 @@ fn main() {
     let theo_cot = col_major_scan(&mut mp, n, 8);
     let chain_col = mp.account.total_period();
     println!("   Ma trận {}x{} f64 ({} KB):", n, n, n * n * 8 / 1024);
-    println!("   Theo hàng: {:>8} lần trượt · {:>10} chu kỳ", theo_queue, chain_queue);
-    println!("   Theo cột : {:>8} lần trượt · {:>10} chu kỳ", theo_cot, chain_col);
-    println!("   → Cùng {} phép truy cập, chỉ khác thứ tự, chậm gấp {:.1} lần.",
-             n * n, chain_col as f64 / chain_queue as f64);
+    println!(
+        "   Theo hàng: {:>8} lần trượt · {:>10} chu kỳ",
+        theo_queue, chain_queue
+    );
+    println!(
+        "   Theo cột : {:>8} lần trượt · {:>10} chu kỳ",
+        theo_cot, chain_col
+    );
+    println!(
+        "   → Cùng {} phép truy cập, chỉ khác thứ tự, chậm gấp {:.1} lần.",
+        n * n,
+        chain_col as f64 / chain_queue as f64
+    );
 
     println!("\n3. NHÂN MA TRẬN — chia khối để tái dùng dữ liệu nóng");
     let n = 96;
@@ -410,8 +495,13 @@ fn main() {
     for k in [8usize, 16, 32] {
         let mut mp2 = CacheSim::new(32 * 1024, 8);
         let blocked = blocked_matmul(&mut mp2, n, k, 8);
-        println!("   Chia khối {:>2}x{:<2}   : {:>9} lần trượt → giảm {:.0}%",
-                 k, k, blocked, (1.0 - blocked as f64 / ngay_tho as f64) * 100.0);
+        println!(
+            "   Chia khối {:>2}x{:<2}   : {:>9} lần trượt → giảm {:.0}%",
+            k,
+            k,
+            blocked,
+            (1.0 - blocked as f64 / ngay_tho as f64) * 100.0
+        );
     }
     println!("   → CÙNG số phép nhân. Chỉ đổi thứ tự truy cập bộ nhớ.");
 
@@ -422,37 +512,63 @@ fn main() {
     for (name, d) in [("lộn xộn ", &lon_xon), ("đã sắp  ", &da_sap)] {
         let mut dd = BranchPredictor::new();
         let (count, sai) = branch_taken_count(d, 128, &mut dd);
-        println!("   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} chu kỳ",
-                 name, count, sai, dd.ratio_sai() * 100.0, dd.wasted_cycles());
+        println!(
+            "   {} → {} phần tử · {:>6} lần đoán sai ({:>5.1}%) · phí {:>8} chu kỳ",
+            name,
+            count,
+            sai,
+            dd.ratio_sai() * 100.0,
+            dd.wasted_cycles()
+        );
     }
-    println!("   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
-             branch_not_taken_count(&da_sap, 128));
+    println!(
+        "   Bản KHÔNG NHÁNH: {} phần tử · 0 lần đoán sai · 0 chu kỳ phí",
+        branch_not_taken_count(&da_sap, 128)
+    );
     println!("   → Sắp xếp trước không làm phép đếm nhanh hơn; nó làm CPU ĐOÁN ĐÚNG hơn.");
 
     println!("\n5. SONG SONG MỨC LỆNH");
     let n = 1_000_000u64;
-    println!("   {:<22} {:>14} {:>8} {:>16}",
-             "cách viết", "đường tới hạn", "ILP", "chu kỳ ước tính");
+    println!(
+        "   {:<22} {:>14} {:>8} {:>16}",
+        "cách viết", "đường tới hạn", "ILP", "chu kỳ ước tính"
+    );
     let a = analyze_total_one_bien(n, 4);
-    println!("   {:<22} {:>14} {:>8.1} {:>16}",
-             "1 bộ tích luỹ", a.critical_path, a.ilp, a.estimated_cycles);
+    println!(
+        "   {:<22} {:>14} {:>8.1} {:>16}",
+        "1 bộ tích luỹ", a.critical_path, a.ilp, a.estimated_cycles
+    );
     for k in [2u64, 4, 8] {
         let b = analyze_multi_accumulator(n, k, 4);
-        println!("   {:<22} {:>14} {:>8.1} {:>16}",
-                 format!("{} bộ tích luỹ", k), b.critical_path, b.ilp, b.estimated_cycles);
+        println!(
+            "   {:<22} {:>14} {:>8.1} {:>16}",
+            format!("{} bộ tích luỹ", k),
+            b.critical_path,
+            b.ilp,
+            b.estimated_cycles
+        );
     }
     let d: Vec<i64> = (1..=1000).collect();
-    println!("   Kết quả vẫn giống hệt nhau: {}",
-             tong_mot_bien(&d) == total_many_bien(&d, 4));
+    println!(
+        "   Kết quả vẫn giống hệt nhau: {}",
+        tong_mot_bien(&d) == total_many_bien(&d, 4)
+    );
 
     println!("\n6. SIMD");
-    println!("   {:>10} {:>10} {:>14} {:>10} {:>12}",
-             "phần tử", "bề rộng", "lệnh vector", "phần dư", "tăng tốc");
+    println!(
+        "   {:>10} {:>10} {:>14} {:>10} {:>12}",
+        "phần tử", "bề rộng", "lệnh vector", "phần dư", "tăng tốc"
+    );
     for (n, w) in [(1024usize, 4usize), (1024, 8), (1001, 8), (7, 8)] {
         let p = simd_analysis(n, w);
-        println!("   {:>10} {:>10} {:>14} {:>10} {:>11.2}x",
-                 p.num_elements, p.be_rong_vector, p.so_lenh_vector,
-                 p.remainder_elements, p.theoretical_speedup);
+        println!(
+            "   {:>10} {:>10} {:>14} {:>10} {:>11.2}x",
+            p.num_elements,
+            p.be_rong_vector,
+            p.so_lenh_vector,
+            p.remainder_elements,
+            p.theoretical_speedup
+        );
     }
     println!("   → Mảng 7 phần tử với vector 8 làn: KHÔNG tăng tốc chút nào.");
     println!("     Đó là lý do người ta đệm mảng cho tròn bội số bề rộng vector.");
@@ -471,17 +587,26 @@ mod tests {
     fn latency_grows_with_distance() {
         let t = MemoryTier::all();
         for w in t.windows(2) {
-            assert!(w[0].period() < w[1].period(),
-                    "{} phải nhanh hơn {}", w[0].name(), w[1].name());
+            assert!(
+                w[0].period() < w[1].period(),
+                "{} phải nhanh hơn {}",
+                w[0].name(),
+                w[1].name()
+            );
         }
     }
 
     #[test]
     fn the_gap_between_levels_is_an_order_of_magnitude() {
-        assert_eq!(MemoryTier::Ram.period() / MemoryTier::L1.period(), 50,
-                   "trượt xuống RAM tốn bằng 50 lần chạm L1");
-        assert!(MemoryTier::SsdNvme.period() > MemoryTier::Ram.period() * 500,
-                "SSD chậm hơn RAM cả ba bậc độ lớn");
+        assert_eq!(
+            MemoryTier::Ram.period() / MemoryTier::L1.period(),
+            50,
+            "trượt xuống RAM tốn bằng 50 lần chạm L1"
+        );
+        assert!(
+            MemoryTier::SsdNvme.period() > MemoryTier::Ram.period() * 500,
+            "SSD chậm hơn RAM cả ba bậc độ lớn"
+        );
     }
 
     // ---------- Mô phỏng cache ----------
@@ -501,7 +626,11 @@ mod tests {
         let mut mp = CacheSim::new(32 * 1024, 8);
         mp.access_cap(0);
         for b in 1..BYTE_MOI_DONG_CACHE {
-            assert!(mp.access_cap(b), "byte {} phải nằm cùng dòng cache với byte 0", b);
+            assert!(
+                mp.access_cap(b),
+                "byte {} phải nằm cùng dòng cache với byte 0",
+                b
+            );
         }
         assert_eq!(mp.account.slip_count, 1, "64 byte chỉ tốn MỘT lần trượt");
     }
@@ -509,7 +638,9 @@ mod tests {
     #[test]
     fn a_cache_line_stride_misses_every_time() {
         let mut mp = CacheSim::new(32 * 1024, 8);
-        for i in 0..100 { mp.access_cap(i * BYTE_MOI_DONG_CACHE); }
+        for i in 0..100 {
+            mp.access_cap(i * BYTE_MOI_DONG_CACHE);
+        }
         assert_eq!(mp.account.slip_count, 100, "mỗi lần chạm một dòng mới");
         assert_eq!(mp.account.ratio_duplicate(), 0.0);
     }
@@ -519,19 +650,29 @@ mod tests {
         // Cache 1 KB = 16 dòng. Quét vòng qua 64 dòng thì lần nào cũng trượt.
         let mut mp = CacheSim::new(1024, 4);
         for _ in 0..3 {
-            for i in 0..64 { mp.access_cap(i * BYTE_MOI_DONG_CACHE); }
+            for i in 0..64 {
+                mp.access_cap(i * BYTE_MOI_DONG_CACHE);
+            }
         }
         assert!(mp.account.capacity_miss > 0, "phải có trượt do bị đá ra");
-        assert!(mp.account.ratio_duplicate() < 0.1, "quét vòng lớn hơn cache → gần như trượt hết");
+        assert!(
+            mp.account.ratio_duplicate() < 0.1,
+            "quét vòng lớn hơn cache → gần như trượt hết"
+        );
     }
 
     #[test]
     fn data_that_fits_hits_on_the_second_pass() {
         let mut mp = CacheSim::new(32 * 1024, 8); // 512 dòng
         for _ in 0..5 {
-            for i in 0..100 { mp.access_cap(i * BYTE_MOI_DONG_CACHE); }
+            for i in 0..100 {
+                mp.access_cap(i * BYTE_MOI_DONG_CACHE);
+            }
         }
-        assert_eq!(mp.account.slip_count, 100, "chỉ 100 lần trượt bắt buộc, sau đó trúng hết");
+        assert_eq!(
+            mp.account.slip_count, 100,
+            "chỉ 100 lần trượt bắt buộc, sau đó trúng hết"
+        );
         assert_eq!(mp.account.capacity_miss, 0);
         assert!(mp.account.ratio_duplicate() > 0.79);
     }
@@ -539,9 +680,17 @@ mod tests {
     #[test]
     fn the_counters_always_balance() {
         let mut mp = CacheSim::new(4096, 4);
-        for i in 0..1000 { mp.access_cap(i * 7); }
-        assert_eq!(mp.account.hit_count + mp.account.slip_count, mp.account.access_count);
-        assert_eq!(mp.account.compulsory_miss + mp.account.capacity_miss, mp.account.slip_count);
+        for i in 0..1000 {
+            mp.access_cap(i * 7);
+        }
+        assert_eq!(
+            mp.account.hit_count + mp.account.slip_count,
+            mp.account.access_count
+        );
+        assert_eq!(
+            mp.account.compulsory_miss + mp.account.capacity_miss,
+            mp.account.slip_count
+        );
     }
 
     // ---------- Cục bộ ----------
@@ -552,10 +701,18 @@ mod tests {
         let n = 256;
         let queue = row_major_scan(&mut mp, n, 8);
         let cot = col_major_scan(&mut mp, n, 8);
-        assert!(cot > queue * 5,
-                "theo cột {} lần trượt phải nhiều hơn hẳn theo hàng {}", cot, queue);
+        assert!(
+            cot > queue * 5,
+            "theo cột {} lần trượt phải nhiều hơn hẳn theo hàng {}",
+            cot,
+            queue
+        );
         // Theo hàng: mỗi dòng cache 64 byte phục vụ 8 phần tử f64
-        assert_eq!(queue, (n * n / 8) as u64, "đúng bằng số dòng cache của cả ma trận");
+        assert_eq!(
+            queue,
+            (n * n / 8) as u64,
+            "đúng bằng số dòng cache của cả ma trận"
+        );
     }
 
     #[test]
@@ -565,7 +722,10 @@ mod tests {
         row_major_scan(&mut mp, n, 8);
         let a = mp.account.access_count;
         col_major_scan(&mut mp, n, 8);
-        assert_eq!(a, mp.account.access_count, "cùng khối lượng việc, chỉ khác thứ tự");
+        assert_eq!(
+            a, mp.account.access_count,
+            "cùng khối lượng việc, chỉ khác thứ tự"
+        );
     }
 
     #[test]
@@ -586,8 +746,12 @@ mod tests {
         let ngay_tho = matmul_naive(&mut a, n, 8);
         let mut b = CacheSim::new(32 * 1024, 8);
         let blocked = blocked_matmul(&mut b, n, 16, 8);
-        assert!(blocked < ngay_tho,
-                "chia khối {} phải ít trượt hơn ngây thơ {}", blocked, ngay_tho);
+        assert!(
+            blocked < ngay_tho,
+            "chia khối {} phải ít trượt hơn ngây thơ {}",
+            blocked,
+            ngay_tho
+        );
     }
 
     #[test]
@@ -598,8 +762,10 @@ mod tests {
         matmul_naive(&mut a, n, 8);
         let mut b = CacheSim::new(32 * 1024, 8);
         blocked_matmul(&mut b, n, 16, 8);
-        assert_eq!(a.account.access_count, b.account.access_count,
-                   "cùng 2·n³ phép truy cập, chỉ khác thứ tự");
+        assert_eq!(
+            a.account.access_count, b.account.access_count,
+            "cùng 2·n³ phép truy cập, chỉ khác thứ tự"
+        );
         assert_eq!(a.account.access_count, 2 * (n * n * n) as u64);
     }
 
@@ -609,7 +775,9 @@ mod tests {
         // Đây là lý do bộ đếm 2 bit tốt hơn 1 bit: một lần chệch không làm
         // nó đổi ý, nên vòng lặp dài không bị phạt ở lần lặp bất thường.
         let mut d = BranchPredictor::new();
-        for _ in 0..10 { d.predict(1, true); } // học "luôn đúng"
+        for _ in 0..10 {
+            d.predict(1, true);
+        } // học "luôn đúng"
         let prev_sai = d.mispredictions;
         d.predict(1, false); // một lần chệch
         assert_eq!(d.mispredictions, prev_sai + 1);
@@ -619,8 +787,14 @@ mod tests {
     #[test]
     fn an_always_taken_branch_almost_never_mispredicts() {
         let mut d = BranchPredictor::new();
-        for _ in 0..10_000 { d.predict(1, true); }
-        assert!(d.mispredictions <= 2, "chỉ sai vài lần lúc học, thực tế {}", d.mispredictions);
+        for _ in 0..10_000 {
+            d.predict(1, true);
+        }
+        assert!(
+            d.mispredictions <= 2,
+            "chỉ sai vài lần lúc học, thực tế {}",
+            d.mispredictions
+        );
         assert!(d.ratio_sai() < 0.001);
     }
 
@@ -628,8 +802,13 @@ mod tests {
     fn an_alternating_branch_mispredicts_almost_always() {
         // Trường hợp tệ nhất của bộ đếm 2 bit: mẫu luân phiên.
         let mut d = BranchPredictor::new();
-        for i in 0..10_000 { d.predict(1, i % 2 == 0); }
-        assert!(d.ratio_sai() > 0.4, "mẫu luân phiên phải làm nó sai rất nhiều");
+        for i in 0..10_000 {
+            d.predict(1, i % 2 == 0);
+        }
+        assert!(
+            d.ratio_sai() > 0.4,
+            "mẫu luân phiên phải làm nó sai rất nhiều"
+        );
     }
 
     #[test]
@@ -647,8 +826,12 @@ mod tests {
         let (b, sai_da_sap) = branch_taken_count(&da_sap, 128, &mut d2);
 
         assert_eq!(a, b, "kết quả phải giống hệt — chỉ hiệu năng khác");
-        assert!(sai_da_sap * 20 < sai_lon_xon,
-                "đã sắp: {} lần sai, lộn xộn: {} lần sai", sai_da_sap, sai_lon_xon);
+        assert!(
+            sai_da_sap * 20 < sai_lon_xon,
+            "đã sắp: {} lần sai, lộn xộn: {} lần sai",
+            sai_da_sap,
+            sai_lon_xon
+        );
         assert!(d1.wasted_cycles() > d2.wasted_cycles() * 20);
     }
 
@@ -658,8 +841,11 @@ mod tests {
             let d = gen_data(10_000, hat);
             let mut dd = BranchPredictor::new();
             let (a, _) = branch_taken_count(&d, 128, &mut dd);
-            assert_eq!(a, branch_not_taken_count(&d, 128),
-                       "mã không nhánh phải cho cùng đáp số");
+            assert_eq!(
+                a,
+                branch_not_taken_count(&d, 128),
+                "mã không nhánh phải cho cùng đáp số"
+            );
         }
     }
 
@@ -678,9 +864,14 @@ mod tests {
     #[test]
     fn one_accumulator_is_bound_by_the_dependency_chain() {
         let a = analyze_total_one_bien(1_000_000, 4);
-        assert_eq!(a.ilp, 1.0, "chuỗi phụ thuộc thuần → không song song được gì");
-        assert_eq!(a.estimated_cycles, 1_000_000,
-                   "CPU rộng 4 lệnh/chu kỳ cũng không giúp được gì");
+        assert_eq!(
+            a.ilp, 1.0,
+            "chuỗi phụ thuộc thuần → không song song được gì"
+        );
+        assert_eq!(
+            a.estimated_cycles, 1_000_000,
+            "CPU rộng 4 lệnh/chu kỳ cũng không giúp được gì"
+        );
     }
 
     #[test]
@@ -692,15 +883,21 @@ mod tests {
             ilp_truoc = b.ilp;
         }
         let b4 = analyze_multi_accumulator(1_000_000, 4, 4);
-        assert!(b4.ilp > 3.9, "4 bộ tích luỹ phải đạt ILP gần 4, thực tế {:.2}", b4.ilp);
+        assert!(
+            b4.ilp > 3.9,
+            "4 bộ tích luỹ phải đạt ILP gần 4, thực tế {:.2}",
+            b4.ilp
+        );
     }
 
     #[test]
     fn cpu_width_caps_the_speedup() {
         // Dù có 64 bộ tích luỹ, CPU rộng 4 vẫn chỉ chạy 4 lệnh mỗi chu kỳ.
         let b = analyze_multi_accumulator(1_000_000, 64, 4);
-        assert!(b.estimated_cycles >= 1_000_000 / 4,
-                "không thể nhanh hơn giới hạn độ rộng CPU");
+        assert!(
+            b.estimated_cycles >= 1_000_000 / 4,
+            "không thể nhanh hơn giới hạn độ rộng CPU"
+        );
     }
 
     #[test]
@@ -745,7 +942,10 @@ mod tests {
         let p = simd_analysis(7, 8);
         assert_eq!(p.so_lenh_vector, 0);
         assert_eq!(p.remainder_elements, 7);
-        assert!((p.theoretical_speedup - 1.0).abs() < 1e-9, "không tăng tốc chút nào");
+        assert!(
+            (p.theoretical_speedup - 1.0).abs() < 1e-9,
+            "không tăng tốc chút nào"
+        );
     }
 
     #[test]
@@ -755,7 +955,10 @@ mod tests {
         let p0 = simd_analysis(100, 0);
         assert_eq!(p0.be_rong_vector, 1, "bề rộng 0 phải được chặn thành 1");
         let rong = simd_analysis(0, 8);
-        assert!((rong.theoretical_speedup - 1.0).abs() < 1e-9, "mảng rỗng không panic");
+        assert!(
+            (rong.theoretical_speedup - 1.0).abs() < 1e-9,
+            "mảng rỗng không panic"
+        );
     }
 
     #[test]
@@ -764,8 +967,12 @@ mod tests {
         let b: Vec<f64> = (0..103).map(|i| (i * 2) as f64).collect();
         let expected: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x + y).collect();
         for w in [1usize, 2, 4, 8, 16] {
-            assert_eq!(batch_add_array(&a, &b, w), expected,
-                       "vector hoá bề rộng {} phải cho cùng kết quả", w);
+            assert_eq!(
+                batch_add_array(&a, &b, w),
+                expected,
+                "vector hoá bề rộng {} phải cho cùng kết quả",
+                w
+            );
         }
     }
 
@@ -787,7 +994,9 @@ mod tests {
     fn generated_data_straddles_the_threshold_evenly() {
         let d = gen_data(100_000, 42);
         let above = d.iter().filter(|&&x| x >= 128).count();
-        assert!((above as f64 / d.len() as f64 - 0.5).abs() < 0.05,
-                "phải chia đôi quanh ngưỡng để nhánh thật sự khó đoán");
+        assert!(
+            (above as f64 / d.len() as f64 - 0.5).abs() < 0.05,
+            "phải chia đôi quanh ngưỡng để nhánh thật sự khó đoán"
+        );
     }
 }

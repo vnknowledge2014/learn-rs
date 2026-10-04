@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::convert::TryInto;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -98,7 +98,10 @@ impl MiniBitcask {
         }
 
         self.current_offset = file_len;
-        println!("    [REBUILD]: Đã phục hồi thành công {} khóa hợp lệ vào RAM!", self.keydir.len());
+        println!(
+            "    [REBUILD]: Đã phục hồi thành công {} khóa hợp lệ vào RAM!",
+            self.keydir.len()
+        );
         Ok(())
     }
 
@@ -117,11 +120,11 @@ impl MiniBitcask {
         // Đóng gói bản ghi nhị phân
         let mut buffer = Vec::with_capacity(17 + k_bytes.len() + v_bytes.len());
         buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
-        buffer.push(0);                               // is_deleted = 0 (1B)
-        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
-        buffer.extend_from_slice(&v_len.to_le_bytes());// Val length (4B)
-        buffer.extend_from_slice(k_bytes);            // Key
-        buffer.extend_from_slice(v_bytes);            // Value
+        buffer.push(0); // is_deleted = 0 (1B)
+        buffer.extend_from_slice(&k_len.to_le_bytes()); // Key length (4B)
+        buffer.extend_from_slice(&v_len.to_le_bytes()); // Val length (4B)
+        buffer.extend_from_slice(k_bytes); // Key
+        buffer.extend_from_slice(v_bytes); // Value
 
         // 1. Nhảy đến cuối tệp để ghi nối đuôi (Append-only)
         self.file.seek(SeekFrom::End(0))?;
@@ -152,9 +155,8 @@ impl MiniBitcask {
             self.file.seek(SeekFrom::Start(entry.file_offset))?;
             let mut v_buf = vec![0u8; entry.value_size];
             self.file.read_exact(&mut v_buf)?;
-            let val_str = String::from_utf8(v_buf).map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, e.to_string())
-            })?;
+            let val_str = String::from_utf8(v_buf)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             Ok(Some(val_str))
         } else {
             Ok(None)
@@ -177,8 +179,8 @@ impl MiniBitcask {
 
         let mut buffer = Vec::with_capacity(17 + k_bytes.len());
         buffer.extend_from_slice(&now.to_le_bytes()); // Timestamp (8B)
-        buffer.push(1);                               // is_deleted = 1 (Tombstone!)
-        buffer.extend_from_slice(&k_len.to_le_bytes());// Key length (4B)
+        buffer.push(1); // is_deleted = 1 (Tombstone!)
+        buffer.extend_from_slice(&k_len.to_le_bytes()); // Key length (4B)
         buffer.extend_from_slice(&0u32.to_le_bytes()); // Val length = 0 (4B)
         buffer.extend_from_slice(k_bytes);
 
@@ -289,13 +291,22 @@ fn main() -> io::Result<()> {
         // Xóa một khóa (tạo Tombstone trên đĩa)
         db.delete("user:102")?;
 
-        println!("    - Kích thước tệp đĩa hiện tại: {} bytes", db.file_size());
+        println!(
+            "    - Kích thước tệp đĩa hiện tại: {} bytes",
+            db.file_size()
+        );
         println!("    - Tổng số khóa hợp lệ trên RAM: {}", db.total_keys());
 
         // Kiểm tra đọc dữ liệu qua 1 lần Disk Seek
-        assert_eq!(db.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(
+            db.get("user:101")?,
+            Some("Alice Nguyen - Ha Noi (Updated)".to_string())
+        );
         assert_eq!(db.get("user:102")?, None);
-        assert_eq!(db.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        assert_eq!(
+            db.get("user:103")?,
+            Some("Charlie - TP Ho Chi Minh".to_string())
+        );
         println!("    => Các thao tác CRUD ban đầu hoạt động hoàn hảo!");
     } // db đóng tệp an toàn tại đây
 
@@ -309,9 +320,15 @@ fn main() -> io::Result<()> {
         println!("      + 'user:102' = {:?}", db_recovered.get("user:102")?);
         println!("      + 'user:103' = {:?}", db_recovered.get("user:103")?);
 
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
+        assert_eq!(
+            db_recovered.get("user:101")?,
+            Some("Alice Nguyen - Ha Noi (Updated)".to_string())
+        );
         assert_eq!(db_recovered.get("user:102")?, None);
-        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        assert_eq!(
+            db_recovered.get("user:103")?,
+            Some("Charlie - TP Ho Chi Minh".to_string())
+        );
         assert_eq!(db_recovered.total_keys(), 2);
         println!("    => Khôi phục chỉ mục KeyDir trên RAM từ đĩa thành công 100%!");
 
@@ -321,13 +338,25 @@ fn main() -> io::Result<()> {
         db_recovered.compact()?;
         let next_capacity = db_recovered.file_size();
 
-        println!("    - Dung lượng tệp TRƯỚC nén gộp: {} bytes", prev_capacity);
-        println!("    - Dung lượng tệp SAU nén gộp   : {} bytes", next_capacity);
+        println!(
+            "    - Dung lượng tệp TRƯỚC nén gộp: {} bytes",
+            prev_capacity
+        );
+        println!(
+            "    - Dung lượng tệp SAU nén gộp   : {} bytes",
+            next_capacity
+        );
         assert!(next_capacity < prev_capacity);
 
         // Kiểm tra dữ liệu sau nén gộp vẫn còn nguyên vẹn
-        assert_eq!(db_recovered.get("user:101")?, Some("Alice Nguyen - Ha Noi (Updated)".to_string()));
-        assert_eq!(db_recovered.get("user:103")?, Some("Charlie - TP Ho Chi Minh".to_string()));
+        assert_eq!(
+            db_recovered.get("user:101")?,
+            Some("Alice Nguyen - Ha Noi (Updated)".to_string())
+        );
+        assert_eq!(
+            db_recovered.get("user:103")?,
+            Some("Charlie - TP Ho Chi Minh".to_string())
+        );
         println!("    => Tiến trình Compaction đã dọn sạch toàn bộ rác thừa trên đĩa!");
     }
 

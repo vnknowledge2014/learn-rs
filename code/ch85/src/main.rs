@@ -135,10 +135,18 @@ pub struct LatencyModel {
 
 impl LatencyModel {
     pub fn typical() -> Self {
-        LatencyModel { inbound_ns: 10_000, outbound_ns: 50_000, jitter_ns: 5_000 }
+        LatencyModel {
+            inbound_ns: 10_000,
+            outbound_ns: 50_000,
+            jitter_ns: 5_000,
+        }
     }
     pub fn none() -> Self {
-        LatencyModel { inbound_ns: 0, outbound_ns: 0, jitter_ns: 0 }
+        LatencyModel {
+            inbound_ns: 0,
+            outbound_ns: 0,
+            jitter_ns: 0,
+        }
     }
 
     /// Dao động TẤT ĐỊNH theo hạt giống — cần nhiễu thật, nhưng phải tái lập được.
@@ -171,7 +179,12 @@ pub fn hash_in_range(hat: u64, tran: u64) -> u64 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventKind {
     /// Sàn truyền thống: một lệnh giới hạn mới vào sổ.
-    AddOrder { id: OrderId, side: Side, price: Price, quantity: Quantity },
+    AddOrder {
+        id: OrderId,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+    },
     /// Sàn truyền thống: huỷ một lệnh đang treo.
     CancelOrder { id: OrderId },
     /// Sàn truyền thống: một giao dịch đã khớp (thông tin, không đổi sổ).
@@ -222,7 +235,9 @@ impl RecordedSession {
     }
 
     pub fn is_ordered(&self) -> bool {
-        self.events.windows(2).all(|w| w[0].timestamp <= w[1].timestamp)
+        self.events
+            .windows(2)
+            .all(|w| w[0].timestamp <= w[1].timestamp)
     }
 }
 
@@ -269,10 +284,16 @@ impl LitVenue {
     }
 
     pub fn best_bid(&self) -> Option<PriceLevel> {
-        self.buy.iter().next_back().map(|(&g, &k)| PriceLevel { price: g, quantity: k })
+        self.buy.iter().next_back().map(|(&g, &k)| PriceLevel {
+            price: g,
+            quantity: k,
+        })
     }
     pub fn best_ask(&self) -> Option<PriceLevel> {
-        self.ban.iter().next().map(|(&g, &k)| PriceLevel { price: g, quantity: k })
+        self.ban.iter().next().map(|(&g, &k)| PriceLevel {
+            price: g,
+            quantity: k,
+        })
     }
 
     pub fn mid(&self) -> Option<f64> {
@@ -396,7 +417,12 @@ impl LitVenue {
     /// nhìn thấy những mức giá không tồn tại.
     pub fn apply(&mut self, sk: &EventKind) {
         match sk {
-            EventKind::AddOrder { id, side, price, quantity } => {
+            EventKind::AddOrder {
+                id,
+                side,
+                price,
+                quantity,
+            } => {
                 let mut con = *quantity;
 
                 // Giai đoạn 1: khớp phần cắt qua với bên đối ứng.
@@ -450,7 +476,10 @@ impl LitVenue {
                 if con > 0 {
                     self.them(*side, *price, con);
                     self.market_orders.insert(*id, (*side, *price, con));
-                    self.market_queues.entry((*side, *price)).or_default().push_back(*id);
+                    self.market_queues
+                        .entry((*side, *price))
+                        .or_default()
+                        .push_back(*id);
                 }
             }
             EventKind::CancelOrder { id } => {
@@ -495,7 +524,13 @@ impl LitVenue {
                 }
             }
             self.bot(side, price, lay);
-            ra.push(Fill { id: l.id, side, price, quantity: lay, aggressive: false });
+            ra.push(Fill {
+                id: l.id,
+                side,
+                price,
+                quantity: lay,
+                aggressive: false,
+            });
             con -= lay;
         }
         for m in done {
@@ -548,15 +583,27 @@ impl LitVenue {
             }
             let lay = con.min(k);
             self.bot(l.side.inverse(), g, lay);
-            fill.push(Fill { id: l.id, side: l.side, price: g, quantity: lay, aggressive: true });
+            fill.push(Fill {
+                id: l.id,
+                side: l.side,
+                price: g,
+                quantity: lay,
+                aggressive: true,
+            });
             con -= lay;
         }
 
         if con > 0 {
             let prev = self.qty_at(l.side, l.price);
             self.them(l.side, l.price, con);
-            self.our_orders
-                .insert(l.id, OurOrder { remaining: con, prev_quantity: prev, ..l });
+            self.our_orders.insert(
+                l.id,
+                OurOrder {
+                    remaining: con,
+                    prev_quantity: prev,
+                    ..l
+                },
+            );
         }
         fill
     }
@@ -614,7 +661,13 @@ impl LitVenue {
                 }
             }
             self.bot(l.side, l.price, lay);
-            ra.push(Fill { id: l.id, side: l.side, price: l.price, quantity: lay, aggressive: false });
+            ra.push(Fill {
+                id: l.id,
+                side: l.side,
+                price: l.price,
+                quantity: lay,
+                aggressive: false,
+            });
             quantity -= lay + l.prev_quantity;
         }
         for m in id_done {
@@ -658,7 +711,11 @@ pub enum SwapError {
 
 impl ChainVenue {
     pub fn new(x: u128, y: u128, fee_bps: u32) -> Self {
-        ChainVenue { reserve_x: x, reserve_y: y, fee_bps }
+        ChainVenue {
+            reserve_x: x,
+            reserve_y: y,
+            fee_bps,
+        }
     }
 
     pub fn k(&self) -> u128 {
@@ -681,17 +738,28 @@ impl ChainVenue {
         if self.reserve_x == 0 || self.reserve_y == 0 {
             return Err(SwapError::EmptyPool);
         }
-        let (dt_vao, dt_ra) =
-            if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
+        let (dt_vao, dt_ra) = if x_in {
+            (self.reserve_x, self.reserve_y)
+        } else {
+            (self.reserve_y, self.reserve_x)
+        };
         let after_fee = amount_in * (10_000 - self.fee_bps as u128);
         // Làm tròn LUÔN có lợi cho bể — đó là chủ ý, không phải cẩu thả.
         Ok((after_fee * dt_ra) / (dt_vao * 10_000 + after_fee))
     }
 
-    pub fn swap(&mut self, x_in: bool, amount_in: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
+    pub fn swap(
+        &mut self,
+        x_in: bool,
+        amount_in: u128,
+        toi_thieu_ra: u128,
+    ) -> Result<u128, SwapError> {
         let ra = self.try_swap(x_in, amount_in)?;
         if ra < toi_thieu_ra {
-            return Err(SwapError::BelowMinOut { received: ra, required: toi_thieu_ra });
+            return Err(SwapError::BelowMinOut {
+                received: ra,
+                required: toi_thieu_ra,
+            });
         }
         if x_in {
             self.reserve_x += amount_in;
@@ -710,7 +778,11 @@ impl ChainVenue {
         if ra == 0 {
             return None;
         }
-        Some(if x_in { ra as f64 / amount_in as f64 } else { amount_in as f64 / ra as f64 })
+        Some(if x_in {
+            ra as f64 / amount_in as f64
+        } else {
+            amount_in as f64 / ra as f64
+        })
     }
 
     /// Nghịch đảo của `try_swap`: cần bỏ vào bao nhiêu để nhận ĐÚNG `ra`?
@@ -720,8 +792,11 @@ impl ChainVenue {
         if ra_mong_muon == 0 {
             return None;
         }
-        let (dt_vao, dt_ra) =
-            if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
+        let (dt_vao, dt_ra) = if x_in {
+            (self.reserve_x, self.reserve_y)
+        } else {
+            (self.reserve_y, self.reserve_x)
+        };
         if ra_mong_muon >= dt_ra {
             return None; // không thể rút hết một phía
         }
@@ -780,8 +855,16 @@ impl MarketSnapshot {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Intent {
-    Place { san: Venue, side: Side, price: Price, quantity: Quantity },
-    CancelOrder { san: Venue, id: OrderId },
+    Place {
+        san: Venue,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+    },
+    CancelOrder {
+        san: Venue,
+        id: OrderId,
+    },
     /// Lệnh chính kèm **phòng vệ theo khối lượng đã khớp** trên sàn còn lại.
     ///
     /// Đặt cứng cả hai chân cùng lúc nghe có vẻ đúng nhưng vẫn hỏng: chân AMM
@@ -791,12 +874,23 @@ pub enum Intent {
     ///
     /// Cách làm của ngành: thực thi chân KHÔNG CHẮC trước, rồi phòng vệ đúng
     /// bằng khối lượng thực sự khớp được.
-    PlaceHedged { san: Venue, side: Side, price: Price, quantity: Quantity, hedge_on: Venue },
+    PlaceHedged {
+        san: Venue,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+        hedge_on: Venue,
+    },
 }
 
 impl Intent {
     pub fn block_don(san: Venue, side: Side, price: Price, quantity: Quantity) -> Self {
-        Intent::Place { san, side, price, quantity }
+        Intent::Place {
+            san,
+            side,
+            price,
+            quantity,
+        }
     }
 }
 
@@ -907,7 +1001,12 @@ impl RiskGate {
     ) -> Result<(), RejectReason> {
         let (side, price, quantity) = match y {
             Intent::CancelOrder { .. } => return Ok(()), // huỷ luôn luôn được phép
-            Intent::Place { side, price, quantity, .. } => (*side, *price, *quantity),
+            Intent::Place {
+                side,
+                price,
+                quantity,
+                ..
+            } => (*side, *price, *quantity),
             // Bộ điều phối tách thành chân đơn trước khi tới đây, vì chỉ nó
             // mới biết đặt chỗ tích luỹ cho cả chân chính lẫn chân phòng vệ.
             Intent::PlaceHedged { .. } => return Ok(()),
@@ -996,7 +1095,10 @@ impl Strategy for ManagedMaker {
         if snap.timestamp.saturating_sub(self.last_quote_at) < self.quote_interval_ns {
             return Vec::new();
         }
-        let mid = match snap.lit_micro_price.or_else(|| snap.mid_price_traditional()) {
+        let mid = match snap
+            .lit_micro_price
+            .or_else(|| snap.mid_price_traditional())
+        {
             Some(g) => g,
             None => return Vec::new(),
         };
@@ -1060,7 +1162,11 @@ pub struct CrossVenueArb {
 
 impl CrossVenueArb {
     pub fn new(threshold_bps: f64) -> Self {
-        CrossVenueArb { threshold_bps, quantity: 10, opportunities_seen: 0 }
+        CrossVenueArb {
+            threshold_bps,
+            quantity: 10,
+            opportunities_seen: 0,
+        }
     }
 }
 
@@ -1302,11 +1408,23 @@ impl Ecosystem {
     /// **tại thời điểm đến**, không phải lúc phát — đó là toàn bộ ý nghĩa của độ trễ.
     fn deliver_due(&mut self) {
         let now = self.clock.now();
-        while self.in_flight.front().map_or(false, |l| l.arrives_at <= now) {
+        while self
+            .in_flight
+            .front()
+            .map_or(false, |l| l.arrives_at <= now)
+        {
             let l = self.in_flight.pop_front().unwrap();
             match l.intent {
-                Intent::CancelOrder { san: Venue::Lit, id } => {
-                    if let Some(t) = self.venue_lit.our_resting_orders().iter().find(|x| x.id == id) {
+                Intent::CancelOrder {
+                    san: Venue::Lit,
+                    id,
+                } => {
+                    if let Some(t) = self
+                        .venue_lit
+                        .our_resting_orders()
+                        .iter()
+                        .find(|x| x.id == id)
+                    {
                         match t.side {
                             Side::Buy => self.resting_bid -= t.remaining,
                             Side::Sell => self.resting_ask -= t.remaining,
@@ -1316,7 +1434,12 @@ impl Ecosystem {
                 }
                 Intent::CancelOrder { .. } => {}
                 Intent::PlaceHedged { .. } => {}
-                Intent::Place { san: Venue::Lit, side, price, quantity } => {
+                Intent::Place {
+                    san: Venue::Lit,
+                    side,
+                    price,
+                    quantity,
+                } => {
                     match side {
                         Side::Buy => {
                             self.in_flight_bid = (self.in_flight_bid - quantity).max(0);
@@ -1335,13 +1458,21 @@ impl Ecosystem {
                         entered_at: l.arrives_at,
                         prev_quantity: 0,
                     });
-                    self.metrics.signal_to_order.record(l.arrives_at - l.sent_at);
-                    self.order_log.push((l.arrives_at, Venue::Lit, side, price, quantity));
+                    self.metrics
+                        .signal_to_order
+                        .record(l.arrives_at - l.sent_at);
+                    self.order_log
+                        .push((l.arrives_at, Venue::Lit, side, price, quantity));
                     for k in fill {
                         self.apply_fill(k);
                     }
                 }
-                Intent::Place { san: Venue::Chain, side, price, quantity } => {
+                Intent::Place {
+                    san: Venue::Chain,
+                    side,
+                    price,
+                    quantity,
+                } => {
                     // Sàn AMM khớp tức thì theo công thức — không xếp hàng, nhưng
                     // vẫn phải chịu độ trễ tới lượt được đưa vào khối.
                     match side {
@@ -1350,8 +1481,11 @@ impl Ecosystem {
                     }
                     let x_in = side == Side::Sell;
                     if self.venue_chain.swap(x_in, quantity as u128, 0).is_ok() {
-                        self.metrics.signal_to_order.record(l.arrives_at - l.sent_at);
-                        self.order_log.push((l.arrives_at, Venue::Chain, side, price, quantity));
+                        self.metrics
+                            .signal_to_order
+                            .record(l.arrives_at - l.sent_at);
+                        self.order_log
+                            .push((l.arrives_at, Venue::Chain, side, price, quantity));
                         self.apply_fill(Fill {
                             id: l.id,
                             side,
@@ -1386,24 +1520,22 @@ impl Ecosystem {
                         .ok()
                         .map(|ra| ra as f64 / kl as f64),
                     // Mua X trên bể: cần bỏ vào bao nhiêu Y để nhận đúng kl X?
-                    Side::Buy => self.venue_chain.input_for_output(false, kl).and_then(|vao_y| {
-                        self.venue_chain
-                            .swap(false, vao_y, 0)
-                            .ok()
-                            .map(|_| vao_y as f64 / kl as f64)
-                    }),
+                    Side::Buy => self
+                        .venue_chain
+                        .input_for_output(false, kl)
+                        .and_then(|vao_y| {
+                            self.venue_chain
+                                .swap(false, vao_y, 0)
+                                .ok()
+                                .map(|_| vao_y as f64 / kl as f64)
+                        }),
                 };
                 if let Some(g) = exec_price {
                     let gt = g.round().max(1.0) as Price;
                     self.position.record(inverse, gt, k.quantity);
                     self.hedge_count += 1;
-                    self.order_log.push((
-                        self.clock.now(),
-                        Venue::Chain,
-                        inverse,
-                        gt,
-                        k.quantity,
-                    ));
+                    self.order_log
+                        .push((self.clock.now(), Venue::Chain, inverse, gt, k.quantity));
                 }
             }
         }
@@ -1428,7 +1560,14 @@ impl Ecosystem {
             self.metrics.intent_count += 1;
 
             // --- lệnh chính + phòng vệ theo khối lượng đã khớp ---
-            if let Intent::PlaceHedged { san, side, price, quantity, hedge_on } = y {
+            if let Intent::PlaceHedged {
+                san,
+                side,
+                price,
+                quantity,
+                hedge_on,
+            } = y
+            {
                 let don = Intent::block_don(san, side, price, quantity);
                 if self
                     .gate
@@ -1521,7 +1660,12 @@ impl Ecosystem {
                 .venue_lit
                 .our_orders_older_than(self.clock.now(), self.max_quote_age_ns);
             for id in cu {
-                if let Some(t) = self.venue_lit.our_resting_orders().iter().find(|x| x.id == id) {
+                if let Some(t) = self
+                    .venue_lit
+                    .our_resting_orders()
+                    .iter()
+                    .find(|x| x.id == id)
+                {
                     match t.side {
                         Side::Buy => self.resting_bid = (self.resting_bid - t.remaining).max(0),
                         Side::Sell => self.resting_ask = (self.resting_ask - t.remaining).max(0),
@@ -1555,7 +1699,9 @@ impl Ecosystem {
             }
             self.publish(intent);
 
-            self.metrics.equity_curve.push(self.position.total_pnl(self.reference_price()));
+            self.metrics
+                .equity_curve
+                .push(self.position.total_pnl(self.reference_price()));
         }
         // Xả nốt các lệnh còn đang bay.
         self.clock.advance(self.clock.now() + 1_000_000_000);
@@ -1614,7 +1760,10 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
             p.record(SessionEvent {
                 timestamp: t,
                 san: Venue::Lit,
-                kind: EventKind::Traded { price: current_price, quantity: kl },
+                kind: EventKind::Traded {
+                    price: current_price,
+                    quantity: kl,
+                },
             });
         } else if song.len() >= 120 || (fast < 55 && song.len() > 20) {
             // Huỷ lệnh SỐNG CŨ NHẤT — mô phỏng đúng hành vi nhà tạo lập thật.
@@ -1637,7 +1786,12 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
             p.record(SessionEvent {
                 timestamp: t,
                 san: Venue::Lit,
-                kind: EventKind::AddOrder { id, side, price, quantity: kl },
+                kind: EventKind::AddOrder {
+                    id,
+                    side,
+                    price,
+                    quantity: kl,
+                },
             });
             song.push_back(id);
             id += 1;
@@ -1656,13 +1810,23 @@ fn main() {
     let session = generate_session(20_000, 0xC0FFEE, 10_000);
     println!("1. PHIÊN ĐÃ GHI");
     println!("   sự kiện        : {}", session.event_count());
-    println!("   khoảng thời gian: {:.3} giây", session.span_ns() as f64 / 1e9);
+    println!(
+        "   khoảng thời gian: {:.3} giây",
+        session.span_ns() as f64 / 1e9
+    );
     println!("   đúng thứ tự    : {}", session.is_ordered());
 
     println!("\n2. PHÁT LẠI Ở NHIỀU TỐC ĐỘ — kết quả PHẢI trùng nhau");
-    println!("   {:<16} {:>10} {:>10} {:>12}", "tốc độ", "lệnh gửi", "khớp", "lãi/lỗ");
+    println!(
+        "   {:<16} {:>10} {:>10} {:>12}",
+        "tốc độ", "lệnh gửi", "khớp", "lãi/lỗ"
+    );
     let mut first_tien = None;
-    for toc in [ReplaySpeed::Unbounded, ReplaySpeed::Fast(1_000), ReplaySpeed::RealTime] {
+    for toc in [
+        ReplaySpeed::Unbounded,
+        ReplaySpeed::Fast(1_000),
+        ReplaySpeed::RealTime,
+    ] {
         let mut eco = Ecosystem::new(
             ChainVenue::new(2_000_000, 20_000_000_000, 30),
             LatencyModel::typical(),
@@ -1686,7 +1850,11 @@ fn main() {
             "   {:<16} {:>10} {:>10} {:>12.1}",
             name, eco.metrics.orders_sent, eco.metrics.fill_count, ll
         );
-        let first_van = (eco.metrics.orders_sent, eco.metrics.fill_count, eco.order_log.len());
+        let first_van = (
+            eco.metrics.orders_sent,
+            eco.metrics.fill_count,
+            eco.order_log.len(),
+        );
         match first_tien {
             None => first_tien = Some(first_van),
             Some(d) => assert_eq!(d, first_van, "phát lại KHÔNG tất định giữa các tốc độ"),
@@ -1708,7 +1876,11 @@ fn main() {
     let m = &eco.metrics;
     println!("   ý định sinh ra     : {}", m.intent_count);
     println!("   lệnh gửi đi        : {}", m.orders_sent);
-    println!("   bị cổng rủi ro chặn: {} ({:.1}%)", m.orders_blocked, m.block_ratio() * 100.0);
+    println!(
+        "   bị cổng rủi ro chặn: {} ({:.1}%)",
+        m.orders_blocked,
+        m.block_ratio() * 100.0
+    );
     println!("   số lần khớp        : {}", m.fill_count);
     println!("   khối lượng khớp    : {}", m.filled_qty);
     println!("   tỉ lệ thụ động     : {:.1}%", m.passive_ratio() * 100.0);
@@ -1801,12 +1973,18 @@ mod tests {
         assert!(p.record(SessionEvent {
             timestamp: 100,
             san: Venue::Lit,
-            kind: EventKind::Traded { price: 10, quantity: 1 },
+            kind: EventKind::Traded {
+                price: 10,
+                quantity: 1
+            },
         }));
         assert!(!p.record(SessionEvent {
             timestamp: 50,
             san: Venue::Lit,
-            kind: EventKind::Traded { price: 10, quantity: 1 },
+            kind: EventKind::Traded {
+                price: 10,
+                quantity: 1
+            },
         }));
         assert_eq!(p.event_count(), 1);
     }
@@ -1837,7 +2015,12 @@ mod tests {
             (3, Side::Sell, 102, 15),
             (4, Side::Sell, 101, 5),
         ] {
-            s.apply(&EventKind::AddOrder { id, side: c, price: g, quantity: k });
+            s.apply(&EventKind::AddOrder {
+                id,
+                side: c,
+                price: g,
+                quantity: k,
+            });
         }
         assert_eq!(s.best_bid().unwrap().price, 100);
         assert_eq!(s.best_ask().unwrap().price, 101);
@@ -1848,7 +2031,12 @@ mod tests {
     #[test]
     fn cancel_shrinks_book() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Buy, price: 100, quantity: 50 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Buy,
+            price: 100,
+            quantity: 50,
+        });
         assert_eq!(s.qty_at(Side::Buy, 100), 50);
         s.apply(&EventKind::CancelOrder { id: 1 });
         assert_eq!(s.qty_at(Side::Buy, 100), 0);
@@ -1884,8 +2072,18 @@ mod tests {
     #[test]
     fn micro_price_leans_to_thin_side() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Buy, price: 100, quantity: 900 });
-        s.apply(&EventKind::AddOrder { id: 2, side: Side::Sell, price: 102, quantity: 100 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Buy,
+            price: 100,
+            quantity: 900,
+        });
+        s.apply(&EventKind::AddOrder {
+            id: 2,
+            side: Side::Sell,
+            price: 102,
+            quantity: 100,
+        });
         let mid = s.mid().unwrap();
         let vi = s.micro_price().unwrap();
         assert!(vi > mid, "bên mua đông → vi giá phải cao hơn giá giữa");
@@ -1895,16 +2093,36 @@ mod tests {
     #[test]
     fn imbalance_has_correct_sign() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Buy, price: 100, quantity: 900 });
-        s.apply(&EventKind::AddOrder { id: 2, side: Side::Sell, price: 102, quantity: 100 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Buy,
+            price: 100,
+            quantity: 900,
+        });
+        s.apply(&EventKind::AddOrder {
+            id: 2,
+            side: Side::Sell,
+            price: 102,
+            quantity: 100,
+        });
         assert!((s.imbalance().unwrap() - 0.8).abs() < 1e-9);
     }
 
     #[test]
     fn aggressive_order_fills_immediately() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Sell, price: 100, quantity: 30 });
-        s.apply(&EventKind::AddOrder { id: 2, side: Side::Sell, price: 101, quantity: 30 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Sell,
+            price: 100,
+            quantity: 30,
+        });
+        s.apply(&EventKind::AddOrder {
+            id: 2,
+            side: Side::Sell,
+            price: 101,
+            quantity: 30,
+        });
         let fill = s.place_our_order(OurOrder {
             id: 9,
             side: Side::Buy,
@@ -1922,7 +2140,12 @@ mod tests {
     #[test]
     fn passive_order_waits_in_queue() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Buy, price: 100, quantity: 200 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Buy,
+            price: 100,
+            quantity: 200,
+        });
         let fill = s.place_our_order(OurOrder {
             id: 9,
             side: Side::Buy,
@@ -1934,13 +2157,21 @@ mod tests {
         assert!(fill.is_empty(), "không cắt qua thì không khớp ngay");
         let resting = s.our_resting_orders();
         assert_eq!(resting.len(), 1);
-        assert_eq!(resting[0].prev_quantity, 200, "phải ghi nhận hàng đứng trước");
+        assert_eq!(
+            resting[0].prev_quantity, 200,
+            "phải ghi nhận hàng đứng trước"
+        );
     }
 
     #[test]
     fn queue_ahead_is_served_first() {
         let mut s = LitVenue::new();
-        s.apply(&EventKind::AddOrder { id: 1, side: Side::Buy, price: 100, quantity: 100 });
+        s.apply(&EventKind::AddOrder {
+            id: 1,
+            side: Side::Buy,
+            price: 100,
+            quantity: 100,
+        });
         s.place_our_order(OurOrder {
             id: 9,
             side: Side::Buy,
@@ -1951,7 +2182,10 @@ mod tests {
         });
         // Thị trường khớp 60: 100 đơn vị đứng trước chưa tiêu hết → ta không được gì.
         let k = s.on_market_trade(100, 60);
-        assert!(k.is_empty(), "hàng đứng trước phải tiêu hết trước khi tới lượt ta");
+        assert!(
+            k.is_empty(),
+            "hàng đứng trước phải tiêu hết trước khi tới lượt ta"
+        );
         // Khớp thêm 120: vượt qua 40 còn lại của hàng → ta được khớp phần dư.
         let k2 = s.on_market_trade(100, 120);
         assert!(!k2.is_empty());
@@ -1973,7 +2207,10 @@ mod tests {
         let b = ChainVenue::new(1_000_000, 1_000_000, 30);
         let small = b.effective_price(true, 1_000).unwrap();
         let large = b.effective_price(true, 100_000).unwrap();
-        assert!(large < small, "khối lượng lớn nhận được ít hơn trên mỗi đơn vị");
+        assert!(
+            large < small,
+            "khối lượng lớn nhận được ít hơn trên mỗi đơn vị"
+        );
     }
 
     #[test]
@@ -2021,7 +2258,10 @@ mod tests {
         v.record(Side::Sell, 120, 15); // đóng 10, mở bán 5
         assert_eq!(v.quantity, -5);
         assert!((v.realized_pnl - 200.0).abs() < 1e-9);
-        assert!((v.cost_basis - 120.0).abs() < 1e-9, "phần dư mở ở giá giao dịch");
+        assert!(
+            (v.cost_basis - 120.0).abs() < 1e-9,
+            "phần dư mở ở giá giao dịch"
+        );
     }
 
     #[test]
@@ -2045,7 +2285,10 @@ mod tests {
             price: 0,
             quantity: 10,
         };
-        assert_eq!(c.check(&y, 0, 0, 0, 0.0, 0), Err(RejectReason::PriceOutOfBand));
+        assert_eq!(
+            c.check(&y, 0, 0, 0, 0.0, 0),
+            Err(RejectReason::PriceOutOfBand)
+        );
     }
 
     #[test]
@@ -2059,7 +2302,10 @@ mod tests {
             quantity: 50,
         };
         // Vị thế 0 nhưng đã treo mua 60 → thêm 50 nữa là vượt 100.
-        assert_eq!(c.check(&y, 0, 60, 0, 0.0, 0), Err(RejectReason::PositionLimit));
+        assert_eq!(
+            c.check(&y, 0, 60, 0, 0.0, 0),
+            Err(RejectReason::PositionLimit)
+        );
         // Không có lệnh treo thì cùng lệnh đó qua được.
         assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
     }
@@ -2074,7 +2320,10 @@ mod tests {
             price: 100,
             quantity: 10,
         };
-        assert_eq!(c.check(&y, 0, 0, 0, -1_500.0, 0), Err(RejectReason::LossLimit));
+        assert_eq!(
+            c.check(&y, 0, 0, 0, -1_500.0, 0),
+            Err(RejectReason::LossLimit)
+        );
     }
 
     #[test]
@@ -2087,7 +2336,10 @@ mod tests {
             price: 100,
             quantity: 1,
         };
-        assert_eq!(c.check(&y, 0, 0, 0, 0.0, 0), Err(RejectReason::KillSwitchOn));
+        assert_eq!(
+            c.check(&y, 0, 0, 0, 0.0, 0),
+            Err(RejectReason::KillSwitchOn)
+        );
     }
 
     #[test]
@@ -2095,7 +2347,10 @@ mod tests {
         let mut c = RiskGate::typical();
         c.kill_switch_on = true;
         // Ngắt khẩn cấp phải cho HUỶ qua — nếu không, bạn không rút được chân ra.
-        let y = Intent::CancelOrder { san: Venue::Lit, id: 1 };
+        let y = Intent::CancelOrder {
+            san: Venue::Lit,
+            id: 1,
+        };
         assert!(c.check(&y, 0, 0, 0, 0.0, 0).is_ok());
     }
 
@@ -2125,7 +2380,10 @@ mod tests {
         let a: Vec<u64> = (0..100).map(|i| m.order_latency(i)).collect();
         let b: Vec<u64> = (0..100).map(|i| m.order_latency(i)).collect();
         assert_eq!(a, b, "cùng hạt giống phải cho cùng độ trễ");
-        assert!(a.iter().any(|&x| x != a[0]), "phải có dao động thật, không phải hằng số");
+        assert!(
+            a.iter().any(|&x| x != a[0]),
+            "phải có dao động thật, không phải hằng số"
+        );
         assert!(a.iter().all(|&x| x >= m.outbound_ns));
     }
 
@@ -2136,7 +2394,11 @@ mod tests {
         for i in 0..8_000u64 {
             thung[(hash64(i) % 8) as usize] += 1;
         }
-        assert!(thung.iter().all(|&c| c > 800 && c < 1_200), "phân bố phải đều: {:?}", thung);
+        assert!(
+            thung.iter().all(|&c| c > 800 && c < 1_200),
+            "phân bố phải đều: {:?}",
+            thung
+        );
     }
 
     // ---- biểu đồ ----
@@ -2149,9 +2411,15 @@ mod tests {
             h.record(if i % 1000 == 0 { 50_000 } else { 300 });
         }
         assert!(h.percentile(0.50) <= 512);
-        assert!(h.percentile(0.99) <= 512, "p99 vẫn nhanh — cái đuôi bị giấu");
+        assert!(
+            h.percentile(0.99) <= 512,
+            "p99 vẫn nhanh — cái đuôi bị giấu"
+        );
         assert_eq!(h.max, 50_000);
-        assert!(h.max as f64 > h.mean() * 100.0, "max lớn hơn trung bình >100×");
+        assert!(
+            h.max as f64 > h.mean() * 100.0,
+            "max lớn hơn trung bình >100×"
+        );
     }
 
     // ---- chiến lược ----
@@ -2160,8 +2428,14 @@ mod tests {
     fn maker_skews_quotes_by_inventory() {
         let snap = MarketSnapshot {
             timestamp: 10_000_000,
-            lit_buy: Some(PriceLevel { price: 100, quantity: 50 }),
-            lit_sell: Some(PriceLevel { price: 104, quantity: 50 }),
+            lit_buy: Some(PriceLevel {
+                price: 100,
+                quantity: 50,
+            }),
+            lit_sell: Some(PriceLevel {
+                price: 104,
+                quantity: 50,
+            }),
             lit_micro_price: Some(102.0),
             lit_imbalance: Some(0.0),
             chain_price: 102.0,
@@ -2173,14 +2447,21 @@ mod tests {
             let y = m.evaluate(&snap, position);
             y.iter()
                 .filter_map(|x| match x {
-                    Intent::Place { side: Side::Buy, price, .. } => Some(*price),
+                    Intent::Place {
+                        side: Side::Buy,
+                        price,
+                        ..
+                    } => Some(*price),
                     _ => None,
                 })
                 .next()
         };
         let duplicate_loop = lay(0).unwrap();
         let long = lay(80).unwrap();
-        assert!(long < duplicate_loop, "dài vị thế → hạ giá mua để bớt mua thêm");
+        assert!(
+            long < duplicate_loop,
+            "dài vị thế → hạ giá mua để bớt mua thêm"
+        );
     }
 
     #[test]
@@ -2189,8 +2470,14 @@ mod tests {
         // báo giá sẽ cắt qua và biến nhà tạo lập thành người chủ động.
         let snap = MarketSnapshot {
             timestamp: 10_000_000,
-            lit_buy: Some(PriceLevel { price: 101, quantity: 50 }),
-            lit_sell: Some(PriceLevel { price: 102, quantity: 50 }),
+            lit_buy: Some(PriceLevel {
+                price: 101,
+                quantity: 50,
+            }),
+            lit_sell: Some(PriceLevel {
+                price: 102,
+                quantity: 50,
+            }),
             lit_micro_price: Some(101.5),
             lit_imbalance: Some(0.0),
             chain_price: 101.5,
@@ -2202,7 +2489,9 @@ mod tests {
             if let Intent::Place { side, price, .. } = y {
                 match side {
                     Side::Buy => assert!(price < 102, "giá mua {} cắt qua giá bán tốt nhất", price),
-                    Side::Sell => assert!(price > 101, "giá bán {} cắt qua giá mua tốt nhất", price),
+                    Side::Sell => {
+                        assert!(price > 101, "giá bán {} cắt qua giá mua tốt nhất", price)
+                    }
                 }
             }
         }
@@ -2228,8 +2517,14 @@ mod tests {
     fn maker_stops_quoting_at_limit() {
         let snap = MarketSnapshot {
             timestamp: 10_000_000,
-            lit_buy: Some(PriceLevel { price: 100, quantity: 50 }),
-            lit_sell: Some(PriceLevel { price: 104, quantity: 50 }),
+            lit_buy: Some(PriceLevel {
+                price: 100,
+                quantity: 50,
+            }),
+            lit_sell: Some(PriceLevel {
+                price: 104,
+                quantity: 50,
+            }),
             lit_micro_price: Some(102.0),
             lit_imbalance: Some(0.0),
             chain_price: 102.0,
@@ -2239,7 +2534,13 @@ mod tests {
         let mut m = ManagedMaker::new(100);
         let y = m.evaluate(&snap, 100);
         assert!(
-            y.iter().all(|x| !matches!(x, Intent::Place { side: Side::Buy, .. })),
+            y.iter().all(|x| !matches!(
+                x,
+                Intent::Place {
+                    side: Side::Buy,
+                    ..
+                }
+            )),
             "chạm hạn mức dài thì không báo giá mua nữa"
         );
     }
@@ -2248,8 +2549,14 @@ mod tests {
     fn arb_fires_only_above_threshold() {
         let mut snap = MarketSnapshot {
             timestamp: 1,
-            lit_buy: Some(PriceLevel { price: 10_000, quantity: 100 }),
-            lit_sell: Some(PriceLevel { price: 10_002, quantity: 100 }),
+            lit_buy: Some(PriceLevel {
+                price: 10_000,
+                quantity: 100,
+            }),
+            lit_sell: Some(PriceLevel {
+                price: 10_002,
+                quantity: 100,
+            }),
             lit_micro_price: Some(10_001.0),
             lit_imbalance: Some(0.0),
             chain_price: 10_001.0,
@@ -2257,17 +2564,29 @@ mod tests {
             chain_reserve_y: 10_001,
         };
         let mut c = CrossVenueArb::new(50.0);
-        assert!(c.evaluate(&snap, 0).is_empty(), "hai sàn ngang giá → không giao dịch");
+        assert!(
+            c.evaluate(&snap, 0).is_empty(),
+            "hai sàn ngang giá → không giao dịch"
+        );
 
         snap.chain_price = 10_001.0 * 1.02; // lệch 200 bp
         let y = c.evaluate(&snap, 0);
         assert_eq!(y.len(), 1);
         match y[0] {
-            Intent::PlaceHedged { san, side, hedge_on, .. } => {
+            Intent::PlaceHedged {
+                san,
+                side,
+                hedge_on,
+                ..
+            } => {
                 // Chân KHÔNG CHẮC (sổ lệnh) chạy trước; chân chắc chắn (AMM)
                 // chỉ phòng vệ đúng phần thực sự khớp.
                 assert_eq!(san, Venue::Lit);
-                assert_eq!(side, Side::Buy, "chuỗi khối đắt hơn → mua chân truyền thống");
+                assert_eq!(
+                    side,
+                    Side::Buy,
+                    "chuỗi khối đắt hơn → mua chân truyền thống"
+                );
                 assert_eq!(hedge_on, Venue::Chain);
             }
             _ => panic!("chênh lệch giá phải là lệnh có phòng vệ, không phải lệnh trần"),
@@ -2303,7 +2622,10 @@ mod tests {
         let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
         h.run(&p, &mut cls);
         assert!(h.metrics.intent_count > 0, "chiến lược phải sinh ra ý định");
-        assert!(h.metrics.orders_sent > 0, "phải có lệnh ra khỏi cổng rủi ro");
+        assert!(
+            h.metrics.orders_sent > 0,
+            "phải có lệnh ra khỏi cổng rủi ro"
+        );
         assert!(h.metrics.fill_count > 0, "phải có lệnh được khớp");
     }
 
@@ -2317,7 +2639,11 @@ mod tests {
                 Box::new(CrossVenueArb::new(50.0)),
             ];
             h.run(&p, &mut cls);
-            (h.order_log.clone(), h.position.quantity, h.position.realized_pnl.to_bits())
+            (
+                h.order_log.clone(),
+                h.position.quantity,
+                h.position.realized_pnl.to_bits(),
+            )
         };
         assert_eq!(run(), run(), "hai lần chạy phải trùng khớp từng bit");
     }
@@ -2421,8 +2747,14 @@ mod tests {
         let x0 = h.venue_chain.reserve_x;
         let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
         h.run(&p, &mut cls);
-        assert_ne!(h.venue_chain.reserve_x, x0, "sự kiện chuỗi khối phải làm bể đổi");
-        assert!(h.venue_lit.mid().is_some(), "sổ truyền thống phải có hai chiều");
+        assert_ne!(
+            h.venue_chain.reserve_x, x0,
+            "sự kiện chuỗi khối phải làm bể đổi"
+        );
+        assert!(
+            h.venue_lit.mid().is_some(),
+            "sổ truyền thống phải có hai chiều"
+        );
     }
 
     #[test]
@@ -2432,7 +2764,10 @@ mod tests {
         let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
         h.run(&p, &mut cls);
         assert_eq!(h.order_log.len() as u64, h.metrics.orders_sent);
-        assert_eq!(h.metrics.intent_count, h.metrics.orders_sent + h.metrics.orders_blocked);
+        assert_eq!(
+            h.metrics.intent_count,
+            h.metrics.orders_sent + h.metrics.orders_blocked
+        );
     }
 
     #[test]
@@ -2472,6 +2807,9 @@ mod tests {
             h.run(&p, &mut cls);
             h.metrics.intent_count
         };
-        assert!(count(2) > count(1), "thêm chiến lược thì phải có thêm ý định");
+        assert!(
+            count(2) > count(1),
+            "thêm chiến lược thì phải có thêm ý định"
+        );
     }
 }

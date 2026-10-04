@@ -7,14 +7,12 @@
 // ============================================================================
 
 macro_rules! phep_tinh_noi_bo {
-    ( $input:expr ) => {
-        {
-            // Khai báo biến tạm mang tên 'temp_value' bên trong macro
-            let temp_value = $input * 2;
-            println!("  [Trong Macro] gia_tri_tam = {}", temp_value);
-            temp_value + 5
-        }
-    };
+    ( $input:expr_2021 ) => {{
+        // Khai báo biến tạm mang tên 'temp_value' bên trong macro
+        let temp_value = $input * 2;
+        println!("  [Trong Macro] gia_tri_tam = {}", temp_value);
+        temp_value + 5
+    }};
 }
 
 // ============================================================================
@@ -25,7 +23,7 @@ macro_rules! phep_tinh_noi_bo {
 macro_rules! tao_ma_tran {
     (
         $(
-            [ $( $phan_tu:expr ),* $(,)? ]
+            [ $( $phan_tu:expr_2021 ),* $(,)? ]
         ),*
         $(,)?
     ) => {
@@ -44,22 +42,22 @@ macro_rules! tao_ma_tran {
 /// Macro đệ quy phân tích chuỗi phép toán từ trái sang phải
 macro_rules! tinh_bieu_thuc_chuoi {
     // Nhánh dừng cơ sở: Chỉ còn lại duy nhất một giá trị
-    ( $value:expr ) => {
+    ( $value:expr_2021 ) => {
         $value
     };
 
     // Nhánh đệ quy phép cộng: (x + y + rest...) -> tinh_bieu_thuc_chuoi!((x + y) + rest...)
-    ( $x:expr, +, $y:expr $(, $below:tt )* ) => {
+    ( $x:expr_2021, +, $y:expr_2021 $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x + $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép nhân: (x * y * rest...)
-    ( $x:expr, *, $y:expr $(, $below:tt )* ) => {
+    ( $x:expr_2021, *, $y:expr_2021 $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x * $y) $(, $below )* )
     };
 
     // Nhánh đệ quy phép trừ: (x - y - rest...)
-    ( $x:expr, -, $y:expr $(, $below:tt )* ) => {
+    ( $x:expr_2021, -, $y:expr_2021 $(, $below:tt )* ) => {
         tinh_bieu_thuc_chuoi!( ($x - $y) $(, $below )* )
     };
 }
@@ -95,7 +93,7 @@ fn main() {
     let ma_tran_diem = tao_ma_tran![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
+        [70, 80, 90], // Dấu phẩy ở cuối khối ma trận hợp lệ
     ];
 
     for (row_index, queue) in ma_tran_diem.iter().enumerate() {
@@ -109,7 +107,10 @@ fn main() {
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
     let computed_result = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", computed_result);
+    println!(
+        "Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}",
+        computed_result
+    );
     assert_eq!(computed_result, 24);
 
     println!("\n============================================================");

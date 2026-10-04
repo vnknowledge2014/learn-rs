@@ -21,19 +21,36 @@ pub type Quantity = u32;
 pub type OrderId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side { Buy, Sell }
+pub enum Side {
+    Buy,
+    Sell,
+}
 
 impl Side {
     pub fn inverse(self) -> Side {
-        match self { Side::Buy => Side::Sell, Side::Sell => Side::Buy }
+        match self {
+            Side::Buy => Side::Sell,
+            Side::Sell => Side::Buy,
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarketEvent {
-    AddOrder { id: OrderId, side: Side, price: Price, quantity: Quantity },
-    CancelOrder { id: OrderId },
-    Fill { price: Price, quantity: Quantity, side_aggressive: Side },
+    AddOrder {
+        id: OrderId,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+    },
+    CancelOrder {
+        id: OrderId,
+    },
+    Fill {
+        price: Price,
+        quantity: Quantity,
+        side_aggressive: Side,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,7 +62,11 @@ pub struct RecordedFrame {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ReadError { TruncatedFrame, DoDaiVoLy(u32), MaSuKienLa(u8) }
+pub enum ReadError {
+    TruncatedFrame,
+    DoDaiVoLy(u32),
+    MaSuKienLa(u8),
+}
 
 /// Bộ ghi phiên. Trong hệ thống thật, `content` được xả xuống đĩa theo lô;
 /// ở đây giữ trong bộ nhớ để kiểm thử được.
@@ -58,23 +79,30 @@ pub struct SessionRecorder {
 }
 
 impl SessionRecorder {
-    pub fn new() -> Self { SessionRecorder::default() }
+    pub fn new() -> Self {
+        SessionRecorder::default()
+    }
 
     pub fn record(&mut self, k: &RecordedFrame) {
         let than = encode_event(&k.event);
         let length = (8 + than.len()) as u32;
         self.content.extend_from_slice(&length.to_be_bytes());
-        self.content.extend_from_slice(&k.timestamp_nanos.to_be_bytes());
+        self.content
+            .extend_from_slice(&k.timestamp_nanos.to_be_bytes());
         self.content.extend_from_slice(&than);
         self.num_frames += 1;
-        if self.first_timestamp.is_none() { self.first_timestamp = Some(k.timestamp_nanos); }
+        if self.first_timestamp.is_none() {
+            self.first_timestamp = Some(k.timestamp_nanos);
+        }
         self.last_timestamp = k.timestamp_nanos;
     }
 
     pub fn time_amount_nanos(&self) -> u64 {
         self.last_timestamp - self.first_timestamp.unwrap_or(0)
     }
-    pub fn so_byte(&self) -> usize { self.content.len() }
+    pub fn so_byte(&self) -> usize {
+        self.content.len()
+    }
 
     /// Đọc lại toàn bộ. Trả lỗi nếu bản ghi bị cắt cụt — chuyện thường gặp khi
     /// tiến trình ghi bị giết giữa chừng, và phải xử lý được chứ không panic.
@@ -83,13 +111,22 @@ impl SessionRecorder {
         let b = &self.content;
         let mut i = 0usize;
         while i < b.len() {
-            if i + 4 > b.len() { return Err(ReadError::TruncatedFrame); }
+            if i + 4 > b.len() {
+                return Err(ReadError::TruncatedFrame);
+            }
             let length = u32::from_be_bytes(b[i..i + 4].try_into().unwrap()) as usize;
-            if length < 8 { return Err(ReadError::DoDaiVoLy(length as u32)); }
-            if i + 4 + length > b.len() { return Err(ReadError::TruncatedFrame); }
+            if length < 8 {
+                return Err(ReadError::DoDaiVoLy(length as u32));
+            }
+            if i + 4 + length > b.len() {
+                return Err(ReadError::TruncatedFrame);
+            }
             let timestamp_nanos = u64::from_be_bytes(b[i + 4..i + 12].try_into().unwrap());
             let event = decode_event(&b[i + 12..i + 4 + length])?;
-            ra.push(RecordedFrame { timestamp_nanos, event });
+            ra.push(RecordedFrame {
+                timestamp_nanos,
+                event,
+            });
             i += 4 + length;
         }
         Ok(ra)
@@ -99,7 +136,12 @@ impl SessionRecorder {
 fn encode_event(sk: &MarketEvent) -> Vec<u8> {
     let mut v = Vec::with_capacity(24);
     match sk {
-        MarketEvent::AddOrder { id, side, price, quantity } => {
+        MarketEvent::AddOrder {
+            id,
+            side,
+            price,
+            quantity,
+        } => {
             v.push(b'A');
             v.extend_from_slice(&id.to_be_bytes());
             v.push(if *side == Side::Buy { b'B' } else { b'S' });
@@ -110,23 +152,37 @@ fn encode_event(sk: &MarketEvent) -> Vec<u8> {
             v.push(b'X');
             v.extend_from_slice(&id.to_be_bytes());
         }
-        MarketEvent::Fill { price, quantity, side_aggressive } => {
+        MarketEvent::Fill {
+            price,
+            quantity,
+            side_aggressive,
+        } => {
             v.push(b'T');
             v.extend_from_slice(&price.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
-            v.push(if *side_aggressive == Side::Buy { b'B' } else { b'S' });
+            v.push(if *side_aggressive == Side::Buy {
+                b'B'
+            } else {
+                b'S'
+            });
         }
     }
     v
 }
 
 fn decode_event(b: &[u8]) -> Result<MarketEvent, ReadError> {
-    if b.is_empty() { return Err(ReadError::TruncatedFrame); }
+    if b.is_empty() {
+        return Err(ReadError::TruncatedFrame);
+    }
     let can = match b[0] {
-        b'A' => 22, b'X' => 9, b'T' => 14,
+        b'A' => 22,
+        b'X' => 9,
+        b'T' => 14,
         x => return Err(ReadError::MaSuKienLa(x)),
     };
-    if b.len() < can { return Err(ReadError::TruncatedFrame); }
+    if b.len() < can {
+        return Err(ReadError::TruncatedFrame);
+    }
     Ok(match b[0] {
         b'A' => MarketEvent::AddOrder {
             id: u64::from_be_bytes(b[1..9].try_into().unwrap()),
@@ -153,12 +209,22 @@ fn decode_event(b: &[u8]) -> Result<MarketEvent, ReadError> {
 // liệu cho ra kết quả giống hệt nhau, bất kể máy nhanh hay chậm.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct VirtualClock { pub bay_gio_ns: u64 }
+pub struct VirtualClock {
+    pub bay_gio_ns: u64,
+}
 
 impl VirtualClock {
-    pub fn new(start: u64) -> Self { VirtualClock { bay_gio_ns: start } }
-    pub fn advance(&mut self, ns: u64) { if ns > self.bay_gio_ns { self.bay_gio_ns = ns; } }
-    pub fn adder_gate(&mut self, ns: u64) { self.bay_gio_ns += ns; }
+    pub fn new(start: u64) -> Self {
+        VirtualClock { bay_gio_ns: start }
+    }
+    pub fn advance(&mut self, ns: u64) {
+        if ns > self.bay_gio_ns {
+            self.bay_gio_ns = ns;
+        }
+    }
+    pub fn adder_gate(&mut self, ns: u64) {
+        self.bay_gio_ns += ns;
+    }
 }
 
 /// Tốc độ phát lại.
@@ -200,19 +266,35 @@ pub struct LatencyModel {
 }
 
 impl LatencyModel {
-    pub fn no_latency() -> Self { LatencyModel { in_nanos: 0, out_nanos: 0, jitter_ns: 0 } }
+    pub fn no_latency() -> Self {
+        LatencyModel {
+            in_nanos: 0,
+            out_nanos: 0,
+            jitter_ns: 0,
+        }
+    }
     pub fn colocated() -> Self {
-        LatencyModel { in_nanos: 5_000, out_nanos: 8_000, jitter_ns: 2_000 }
+        LatencyModel {
+            in_nanos: 5_000,
+            out_nanos: 8_000,
+            jitter_ns: 2_000,
+        }
     }
     pub fn qua_internet() -> Self {
-        LatencyModel { in_nanos: 8_000_000, out_nanos: 12_000_000, jitter_ns: 5_000_000 }
+        LatencyModel {
+            in_nanos: 8_000_000,
+            out_nanos: 12_000_000,
+            jitter_ns: 5_000_000,
+        }
     }
 
     /// Tổng thời gian từ lúc SÀN phát tin tới lúc lệnh của ta ĐẾN SÀN.
     /// Đây chính là "tick-to-trade" mà Chương 74 mổ xẻ.
     pub fn round_trip_ns(&self, nonce: u64) -> u64 {
         // Dao động tất định: cùng chuỗi sự kiện luôn cho cùng độ trễ
-        let d = if self.jitter_ns == 0 { 0 } else {
+        let d = if self.jitter_ns == 0 {
+            0
+        } else {
             (nonce.wrapping_mul(2654435761) >> 32) % self.jitter_ns
         };
         self.in_nanos + self.out_nanos + d
@@ -232,21 +314,34 @@ pub struct ReducedBook {
 impl ReducedBook {
     pub fn them(&mut self, c: Side, g: Price, kl: u64) {
         let (bd, k) = match c {
-            Side::Buy => (&mut self.buy, -g), Side::Sell => (&mut self.ban, g) };
+            Side::Buy => (&mut self.buy, -g),
+            Side::Sell => (&mut self.ban, g),
+        };
         *bd.entry(k).or_insert(0) += kl;
     }
     pub fn bot(&mut self, c: Side, g: Price, kl: u64) {
         let (bd, k) = match c {
-            Side::Buy => (&mut self.buy, -g), Side::Sell => (&mut self.ban, g) };
+            Side::Buy => (&mut self.buy, -g),
+            Side::Sell => (&mut self.ban, g),
+        };
         if let Some(v) = bd.get_mut(&k) {
             *v = v.saturating_sub(kl);
-            if *v == 0 { bd.remove(&k); }
+            if *v == 0 {
+                bd.remove(&k);
+            }
         }
     }
-    pub fn best_bid(&self) -> Option<Price> { self.buy.keys().next().map(|k| -k) }
-    pub fn best_ask(&self) -> Option<Price> { self.ban.keys().next().copied() }
+    pub fn best_bid(&self) -> Option<Price> {
+        self.buy.keys().next().map(|k| -k)
+    }
+    pub fn best_ask(&self) -> Option<Price> {
+        self.ban.keys().next().copied()
+    }
     pub fn quantity(&self, c: Side, g: Price) -> u64 {
-        let (bd, k) = match c { Side::Buy => (&self.buy, -g), Side::Sell => (&self.ban, g) };
+        let (bd, k) = match c {
+            Side::Buy => (&self.buy, -g),
+            Side::Sell => (&self.ban, g),
+        };
         bd.get(&k).copied().unwrap_or(0)
     }
 }
@@ -270,8 +365,12 @@ pub struct OurOrder {
 }
 
 impl OurOrder {
-    pub fn remaining(&self) -> Quantity { self.quantity - self.filled }
-    pub fn fill_done(&self) -> bool { self.filled >= self.quantity }
+    pub fn remaining(&self) -> Quantity {
+        self.quantity - self.filled
+    }
+    pub fn fill_done(&self) -> bool {
+        self.filled >= self.quantity
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -284,25 +383,40 @@ pub struct OurFill {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Position { pub quantity: i64, pub tien_mat: i64 }
+pub struct Position {
+    pub quantity: i64,
+    pub tien_mat: i64,
+}
 
 impl Position {
     pub fn compose(self, k: Position) -> Position {
-        Position { quantity: self.quantity + k.quantity, tien_mat: self.tien_mat + k.tien_mat }
+        Position {
+            quantity: self.quantity + k.quantity,
+            tien_mat: self.tien_mat + k.tien_mat,
+        }
     }
     pub fn from_fill(c: Side, g: Price, sl: Quantity) -> Position {
         let first = if c == Side::Buy { 1 } else { -1 };
-        Position { quantity: first * sl as i64, tien_mat: -first * g * sl as i64 }
+        Position {
+            quantity: first * sl as i64,
+            tien_mat: -first * g * sl as i64,
+        }
     }
-    pub fn net_value(&self, gia_tt: Price) -> i64 { self.tien_mat + self.quantity * gia_tt }
+    pub fn net_value(&self, gia_tt: Price) -> i64 {
+        self.tien_mat + self.quantity * gia_tt
+    }
 }
 
 /// Chiến lược nhìn thấy gì và làm gì. Thuần tuý: cùng đầu vào → cùng đầu ra.
 pub trait ReplayStrategy {
     fn name(&self) -> &str;
     /// Gọi sau MỖI sự kiện thị trường. Trả về các lệnh muốn gửi.
-    fn on_event(&mut self, clock: &VirtualClock, so: &ReducedBook,
-                      position: &Position) -> Vec<(Side, Price, Quantity)>;
+    fn on_event(
+        &mut self,
+        clock: &VirtualClock,
+        so: &ReducedBook,
+        position: &Position,
+    ) -> Vec<(Side, Price, Quantity)>;
     /// Gọi khi một lệnh của ta được khớp.
     fn when_can_fill(&mut self, _k: &OurFill) {}
 }
@@ -360,7 +474,9 @@ impl Replayer {
         let mut prev_do = clock.bay_gio_ns;
 
         for (i, k) in cac_khung.iter().enumerate() {
-            real_wait += self.speed.wall_delay(k.timestamp_nanos.saturating_sub(prev_do));
+            real_wait += self
+                .speed
+                .wall_delay(k.timestamp_nanos.saturating_sub(prev_do));
             prev_do = k.timestamp_nanos;
             clock.advance(k.timestamp_nanos);
 
@@ -368,15 +484,19 @@ impl Replayer {
             //     không phải lúc ta quyết định. Đây là chi tiết quyết định tính
             //     thực tế của toàn bộ mô phỏng.
             for l in resting_orders.iter_mut() {
-                if l.timestamp_toi_venue_nanos <= clock.bay_gio_ns
-                    && l.queue_ahead == u64::MAX {
+                if l.timestamp_toi_venue_nanos <= clock.bay_gio_ns && l.queue_ahead == u64::MAX {
                     l.queue_ahead = so.quantity(l.side, l.price);
                 }
             }
 
             // --- Áp dụng sự kiện thị trường ---
             match &k.event {
-                MarketEvent::AddOrder { id, side, price, quantity } => {
+                MarketEvent::AddOrder {
+                    id,
+                    side,
+                    price,
+                    quantity,
+                } => {
                     so.them(*side, *price, *quantity as u64);
                     market_orders.insert(*id, (*side, *price, *quantity as u64));
                 }
@@ -385,7 +505,11 @@ impl Replayer {
                         so.bot(c, g, kl);
                     }
                 }
-                MarketEvent::Fill { price, quantity, side_aggressive } => {
+                MarketEvent::Fill {
+                    price,
+                    quantity,
+                    side_aggressive,
+                } => {
                     last_price = *price;
                     // Lệnh khớp ăn vào bên THỤ ĐỘNG
                     let side_is_hidden = side_aggressive.inverse();
@@ -394,33 +518,54 @@ impl Replayer {
                     let mut con_an = *quantity as u64;
                     let mut can_remove: Vec<OrderId> = Vec::new();
                     for (m, (c, g, kl)) in market_orders.iter_mut() {
-                        if con_an == 0 { break; }
-                        if *c != side_is_hidden || *g != *price { continue; }
+                        if con_an == 0 {
+                            break;
+                        }
+                        if *c != side_is_hidden || *g != *price {
+                            continue;
+                        }
                         let an = con_an.min(*kl);
                         *kl -= an;
                         con_an -= an;
-                        if *kl == 0 { can_remove.push(*m); }
+                        if *kl == 0 {
+                            can_remove.push(*m);
+                        }
                     }
-                    for m in can_remove { market_orders.remove(&m); }
+                    for m in can_remove {
+                        market_orders.remove(&m);
+                    }
 
                     // Lệnh của ta cùng bên thụ động, cùng giá thì có thể tới lượt
                     let mut con = *quantity as u64;
                     for l in resting_orders.iter_mut() {
-                        if con == 0 { break; }
-                        if l.fill_done() || l.side != side_is_hidden || l.price != *price { continue; }
-                        if l.timestamp_toi_venue_nanos > clock.bay_gio_ns { continue; }
+                        if con == 0 {
+                            break;
+                        }
+                        if l.fill_done() || l.side != side_is_hidden || l.price != *price {
+                            continue;
+                        }
+                        if l.timestamp_toi_venue_nanos > clock.bay_gio_ns {
+                            continue;
+                        }
                         // Trước hết phải "ăn" hết phần đứng trước ta
                         let prev_hidden = con.min(l.queue_ahead);
                         l.queue_ahead -= prev_hidden;
                         con -= prev_hidden;
-                        if l.queue_ahead > 0 || con == 0 { continue; }
+                        if l.queue_ahead > 0 || con == 0 {
+                            continue;
+                        }
                         // Giờ mới tới lượt ta
                         let fill = con.min(l.remaining() as u64) as Quantity;
                         if fill > 0 {
                             l.filled += fill;
                             con -= fill as u64;
-                            let kq = OurFill { order_id: l.id, side: l.side, price: *price,
-                                                 quantity: fill, timestamp_nanos: clock.bay_gio_ns };
+                            let kq = OurFill {
+                                order_id: l.id,
+                                side: l.side,
+                                price: *price,
+                                quantity: fill,
+                                timestamp_nanos: clock.bay_gio_ns,
+                            };
                             position = position.compose(Position::from_fill(l.side, *price, fill));
                             cl.when_can_fill(&kq);
                             fills.push(kq);
@@ -431,11 +576,18 @@ impl Replayer {
 
             // --- Chiến lược quyết định ---
             for (side, price, sl) in cl.on_event(&clock, &so, &position) {
-                if sl == 0 { continue; }
+                if sl == 0 {
+                    continue;
+                }
                 resting_orders.push(OurOrder {
-                    id: id_ke, side, price, quantity: sl, filled: 0,
+                    id: id_ke,
+                    side,
+                    price,
+                    quantity: sl,
+                    filled: 0,
                     queue_ahead: u64::MAX, // chốt sau, lúc tới sàn
-                    timestamp_toi_venue_nanos: clock.bay_gio_ns + self.latency.round_trip_ns(i as u64),
+                    timestamp_toi_venue_nanos: clock.bay_gio_ns
+                        + self.latency.round_trip_ns(i as u64),
                 });
                 id_ke += 1;
                 orders_sent += 1;
@@ -451,7 +603,7 @@ impl Replayer {
             last_position: position,
             fills,
             virtual_time_nanos: cac_khung.last().map_or(0, |k| k.timestamp_nanos)
-                             - cac_khung.first().map_or(0, |k| k.timestamp_nanos),
+                - cac_khung.first().map_or(0, |k| k.timestamp_nanos),
             real_wait_nanos: real_wait,
         }
     }
@@ -471,18 +623,27 @@ pub struct NaiveMaker {
 }
 
 impl ReplayStrategy for NaiveMaker {
-    fn name(&self) -> &str { "Tạo lập thị trường đơn giản" }
+    fn name(&self) -> &str {
+        "Tạo lập thị trường đơn giản"
+    }
 
-    fn on_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
-        -> Vec<(Side, Price, Quantity)>
-    {
+    fn on_event(
+        &mut self,
+        _dh: &VirtualClock,
+        so: &ReducedBook,
+        vt: &Position,
+    ) -> Vec<(Side, Price, Quantity)> {
         self.step += 1;
-        if self.step % self.every_n_events != 0 { return vec![]; }
+        if self.step % self.every_n_events != 0 {
+            return vec![];
+        }
         let (m, b) = match (so.best_bid(), so.best_ask()) {
             (Some(m), Some(b)) => (m, b),
             _ => return vec![],
         };
-        if b <= m { return vec![]; } // sổ chéo hoặc khoá → đứng ngoài
+        if b <= m {
+            return vec![];
+        } // sổ chéo hoặc khoá → đứng ngoài
         let mid = (m + b) / 2;
         let mut ra = Vec::new();
         // Kiểm soát tồn kho: đã ôm nhiều thì thôi mua thêm
@@ -513,25 +674,49 @@ pub struct ManagedMaker {
 }
 
 impl ManagedMaker {
-    pub fn new(tick_offset: Price, order_size: Quantity, max_position: i64, every_n_events: u64) -> Self {
-        ManagedMaker { tick_offset, order_size, max_position, step: 0,
-                           every_n_events, resting_bid: 0, resting_ask: 0 }
+    pub fn new(
+        tick_offset: Price,
+        order_size: Quantity,
+        max_position: i64,
+        every_n_events: u64,
+    ) -> Self {
+        ManagedMaker {
+            tick_offset,
+            order_size,
+            max_position,
+            step: 0,
+            every_n_events,
+            resting_bid: 0,
+            resting_ask: 0,
+        }
     }
-    pub fn is_pending(&self) -> (i64, i64) { (self.resting_bid, self.resting_ask) }
+    pub fn is_pending(&self) -> (i64, i64) {
+        (self.resting_bid, self.resting_ask)
+    }
 }
 
 impl ReplayStrategy for ManagedMaker {
-    fn name(&self) -> &str { "Tạo lập có kiểm soát tồn kho" }
+    fn name(&self) -> &str {
+        "Tạo lập có kiểm soát tồn kho"
+    }
 
-    fn on_event(&mut self, _dh: &VirtualClock, so: &ReducedBook, vt: &Position)
-        -> Vec<(Side, Price, Quantity)>
-    {
+    fn on_event(
+        &mut self,
+        _dh: &VirtualClock,
+        so: &ReducedBook,
+        vt: &Position,
+    ) -> Vec<(Side, Price, Quantity)> {
         self.step += 1;
-        if self.step % self.every_n_events != 0 { return vec![]; }
+        if self.step % self.every_n_events != 0 {
+            return vec![];
+        }
         let (m, b) = match (so.best_bid(), so.best_ask()) {
-            (Some(m), Some(b)) => (m, b), _ => return vec![],
+            (Some(m), Some(b)) => (m, b),
+            _ => return vec![],
         };
-        if b <= m { return vec![]; }
+        if b <= m {
+            return vec![];
+        }
         let mid = (m + b) / 2;
         let co = self.order_size as i64;
         let mut ra = Vec::new();
@@ -558,9 +743,17 @@ impl ReplayStrategy for ManagedMaker {
 
 pub struct SitOut;
 impl ReplayStrategy for SitOut {
-    fn name(&self) -> &str { "Đứng ngoài" }
-    fn on_event(&mut self, _: &VirtualClock, _: &ReducedBook, _: &Position)
-        -> Vec<(Side, Price, Quantity)> { vec![] }
+    fn name(&self) -> &str {
+        "Đứng ngoài"
+    }
+    fn on_event(
+        &mut self,
+        _: &VirtualClock,
+        _: &ReducedBook,
+        _: &Position,
+    ) -> Vec<(Side, Price, Quantity)> {
+        vec![]
+    }
 }
 
 // ============================================================================
@@ -585,37 +778,72 @@ pub fn gen_recorded_session(event_count: usize, hat_giong: u64) -> Vec<RecordedF
     let mut ra = Vec::with_capacity(event_count);
 
     for _ in 0..event_count {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         t += 10_000 + (s >> 20) % 500_000; // 10 µs – 0,5 ms giữa các sự kiện
         let r = (s >> 33) % 100;
 
         // Quá nhiều lệnh cũ thì buộc phải rút bớt, bất kể bốc trúng gì
         if song.len() >= TRAN_LENH_SONG {
             if let Some(cu) = song.pop_front() {
-                ra.push(RecordedFrame { timestamp_nanos: t, event: MarketEvent::CancelOrder { id: cu } });
+                ra.push(RecordedFrame {
+                    timestamp_nanos: t,
+                    event: MarketEvent::CancelOrder { id: cu },
+                });
                 continue;
             }
         }
 
         if r < 55 || song.is_empty() {
-            let side = if (s >> 41) % 2 == 0 { Side::Buy } else { Side::Sell };
+            let side = if (s >> 41) % 2 == 0 {
+                Side::Buy
+            } else {
+                Side::Sell
+            };
             let lech = 1 + ((s >> 45) % 10) as i64;
-            let price = match side { Side::Buy => mid - lech, Side::Sell => mid + lech };
+            let price = match side {
+                Side::Buy => mid - lech,
+                Side::Sell => mid + lech,
+            };
             let sl = 100 + ((s >> 49) % 5) as u32 * 100;
-            ra.push(RecordedFrame { timestamp_nanos: t,
-                event: MarketEvent::AddOrder { id, side, price, quantity: sl } });
+            ra.push(RecordedFrame {
+                timestamp_nanos: t,
+                event: MarketEvent::AddOrder {
+                    id,
+                    side,
+                    price,
+                    quantity: sl,
+                },
+            });
             song.push_back(id);
             id += 1;
         } else if r < 85 {
             // Rút báo giá CŨ NHẤT — đây là chi tiết giữ cho sổ không bị chéo
             let cu = song.pop_front().unwrap();
-            ra.push(RecordedFrame { timestamp_nanos: t, event: MarketEvent::CancelOrder { id: cu } });
+            ra.push(RecordedFrame {
+                timestamp_nanos: t,
+                event: MarketEvent::CancelOrder { id: cu },
+            });
         } else {
-            let side = if (s >> 41) % 2 == 0 { Side::Buy } else { Side::Sell };
-            let price = match side { Side::Buy => mid + 1, Side::Sell => mid - 1 };
+            let side = if (s >> 41) % 2 == 0 {
+                Side::Buy
+            } else {
+                Side::Sell
+            };
+            let price = match side {
+                Side::Buy => mid + 1,
+                Side::Sell => mid - 1,
+            };
             let sl = 100 + ((s >> 49) % 5) as u32 * 100;
-            ra.push(RecordedFrame { timestamp_nanos: t,
-                event: MarketEvent::Fill { price, quantity: sl, side_aggressive: side } });
+            ra.push(RecordedFrame {
+                timestamp_nanos: t,
+                event: MarketEvent::Fill {
+                    price,
+                    quantity: sl,
+                    side_aggressive: side,
+                },
+            });
             // Giá đi lang thang một chút quanh mốc ban đầu
             mid += if (s >> 57) % 2 == 0 { 1 } else { -1 };
             mid = mid.clamp(8_350, 8_450);
@@ -632,65 +860,111 @@ fn main() {
     println!("\n1. GHI LẠI MỘT PHIÊN");
     let session = gen_recorded_session(20_000, 2024);
     let mut record = SessionRecorder::new();
-    for k in &session { record.record(k); }
-    println!("   {} sự kiện · {} byte · {:.2} byte/sự kiện",
-             record.num_frames, record.so_byte(), record.so_byte() as f64 / record.num_frames as f64);
-    println!("   Thời lượng phiên: {:.3} giây", record.time_amount_nanos() as f64 / 1e9);
+    for k in &session {
+        record.record(k);
+    }
+    println!(
+        "   {} sự kiện · {} byte · {:.2} byte/sự kiện",
+        record.num_frames,
+        record.so_byte(),
+        record.so_byte() as f64 / record.num_frames as f64
+    );
+    println!(
+        "   Thời lượng phiên: {:.3} giây",
+        record.time_amount_nanos() as f64 / 1e9
+    );
     let doc = record.doc_lai().unwrap();
     println!("   Đọc lại khớp bản gốc từng bit: {}", doc == session);
 
     println!("\n2. BẢN GHI BỊ CẮT CỤT — phải báo lỗi, không được panic");
     let mut hong = SessionRecorder::new();
-    for k in session.iter().take(5) { hong.record(k); }
+    for k in session.iter().take(5) {
+        hong.record(k);
+    }
     hong.content.truncate(hong.content.len() - 3); // giả lập tiến trình bị giết
     println!("   Đọc bản ghi cụt → {:?}", hong.doc_lai().unwrap_err());
 
     println!("\n3. TỐC ĐỘ PHÁT LẠI");
     let mut cl = SitOut;
-    for (name, td) in [("thời gian thực", ReplaySpeed::RealTime),
-                      ("nhanh 10 lần  ", ReplaySpeed::HeSo(10.0)),
-                      ("nhanh 1000 lần", ReplaySpeed::HeSo(1000.0)),
-                      ("nhanh nhất    ", ReplaySpeed::AsFastAsPossible)] {
+    for (name, td) in [
+        ("thời gian thực", ReplaySpeed::RealTime),
+        ("nhanh 10 lần  ", ReplaySpeed::HeSo(10.0)),
+        ("nhanh 1000 lần", ReplaySpeed::HeSo(1000.0)),
+        ("nhanh nhất    ", ReplaySpeed::AsFastAsPossible),
+    ] {
         let kq = Replayer::new(LatencyModel::no_latency(), td).run(&session, &mut cl);
-        println!("   {} → thời gian ảo {:.2}s · phải chờ thật {:.4}s",
-                 name, kq.virtual_time_nanos as f64 / 1e9, kq.real_wait_nanos as f64 / 1e9);
+        println!(
+            "   {} → thời gian ảo {:.2}s · phải chờ thật {:.4}s",
+            name,
+            kq.virtual_time_nanos as f64 / 1e9,
+            kq.real_wait_nanos as f64 / 1e9
+        );
     }
-    println!("   → Quét 1000 tổ hợp tham số: chạy đúng nhịp mất ~{:.0} phút,",
-             record.time_amount_nanos() as f64 / 1e9 * 1000.0 / 60.0);
+    println!(
+        "   → Quét 1000 tổ hợp tham số: chạy đúng nhịp mất ~{:.0} phút,",
+        record.time_amount_nanos() as f64 / 1e9 * 1000.0 / 60.0
+    );
     println!("     chạy ở chế độ nhanh nhất chỉ mất vài giây.");
 
     println!("\n4. ĐỘ TRỄ ĂN MẤT LỢI NHUẬN NHƯ THẾ NÀO");
-    for (name, dt) in [("không độ trễ  ", LatencyModel::no_latency()),
-                      ("đặt thuê riêng", LatencyModel::colocated()),
-                      ("qua Internet  ", LatencyModel::qua_internet())] {
-        let mut cl = NaiveMaker { tick_offset: 2, order_size: 100,
-                                     max_position: 500, step: 0, every_n_events: 50 };
+    for (name, dt) in [
+        ("không độ trễ  ", LatencyModel::no_latency()),
+        ("đặt thuê riêng", LatencyModel::colocated()),
+        ("qua Internet  ", LatencyModel::qua_internet()),
+    ] {
+        let mut cl = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 500,
+            step: 0,
+            every_n_events: 50,
+        };
         let kq = Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&session, &mut cl);
-        println!("   {} → khứ hồi {:>9} ns · gửi {:>4} lệnh · khớp {:>3} · lãi {:>8} tick",
-                 name, dt.round_trip_ns(0), kq.orders_sent, kq.filled_orders, kq.last_value);
+        println!(
+            "   {} → khứ hồi {:>9} ns · gửi {:>4} lệnh · khớp {:>3} · lãi {:>8} tick",
+            name,
+            dt.round_trip_ns(0),
+            kq.orders_sent,
+            kq.filled_orders,
+            kq.last_value
+        );
     }
     println!("   → Cùng chiến lược, cùng dữ liệu. Chỉ khác chỗ ngồi so với sàn.");
 
     println!("\n5. KIỂM SOÁT TỒN KHO — đếm cả lệnh ĐANG TREO");
     let tran = 300i64;
-    let mut ngay_tho = NaiveMaker { tick_offset: 1, order_size: 100,
-                                       max_position: tran, step: 0, every_n_events: 5 };
+    let mut ngay_tho = NaiveMaker {
+        tick_offset: 1,
+        order_size: 100,
+        max_position: tran,
+        step: 0,
+        every_n_events: 5,
+    };
     let a = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
         .run(&session, &mut ngay_tho);
     let mut chat_che = ManagedMaker::new(1, 100, tran, 5);
     let b = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
         .run(&session, &mut chat_che);
     println!("   Trần đặt ra: {}", tran);
-    println!("   Chỉ nhìn vị thế đã khớp → vị thế cuối {:>6}  ← VƯỢT TRẦN",
-             a.last_position.quantity);
-    println!("   Đếm cả lệnh đang treo   → vị thế cuối {:>6}  ← trong trần",
-             b.last_position.quantity);
+    println!(
+        "   Chỉ nhìn vị thế đã khớp → vị thế cuối {:>6}  ← VƯỢT TRẦN",
+        a.last_position.quantity
+    );
+    println!(
+        "   Đếm cả lệnh đang treo   → vị thế cuối {:>6}  ← trong trần",
+        b.last_position.quantity
+    );
     println!("   → Lệnh đã gửi mà chưa khớp VẪN LÀ RỦI RO.");
 
     println!("\n6. TÁI LẬP TUYỆT ĐỐI");
     let run = || {
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 500, step: 0, every_n_events: 50 };
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 500,
+            step: 0,
+            every_n_events: 50,
+        };
         Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
             .run(&session, &mut c)
     };
@@ -709,7 +983,9 @@ mod tests {
     fn record_session(n: usize, h: u64) -> (Vec<RecordedFrame>, SessionRecorder) {
         let p = gen_recorded_session(n, h);
         let mut g = SessionRecorder::new();
-        for k in &p { g.record(k); }
+        for k in &p {
+            g.record(k);
+        }
         (p, g)
     }
 
@@ -717,21 +993,42 @@ mod tests {
     #[test]
     fn record_then_read_matches_bit_for_bit() {
         let (p, g) = record_session(2_000, 1);
-        assert_eq!(g.doc_lai().unwrap(), p, "vòng ghi–đọc phải khép kín tuyệt đối");
+        assert_eq!(
+            g.doc_lai().unwrap(),
+            p,
+            "vòng ghi–đọc phải khép kín tuyệt đối"
+        );
         assert_eq!(g.num_frames, 2_000);
     }
 
     #[test]
     fn every_event_kind_round_trips() {
         let all = vec![
-            MarketEvent::AddOrder { id: 1, side: Side::Buy, price: 8_450, quantity: 100 },
-            MarketEvent::AddOrder { id: 2, side: Side::Sell, price: -7, quantity: 1 },
+            MarketEvent::AddOrder {
+                id: 1,
+                side: Side::Buy,
+                price: 8_450,
+                quantity: 100,
+            },
+            MarketEvent::AddOrder {
+                id: 2,
+                side: Side::Sell,
+                price: -7,
+                quantity: 1,
+            },
             MarketEvent::CancelOrder { id: 999 },
-            MarketEvent::Fill { price: 8_400, quantity: 50, side_aggressive: Side::Sell },
+            MarketEvent::Fill {
+                price: 8_400,
+                quantity: 50,
+                side_aggressive: Side::Sell,
+            },
         ];
         for sk in all {
             let mut g = SessionRecorder::new();
-            let k = RecordedFrame { timestamp_nanos: 123_456_789, event: sk };
+            let k = RecordedFrame {
+                timestamp_nanos: 123_456_789,
+                event: sk,
+            };
             g.record(&k);
             assert_eq!(g.doc_lai().unwrap(), vec![k]);
         }
@@ -744,8 +1041,14 @@ mod tests {
         for cat in 1..12usize {
             let mut h = SessionRecorder::new();
             h.content = g.content[..g.content.len() - cat].to_vec();
-            assert!(matches!(h.doc_lai(), Err(ReadError::TruncatedFrame) | Err(ReadError::MaSuKienLa(_))),
-                    "cắt {} byte cuối phải báo lỗi", cat);
+            assert!(
+                matches!(
+                    h.doc_lai(),
+                    Err(ReadError::TruncatedFrame) | Err(ReadError::MaSuKienLa(_))
+                ),
+                "cắt {} byte cuối phải báo lỗi",
+                cat
+            );
         }
     }
 
@@ -776,12 +1079,30 @@ mod tests {
         // Thân: A = 1+8+1+8+4 = 22 · X = 1+8 = 9 · T = 1+8+4+1 = 14
         let ktra = |sk: MarketEvent, mong: usize| {
             let mut g = SessionRecorder::new();
-            g.record(&RecordedFrame { timestamp_nanos: 1, event: sk });
+            g.record(&RecordedFrame {
+                timestamp_nanos: 1,
+                event: sk,
+            });
             assert_eq!(g.so_byte(), mong);
         };
-        ktra(MarketEvent::AddOrder { id: 1, side: Side::Buy, price: 1, quantity: 1 }, 34);
+        ktra(
+            MarketEvent::AddOrder {
+                id: 1,
+                side: Side::Buy,
+                price: 1,
+                quantity: 1,
+            },
+            34,
+        );
         ktra(MarketEvent::CancelOrder { id: 1 }, 21);
-        ktra(MarketEvent::Fill { price: 1, quantity: 1, side_aggressive: Side::Buy }, 26);
+        ktra(
+            MarketEvent::Fill {
+                price: 1,
+                quantity: 1,
+                side_aggressive: Side::Buy,
+            },
+            26,
+        );
     }
 
     #[test]
@@ -790,11 +1111,18 @@ mod tests {
         let byte_moi_su_kien = g.so_byte() as f64 / g.num_frames as f64;
         // Phiên trộn ~70% thêm lệnh (34 B), 15% huỷ (21 B), 15% khớp (26 B)
         // → trung bình khoảng 31 byte.
-        assert!((21.0..32.0).contains(&byte_moi_su_kien),
-                "trung bình {:.2} byte/sự kiện, kỳ vọng trong khoảng 21–32", byte_moi_su_kien);
+        assert!(
+            (21.0..32.0).contains(&byte_moi_su_kien),
+            "trung bình {:.2} byte/sự kiện, kỳ vọng trong khoảng 21–32",
+            byte_moi_su_kien
+        );
         // Một phiên sôi động 50 triệu sự kiện vẫn chỉ khoảng 1,5 GB
         let ca_ngay_gb = 50_000_000.0 * byte_moi_su_kien / 1e9;
-        assert!(ca_ngay_gb < 2.0, "cả ngày ~{:.2} GB — thừa sức lưu trữ", ca_ngay_gb);
+        assert!(
+            ca_ngay_gb < 2.0,
+            "cả ngày ~{:.2} GB — thừa sức lưu trữ",
+            ca_ngay_gb
+        );
     }
 
     // ---------- Đồng hồ ảo ----------
@@ -814,11 +1142,17 @@ mod tests {
     fn replay_speed_computes_the_right_wall_delay() {
         assert_eq!(ReplaySpeed::RealTime.wall_delay(1_000_000), 1_000_000);
         assert_eq!(ReplaySpeed::HeSo(2.0).wall_delay(1_000_000), 500_000);
-        assert_eq!(ReplaySpeed::HeSo(0.5).wall_delay(1_000_000), 2_000_000,
-                   "hệ số < 1 để chạy CHẬM lại mà quan sát kỹ");
+        assert_eq!(
+            ReplaySpeed::HeSo(0.5).wall_delay(1_000_000),
+            2_000_000,
+            "hệ số < 1 để chạy CHẬM lại mà quan sát kỹ"
+        );
         assert_eq!(ReplaySpeed::AsFastAsPossible.wall_delay(1_000_000), 0);
-        assert_eq!(ReplaySpeed::HeSo(0.0).wall_delay(1_000_000), 0,
-                   "hệ số 0 không được gây chia cho 0");
+        assert_eq!(
+            ReplaySpeed::HeSo(0.0).wall_delay(1_000_000),
+            0,
+            "hệ số 0 không được gây chia cho 0"
+        );
     }
 
     #[test]
@@ -826,9 +1160,18 @@ mod tests {
         // Tua nhanh chỉ đổi thời gian ta phải ngồi chờ, KHÔNG đổi những gì xảy ra.
         let p = gen_recorded_session(3_000, 5);
         let mut kq: Vec<ReplayResult> = Vec::new();
-        for td in [ReplaySpeed::RealTime, ReplaySpeed::HeSo(100.0), ReplaySpeed::AsFastAsPossible] {
-            let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                        max_position: 500, step: 0, every_n_events: 25 };
+        for td in [
+            ReplaySpeed::RealTime,
+            ReplaySpeed::HeSo(100.0),
+            ReplaySpeed::AsFastAsPossible,
+        ] {
+            let mut c = NaiveMaker {
+                tick_offset: 2,
+                order_size: 100,
+                max_position: 500,
+                step: 0,
+                every_n_events: 25,
+            };
             kq.push(Replayer::new(LatencyModel::colocated(), td).run(&p, &mut c));
         }
         assert_eq!(kq[0].fills, kq[1].fills);
@@ -843,7 +1186,11 @@ mod tests {
     fn latency_is_deterministic_per_sequence_number() {
         let d = LatencyModel::colocated();
         for i in 0..100u64 {
-            assert_eq!(d.round_trip_ns(i), d.round_trip_ns(i), "cùng sự kiện → cùng độ trễ");
+            assert_eq!(
+                d.round_trip_ns(i),
+                d.round_trip_ns(i),
+                "cùng sự kiện → cùng độ trễ"
+            );
         }
         assert_eq!(LatencyModel::no_latency().round_trip_ns(42), 0);
     }
@@ -854,8 +1201,13 @@ mod tests {
         let min = d.in_nanos + d.out_nanos;
         for i in 0..1_000u64 {
             let x = d.round_trip_ns(i);
-            assert!(x >= min && x < min + d.jitter_ns,
-                    "độ trễ {} nằm ngoài [{}, {})", x, min, min + d.jitter_ns);
+            assert!(
+                x >= min && x < min + d.jitter_ns,
+                "độ trễ {} nằm ngoài [{}, {})",
+                x,
+                min,
+                min + d.jitter_ns
+            );
         }
     }
 
@@ -886,14 +1238,21 @@ mod tests {
         let a = Position::from_fill(Side::Buy, 100, 10);
         let b = Position::from_fill(Side::Sell, 110, 5);
         let c = Position::from_fill(Side::Buy, 90, 3);
-        assert_eq!(a.compose(b).compose(c), a.compose(b.compose(c)), "luật kết hợp");
+        assert_eq!(
+            a.compose(b).compose(c),
+            a.compose(b.compose(c)),
+            "luật kết hợp"
+        );
         assert_eq!(a.compose(Position::default()), a, "luật đơn vị");
     }
 
     #[test]
     fn buy_low_sell_high_is_profitable() {
-        let v = Position::from_fill(Side::Buy, 8_000, 100)
-            .compose(Position::from_fill(Side::Sell, 8_500, 100));
+        let v = Position::from_fill(Side::Buy, 8_000, 100).compose(Position::from_fill(
+            Side::Sell,
+            8_500,
+            100,
+        ));
         assert_eq!(v.quantity, 0);
         assert_eq!(v.net_value(0), 50_000);
     }
@@ -905,40 +1264,78 @@ mod tests {
         // ra, các mức giá cũ không bao giờ mất, và chỉ sau vài nghìn sự kiện
         // là sổ chéo vĩnh viễn — chiến lược đứng ngoài mà ta không hiểu vì sao.
         let p = gen_recorded_session(20_000, 2024);
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 500, step: 0, every_n_events: 50 };
-        let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-            .run(&p, &mut c);
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 500,
+            step: 0,
+            every_n_events: 50,
+        };
+        let kq =
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
         // 20 000 sự kiện, cứ 50 sự kiện lại chào giá → phải gửi hàng trăm lệnh
-        assert!(kq.orders_sent > 50,
-                "chỉ gửi {} lệnh — dấu hiệu sổ bị chéo và chiến lược đứng ngoài",
-                kq.orders_sent);
-        assert!(kq.filled_orders > 20, "và phải khớp được kha khá, thực tế {}", kq.filled_orders);
+        assert!(
+            kq.orders_sent > 50,
+            "chỉ gửi {} lệnh — dấu hiệu sổ bị chéo và chiến lược đứng ngoài",
+            kq.orders_sent
+        );
+        assert!(
+            kq.filled_orders > 20,
+            "và phải khớp được kha khá, thực tế {}",
+            kq.filled_orders
+        );
     }
 
     #[test]
     fn cancels_actually_remove_liquidity() {
         let frame = vec![
-            RecordedFrame { timestamp_nanos: 1_000,
-                event: MarketEvent::AddOrder { id: 1, side: Side::Buy,
-                                                     price: 8_400, quantity: 500 } },
-            RecordedFrame { timestamp_nanos: 2_000,
-                event: MarketEvent::AddOrder { id: 2, side: Side::Sell,
-                                                     price: 8_410, quantity: 300 } },
-            RecordedFrame { timestamp_nanos: 3_000, event: MarketEvent::CancelOrder { id: 1 } },
+            RecordedFrame {
+                timestamp_nanos: 1_000,
+                event: MarketEvent::AddOrder {
+                    id: 1,
+                    side: Side::Buy,
+                    price: 8_400,
+                    quantity: 500,
+                },
+            },
+            RecordedFrame {
+                timestamp_nanos: 2_000,
+                event: MarketEvent::AddOrder {
+                    id: 2,
+                    side: Side::Sell,
+                    price: 8_410,
+                    quantity: 300,
+                },
+            },
+            RecordedFrame {
+                timestamp_nanos: 3_000,
+                event: MarketEvent::CancelOrder { id: 1 },
+            },
         ];
         // Dùng một chiến lược chỉ quan sát để đọc trạng thái sổ ở bước cuối
-        struct Soi { last_bid: Option<Price>, last_ask: Option<Price> }
+        struct Soi {
+            last_bid: Option<Price>,
+            last_ask: Option<Price>,
+        }
         impl ReplayStrategy for Soi {
-            fn name(&self) -> &str { "soi sổ" }
-            fn on_event(&mut self, _: &VirtualClock, so: &ReducedBook, _: &Position)
-                -> Vec<(Side, Price, Quantity)> {
+            fn name(&self) -> &str {
+                "soi sổ"
+            }
+            fn on_event(
+                &mut self,
+                _: &VirtualClock,
+                so: &ReducedBook,
+                _: &Position,
+            ) -> Vec<(Side, Price, Quantity)> {
                 self.last_bid = so.best_bid();
                 self.last_ask = so.best_ask();
                 vec![]
             }
         }
-        let mut s = Soi { last_bid: None, last_ask: None };
+        let mut s = Soi {
+            last_bid: None,
+            last_ask: None,
+        };
         Replayer::new(LatencyModel::no_latency(), ReplaySpeed::AsFastAsPossible)
             .run(&frame, &mut s);
         assert_eq!(s.last_bid, None, "lệnh mua đã bị huỷ, bên mua phải rỗng");
@@ -951,10 +1348,14 @@ mod tests {
         // quả kiểm định đều vô nghĩa vì không so sánh được với nhau.
         let p = gen_recorded_session(5_000, 2024);
         let run = || {
-            let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                        max_position: 500, step: 0, every_n_events: 30 };
-            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-                .run(&p, &mut c)
+            let mut c = NaiveMaker {
+                tick_offset: 2,
+                order_size: 100,
+                max_position: 500,
+                step: 0,
+                every_n_events: 30,
+            };
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c)
         };
         assert_eq!(run(), run());
         assert_eq!(run(), run(), "ba lần vẫn phải giống hệt");
@@ -976,15 +1377,23 @@ mod tests {
         // Nếu mô phỏng cho lệnh khớp ngay lúc quyết định, ta đã "nhìn trộm
         // tương lai" ở mức tinh vi nhất — và kết quả sẽ đẹp một cách giả tạo.
         let p = gen_recorded_session(3_000, 11);
-        let mut c = NaiveMaker { tick_offset: 1, order_size: 100,
-                                    max_position: 10_000, step: 0, every_n_events: 10 };
+        let mut c = NaiveMaker {
+            tick_offset: 1,
+            order_size: 100,
+            max_position: 10_000,
+            step: 0,
+            every_n_events: 10,
+        };
         let dt = LatencyModel::qua_internet();
         let kq = Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
         let first = p.first().unwrap().timestamp_nanos;
         let min = dt.in_nanos + dt.out_nanos;
         for k in &kq.fills {
-            assert!(k.timestamp_nanos >= first + min,
-                    "khớp lúc {} là quá sớm — lệnh chưa kịp bay tới sàn", k.timestamp_nanos);
+            assert!(
+                k.timestamp_nanos >= first + min,
+                "khớp lúc {} là quá sớm — lệnh chưa kịp bay tới sàn",
+                k.timestamp_nanos
+            );
         }
     }
 
@@ -993,38 +1402,62 @@ mod tests {
         // Đây là lý do các hãng trả rất nhiều tiền để đặt máy cạnh sàn.
         let p = gen_recorded_session(8_000, 2024);
         let count_fill = |dt: LatencyModel| {
-            let mut c = NaiveMaker { tick_offset: 1, order_size: 100,
-                                        max_position: 10_000, step: 0, every_n_events: 10 };
-            Replayer::new(dt, ReplaySpeed::AsFastAsPossible).run(&p, &mut c).filled_orders
+            let mut c = NaiveMaker {
+                tick_offset: 1,
+                order_size: 100,
+                max_position: 10_000,
+                step: 0,
+                every_n_events: 10,
+            };
+            Replayer::new(dt, ReplaySpeed::AsFastAsPossible)
+                .run(&p, &mut c)
+                .filled_orders
         };
         let fast = count_fill(LatencyModel::colocated());
         let cham = count_fill(LatencyModel::qua_internet());
-        assert!(fast >= cham,
-                "gần sàn phải khớp được ít nhất bằng: {} so với {}", fast, cham);
+        assert!(
+            fast >= cham,
+            "gần sàn phải khớp được ít nhất bằng: {} so với {}",
+            fast,
+            cham
+        );
     }
 
     #[test]
     fn final_position_equals_the_sum_of_fills() {
         // Kế toán phải khớp: vị thế = tổng mọi lần khớp, không thừa không thiếu.
         let p = gen_recorded_session(5_000, 17);
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 1_000, step: 0, every_n_events: 20 };
-        let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-            .run(&p, &mut c);
-        let dung_lai = kq.fills.iter()
-            .fold(Position::default(), |a, k| a.compose(Position::from_fill(k.side, k.price, k.quantity)));
-        assert_eq!(dung_lai, kq.last_position,
-                   "dựng lại vị thế từ nhật ký khớp phải ra đúng vị thế cuối");
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 1_000,
+            step: 0,
+            every_n_events: 20,
+        };
+        let kq =
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
+        let dung_lai = kq.fills.iter().fold(Position::default(), |a, k| {
+            a.compose(Position::from_fill(k.side, k.price, k.quantity))
+        });
+        assert_eq!(
+            dung_lai, kq.last_position,
+            "dựng lại vị thế từ nhật ký khớp phải ra đúng vị thế cuối"
+        );
         assert_eq!(kq.filled_orders as usize, kq.fills.len());
     }
 
     #[test]
     fn every_fill_is_valid() {
         let p = gen_recorded_session(5_000, 13);
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 1_000, step: 0, every_n_events: 20 };
-        let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-            .run(&p, &mut c);
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 1_000,
+            step: 0,
+            every_n_events: 20,
+        };
+        let kq =
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
         for k in &kq.fills {
             assert!(k.quantity > 0, "không được ghi nhận khớp khối lượng 0");
             assert!(k.price > 0);
@@ -1039,13 +1472,21 @@ mod tests {
         // lượt và vị thế nhảy vọt qua trần.
         let p = gen_recorded_session(10_000, 23);
         let tran = 300i64;
-        let mut c = NaiveMaker { tick_offset: 1, order_size: 100,
-                                    max_position: tran, step: 0, every_n_events: 5 };
-        let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-            .run(&p, &mut c);
-        assert!(kq.last_position.quantity.abs() > tran,
-                "chính vì bỏ qua lệnh đang treo mà vị thế {} vượt trần {}",
-                kq.last_position.quantity, tran);
+        let mut c = NaiveMaker {
+            tick_offset: 1,
+            order_size: 100,
+            max_position: tran,
+            step: 0,
+            every_n_events: 5,
+        };
+        let kq =
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
+        assert!(
+            kq.last_position.quantity.abs() > tran,
+            "chính vì bỏ qua lệnh đang treo mà vị thế {} vượt trần {}",
+            kq.last_position.quantity,
+            tran
+        );
     }
 
     #[test]
@@ -1054,11 +1495,18 @@ mod tests {
         let p = gen_recorded_session(10_000, 23);
         let tran = 300i64;
         let mut c = ManagedMaker::new(1, 100, tran, 5);
-        let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
-            .run(&p, &mut c);
-        assert!(kq.last_position.quantity.abs() <= tran,
-                "vị thế cuối {} phải nằm trong trần {}", kq.last_position.quantity, tran);
-        assert!(kq.orders_sent > 0, "vẫn phải giao dịch được, không phải đứng im");
+        let kq =
+            Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible).run(&p, &mut c);
+        assert!(
+            kq.last_position.quantity.abs() <= tran,
+            "vị thế cuối {} phải nằm trong trần {}",
+            kq.last_position.quantity,
+            tran
+        );
+        assert!(
+            kq.orders_sent > 0,
+            "vẫn phải giao dịch được, không phải đứng im"
+        );
     }
 
     #[test]
@@ -1069,8 +1517,13 @@ mod tests {
             let mut c = ManagedMaker::new(1, 100, tran, 5);
             let kq = Replayer::new(LatencyModel::colocated(), ReplaySpeed::AsFastAsPossible)
                 .run(&p, &mut c);
-            assert!(kq.last_position.quantity.abs() <= tran,
-                    "hạt giống {}: vị thế {} vượt trần {}", hat, kq.last_position.quantity, tran);
+            assert!(
+                kq.last_position.quantity.abs() <= tran,
+                "hạt giống {}: vị thế {} vượt trần {}",
+                hat,
+                kq.last_position.quantity,
+                tran
+            );
         }
     }
 
@@ -1079,18 +1532,37 @@ mod tests {
         let mut s = ReducedBook::default();
         s.them(Side::Buy, 8_500, 100);
         s.them(Side::Sell, 8_400, 100);
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 500, step: 0, every_n_events: 1 };
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 500,
+            step: 0,
+            every_n_events: 1,
+        };
         let order = c.on_event(&VirtualClock::new(0), &s, &Position::default());
-        assert!(order.is_empty(), "sổ chéo → phải đứng ngoài, không được coi là cơ hội");
+        assert!(
+            order.is_empty(),
+            "sổ chéo → phải đứng ngoài, không được coi là cơ hội"
+        );
     }
 
     #[test]
     fn strategy_sends_nothing_on_an_empty_book() {
-        let mut c = NaiveMaker { tick_offset: 2, order_size: 100,
-                                    max_position: 500, step: 0, every_n_events: 1 };
-        assert!(c.on_event(&VirtualClock::new(0), &ReducedBook::default(),
-                                 &Position::default()).is_empty());
+        let mut c = NaiveMaker {
+            tick_offset: 2,
+            order_size: 100,
+            max_position: 500,
+            step: 0,
+            every_n_events: 1,
+        };
+        assert!(
+            c.on_event(
+                &VirtualClock::new(0),
+                &ReducedBook::default(),
+                &Position::default()
+            )
+            .is_empty()
+        );
     }
 
     // ---------- Sinh phiên ----------
@@ -1107,14 +1579,26 @@ mod tests {
     #[test]
     fn generated_session_covers_all_three_event_kinds() {
         let p = gen_recorded_session(5_000, 3);
-        let them = p.iter()
-            .filter(|k| matches!(k.event, MarketEvent::AddOrder { .. })).count();
-        let cancel = p.iter()
-            .filter(|k| matches!(k.event, MarketEvent::CancelOrder { .. })).count();
-        let fill = p.iter()
-            .filter(|k| matches!(k.event, MarketEvent::Fill { .. })).count();
-        assert!(them > 0 && cancel > 0 && fill > 0, "phiên phải có cả ba loại sự kiện");
+        let them = p
+            .iter()
+            .filter(|k| matches!(k.event, MarketEvent::AddOrder { .. }))
+            .count();
+        let cancel = p
+            .iter()
+            .filter(|k| matches!(k.event, MarketEvent::CancelOrder { .. }))
+            .count();
+        let fill = p
+            .iter()
+            .filter(|k| matches!(k.event, MarketEvent::Fill { .. }))
+            .count();
+        assert!(
+            them > 0 && cancel > 0 && fill > 0,
+            "phiên phải có cả ba loại sự kiện"
+        );
         assert_eq!(them + cancel + fill, p.len());
-        assert!(them > fill, "thực tế: đặt lệnh nhiều hơn khớp lệnh rất nhiều");
+        assert!(
+            them > fill,
+            "thực tế: đặt lệnh nhiều hơn khớp lệnh rất nhiều"
+        );
     }
 }

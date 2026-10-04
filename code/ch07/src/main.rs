@@ -31,7 +31,7 @@ fn main() {
 
     // Truyền &thong_tin_xe: Ta chỉ đưa "tấm ảnh chụp" địa chỉ ô nhớ cho hàm mượn
     let length = series_length(&thong_tin_xe);
-    
+
     // Biến thong_tin_xe vẫn còn nguyên quyền sở hữu thuộc về hàm main!
     println!("- Xe máy: '{}'", thong_tin_xe);
     println!("- Số lượng ký tự trong chuỗi thông tin: {}", length);
@@ -64,11 +64,15 @@ fn main() {
     let cau_noi = String::from("Rust an toàn tuyệt đối");
 
     // Lát cắt trỏ vào một phần ô nhớ của chuỗi mà không tạo dữ liệu mới:
-    let first_from: &str = &cau_noi[0..4];    // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
-    let from_two: &str = &cau_noi[5..13];   // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
+    let first_from: &str = &cau_noi[0..4]; // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
+    let from_two: &str = &cau_noi[5..13]; // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
 
     println!("- Câu nói gốc: '{}'", cau_noi);
-    println!("- Từ thứ nhất : '{}' (chiếm {} bytes trên Stack)", first_from, std::mem::size_of_val(&first_from));
+    println!(
+        "- Từ thứ nhất : '{}' (chiếm {} bytes trên Stack)",
+        first_from,
+        std::mem::size_of_val(&first_from)
+    );
     println!("- Từ thứ hai  : '{}'", from_two);
 
     // --- PHẦN 5: CHỨNG MINH TÍNH LINH HOẠT CỦA NLL (NON-LEXICAL LIFETIMES) ---

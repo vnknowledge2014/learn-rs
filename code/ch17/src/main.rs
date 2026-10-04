@@ -40,12 +40,15 @@ where
 {
     println!(">>> [KIỂM TOÁN] Bắt đầu thực thi: {}", ten_tac_vu);
     let timestamp_start = Instant::now();
-    
+
     // Gọi hàm/closure được truyền vào
     let ket_qua = hanh_dong();
-    
+
     let range_time_time = timestamp_start.elapsed();
-    println!(">>> [KIỂM TOÁN] Hoàn thành '{}' trong: {:?}", ten_tac_vu, range_time_time);
+    println!(
+        ">>> [KIỂM TOÁN] Hoàn thành '{}' trong: {:?}",
+        ten_tac_vu, range_time_time
+    );
     ket_qua
 }
 
@@ -83,10 +86,10 @@ pub fn auth_proxy_num(
     // 1. Xác thực và chuẩn hóa Tên đăng nhập bằng chuỗi combinators
     let name_hop_le = profile
         .username
-        .as_deref()                                   // Option<String> -> Option<&str>
-        .map(|s| s.trim())                            // Cắt khoảng trắng
-        .filter(|s| check_name(s))                  // Kiểm tra độ dài hợp lệ
-        .filter(|s| check_banned_words(s))              // Kiểm tra từ cấm
+        .as_deref() // Option<String> -> Option<&str>
+        .map(|s| s.trim()) // Cắt khoảng trắng
+        .filter(|s| check_name(s)) // Kiểm tra độ dài hợp lệ
+        .filter(|s| check_banned_words(s)) // Kiểm tra từ cấm
         .map(|s| s.to_string())
         .ok_or("Tên đăng nhập không hợp lệ hoặc chứa từ cấm!")?; // Lan truyền lỗi phẳng phiu
 
@@ -96,7 +99,7 @@ pub fn auth_proxy_num(
         .as_deref()
         .map(|s| s.trim())
         .filter(|s| s.contains('@') && s.contains('.')) // Điều kiện email cơ bản
-        .map(|s| s.to_lowercase())                      // Viết thường toàn bộ email
+        .map(|s| s.to_lowercase()) // Viết thường toàn bộ email
         .ok_or("Địa chỉ Email sai định dạng!")?;
 
     // 3. Xác thực và chuẩn hóa Tuổi
@@ -104,8 +107,8 @@ pub fn auth_proxy_num(
         .age_series
         .as_deref()
         .map(|s| s.trim())
-        .and_then(|s| s.parse::<u32>().ok())           // Phân tích chuỗi sang u32
-        .filter(|&age| (16..=100).contains(&age))    // Giới hạn độ tuổi từ 16 đến 100
+        .and_then(|s| s.parse::<u32>().ok()) // Phân tích chuỗi sang u32
+        .filter(|&age| (16..=100).contains(&age)) // Giới hạn độ tuổi từ 16 đến 100
         .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
 
     // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
@@ -140,13 +143,17 @@ fn main() {
     let proxy_num_error = RawProfile {
         username: Some(String::from("super_admin")), // Chứa từ cấm 'admin'
         email: Some(String::from("email_khong_hop_le")),
-        age_series: Some(String::from("12")),             // Dưới 16 tuổi
+        age_series: Some(String::from("12")), // Dưới 16 tuổi
     };
 
     // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
     let ket_qua_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
-        auth_proxy_num(&proxy_num_standard, &check_do_long_name, &check_banned_words)
+        auth_proxy_num(
+            &proxy_num_standard,
+            &check_do_long_name,
+            &check_banned_words,
+        )
     });
 
     match ket_qua_1 {

@@ -119,7 +119,10 @@ pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
         poll_iterations += 1;
         match pinned_future.as_mut().poll(&mut context) {
             Poll::Ready(result) => {
-                println!("    [MiniRuntime] Da nhan Poll::Ready o vong lap #{}", poll_iterations);
+                println!(
+                    "    [MiniRuntime] Da nhan Poll::Ready o vong lap #{}",
+                    poll_iterations
+                );
                 return result;
             }
             Poll::Pending => {

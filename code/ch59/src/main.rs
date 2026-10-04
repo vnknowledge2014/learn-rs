@@ -20,11 +20,19 @@ pub trait BalancingStrategy {
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
-pub struct RoundRobin { index: usize }
-impl RoundRobin { pub fn new() -> Self { RoundRobin { index: 0 } } }
+pub struct RoundRobin {
+    index: usize,
+}
+impl RoundRobin {
+    pub fn new() -> Self {
+        RoundRobin { index: 0 }
+    }
+}
 impl BalancingStrategy for RoundRobin {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        if server.is_empty() { return None; }
+        if server.is_empty() {
+            return None;
+        }
         let m = &server[self.index % server.len()];
         self.index += 1;
         Some(m)
@@ -40,19 +48,31 @@ impl BalancingStrategy for LeastConnections {
 }
 
 /// Xoay vòng có trọng số (Weighted): máy mạnh nhận nhiều hơn theo tỷ lệ trọng số.
-pub struct WeightedRoundRobin { count: u32 }
-impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
+pub struct WeightedRoundRobin {
+    count: u32,
+}
+impl WeightedRoundRobin {
+    pub fn new() -> Self {
+        WeightedRoundRobin { count: 0 }
+    }
+}
 impl BalancingStrategy for WeightedRoundRobin {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        if server.is_empty() { return None; }
+        if server.is_empty() {
+            return None;
+        }
         let tong: u32 = server.iter().map(|m| m.weight).sum();
-        if tong == 0 { return server.first(); }
+        if tong == 0 {
+            return server.first();
+        }
         let level = self.count % tong;
         self.count += 1;
         let mut accumulate = 0;
         for m in server {
             accumulate += m.weight;
-            if level < accumulate { return Some(m); }
+            if level < accumulate {
+                return Some(m);
+            }
         }
         server.last()
     }
@@ -90,11 +110,15 @@ pub struct ConsistentHashRing {
 
 impl ConsistentHashRing {
     pub fn new(so_diem_ao: u32) -> Self {
-        ConsistentHashRing { round: BTreeMap::new(), so_diem_ao }
+        ConsistentHashRing {
+            round: BTreeMap::new(),
+            so_diem_ao,
+        }
     }
     pub fn add_server(&mut self, name: &str) {
         for i in 0..self.so_diem_ao {
-            self.round.insert(bam(&format!("{}#{}", name, i)), name.to_string());
+            self.round
+                .insert(bam(&format!("{}#{}", name, i)), name.to_string());
         }
     }
     pub fn unit_server(&mut self, name: &str) {
@@ -103,9 +127,13 @@ impl ConsistentHashRing {
     /// Tìm máy chủ chịu trách nhiệm cho một khóa: điểm đầu tiên >= hash(khóa),
     /// hoặc quay vòng về đầu (vòng tròn).
     pub fn find_server(&self, key: &str) -> Option<&str> {
-        if self.round.is_empty() { return None; }
+        if self.round.is_empty() {
+            return None;
+        }
         let h = bam(key);
-        self.round.range(h..).next()
+        self.round
+            .range(h..)
+            .next()
             .or_else(|| self.round.iter().next()) // quay vòng
             .map(|(_, v)| v.as_str())
     }
@@ -125,7 +153,11 @@ pub struct TokenBucket {
 
 impl TokenBucket {
     pub fn new(capacity: f64, measured_rate: f64) -> Self {
-        TokenBucket { capacity, token: capacity, measured_rate }
+        TokenBucket {
+            capacity,
+            token: capacity,
+            measured_rate,
+        }
     }
     /// Nạp token theo thời gian trôi qua (giây), rồi thử tiêu 1 token.
     pub fn try_acquire(&mut self, thoi_gian_troi: f64) -> bool {
@@ -137,7 +169,9 @@ impl TokenBucket {
             false
         }
     }
-    pub fn token_con(&self) -> f64 { self.token }
+    pub fn token_con(&self) -> f64 {
+        self.token
+    }
 }
 
 // ============================================================================
@@ -161,7 +195,11 @@ pub struct BoundedQueue<T> {
 
 impl<T> BoundedQueue<T> {
     pub fn new(capacity: usize) -> Self {
-        BoundedQueue { queue: VecDeque::new(), capacity, da_reject: 0 }
+        BoundedQueue {
+            queue: VecDeque::new(),
+            capacity,
+            da_reject: 0,
+        }
     }
     pub fn send(&mut self, viec: T) -> KetQuaNhan {
         if self.queue.len() >= self.capacity {
@@ -172,9 +210,15 @@ impl<T> BoundedQueue<T> {
             KetQuaNhan::DaNhan
         }
     }
-    pub fn nhan(&mut self) -> Option<T> { self.queue.pop_front() }
-    pub fn so_cho(&self) -> usize { self.queue.len() }
-    pub fn num_da_reject(&self) -> u64 { self.da_reject }
+    pub fn nhan(&mut self) -> Option<T> {
+        self.queue.pop_front()
+    }
+    pub fn so_cho(&self) -> usize {
+        self.queue.len()
+    }
+    pub fn num_da_reject(&self) -> u64 {
+        self.da_reject
+    }
 }
 
 fn main() {
@@ -183,43 +227,87 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     let may = vec![
-        Server { name: "web-1".into(), current_connection: 5, weight: 1 },
-        Server { name: "web-2".into(), current_connection: 2, weight: 3 },
-        Server { name: "web-3".into(), current_connection: 8, weight: 1 },
+        Server {
+            name: "web-1".into(),
+            current_connection: 5,
+            weight: 1,
+        },
+        Server {
+            name: "web-2".into(),
+            current_connection: 2,
+            weight: 3,
+        },
+        Server {
+            name: "web-3".into(),
+            current_connection: 8,
+            weight: 1,
+        },
     ];
 
     println!("\n1. CÂN BẰNG TẢI");
     let mut xv = RoundRobin::new();
-    let series: Vec<&str> = (0..5).filter_map(|_| xv.pick(&may).map(|m| m.name.as_str())).collect();
+    let series: Vec<&str> = (0..5)
+        .filter_map(|_| xv.pick(&may).map(|m| m.name.as_str()))
+        .collect();
     println!("   Xoay vòng     : {:?}", series);
-    println!("   Ít kết nối    : {:?}", LeastConnections.pick(&may).map(|m| &m.name)); // web-2 (2 kết nối)
+    println!(
+        "   Ít kết nối    : {:?}",
+        LeastConnections.pick(&may).map(|m| &m.name)
+    ); // web-2 (2 kết nối)
     let mut wt = WeightedRoundRobin::new();
-    let ws: Vec<&str> = (0..5).filter_map(|_| wt.pick(&may).map(|m| m.name.as_str())).collect();
+    let ws: Vec<&str> = (0..5)
+        .filter_map(|_| wt.pick(&may).map(|m| m.name.as_str()))
+        .collect();
     println!("   Trọng số      : {:?} (web-2 xuất hiện nhiều nhất)", ws);
 
     println!("\n2. BĂM NHẤT QUÁN — thêm/bớt máy chủ ít xáo trộn");
     let mut round = ConsistentHashRing::new(100);
-    for m in ["cache-A", "cache-B", "cache-C"] { round.add_server(m); }
+    for m in ["cache-A", "cache-B", "cache-C"] {
+        round.add_server(m);
+    }
     let key = ["user:1", "user:2", "user:3", "user:4", "user:5"];
-    let prev: HashMap<&str, String> = key.iter()
-        .map(|k| (*k, round.find_server(k).unwrap().to_string())).collect();
+    let prev: HashMap<&str, String> = key
+        .iter()
+        .map(|k| (*k, round.find_server(k).unwrap().to_string()))
+        .collect();
     println!("   Trước khi bỏ cache-B: {:?}", prev);
     round.unit_server("cache-B");
     let mut giu_nguyen = 0;
     for k in &key {
         let next = round.find_server(k).unwrap();
-        if next == prev[k] { giu_nguyen += 1; }
+        if next == prev[k] {
+            giu_nguyen += 1;
+        }
     }
-    println!("   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ", giu_nguyen, key.len());
+    println!(
+        "   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ",
+        giu_nguyen,
+        key.len()
+    );
     println!("   → Băm thường (hash % N) sẽ xáo trộn GẦN NHƯ TẤT CẢ khóa!");
 
     println!("\n3. GIỚI HẠN TẦN SUẤT (Token Bucket: 3 token, đổ 1/giây)");
     let mut xor = TokenBucket::new(3.0, 1.0);
     for i in 1..=5 {
-        print!("   Yêu cầu {} (tức thì): {} | ", i, if xor.try_acquire(0.0) { "CHO" } else { "CHẶN" });
+        print!(
+            "   Yêu cầu {} (tức thì): {} | ",
+            i,
+            if xor.try_acquire(0.0) {
+                "CHO"
+            } else {
+                "CHẶN"
+            }
+        );
     }
     println!();
-    println!("   Chờ 2 giây rồi thử lại: {}", if xor.try_acquire(2.0) { "CHO" } else { "CHẶN" });
+    println!(
+        "   Chờ 2 giây rồi thử lại: {}",
+        if xor.try_acquire(2.0) {
+            "CHO"
+        } else {
+            "CHẶN"
+        }
+    );
 
     println!("\n4. BACK-PRESSURE (hàng đợi sức chứa 3)");
     let mut hq: BoundedQueue<u32> = BoundedQueue::new(3);
@@ -239,9 +327,21 @@ mod tests {
 
     fn server3() -> Vec<Server> {
         vec![
-            Server { name: "a".into(), current_connection: 5, weight: 1 },
-            Server { name: "b".into(), current_connection: 2, weight: 3 },
-            Server { name: "c".into(), current_connection: 8, weight: 1 },
+            Server {
+                name: "a".into(),
+                current_connection: 5,
+                weight: 1,
+            },
+            Server {
+                name: "b".into(),
+                current_connection: 2,
+                weight: 3,
+            },
+            Server {
+                name: "c".into(),
+                current_connection: 8,
+                weight: 1,
+            },
         ]
     }
 
@@ -263,7 +363,9 @@ mod tests {
         let m = server3(); // trọng số a=1, b=3, c=1 -> tổng 5
         let mut wt = WeightedRoundRobin::new();
         let mut count: HashMap<String, u32> = HashMap::new();
-        for _ in 0..5 { *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1; }
+        for _ in 0..5 {
+            *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1;
+        }
         assert_eq!(count["b"], 3); // b nhận 3/5
         assert_eq!(count["a"], 1);
         assert_eq!(count["c"], 1);
@@ -272,16 +374,27 @@ mod tests {
     #[test]
     fn consistent_hash_minimizes_remapping() {
         let mut round = ConsistentHashRing::new(150);
-        for m in ["A", "B", "C", "D"] { round.add_server(m); }
+        for m in ["A", "B", "C", "D"] {
+            round.add_server(m);
+        }
         let key: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
-        let prev: HashMap<&String, String> =
-            key.iter().map(|k| (k, round.find_server(k).unwrap().to_string())).collect();
+        let prev: HashMap<&String, String> = key
+            .iter()
+            .map(|k| (k, round.find_server(k).unwrap().to_string()))
+            .collect();
 
         round.unit_server("B"); // bỏ 1 trong 4 máy
 
-        let giu = key.iter().filter(|k| round.find_server(k).unwrap() == prev[*k]).count();
+        let giu = key
+            .iter()
+            .filter(|k| round.find_server(k).unwrap() == prev[*k])
+            .count();
         // Lý thuyết: chỉ ~1/4 khóa (thuộc B) phải di chuyển. Giữ nguyên phải > 60%.
-        assert!(giu as f64 / 1000.0 > 0.6, "chỉ giữ {} khóa — xáo trộn quá nhiều", giu);
+        assert!(
+            giu as f64 / 1000.0 > 0.6,
+            "chỉ giữ {} khóa — xáo trộn quá nhiều",
+            giu
+        );
     }
 
     #[test]

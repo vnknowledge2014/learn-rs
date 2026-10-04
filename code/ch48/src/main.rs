@@ -60,7 +60,9 @@ impl CircuitBreaker {
             CircuitState::Open => {
                 // Kiểm tra xem đã hết thời gian hồi sức (Cooldown) chưa
                 if self.last_state_change.elapsed() >= self.cooldown_duration {
-                    println!("    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!");
+                    println!(
+                        "    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!"
+                    );
                     self.state = CircuitState::HalfOpen;
                     self.last_state_change = Instant::now();
                     true
@@ -75,7 +77,9 @@ impl CircuitBreaker {
     /// Báo cáo cuộc gọi mạng thành công
     pub fn record_success(&mut self) {
         if self.state == CircuitState::HalfOpen {
-            println!("    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!");
+            println!(
+                "    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!"
+            );
         }
         self.state = CircuitState::Closed;
         self.failure_count = 0;
@@ -84,7 +88,10 @@ impl CircuitBreaker {
     /// Báo cáo cuộc gọi mạng thất bại
     pub fn record_failure(&mut self) {
         self.failure_count += 1;
-        println!("    [CircuitBreaker] Ghi nhận thất bại #{}", self.failure_count);
+        println!(
+            "    [CircuitBreaker] Ghi nhận thất bại #{}",
+            self.failure_count
+        );
 
         if self.failure_count >= self.failure_threshold {
             println!("    [!] [CẢNH BÁO] Số lỗi vượt ngưỡng: KÍCH HOẠT NGẮT MẠCH (OPEN)!");
@@ -149,14 +156,19 @@ impl OrderCoordinatorService {
 
         // 1. Kiểm tra Circuit Breaker trước khi thực hiện cuộc gọi liên dịch vụ
         if !breaker.allow_request() {
-            return Err("Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!");
+            return Err(
+                "Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!",
+            );
         }
 
         // 2. Gọi sang dịch vụ người dùng để xác thực
         match self.user_service.get_user(user_id) {
             Ok(user) => {
                 breaker.record_success();
-                println!("    [OrderService] Xác thực thành công khách hàng: {}", user.username);
+                println!(
+                    "    [OrderService] Xác thực thành công khách hàng: {}",
+                    user.username
+                );
                 Ok(OrderRecord {
                     order_id,
                     user_id: user.user_id,
@@ -186,14 +198,20 @@ fn main() {
     // 1. Thử nghiệm tạo đơn hàng hợp lệ
     println!("\n[1] Thử nghiệm tạo đơn hàng cho khách hàng hợp lệ (ID = 1):");
     match order_service.create_order(101, 1, "Sách Rust Masterclass Chuyên Sâu", 450000) {
-        Ok(order) => println!("    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}", order.order_id, order.item_name),
+        Ok(order) => println!(
+            "    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}",
+            order.order_id, order.item_name
+        ),
         Err(err) => println!("    [!] Thất bại: {}", err),
     }
 
     // 2. Thử nghiệm kích hoạt ngắt mạch Circuit Breaker bằng cách gọi liên tục ID không tồn tại
     println!("\n[2] Gửi liên tiếp các yêu cầu lỗi để kích hoạt Circuit Breaker:");
     for i in 1..=4 {
-        println!("    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...", i);
+        println!(
+            "    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...",
+            i
+        );
         let result = order_service.create_order(200 + i, 999, "Vật phẩm ảo", 10000);
         match result {
             Ok(_) => println!("        Thành công!"),

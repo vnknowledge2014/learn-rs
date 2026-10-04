@@ -7,9 +7,9 @@ use std::path::Path;
 /// Cấu trúc bản ghi người dùng trong cơ sở dữ liệu
 #[derive(Debug, PartialEq, Clone)]
 pub struct UserRecord {
-    pub id: u32,       // 4 bytes cố định
-    pub age: u8,      // 1 byte cố định
-    pub full_name: String,// Độ dài biến thiên
+    pub id: u32,           // 4 bytes cố định
+    pub age: u8,           // 1 byte cố định
+    pub full_name: String, // Độ dài biến thiên
 }
 
 impl UserRecord {
@@ -54,18 +54,18 @@ impl UserRecord {
         }
 
         // Đọc ID
-        let id_bytes: [u8; 4] = data[0..4].try_into().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã ID")
-        })?;
+        let id_bytes: [u8; 4] = data[0..4]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã ID"))?;
         let id = u32::from_le_bytes(id_bytes);
 
         // Đọc Tuổi
         let age = data[4];
 
         // Đọc Độ dài tên
-        let len_bytes: [u8; 2] = data[5..7].try_into().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã độ dài chuỗi")
-        })?;
+        let len_bytes: [u8; 2] = data[5..7]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã độ dài chuỗi"))?;
         let name_len = u16::from_le_bytes(len_bytes) as usize;
 
         let total_size = 7 + name_len;
@@ -77,9 +77,8 @@ impl UserRecord {
         }
 
         // Đọc chuỗi tên UTF-8
-        let full_name = String::from_utf8(data[7..total_size].to_vec()).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let full_name = String::from_utf8(data[7..total_size].to_vec())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         Ok((UserRecord { id, age, full_name }, total_size))
     }
@@ -115,7 +114,7 @@ impl BinaryStore {
     /// Nhảy đến vị trí Offset chính xác và đọc một bản ghi lên RAM - O(1) Disk Seek
     pub fn read_record_at(&mut self, offset: u64) -> io::Result<UserRecord> {
         self.file.seek(SeekFrom::Start(offset))?;
-        
+
         // Đọc trước 7 bytes phần đầu để biết độ dài chuỗi tên
         let mut header = [0u8; 7];
         self.file.read_exact(&mut header)?;
@@ -156,29 +155,44 @@ fn main() -> io::Result<()> {
 
     println!("\n[2] Ghi tuần tự các bản ghi xuống đĩa:");
     let offset_1 = store.record_sell_record(&nguoi_1)?;
-    println!("    - Ghi bản ghi 101 ({}): Tọa độ byte = {}", nguoi_1.full_name, offset_1);
+    println!(
+        "    - Ghi bản ghi 101 ({}): Tọa độ byte = {}",
+        nguoi_1.full_name, offset_1
+    );
 
     let offset_2 = store.record_sell_record(&nguoi_2)?;
-    println!("    - Ghi bản ghi 102 ({}): Tọa độ byte = {}", nguoi_2.full_name, offset_2);
+    println!(
+        "    - Ghi bản ghi 102 ({}): Tọa độ byte = {}",
+        nguoi_2.full_name, offset_2
+    );
 
     let offset_3 = store.record_sell_record(&nguoi_3)?;
-    println!("    - Ghi bản ghi 103 ({}): Tọa độ byte = {}", nguoi_3.full_name, offset_3);
+    println!(
+        "    - Ghi bản ghi 103 ({}): Tọa độ byte = {}",
+        nguoi_3.full_name, offset_3
+    );
 
     // 3. Nhảy cóc ngẫu nhiên (Seek) đọc bản ghi bất kỳ mà không cần đọc từ đầu tệp!
     println!("\n[3] Đọc ngẫu nhiên bản ghi theo tọa độ byte (Offset):");
     let doc_lai_2 = store.read_record_at(offset_2)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_2, doc_lai_2.id, doc_lai_2.age, doc_lai_2.full_name);
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_2, doc_lai_2.id, doc_lai_2.age, doc_lai_2.full_name
+    );
     assert_eq!(doc_lai_2, nguoi_2);
 
     let doc_lai_1 = store.read_record_at(offset_1)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_1, doc_lai_1.id, doc_lai_1.age, doc_lai_1.full_name);
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_1, doc_lai_1.id, doc_lai_1.age, doc_lai_1.full_name
+    );
     assert_eq!(doc_lai_1, nguoi_1);
 
     let doc_lai_3 = store.read_record_at(offset_3)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_3, doc_lai_3.id, doc_lai_3.age, doc_lai_3.full_name);
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_3, doc_lai_3.id, doc_lai_3.age, doc_lai_3.full_name
+    );
     assert_eq!(doc_lai_3, nguoi_3);
 
     // 4. Dọn dẹp tệp thử nghiệm
