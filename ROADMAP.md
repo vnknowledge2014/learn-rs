@@ -2,7 +2,7 @@
 
 Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) không trả lời được: **học theo thứ tự nào**, **bỏ qua được gì**, và **cái gì cố tình không có trong giáo trình**.
 
-- 85 chương · 25 chủ đề · 87 crate · toàn bộ mã nguồn biên dịch và kiểm thử được
+- 85 chương · 25 chủ đề · 90 crate · 992 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
 - `cargo test --workspace` phải xanh trước khi bạn tin bất cứ điều gì trong sách
 
 ---

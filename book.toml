@@ -11,7 +11,7 @@
 
 [book]
 title = "Rust Masterclass: Hành Trình Từ Con Số 0 Đến System Design"
-description = "Giáo trình Rust toàn diện bằng tiếng Việt, 54 chương, dành cho người chưa từng lập trình."
+description = "Giáo trình Rust toàn diện bằng tiếng Việt, 85 chương, dành cho người chưa từng lập trình."
 authors = ["Rust Masterclass"]
 language = "vi"
 src = "."
@@ -19,7 +19,7 @@ src = "."
 [output.html]
 default-theme = "rust"
 preferred-dark-theme = "ayu"
-git-repository-url = ""
+git-repository-url = "https://github.com/vnknowledge2014/learn-rs"
 no-section-label = false
 
 [output.html.fold]

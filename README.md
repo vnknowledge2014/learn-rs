@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**85 chương · 25 chủ đề · 87 crate · 844 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 44/87 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
+**85 chương · 25 chủ đề · 90 crate · 992 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 75/90 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
 
 ---
 
@@ -35,7 +35,7 @@ cargo run -p ch20        # Chương 20: Newtype, Smart Constructor, Typestate
 cargo test --workspace
 ```
 
-Không muốn cài gì cả? Mọi đoạn mã đều copy-paste chạy được trên [Rust Playground](https://play.rust-lang.org/).
+Không muốn cài gì cả? Các đoạn mã chỉ dùng thư viện chuẩn đều copy-paste chạy được trên [Rust Playground](https://play.rust-lang.org/).
 
 ---
 
@@ -82,7 +82,7 @@ Tóm tắt từng chủ đề:
 **Phụ lục tra cứu:**
 - **[Lộ trình học tập](./ROADMAP.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
 - **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
-- **[Bảng thuật ngữ Việt–Anh](./GLOSSARY.md)**: 497 thuật ngữ chốt cách dịch nhất quán toàn giáo trình, cộng 1112 cặp đối chiếu định danh cũ ↔ mới cho ai đã đọc bản trước.
+- **[Bảng thuật ngữ Việt–Anh](./GLOSSARY.md)**: 503 thuật ngữ chốt cách dịch nhất quán toàn giáo trình, cộng hơn 1500 cặp đối chiếu định danh cũ ↔ mới cho ai đã đọc bản trước.
 
 ---
 
@@ -94,7 +94,7 @@ Mọi chương đều theo cùng một khuôn, để bạn luôn biết mình đ
 2. **Hình tượng hóa đời sống** — một ví dụ đời thực kèm sơ đồ, trước khi có bất kỳ dòng mã nào.
 3. **Khái niệm & Cơ chế kỹ thuật chuyên sâu** — chuyện gì thực sự xảy ra dưới nắp ca-pô.
 4. **Mã nguồn minh họa thực chiến** — một chương trình hoàn chỉnh, chạy được, có trong thư mục [`code/`](./code/).
-5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa. *(Chương 56–63 hiện chưa có mục này.)*
+5. **Bảng tra cứu lỗi biên dịch** — những lỗi `rustc` bạn *sẽ* gặp, kèm nguyên nhân và cách sửa.
 6. **Tóm tắt & Bài tập rèn luyện** — **mọi chương có bài tập đều kèm Gợi ý và Lời giải** ẩn trong thẻ gập (bấm để mở). Toàn bộ lời giải dạng mã đều biên dịch sạch và khớp API của crate tương ứng.
 
 ---
@@ -125,7 +125,7 @@ Toàn bộ văn xuôi, tiêu đề, sơ đồ và bảng biểu vẫn bằng ti�
 
 ## 🛠 Mã Nguồn Chạy Được
 
-Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 87 crate:
+Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 90 crate (87 crate chương + 2 crate macro thủ tục thật cho Chương 23–24 + 1 crate Axum thật cho Chương 61):
 
 ```bash
 cd code
@@ -165,9 +165,10 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 
 ## ✅ Cam Kết Chất Lượng
 
-- **Toàn bộ mã nguồn biên dịch được** bằng `rustc` bản ổn định, Rust 2021 Edition — và bạn có thể tự kiểm chứng bằng `cargo build --workspace`.
-- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 844 passed, 0 failed.
-- **`cargo clippy` còn khoảng 98 cảnh báo, và phần lớn là CỐ Ý.** Đừng chạy `clippy --fix` trên kho này: nhiều đoạn viết dài dòng để *dạy* chứ không phải vì tác giả chưa biết cách ngắn. Ví dụ `assert_eq!(x.and_then(f), x.map(f).flatten())` là bài kiểm chứng **luật Monad**; clippy rút gọn nó thành `assert_eq!(x.and_then(f), x.and_then(f))` — đúng cú pháp, và không còn chứng minh gì.
+- **Toàn bộ mã nguồn biên dịch được** bằng `rustc` bản ổn định, Rust 2024 Edition — và bạn có thể tự kiểm chứng bằng `cargo build --workspace`.
+- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 992 passed, 0 failed.
+- **`cargo clippy --workspace --all-targets -- -D warnings` sạch.** Những chỗ cố ý viết dài để *dạy* (ví dụ `assert_eq!(x.and_then(f), x.map(f).flatten())` kiểm chứng **luật Monad**) được giữ nguyên bằng `#[allow(clippy::…)]` cục bộ kèm chú thích giải thích vì sao. Đừng chạy `clippy --fix` mù quáng trên kho này.
+- **`cargo fmt --check` sạch**, và GitHub Actions chạy cả bốn bước (fmt, clippy, build, test) trên mỗi push/PR.
 - Các đoạn mã **cố tình sai** (dùng để minh họa lỗi biên dịch) đều được đánh dấu rõ bằng ký hiệu `❌` và đóng trong dấu chú thích, để chúng không phá vỡ quá trình biên dịch.
 
 ---

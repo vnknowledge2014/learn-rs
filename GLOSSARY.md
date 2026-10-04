@@ -194,6 +194,10 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Nguyên tử / Nhất quán / Cô lập / Bền vững | Atomicity / Consistency / Isolation / Durability |
 | Đọc rác / Đọc không lặp lại / Đọc bóng id | Dirty / Non-repeatable / Phantom read |
 | Kiểm soát đồng thời đa phiên bản | MVCC |
+| Ảnh chụp (giao dịch) | Snapshot | Tập giao dịch đã commit mà một giao dịch nhìn thấy |
+| Người commit trước thắng | First-committer-wins | Luật chống mất cập nhật của Snapshot Isolation |
+| Lệch ghi | Write skew | Dị thường Snapshot Isolation không chặn được |
+| Chép khoá lên / chuyển khoá lên | Copy-up / push-up | Tách nút lá B+Tree chép khoá; tách nút trong chuyển khoá |
 
 ## 7. An toàn thông tin (Chương 37–42)
 
@@ -570,7 +574,7 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Giá trị nội tại | Intrinsic value | Quyền bán châu Âu **có thể** rẻ hơn |
 | Giá trị thời gian | Time value | Giảm theo `√T` |
 | Giá trị thực thi sớm | Early exercise premium | Chênh lệch Mỹ − châu Âu |
-| Cân bằng quyền mua–bán | Put-call parity | Chênh lệch giá, **không** phải mô hình |
+| Ngang giá quyền chọn mua–bán | Put-call parity | Chênh lệch giá, **không** phải mô hình |
 | Phân phối chuẩn tích luỹ | Cumulative normal distribution | Xấp xỉ Abramowitz–Stegun |
 | Độ nhạy | Greeks | Delta, Gamma, Vega, Theta, Rho |
 | Biến động ngụ ý | Implied volatility | Đảo ngược công thức bằng chia đôi |
@@ -600,6 +604,8 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Đóng góp rủi ro | Risk contribution | |
 
 ---
+| Chống tự khớp | Self-trade prevention | Lệnh của ta không được khớp với nhau |
+| Iron condor | Iron condor | Giữ tên tiếng Anh |
 
 ## 18. Hệ sinh thái HFT tích hợp (Chương 85)
 
@@ -664,7 +670,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `BieuDoTre` | `LatencyHistogram` |
 | `BoDemChungDong` | `SameLineCounters` |
 | `BoDemTachDong` | `SplitLineCounters` |
-| `BoDieuKhienDen` | `LedController` |
+| `BoDieuKhienDen` | `TrafficController` |
 | `BoDinhTuyen` | `Router` |
 | `BoDoLuong` | `Metrics` |
 | `BoGhiPhien` | `SessionRecorder` |
@@ -729,7 +735,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `CongWork` | `Task` |
 | `CuaSo` | `Window` |
 | `CuaSoThongKe` | `StatsWindow` |
-| `DaAuth` | `Authenticated` |
+| `DaAuth` | `Validated` |
 | `DaCheckRisk` | `RiskChecked` |
 | `DaGiao` | `Delivered` |
 | `DaGui` | `Sent` |
@@ -739,7 +745,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `DaNgatKhanCap` | `KillSwitchOn` |
 | `DaSend` | `Sent` |
 | `DaThanhToan` | `Paid` |
-| `DaXacThuc` | `Authenticated` |
+| `DaXacThuc` | `Validated` |
 | `DaiBollinger` | `BollingerBands` |
 | `DanXuat` | `Derived` |
 | `DanhSachLienKet` | `LinkedList` |
@@ -836,7 +842,6 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `KiemToanReportMat` | `SecurityAudit` |
 | `KiemTraTaiKhoan` | `CheckAccount` |
 | `KyQuy` | `Escrow` |
-| `LaPhieu` | `Ballot` |
 | `Lenh` | `Order` |
 | `LenhBackend` | `BackendCommand` |
 | `LenhCuaTa` | `OurOrder` |
@@ -986,7 +991,6 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `TrangThaiTcp` | `TcpState` |
 | `TrangThaiTienTrinh` | `ProcessState` |
 | `TrichXuat` | `Extract` |
-| `TruongDuLieuAST` | `AstDataField` |
 | `TruongGoiTin` | `PacketField` |
 | `TruongPacket` | `PacketField` |
 | `TruyenThong` | `Lit` |
@@ -1080,7 +1084,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `chiet_khau` | `discount` |
 | `chieu` | `side` |
 | `chieu_cao` | `height` |
-| `chieu_cao_dinh` | `peak_height` |
+| `chieu_cao_dinh` | `tip_height` |
 | `chieu_chu_dong` | `side_aggressive` |
 | `cho_bao_lau` | `wall_delay` |
 | `cho_phep` | `allowed_hosts` / `try_acquire` / `approve` / `slippage_bps` |
@@ -1121,7 +1125,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `co_xung_dot` | `has_conflict` |
 | `con_lai` | `remaining` |
 | `con_tro` | `pointer` |
-| `con_tro_day` | `tail_pointer` |
+| `con_tro_day` | `free_space_pointer` |
 | `cong_and` | `and_gate` |
 | `cong_cu` | `tools` |
 | `cong_don` | `accumulate` |
@@ -1206,7 +1210,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `do_rui_ro` | `measure_risk` |
 | `do_sau_cong` | `gate_depth` |
 | `do_tre` | `latency` |
-| `do_tre_chu_ky` | `latency_period` |
+| `do_tre_chu_ky` | `latency_cycles` |
 | `do_tre_ns` | `latency_nanos` |
 | `doc_toan_cuc` | `read_global` |
 | `doi_tien` | `coin_change` |
@@ -1220,7 +1224,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `dong_nhat` | `identity` |
 | `du_doan` | `predict` |
 | `du_lieu` | `data` |
-| `du_lieu_sai` | `bad_data` |
+| `du_lieu_sai` | `unprocessable` |
 | `du_lieu_tho` | `raw_data` |
 | `du_tru_x` | `reserve_x` |
 | `du_tru_y` | `reserve_y` |
@@ -1247,7 +1251,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `ghep_voi` | `compose_with` |
 | `ghi_nhan` | `record` |
 | `ghi_nhan_khop` | `record_fill` |
-| `ghi_truong` | `record_field` |
+| `ghi_truong` | `write_field` |
 | `ghi_tu_choi` | `record_reject` |
 | `gia_ban` | `ask_price` / `put_strike` |
 | `gia_ban_tot_nhat` | `best_ask` |
@@ -1294,7 +1298,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `han_chot` | `deadline` |
 | `han_muc` | `limit` |
 | `han_muc_ton_kho` | `inventory_limit` |
-| `handle_has_ong` | `handle_with_pipeline` |
+| `handle_has_ong` | `run_pipelined` |
 | `hang_doi` | `queue` |
 | `hang_thi_truong` | `market_queues` |
 | `has_be_tac` | `has_deadlock` |
@@ -1323,8 +1327,8 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `ke_cont` | `next` |
 | `ke_tan_cong_lai` | `attacker_profit` |
 | `ke_tiep` | `next` |
-| `ket_noi_hien_tai` | `current_connection` |
-| `ket_qua_dem` | `result_count` |
+| `ket_noi_hien_tai` | `active_connections` |
+| `ket_qua_dem` | `frequencies` |
 | `ket_thuc` | `end` |
 | `khach` | `customer` |
 | `khe_dang_cho` | `pending_gap` |
@@ -1335,14 +1339,14 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `khoi_luong_khop` | `filled_qty` |
 | `khoi_luong_tai` | `qty_at` |
 | `khoi_luong_toi_uu` | `optimal_quantity` |
-| `khoi_luong_truoc` | `prev_quantity` |
+| `khoi_luong_truoc` | `queue_ahead` |
 | `khoi_luong_truoc_mat` | `queue_ahead` |
 | `khoi_tao` | `create` / `init` |
 | `khong` | `no` |
 | `khong_do_tre` | `no_latency` |
 | `khu_hoi_ns` | `round_trip_ns` |
 | `khung` | `frame` |
-| `khung_moi` | `new_frame` |
+| `khung_moi` | `advance` |
 | `kich_ban` | `scenarios` |
 | `kich_thuoc` | `size` |
 | `kich_thuoc_o` | `cell_size` |
@@ -1366,7 +1370,6 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `ky_vong` | `expected_seq` |
 | `la_chan` | `is_even` / `is_blocked` |
 | `la_ky` | `is_signer` |
-| `la_phai` | `right_leaf` |
 | `la_thuc_thi` | `is_executable` |
 | `lai_khi` | `profit_at` |
 | `lai_lo` | `pnl` |
@@ -1376,8 +1379,8 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `lan_truyen_gossip` | `gossip_propagate` |
 | `lang_gieng` | `neighbors` |
 | `lanh_manh` | `is_healthy` |
-| `lap_khe` | `slot_loop` |
-| `lay_con_tro_day` | `tail_pointer` |
+| `lap_khe` | `fill_gap` |
+| `lay_con_tro_day` | `free_space_pointer` |
 | `lay_ra` | `take` |
 | `lay_so_khe` | `slot_count` |
 | `lenh_cho` | `resting_orders` |
@@ -1391,7 +1394,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `lo_trong_ngay_toi_da` | `max_daily_loss` |
 | `loc_anh_xa` | `filter_map` |
 | `lon_nhat` | `max` |
-| `loop_khe` | `slot_loop` |
+| `loop_khe` | `fill_gap` |
 | `lru_danh_sach` | `lru_list` |
 | `luong` | `amount` |
 | `luong_lang_phi_moi_khoi` | `wasted_per_block` |
@@ -1400,18 +1403,18 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `luy_thua_mod` | `mod_pow` |
 | `ly_do_dung` | `stop_reason` |
 | `ma_chuoi` | `chain_id` |
-| `ma_ck` | `id_chain` |
+| `ma_ck` | `symbol` |
 | `ma_cu` | `old_id` |
 | `ma_don` | `order_code` |
 | `ma_giao_dich` | `transaction_id` |
 | `ma_hoa` | `encode` |
 | `ma_hoa_abi` | `abi_encode` |
-| `ma_ke` | `id_ke` |
+| `ma_ke` | `next_id` |
 | `ma_ke_tiep` | `next_id` |
 | `ma_lenh` | `order_id` |
-| `ma_mau` | `color_code` |
+| `ma_mau` | `sample_ids` |
 | `ma_trang_thai` | `status_code` |
-| `mang_xa_hoi` | `array_remote_hoi` |
+| `mang_xa_hoi` | `social_network` |
 | `mat_can_bang` | `imbalance` |
 | `mat_do_chuan` | `normal_pdf` |
 | `mat_hang` | `items` |
@@ -1460,19 +1463,19 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `noi_use` | `content` |
 | `nua_chu_ky` | `half_life` |
 | `num_duong` | `positive_count` |
-| `num_hieu` | `serial` |
+| `num_hieu` | `number` |
 | `num_khe` | `slot_count` |
 | `num_nhanh` | `branch_count` |
 | `num_op_cong` | `add_op_count` |
-| `num_truot` | `slip_count` |
+| `num_truot` | `miss_count` |
 | `old_cong` | `tools` |
 | `on_dinh` | `is_stable` |
 | `only_num_xor` | `leading_bit_diff` |
 | `order_da_send` | `orders_sent` |
-| `owned_tinh` | `attribute` |
-| `part_cong` | `partial_sum` |
+| `owned_tinh` | `attrs` |
+| `part_cong` | `assign_unit` |
 | `peek_dau` | `peek_front` |
-| `phan_cong` | `partial_sum` |
+| `phan_cong` | `assign_unit` |
 | `phan_dau` | `header` |
 | `phan_du` | `residuals` |
 | `phan_giai` | `resolve` |
@@ -1490,7 +1493,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `phat_show_enable_normal` | `detect_anomalies` |
 | `phi_phan_van` | `fee_bps` |
 | `phi_quyen` | `premium` |
-| `phi_thuc_te` | `effective_fee` |
+| `phi_thuc_te` | `effective_gas_price` |
 | `phi_toi_da` | `max_fee` |
 | `phi_uu_tien` | `priority_fee` |
 | `phi_uu_tien_toi_da` | `max_priority_fee` |
@@ -1510,7 +1513,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `r_binh_phuong` | `r_squared` |
 | `ra_ns` | `out_nanos` |
 | `ra_truoc` | `front_run_out` |
-| `record_truong` | `record_field` |
+| `record_truong` | `write_field` |
 | `rut_lien_mach` | `drain` |
 | `san_ck` | `venue_chain` |
 | `san_nhan_toi_thieu` | `min_amount_out` |
@@ -1541,7 +1544,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `so_gd` | `num_trades` / `num_transactions` |
 | `so_giao_dich` | `num_trades` / `num_transactions` |
 | `so_hang` | `num_rows` / `row_index` |
-| `so_hieu` | `serial` |
+| `so_hieu` | `number` |
 | `so_khe` | `slot_count` |
 | `so_khoi` | `num_blocks` |
 | `so_khop` | `fill_count` |
@@ -1561,7 +1564,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `so_luong_khong` | `invalid_quantity` |
 | `so_luong_ve` | `ticket_count` |
 | `so_mau` | `samples` |
-| `so_may_chu` | `num_servers` |
+| `so_may_chu` | `usable_hosts` |
 | `so_muc` | `num_levels` |
 | `so_muc_dang_dung` | `levels_in_use` |
 | `so_nhanh` | `branch_count` |
@@ -1577,7 +1580,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `so_thu_tu` | `seq` |
 | `so_tiep` | `next_number` |
 | `so_trung` | `hit_count` |
-| `so_truot` | `slip_count` |
+| `so_truot` | `miss_count` |
 | `so_truy_cap` | `access_count` |
 | `so_vong` | `num_rounds` |
 | `so_warp_phan_ky` | `divergent_warps` |
@@ -1587,14 +1590,14 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `suc_chua` | `capacity` |
 | `sut_giam_toi_da` | `max_drawdown` |
 | `suy_kieu` | `infer_type` |
-| `tai_in_ky` | `load_in_period` |
+| `tai_in_ky` | `signing_payload` |
 | `tai_khoan` | `account` |
-| `tai_trong_ky` | `load_in_period` |
+| `tai_trong_ky` | `signing_payload` |
 | `tam_tinh` | `subtotal` |
 | `tan_suat_doi` | `change_frequency` |
 | `tang_tb` | `up_avg` |
 | `tang_toc_ly_thuyet` | `theoretical_speedup` |
-| `tang_toc_toi_da_neu_xoa_nut` | `max_speedup_if_node_removed` |
+| `tang_toc_toi_da_neu_xoa_nut` | `max_speedup_if_bottleneck_removed` |
 | `tao_bo_loc_tu_cam` | `make_ban_filter` |
 | `tat_ca` | `all` |
 | `temp_tinh` | `subtotal` |
@@ -1604,9 +1607,9 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `ten_khach` | `customer_name` |
 | `ten_truong` | `field_name` |
 | `tham_num` | `param` |
-| `tham_num_path` | `path_param` |
+| `tham_num_path` | `path_params` |
 | `tham_so` | `param` |
-| `tham_so_duong_dan` | `path_param` |
+| `tham_so_duong_dan` | `path_params` |
 | `thanh_bool` | `to_bool` |
 | `thanh_dau_ra` | `into_output` |
 | `thanh_html` | `to_html` |
@@ -1642,11 +1645,11 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `thu_hoan_doi_x_lay_y` | `try_swap_x_for_y` |
 | `thu_hoan_doi_y_lay_x` | `try_swap_y_for_x` |
 | `thu_swap` | `try_swap` |
-| `thuc_hien_giao_dich` | `execute_trade` |
-| `thuc_show_trade` | `execute_trade` |
+| `thuc_hien_giao_dich` | `withdraw` |
+| `thuc_show_trade` | `withdraw` |
 | `thuc_te` | `actual` |
 | `thuc_thi` | `execute` |
-| `thuoc_tinh` | `attribute` |
+| `thuoc_tinh` | `attrs` |
 | `tich_accum` | `accumulate` |
 | `tich_accum_nanos` | `accumulated_nanos` |
 | `tich_luy` | `accumulate` |
@@ -1672,14 +1675,14 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `tinh_muc_chiem_dung` | `occupancy` |
 | `tinh_tong_lat_cat` | `sum_slice` |
 | `tinh_total_lat_cut` | `sum_slice` |
-| `tk_an` | `account_hidden` |
+| `tk_an` | `main_account` |
 | `toc_do` | `speed` |
-| `toi_da_buoc_mot_khung` | `max_step_one_frame` |
+| `toi_da_buoc_mot_khung` | `max_steps_per_frame` |
 | `toi_thieu` | `min` |
 | `toi_thieu_y` | `min_y` |
 | `ton_that_tam_thoi` | `impermanent_loss` |
 | `tong_binh_phuong` | `sum_of_squares` |
-| `tong_chu_ky_cho` | `total_period_wait` |
+| `tong_chu_ky_cho` | `total_cycles_pipelined` |
 | `tong_chu_ky_khong_ong` | `total_cycles_no_pipeline` |
 | `tong_cung` | `total_supply` |
 | `tong_khoi_luong` | `total_qty` |
@@ -1712,12 +1715,12 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `truot_do_dung_luong` | `capacity_miss` |
 | `truot_enable_step` | `compulsory_miss` |
 | `truot_gia` | `slippage` |
-| `truy_cap` | `access_cap` |
+| `truy_cap` | `access` |
 | `truy_cap_cot_lat` | `tile_column_access` |
-| `truy_xuat_lan_toa` | `broadcast_access` |
-| `tt_ban` | `lit_sell` |
+| `truy_xuat_lan_toa` | `spread_retrieve` |
+| `tt_ban` | `lit_ask` |
 | `tt_mat_can_bang` | `lit_imbalance` |
-| `tt_mua` | `lit_buy` |
+| `tt_mua` | `lit_bid` |
 | `tt_vi_gia` | `lit_micro_price` |
 | `tu_bool` | `from_bool` |
 | `tu_bool_` | `from_bool` |
@@ -1748,19 +1751,488 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `vi_tri_trong_hang` | `queue_position` |
 | `viet_hoa_chu_dau` | `capitalize_first` |
 | `view_dem` | `counter_view` |
-| `view_hoa_don_safe` | `invoice_view_safe` |
+| `view_hoa_don_safe` | `view_invoice_safe` |
 | `vong_dong_thuan` | `consensus_round` |
 | `vuot_gia_tri` | `exceed_value` |
 | `vuot_vi_the` | `exceed_position` |
 | `warp_dong_thoi` | `concurrent_warps` |
 | `xac_thuc` | `auth` |
-| `xem_hoa_don_an_toan` | `invoice_view_safe` |
+| `xem_hoa_don_an_toan` | `view_invoice_safe` |
 | `xep_lich_song_song` | `schedule_parallel` |
 | `xu_ly` | `handle` |
-| `xu_ly_co_ong` | `handle_with_pipeline` |
+| `xu_ly_co_ong` | `run_pipelined` |
 | `xu_ly_don_ke_tiep` | `process_next_order` |
 | `y_dinh` | `intent` |
 
 ---
+
+### Bổ sung bản sửa tháng 10/2026
+
+Đợt rà soát toàn bộ đã dịch nốt các định danh tiếng Việt còn sót và sửa các bản dịch máy sai nghĩa. Bảng dưới liệt kê theo phạm vi chương (biến cục bộ không liệt kê).
+
+#### Chương 01–14
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `bmi` (ch05) | `compute_bmi` |
+| `mark_price_state` (ch05) | `body_status` |
+| `parse_float` (ch05) | `read_f32` |
+| `consume_series` (ch06) | `consume_string` |
+| `series_length` (ch07) | `string_length` |
+| `SystemConfig::name_resp_use` (ch08) | `app_name` |
+| `SystemConfig::phi_dich_vu` (ch08) | `monthly_fee` |
+| `SystemConfig::lay_ten` (ch08) | `name` |
+| `BankAccount::activate` (ch09) | `is_active` |
+| `BankAccount::tra_cuu_thong_tin` (ch09) | `show_info` |
+| `BankAccount::nap_tien` (ch09) | `deposit` |
+| `BankAccount::rut_tien` (ch09) | `withdraw` |
+| `BankAccount::all_math_and_round` (ch09) | `close_account` |
+| `OrderStatus::DangDongGoi { store_export_queue }` (ch10) | `OrderStatus::Packing { warehouse }` |
+| `OrderStatus::InTransit { ma_van_don, ten_tai_xe }` (ch10) | `{ tracking_code, driver_name }` |
+| `OrderStatus::Delivered { time_time_recv }` (ch10) | `{ received_at }` |
+| `PaymentError::InsufficientBalance { can_rut }` (ch11) | `{ requested }` |
+| `check_num_tien` (ch11) | `parse_amount` |
+| `execute_trade` (ch11) | `withdraw` |
+| `mod thiet_bi_thong_minh` (ch12) | `mod smart_devices` |
+| `mod trung_tam_dieu_khien` (ch12) | `mod control_center` |
+| `Sensor::don_pos_do` (ch12) | `Sensor::unit` |
+| `Sensor::check_computed_state` (ch12) | `Sensor::report_status` |
+| `TempSensor::do_c` (ch12) | `celsius` |
+| `SmokeSensor::khu_vuc` / `mat_do_khoi_ppm` (ch12) | `area` / `smoke_ppm` |
+| `Item::ma_san_pham` (ch13) | `sku` |
+| `to_money` (ch13) | `subtotal` |
+| `apply_down_price` (ch13) | `apply_discount` |
+| `xu_ly_menh_lenh` (ch13) | `process_imperative` |
+| `handle_declaration` (ch13) | `process_declarative` |
+| `ghep3` (ch14) | `compose3` |
+| `queue_num` (ch14, bộ kết hợp const) | `constant` |
+| `cat_bot` / `cat_bot_curry` (ch14) | `truncate` / `truncate_curried` |
+| `tao_bo_che_tu_cam` (ch14) | `make_censor` |
+| `LogRecord::ma_binh_luan` / `ket_luan` (ch14) | `comment_id` / `verdict` |
+| `xep_loai` (ch04) | `classify` |
+| `tong_so_chan` (ch04) | `sum_of_evens` |
+| `tinh_chu_vi_dien_tich_hcn` (ch05) | `rectangle_perimeter_area` |
+| `c_sang_f` (ch05) | `celsius_to_fahrenheit` |
+| `tinh_do_dai` (ch06) | `calculate_length` |
+| `them_loi_chuc` (ch07) | `add_wish` |
+| `chon_chuoi_ngan_hon` (ch08) | `shorter` |
+| `Parser::du_lieu_nguon` (ch08) | `source` |
+| `HinhChuNhat { chieu_dai, chieu_rong }` (ch09) | `Rectangle { length, width }` |
+| `tao_moi` / `tinh_dien_tich` / `tinh_chu_vi` / `co_phai_hinh_vuong` (ch09) | `new` / `area` / `perimeter` / `is_square` |
+| `QueDiem { con_dau }`, `dot` (ch09) | `Match { has_head }`, `strike` |
+| `Order::tinh_tong_thanh_toan` (ch09) | `Order::total` |
+| `MauSac`, `Diem` (ch09) | `Color`, `Point` |
+| `PaymentState::{ChuaTra, DaTra}` (ch10) | `{Unpaid, Paid}` |
+| `Gender::{Nam, Nu, Khac}` (ch10) | `{Male, Female, Other}` |
+| `PhepTinh::{Cong, Tru, Nhan, Chia}`, `tinh_toan` (ch10) | `Operation::{Add, Sub, Mul, Div}`, `calculate` |
+| `doc_so_tu_chuoi` (ch11) | `parse_non_negative` |
+| `AppError::{DocTep, PhanTichSo}` (ch11) | `AppError::{ReadFile, ParseNumber}` |
+| `CoDienTich::tinh_dien_tich` (ch12) | `HasArea::area` |
+| `HinhTron { ban_kinh }`, `HinhVuong { canh }`, `in_dien_tich` (ch12) | `Circle { radius }`, `Square { side }`, `print_area` |
+| `mod quan_ly_kho`, `HangHoa { ten, gia }`, `moi` (ch12) | `mod inventory`, `Product { name, price }`, `new` |
+| `mod ban_hang`, `xuat_hoa_don` (ch12) | `mod sales`, `make_invoice` |
+| `in_du_lieu`, `ma_thiet_bi`, `so_sanh_he_thong` (ch12) | `print_value`, `device_id`, `compare_devices` |
+| `chuan_hoa_ten` (ch13, đề bài) | `normalize_name` (khớp lời giải) |
+| `chia` (ch13, ch14) | `divide` |
+| `ghep` / `ghep4` (ch14 văn) | `compose` / `compose4` |
+| `tao_kiem_tra_khoang`, `kiem_tra_diem` (ch14, đề bài) | `make_range_check`, `check_score` (khớp lời giải) |
+| `tao_bo_nhan_sai` / `tao_bo_nhan_dung` (ch14) | `make_multiplier_wrong` / `make_multiplier` |
+| `BO_DEM`, `tang_va_lay` (ch14) | `COUNTER`, `increment_and_get` |
+
+#### Chương 15–24, Phụ lục A
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `exec_swap` | `exec_mutate` |
+| `SensorRecord.ma_cam_bien` | `SensorRecord.sensor_id` |
+| `DangerAlert.fold_records` | `DangerAlert.position` |
+| `DangerAlert.level_do` | `DangerAlert.severity` |
+| `Trade.khu_vuc` | `Trade.region` |
+| `Trade.so_tien` | `Trade.amount` |
+| `analyze_close` | `parse_trade` |
+| `tong` / `tong_duoi` / `tong_lap` (snippet đệ quy) | `sum_rec` / `sum_tail` / `sum_loop` |
+| `RawProfile.age_series` | `RawProfile.age_text` |
+| `make_ban_filter` | `make_banned_word_filter` |
+| `make_unit_check_do_long` | `make_length_checker` |
+| `auth_proxy_num` | `validate_profile` |
+| `ap_dung_fn` / `ap_dung_generic` / `tao_bo_nhan` | `apply_fn` / `apply_generic` / `make_multiplier` |
+| `LoiCauHinh`, `phan_tich_cong` | `ConfigError`, `parse_port` |
+| `Tong` | `Sum` |
+| `MoiDeu` | `All` |
+| `ThongKe` | `Stats` |
+| `CuoiCung` (bài tập) | `LastWins` |
+| `BangDem` (bài tập) | `CountTable` |
+| `TrungBinh` (bài tập) | `NaiveMean` |
+| `RunningMean.tong` / `.quantity` | `RunningMean.sum` / `.count` |
+| `HKT::DichDen` | `HKT::Target` |
+| `Validation::Set` / `Validation::Hong` | `Validation::Valid` / `Validation::Invalid` |
+| `Validation::tu_ket_qua` / `is_set` | `Validation::from_result` / `is_valid` |
+| `ghep2` / `ghep3` | `zip2` / `zip3` |
+| `DonTho` | `RawForm` |
+| `doc_ma_don` / `return_price` / `ap_thue` | `parse_order_id` / `lookup_price` / `apply_tax` |
+| `doc_cau_hinh` (bài tập) | `read_config` |
+| `bind_bang_map_roi_flatten` (test) | `bind_equals_map_then_flatten` |
+| `mod mien` | `mod domain` |
+| `DomainError::EmailSai` / `TenSanPhamSai` / `BadQuantity` / `DonRong` | `InvalidEmail` / `InvalidProductName` / `InvalidQuantity` / `EmptyOrder` |
+| `OrderTooLarge { so_dong, toi_da }` | `OrderTooLarge { line_count, max }` |
+| `TenSanPham` | `ProductName` |
+| `Email::analyze` / `ProductName::analyze` / `Quantity::analyze` | `::parse` |
+| `TOI_DA` / `SO_DONG_TOI_DA` | `MAX` / `MAX_LINES` |
+| `Money::dong` / `Money::gate` / `Money::nhan` | `Money::vnd` / `Money::plus` / `Money::times` |
+| `PaymentMethod::TienMat` / `PaymentMethod::The` | `PaymentMethod::Cash` / `PaymentMethod::Card` |
+| `Authenticated` (typestate) | `Validated` |
+| `Order::auth` / `Order::payment` / `Order::delivery_queue` | `Order::validate` / `Order::pay` / `Order::ship` |
+| `Order.dong` / `so_dong()` / `tong_tien()` | `Order.lines` / `line_count()` / `total()` |
+| `OrderDto.dong` | `OrderDto.lines` |
+| `apply_discount` | `discount_for` |
+| `Invoice.phi_van_transfer` | `Invoice.shipping` |
+| `invoice_loop` | `build_invoice` |
+| `PaymentState::ChuaTra` / `DaTra` | `Unpaid` / `Paid` |
+| `mod lien_lac`, `VnPhone::analyze` (bài tập) | `mod contact`, `VnPhone::parse` |
+| `Account::ChoKichHoat` / `DangHoatDong` / `BiKhoa`, `Account::key` | `PendingActivation` / `Active` / `Locked`, `Account::lock` |
+| `ChuaKetNoi` / `DaKetNoi` / `TrongGiaoDich` | `Disconnected` / `Connected` / `InTransaction` |
+| `start_trade` / `truy_van` / `order_log` | `begin_transaction` / `query` / `statement_log` |
+| `tao_ban_do!` / `kiem_toan_bien!` / `do_luong_thoi_gian!` | `hash_map!` / `inspect_var!` / `measure_time!` |
+| `in_gap_doi!` (ví dụ lỗi) | `print_double!` |
+| `phep_tinh_noi_bo!` / `tao_ma_tran!` / `tinh_bieu_thuc_chuoi!` | `internal_calc!` / `matrix!` / `eval_chain!` |
+| `dem_phan_tu!` / `in_tung_the!` / `in_sai_lap!` / `in_dung_lap!` | `count_tts!` / `print_each!` / `print_wrong!` / `print_right!` |
+| `DetailedDescription::in_thong_tin_chi_tiet` | `describe` (+ `field_names`, `print_details`) |
+| `NetworkDevice.dang_hoat_dong` | `NetworkDevice.is_active` |
+| `#[derive(MoTa)]`, `XuatFileJson` (văn) | `#[derive(DetailedDescription)]`, `ToJson` |
+| `SecurityAudit::export_thong_info_safe` / `id_part_kind` | `audit_fields` / `entity_kind` |
+| `BankAccount.ma_pin_bi_mat` | `BankAccount.pin_code` |
+| `#[bo_qua]` | `#[audit(skip)]`, `#[audit(sensitive)]` |
+| `#[kiem_soat_truy_cap]` | `#[require_role(...)]` |
+| `phan_tich_cau_hinh!` (macro_rules) | `config!` (proc macro thật) |
+| `XuatDuLieu`, `KiemTra`, `InThongTin` (văn) | `SecurityAudit`, `Inspect` |
+| `Setoid::bang` / `Ord::so_sanh` / `Group::nghich_dao` | `equals` / `compare` / `invert` |
+| `Tong` / `Ham` | `Sum` / `Func` |
+| `HKT::DichDen` / `Bifunctor::Ra` / `Extract::Ruot` | `Target` / `Output` / `Inner` |
+| `Plus::rong` / `Foldable::gap` / `Chain::concat` / `Extend::mo_rong` | `zero` / `fold` / `chain` / `extend` |
+| `Cay` / `Cay::La` / `Cay::Nut` | `Tree` / `Tree::Leaf` / `Tree::Node` |
+| `ap_auth` / `Validation::Set` / `Validation::Hong` | `ap_validation` / `Valid` / `Invalid` |
+| `mod luat` (tests) | `mod laws` |
+
+#### Chương 25–42
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `chi_so` (tham số `index_access_o1`, ch25) | `index` |
+| `hai_ban_cho_cung_ket_qua` (test, ch25 lời giải) | `both_versions_agree` |
+| `tong_lat_cat` (test ch26) | `sum_of_slices` |
+| `max_of_hoat_dong_voi_moi_nguon` (test ch26 lời giải) | `max_of_works_for_every_source` |
+| `dem_lan_doi_dia_chi` (ch26 lời giải) | `count_reallocations` (viết lại) |
+| `Nut` (ch27) | `Node` |
+| `NutLoi` (ch27) | `BrokenNode` |
+| `LinkedList::peak` (trường, ch27) | `head` |
+| `dem_phan_tu_thu_cong` (ch27 lời giải) | `count_manually` |
+| `chua_phan_tu` (ch27 lời giải) | `contains` |
+| `dem_thu_cong_khop_voi_len`, `tim_thay_va_khong_tim_thay` (test ch27) | `manual_count_matches_len`, `found_and_not_found` |
+| `peek_broken`/`peek_correct` (ch27 ví dụ E0507) | `take_broken`/`take_correct` |
+| `Order::tong_tien` (ch28) | `total_amount` |
+| `OrderQueue::them_don` / `them_don_vip` | `add_order` / `add_vip_order` |
+| `OrderQueue::first_view_don` | `peek_next_order` |
+| `OrderQueue::so_don_dang_cho` | `pending_count` |
+| `KeyBuffer::go` / `noi_dung` (ch28 lời giải) | `type_key` / `contents` |
+| `QueueTuHaiStack` (trường `vao`/`ra`) | `TwoStackQueue` (`inbox`/`outbox`) |
+| `NutCay` (ch29) | `TreeNode` |
+| `BinarySearchTree::them` | `insert` |
+| `BinarySearchTree::quantity` (trường) | `size` |
+| `TreeNode::gap` (tham số `block_make`) | `fold` (`init`) |
+| `ToaDo` (ch29 ví dụ E0277) | `Coord` |
+| `thong_ke_from_region` (ch30) | `word_frequencies` |
+| `part_region` (ch30) | `partition` |
+| `Graph::lay_ten` | `vertex_name` |
+| `BinaryStore::record_sell_record` (ch31) | `append_record` |
+| `SlottedPage::add_sell_record` (ch32) | `insert_record` |
+| `SlottedPage::read_sell_record` / `read_sell_record_live` | `read_record` / `read_live_record` |
+| `SlottedPage::tail_pointer` / `set_tail_pointer` | `free_space_pointer` / `set_free_space_pointer` |
+| `SlottedPage::nearest_slot` | `set_slot_count` |
+| `BufferPool::num_state_show_has` | `page_count` |
+| `SUC_CHUA_NUT` (ch33) | `NODE_CAPACITY` |
+| `BPlusNode::Internal.children: Vec<Box<BPlusNode>>` | `Vec<NodeId>` (thiết kế lại, thêm `Leaf.next_leaf`) |
+| `BPlusTree::get_range` | `range` |
+| `BPlusTree.total_records` (trường pub) | `len` (riêng tư, có `len()`) |
+| `NutDemo`, `lay_con_dung` (ch33 ví dụ E0507) | `DemoNode`, `child_correct` |
+| `kiem_khoa_tang_dan`, test `moi_nut_la_deu_giu_thu_tu_tang_dan` (ch33 BT2) | `keys_strictly_increasing`, `every_node_keeps_keys_sorted` |
+| `doc_dong_dung` (ch34 ví dụ E0599) | `read_lines_correct` |
+| `MvccStore::start_trade` (ch35) | `begin` (trả `Transaction`) |
+| `MvccStore::record` / `doc` | `write` / `read` (nhận `&Transaction`) |
+| `MvccStore::don_dep_rac(oldest_active_tx)` | `vacuum()` |
+| `MiniBitcask.file_path: String` (ch36) | `PathBuf` |
+| `doc_dung` (ch36 ví dụ E0502) | `read_correct` |
+| `vi_du_dung_e0716` (ch37) | `e0716_correct` |
+| `do_khung_ngan_xep` (ch37 BT1) | `measure_stack_frame` |
+| `lay_4_byte` (ch38 BT2) | `take_4_bytes` |
+| `SafeRingBuffer.o` / `.quantity` (ch38 BT1) | `buf` / `count` |
+| `vi_du_dung_e0133` (ch39) | `e0133_correct` |
+| `vi_du_dung_e0382` (ch40) | `e0382_correct` |
+| `vi_du_dung_e0507` / `e0507_broken` (ch41) | `e0308_correct` / `e0308_broken` |
+| `ErrorLevel` / `CapBacDung` (biến thể `NhanVien`, `GiamDoc`) (ch42 ví dụ lỗi) | `RankBroken` / `Rank` (`Staff`, `Director`) |
+| `LoginRateLimiter::ghi_nhan_that_bai` / `dang_bi_khoa`, trường `theo_doi` (ch42 BT1) | `record_failure` / `is_locked`, `tracked` |
+| `sinh_token_bi_mat` (ch42 BT2) | `generate_secret_token` |
+
+#### Chương 43–60
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `MemoryInventory::kho` (ch43 lời giải BT2) | `MemoryInventory::stock` |
+| `hop_dong_kho_hoat_dong` (test, ch43) | `inventory_contract_works` |
+| `ValidationError::ZeroOrNegativeAmount` (ch45) | `ValidationError::ZeroAmount` |
+| `doc_danh_sach_cong` (ch44 prompt mẫu) | `read_port_list` |
+| `HttpMethod::Other(String)` (ch47) | `HttpMethod::Other` |
+| `LogAnalyzer::load_from_raw_text` (ch47) | `LogAnalyzer::load_from_reader` + `ingest_line` |
+| `xuat_json_hop_le`, `phan_tich_an_toan_khong_sap` (ch47 test lời giải) | `json_output_is_valid`, `parse_is_safe_on_garbage` |
+| `xu_ly_generic`, `goi_dich_vu`, `DichVuDung`, `goi_dich_vu_dung` (ch48) | `process_generic`, `call_service`, `CorrectService`, `call_correct_service` |
+| `FallbackCache::ghi_nho`, `tra_du_phong` (ch48 BT1) | `remember`, `lookup_fallback` |
+| `LaFuture` (ch49) | `RealFuture` |
+| `tim_nguoi_dung`, `tim_don_hang`, `invoice_loop`, `LoiHeThong` (ch49 đoạn async) | `find_user`, `find_orders`, `build_invoice`, `SystemError` |
+| `AsyncInterval` trường `con_lai`, `chu_ky`, `nhip_ke`, `da_phat` (ch49 BT1) | `remaining`, `period`, `next_tick`, `emitted` |
+| `JoinTwo` trường `kq_a`, `kq_b` (ch49 BT2) | `out_a`, `out_b` |
+| `tao_san_pham` (ch51) | `create_product` |
+| `StdError { chi_tiet }`, `SystemError { greeting }` (ch51 ví dụ lỗi) | `SystemError { message }` + `impl IntoResponse` |
+| `RateLimitLayer` trường `gioi_han`, `cua_so` (ch51 BT2) | `limit`, `window` |
+| `RaftNode::check_and_commit` (ch53) | `record_replication` + `advance_commit_index` |
+| `RaftNode::handle_request_vote(id, term)` (ch53) | `handle_request_vote(id, term, last_log_index, last_log_term)` |
+| `ViDuNode` (ch53) | `DemoNode` |
+| `co_du_quorum`, `so_phieu`, `tong_cum` (ch53 BT1) | `has_quorum`, `votes`, `cluster_size` |
+| `apply_sync(.., tu_vi_tri, bu)` (ch53 BT2) | `apply_sync(.., prev_index, entries)` |
+| `LruCache` trường `suc_chua`, `dong_ho` (ch52 BT1) | `capacity`, `clock` |
+| `Message::so_lan_thu`, tham số `thanh_cong` (ch52 BT2) | `attempts`, `succeeded` |
+| `OrderStatus::from_str` (ch54, phương thức riêng) | `impl FromStr for OrderStatus` |
+| `xu_ly_dung`, tham số `dh` (ch54 ví dụ E0382) | `handle_fixed`, `order` |
+| `huy_don_paid_hoan_kho_va_ghi_wal`, `nen_wal_giu_trang_thai_cuoi` (ch54 test lời giải) | `cancel_paid_order_restores_stock_and_logs`, `compaction_keeps_latest_state_only` |
+| `Cart::them`, `tong_tien`, `so_dong` (ch55) | `Cart::add`, `total`, `line_count` |
+| `Generator::moi`/`new(hat)`, `Generator::so(tran)` (ch55) | `Generator::new(seed)`, `Generator::below(bound)` |
+| `CongGia` (ch55 tests/integration.rs) | `FakeGateway` |
+| `DongHo`, `DongHoGia`, `ma_don_hang` (ch55 BT2) | `Clock`, `FakeClock` (+`SystemClock`), `order_code` |
+| `Cart::xoa`, `CartError::KhongTonTai` (ch55 đề BT1) | `Cart::remove`, `CartError::NotFound` |
+| `GiayPhep`, `giay_phep_con_lai`, `toi_da`, `thu_vao`, `cho_trong` (ch48 BT2) | `Permit`, `available_permits`, `max_permits`, `try_acquire`, `available` |
+
+#### Chương 61–73
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `Method::{GET,POST,PUT,DELETE}` | `Method::{Get,Post,Put,Delete}` |
+| `Request.than` / `Response.than` | `body` |
+| `Request.path_param` | `path_params` |
+| `Response.id` | `status` |
+| `Response::tao` | `Response::created` |
+| `Response::not_seen` | `Response::not_found` |
+| `Response::bad_data` | `Response::unprocessable` (+ mới `bad_request` 400, `method_not_allowed` 405) |
+| `Route.mau` / `Route.handle` | `pattern` / `handler` |
+| `Router.route` (trường) / `Router::them` | `routes` / `Router::route` |
+| `Router::fill` | `Router::find` + `match_path` |
+| `State` | `AppState` (tránh đè `axum::extract::State`) |
+| `SanPham` | `Product` |
+| `analyze_than` | `parse_body` |
+| `xu_ly_liet_ke` / `handle_view_one` / `handle_make` / `handle_remove` | `handle_list` / `handle_get_one` / `handle_create` / `handle_delete` |
+| `use_resp_use` | `build_router` |
+| `yc` (hàm dựng request) | `request` |
+| `Signal::lay` / `Derived::lay` | `get` |
+| `VirtualNode::The {name, attribute, con}` | `VirtualNode::Element {tag, attrs, children}` |
+| `VirtualNode::Van` | `VirtualNode::Text` |
+| `VirtualNode::the` / `van` | `element` / `text` |
+| `Patch::Replaced{nut_moi}` / `TextChanged{van_moi}` | `node` / `text` |
+| `Patch::ThemCon{nut}` | `Patch::ChildAdded{node}` |
+| `Patch::ChildRemoved{chi_so}` | `index` |
+| `CounterState.so` | `count` |
+| `Filter::{TatCa,ChuaXong,DaXong}` | `Filter::{All,Active,Completed}` |
+| `Message::BatTat` | `Message::Toggle` |
+| `Model::display` | `Model::visible` |
+| `IpcBridge.order` | `commands` |
+| `ProcessState::{Moi,SanSang,DangChay,Cho}` | `{New,Ready,Running,Waiting}` |
+| `Process.uu_tien` | `priority` |
+| `Process::time_time_wait` | `waiting_time` |
+| `KetQuaLapLich` / `.process` | `ScheduleResult` / `.processes` |
+| `tong_ket` | `summarize` |
+| `lap_lich_fcfs` / `lap_lich_sjf` / `lap_lich_round_robin` | `schedule_fcfs` / `schedule_sjf` / `schedule_round_robin` |
+| `ReplacementResult.series_frame` | `frame_history` |
+| `WaitForGraph.edge` / `them_cho` | `edges` / `add_wait` |
+| `Tang::{VatLy,LienKet,Mang,...}` | `Layer::{Physical,DataLink,Network,Transport,Application}` |
+| `GoiTin{tang,header,tai}` / `boc` | `Packet{layer,header,payload}` / `wrap` |
+| `dong_goi_xuong` | `encapsulate` |
+| `TcpState::{Dong,Nghe,DaNhanSyn,DaThietLap,ChoDong1,ChoDong2}` | `{Closed,Listen,SynReceived,Established,FinWait1,FinWait2}`; **sửa bug**: `LastAck`/`TimeWait` bị gán nhãn đảo; thêm `Closing` |
+| `TcpEvent::{NhanSyn,NhanSynAck,NhanAck,NhanFin,HetGio}` | `{RecvSyn,RecvSynAck,RecvAck,RecvFin,Timeout}` |
+| `transfer_state` | `transition` |
+| `CongestionPhase::{KhoiDongCham,TranhTacNghen}` | `{SlowStart,CongestionAvoidance}` |
+| `CongestionControl.threshold` / `.pha` | `ssthresh` / `phase` |
+| `nhan_ack` / `mat_call_light` / `het_gio` | `on_ack` / `on_triple_dup_ack` / `on_timeout` |
+| `MangCon` / `analyze` / `mat_na` / `quang_ba` / `num_servers` | `Subnet` / `parse` / `mask` / `broadcast` / `usable_hosts` |
+| `TransferResult.da_nhan` | `delivered` |
+| `FakeRegisters::{record,doc,dao_bit,record_field}`, trường `so_lan_doc` | `write`, `read`, `toggle_bit`, `write_field`, `read_count` |
+| `Pin<CheDo>{serial,_che_do}` / `serial()` | `Pin<Mode>{number,_mode}` / `number()` |
+| `into_wall` | `into_analog` |
+| `bat`/`tat`/`dao` (Output), `doc` (Input) | `set_high`/`set_low`/`toggle`, `is_high` (khớp embedded-hal 1.0) |
+| `Peripherals{gate_a,gate_b}` / `lay()` / `DA_LAY` | `{pa5,pc13}` / `take()` / `TAKEN` |
+| `Q16::{MOT,tu_nguyen,gate,subtract,nhan,chia}` | `ONE`, `from_int` (const), và trait `Add/Sub/Mul/Div`; `from_real` thành `const fn` |
+| `adc_sang_nhiet_do` | `adc_to_celsius` |
+| `RingBuffer::{quantity,rong,day,overwrite_buffer}` | `len`, `is_empty`, `is_full`, `push_overwrite` |
+| `ChongRung` | `Debouncer` |
+| `Signal::{Cao,KhongXacDinh}` | `Signal::{High,X}` |
+| `unit_pick` | `mux2` |
+| `AdderResult{tong,tran}` | `{sum,overflow}` |
+| `suon_len` (FlipFlopD/ShiftRegister/đèn) | `rising_edge` |
+| `ShiftRegister.o` / `doc` | `flops` / `contents` |
+| `TrafficLight::{Do,DoVang,Xanh,Vang}` | `{Red,RedAmber,Green,Amber}` |
+| `LedController{time_amount}` / `transfer_hop_le` | `TrafficController{durations}` / `is_legal_transition` |
+| `handle_without_pipeline` / `handle_with_pipeline` | `run_unpipelined` / `run_pipelined` (độ trễ nay được ĐO, không gán cứng) |
+| `Nut::{Low,Va,Hoac}` | `Node::{Not,And,Or}` |
+| `Circuit.nut` / `them` / `open_bucket` | `nodes` / `add` / `simulate` |
+| `Vec2::{KHONG,gate,subtract,nhan,part_remote}` | `ZERO`, trait `Add/Sub/Mul<f32>/Neg`, `reflect` |
+| `Accumulator{accumulate,max_step_one_frame}::new_frame` | `{accumulated,max_steps_per_frame}::advance` (cả `IntegerAccumulator`) |
+| `PhysicsBody.quantity` | `mass` |
+| `Aabb::{tam,day_ra}` | `center`, `min_translation` |
+| `intersect_merge` | `circles_intersect` |
+| `LuoiBam{o}::{build_use,suspicious_pairs}` | `SpatialHash{cells}::{rebuild,candidate_pairs}` |
+| `va_cham_vet_can` / `va_cham_qua_luoi` | `brute_force_pairs` / `grid_pairs` |
+| `World{con_song,mau,ban_kinh}::{tao,cancel}` | `{alive,health,radius}::{spawn,despawn}` |
+| `he_thong_move` | `movement_system` |
+| `DangSoan` | `Draft` |
+| `Order.id_chain` | `symbol` |
+| `Side::{inverse_lai,first}` | `opposite`, `sign` |
+| `RiskError::{ExceedsMaxValue,ExceedsMaxPosition}.tran` | `.limit` |
+| `OrderBook.ben_ban` / `nap` | `sell_side` / `submit` |
+| `Position.tien_mat` / `RONG` | `cash` / `EMPTY` |
+| `Candle.{mo,dong}` | `open`, `close` |
+| `Signal::Giu` | `Signal::Hold` |
+| `MeanCross.cham` | `slow` |
+| `HANG_SO_K` | `K` |
+| `Bam` / `KHONG` / `rut_gon` | `Hash256` / `ZERO` / `short` |
+| `OutPoint.chi_so` | `index` |
+| `Transaction::{tao_tien,la_tao_tien}` | `coinbase`, `is_coinbase` (+ mới `spend`, trường `coinbase_height`) |
+| `TapUtxo{o}` | `UtxoSet{outputs}` |
+| `TransactionError::SpendsMoreThanReceives{ra}` | `{total_out}` |
+| `BlockHeader.so_ngau_nhien` / `Block::dao` | `nonce` / `mine` |
+| `BlockError::BelowDifficulty{set,can}` / `CoinbaseOverpays{lay,can}` | `{got,need}` / `{claimed,allowed→need}` |
+| `Chain.peak` / `peak_height` / `utxo_tai` / `them` | `tip` / `tip_height` / `utxo_at` / `add_block` |
+| `MaNut` | `NodeId` |
+| `RoutingTable{toi,xor}::{them,tong_so_nut}` | `{own_id,buckets}::{insert,known_nodes}` |
+| `KetQuaTraCuu{so_nut_da_hoi}` | `LookupResult{nodes_queried}` |
+| `SimNetwork{nut}::{dung,tra_cuu}` | `{nodes}::{build,lookup}` |
+| `PropagationResult{so_nut_nhan,so_ban_tin,fully_parallel}` | `{nodes_reached,messages_sent,full_coverage}` |
+| `Behavior::{Im,HaiMat}` | `{Silent,Equivocating}` |
+| `RoundResult.threshold_can` | `threshold` |
+| `DistributedHashTable{mang,he_so_nhan_ban}::{lay,nut_roi_mang}` | `{network,replication}::{get,leave}` |
+| `ThongTinGoi` | `MessageInfo` (khớp tên cosmwasm-std) |
+| `Store{o}::lay` | `Store{kv}::get` |
+| `ContractError::{InsufficientFunds{can,co},Forbidden{ai},TranSo}` | `{InsufficientFunds{needed,available},Forbidden{addr},Overflow}` |
+| `Response{event,thong_message_cont}::send_cont` | `{events,messages}::add_message` |
+| `TokenMsg::{Transfer{den},Dot,TransferFrom{tu,den}}` | `{Transfer{recipient},Burn,TransferFrom{owner,recipient}}` |
+| `TokenCw20::{gate,subtract}` | `add_balance`, `sub_balance` |
+| `EscrowState::{DangGiu,DaGiaiNgan,DaHoanTien}`, `Escrow.so_tien` | `{Holding,Released,Refunded}`, `amount` |
+| `derive_pda(hat_giong, ma_chuong_trinh)` | `derive_pda(seeds, program_id)` |
+| `CheckAccount::{must_ky,must_owned_own,must_record_can}` | `{must_be_signer,must_be_owned_by,must_be_writable}` |
+| `MA_CHUONG_TRINH` / `CounterProgram::tang` | `COUNTER_PROGRAM_ID` / `increment` |
+| `SolanaError::InsufficientLamports{can,co}` | `{needed,available}` |
+| `ParallelAnalysis{so_lo_song_song,lo}` | `{batch_count,batches}` |
+| `AbiValue::MangUint` / `la_dong` | `UintArray` / `is_dynamic` |
+| `dung_calldata` / `doc_uint` | `build_calldata` / `read_uint` |
+| `Rlp::{Text,DanhSach}` / `Rlp::numerator` | `Rlp::{Bytes,List}` / `Rlp::uint` |
+| `Tx1559.den` | `to` |
+| `Tx1559::{load_in_period,id_hash_ky,chi_phi_toi_da}` | `{signing_payload,signing_hash,max_cost}` |
+| `Tx1559::effective_fee(u128) -> u128` | `effective_gas_price(u128) -> Option<u128>` (None khi base fee > max_fee — sửa bug vượt trần, có test) |
+| `Erc20::{CK_CHUYEN,CK_SO_DU,CK_CHO_PHEP,SK_CHUYEN}` | `{TRANSFER_SIG,BALANCE_OF_SIG,APPROVE_SIG,TRANSFER_EVENT}` |
+
+#### Chương 74–85
+
+| Định danh trước bản sửa | Định danh hiện tại |
+|---|---|
+| `LatencyHistogram::tong_mau` | `count` |
+| `LatencyHistogram::xor` (xô) | `buckets` |
+| `LatencyHistogram::total_value` | `sum` |
+| `tom_tat` | `summary` |
+| `DONG_CACHE` | `CACHE_LINE` |
+| `DisruptorRing::o` / `ObjectPool::o` | `slots` |
+| `chi_so` | `slot` |
+| `rong` / `day` / `quantity` (vòng) | `is_empty` / `is_full` / `len` |
+| `lay_lo` | `take_batch` |
+| `ObjectPool::{borrow, tra, view, fix}` | `acquire`, `release`, `get`, `get_mut` |
+| `ObjectPool::{ranh, con_ranh, count_borrow, so_lan_het_be}` | `free`, `available`, `acquire_count`, `exhausted_count` |
+| `QuoteAoS::co` / `count` | `flags` / `_reserved` |
+| `OrderPacket::count` | `_reserved` |
+| `total_price_buy` | `total_bid_price` |
+| `LatencyBudget::{chang, tran_ns, tong, set_level_spend, nut_that_co_chai, max_speedup_if_node_removed}` | `stages`, `budget_ns`, `total`, `within_budget`, `bottleneck`, `max_speedup_if_bottleneck_removed` |
+| `BanTin` / trường `ban_tin` | `Message` / `message` |
+| `Message::Replaced::ma_moi` | `new_id` |
+| `ParseError::TooShort { can, co }` | `TooShort { needed, got }` |
+| `KetQuaNhan` | `SeqOutcome` |
+| `MissingMessages { tu, den, so_ban_tin_mat }` | `MissingMessages { from, to, count }` |
+| `GapDetector::{nhan, slot_loop, num_dang_count}` | `receive`, `fill_gap`, `buffered_len` |
+| `GapDetector::{slot_count, num_duplicate_loop, tong_ban_tin_mat}` | `gap_count`, `duplicate_count`, `total_lost` |
+| `PriceLevel::so_lenh` | `order_count` |
+| `L2Book::{buy, ban}` | `bids`, `asks` |
+| `L2Book::{them, bot, price_can_table, is_key}` | `add`, `reduce`, `micro_price`, `is_locked` |
+| `L3Book::order` | `orders` |
+| `Chieu2` (bỏ hẳn) | `Side` nay derive `Ord` |
+| `ReadError::{DoDaiVoLy, MaSuKienLa}` | `InvalidLength`, `UnknownEventCode` |
+| `SessionRecorder::{so_byte, doc_lai, time_amount_nanos}` | `byte_len`, `read_back`, `duration_nanos` |
+| `VirtualClock::{bay_gio_ns, adder_gate}` | `now_ns`, `advance_by` |
+| `ReplaySpeed::HeSo` | `ReplaySpeed::Factor` |
+| `LatencyModel::qua_internet` | `over_internet` |
+| `ReducedBook::{buy, ban, them, bot, quantity}` | `bids`, `asks`, `add`, `reduce`, `qty_at` |
+| `OurOrder::{timestamp_toi_venue_nanos, fill_done}` | `arrives_at_venue_nanos`, `is_filled` |
+| `Position::tien_mat` | `cash` |
+| `ReplayStrategy::when_can_fill` | `on_fill` |
+| `ManagedMaker::is_pending` | `pending_exposure` |
+| `Side::first` | `Side::sign` |
+| `RejectReason::NgonTayBeo { lech_percent }` | `FatFinger { deviation_pct }` |
+| `RiskLimits::so_lenh_moi_giay_toi_da` | `max_orders_per_second` |
+| `RiskGate::{da_tat, enable_all_switches, operator_flips_switch, check_join_unit}` | `is_killed`, `trip_kill_switch`, `operator_reset`, `check_inner` |
+| `StatsWindow::{o, tong, them, quantity, day, diem_z}` | `values`, `total`, `push`, `len`, `is_full`, `z_score` |
+| `PairSignal::{MoDaiB, Dong, KhongLam}` | `OpenLongB`, `Close`, `Hold` |
+| `ArbCap` / `proxy_ratio`, `threshold_out`, `threshold_use` | `PairArb` / `hedge_ratio`, `exit_threshold`, `stop_threshold` |
+| `sort_arrange_block` | `order_block` |
+| `KetQuaKep` | `SandwichOutcome` |
+| `NS_MOI_CHU_KY`, `DAI_GOI`, `SO_MUC_PHAN_CUNG` | `NS_PER_CYCLE`, `PACKET_LEN`, `HW_LEVELS` |
+| `PacketField::id_chain` | `symbol_id` |
+| `FieldExtractor::{tach, period_split, so_goi_da_tach, so_goi_hong}` | `extract`, `extract_cycles`, `packets_parsed`, `packets_rejected` |
+| `xor_tuan_tu` | `xor_sequential` |
+| `HwOrderBook::{buy, ban}` | `bids`, `asks` |
+| `RejectFlags::num_has_enable` | `count_raised` |
+| `RiskCircuit::period_check` | `check_cycles` |
+| `PipelineStage::period` / `HwPipeline::tang` | `cycles` / `stages` |
+| `HwPipeline::{latency_period, total_period_wait}` | `latency_cycles`, `total_cycles_pipelined` |
+| `partial_sum` / `ExecutionUnit::PhanMem` | `assign_unit` / `ExecutionUnit::Software` |
+| `MemoryTier::DiaQuay` / `period()` | `SpinningDisk` / `cycles()` |
+| `BYTE_MOI_DONG_CACHE`, `PHAT_DU_DOAN_SAI` | `CACHE_LINE_BYTES`, `MISPREDICT_PENALTY` |
+| `CacheStats::{slip_count, ratio_duplicate, total_period}` | `miss_count`, `hit_ratio`, `total_cycles` |
+| `CacheSim::{so_tap, positive_count, tap, account, access_cap}` | `num_sets`, `ways`, `sets`, `stats`, `access` |
+| `BranchPredictor::ratio_sai` | `mispredict_ratio` |
+| `analyze_total_one_bien`, `tong_mot_bien`, `total_many_bien` | `analyze_single_accumulator`, `sum_single`, `sum_multi` |
+| `SimdAnalysis::{be_rong_vector, so_lenh_vector}` | `vector_width`, `vector_ops` |
+| `LUONG_MOI_WARP`, `BYTE_MOI_GIAO_DICH`, `SO_NGAN_HANG` | `THREADS_PER_WARP`, `TRANSACTION_BYTES`, `NUM_BANKS` |
+| `LaunchConfig::{total_amount, warp_moi_khoi, excess_flow}` | `total_threads`, `warps_per_block`, `idle_threads` |
+| `DivergenceAnalysis::{so_warp, he_so_cham}` | `num_warps`, `slowdown` |
+| `CoalescingAnalysis::byte_co_ich` | `useful_bytes` |
+| `access_cap_col_lat_has_count` | `padded_tile_column_access` |
+| `KetQuaRutGon` / `tong` | `ReductionResult` / `sum` |
+| `rut_gon_song_song`, `rut_gon_tuan_tu`, `num_step_reduce` | `parallel_reduce`, `sequential_reduce`, `reduce_steps` |
+| `GemmAnalysis::doc_chia_se` | `read_shared` |
+| `Occupancy::warp_toi_da` | `max_warps` |
+| `Candle::{mo, dong, quantity}` | `open`, `close`, `volume` |
+| `Candle::{than, bien_do, tang, down}` | `body`, `range`, `is_bullish`, `is_bearish` |
+| `Pattern::{BuaTang, SaoBangGiam, NhanChimTang, NhanChimGiam, KhongCo}` | `Hammer`, `ShootingStar`, `BullishEngulfing`, `BearishEngulfing`, `NoPattern` |
+| `la_doji`, `la_bua`, `la_sao_bang`, `la_nhan_chim_tang` | `is_doji`, `is_hammer`, `is_shooting_star`, `is_bullish_engulfing` |
+| `BollingerBands::{above, mid, below, do_rong}` | `upper`, `middle`, `lower`, `bandwidth` |
+| `bien_do_that` | `true_range` |
+| `co_theo_atr` | `atr_position_size` |
+| `OptionParams::bien_dong` | `vol` |
+| `gia_black_scholes` | `black_scholes_price` |
+| `LegKind::{QuyenBan, TaiSanCoSo}` | `Put`, `Underlying` |
+| `spread_price_up` | `bull_call_spread` |
+| `dieu_hau_sat` ("Điều hâu sắt") | `iron_condor` ("Iron condor") |
+| `OptionStrategy::{lai_max_in_long, lo_max_in_long}` | `max_profit_in_range`, `max_loss_in_range` |
+| `RegressionResult::{sai_num_standard, so_quan_sat}` | `residual_std`, `num_obs` |
+| `KetQuaDongLienKet` | `CointegrationResult` |
+| `TestSegment::{query_param, point_in_mau, point_out_mau}` | `chosen_param`, `in_sample_score`, `out_of_sample_score` |
+| `sinh_cap_dong_lien_ket` | `gen_cointegrated_pair` |
+| `gen_cap_price_cointegration` (tên sai nghĩa: cặp này KHÔNG đồng liên kết) | `gen_correlated_only_pair` |
+| `Side::first` | `Side::sign` |
+| `Intent::block_don` | `Intent::place` |
+| `OurOrder::prev_quantity` | `queue_ahead` |
+| `MarketSnapshot::{lit_buy, lit_sell, mid_price_traditional}` | `lit_bid`, `lit_ask`, `lit_mid` |
+| `LitVenue::{buy, ban, ben, them, bot}` | `bids`, `asks`, `side_map`, `add`, `reduce` |
+| `BE_KHOI_DAU` | `INITIAL_POOL` |
 
 ## Ghi chú về cách dịch
