@@ -7,7 +7,7 @@ static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Cấu trúc một bản ghi dữ liệu có gắn phiên bản thời gian (Versioned Record)
 #[derive(Clone, Debug, PartialEq)]
-pub struct SellRecordSessionSell {
+pub struct VersionedRecord {
     pub created_by_tx: u64,         // Giao dịch tạo ra bản ghi
     pub deleted_by_tx: Option<u64>, // Giao dịch xóa bản ghi (None nếu còn hiệu lực)
     pub value: String,            // Dữ liệu thực tế
@@ -15,7 +15,7 @@ pub struct SellRecordSessionSell {
 
 /// Hệ thống lưu trữ dữ liệu đa phiên bản MVCC Store
 pub struct MvccStore {
-    data: HashMap<String, Vec<SellRecordSessionSell>>,
+    data: HashMap<String, Vec<VersionedRecord>>,
 }
 
 impl MvccStore {
@@ -32,10 +32,10 @@ impl MvccStore {
 
     /// THAO TÁC GHI TRONG GIAO DỊCH (Write)
     pub fn record(&mut self, key: &str, value: &str, tx_id: u64) {
-        let list_session_sell = self.data.entry(key.to_string()).or_default();
+        let versions = self.data.entry(key.to_string()).or_default();
 
         // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi giao dịch hiện tại
-        for pb in list_session_sell.iter_mut().rev() {
+        for pb in versions.iter_mut().rev() {
             if pb.deleted_by_tx.is_none() {
                 pb.deleted_by_tx = Some(tx_id);
                 break;
@@ -43,7 +43,7 @@ impl MvccStore {
         }
 
         // Thêm phiên bản mới vào danh sách
-        list_session_sell.push(SellRecordSessionSell {
+        versions.push(VersionedRecord {
             created_by_tx: tx_id,
             deleted_by_tx: None,
             value: value.to_string(),
@@ -53,9 +53,9 @@ impl MvccStore {
     /// THAO TÁC ĐỌC CÔ LẬP THEO PHIÊN BẢN (Snapshot Read)
     /// Áp dụng quy tắc khả kiến: Chỉ đọc bản ghi được tạo TRƯỚC tx_id và CHƯA BỊ XÓA trước tx_id
     pub fn doc(&self, key: &str, current_tx_id: u64) -> Option<&str> {
-        if let Some(list_session_sell) = self.data.get(key) {
+        if let Some(versions) = self.data.get(key) {
             // Duyệt từ phiên bản mới nhất lùi về phiên bản cũ nhất
-            for pb in list_session_sell.iter().rev() {
+            for pb in versions.iter().rev() {
                 // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm giao dịch này
                 let hop_le_ve_make = pb.created_by_tx <= current_tx_id;
                 // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một giao dịch xảy ra trong tương lai

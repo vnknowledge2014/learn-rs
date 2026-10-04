@@ -61,8 +61,8 @@ Mục tiêu học tập của chương này:
 │      ▼              ▼                  │  thẳng vào cửa ra máy bay được —        │
 │  [TỪ CHỐI]   ┌──────────────┐          │  vì tờ giấy trên tay SAI LOẠI.          │
 │   Err(...)   │ Email  ĐÃ    │          │                                         │
-│              │ ĐÓNG DẤU ĐỎ  │          │  Trong Rust: DonQueue<Nhap> và           │
-│              └──────────────┘          │  DonQueue<MathDone> là HAI KIỂU       │
+│              │ ĐÓNG DẤU ĐỎ  │          │  Trong Rust: Order<Nhap> và           │
+│              └──────────────┘          │  Order<Paid> là HAI KIỂU       │
 │                                        │  KHÁC NHAU. Trình biên dịch chính là    │
 │  Từ đây trở đi, MỌI phòng ban trong    │  nhân viên soát vé — và anh ta KHÔNG    │
 │  công ty tin tưởng tuyệt đối tờ giấy   │  BAO GIỜ ngủ gật.                       │
@@ -85,7 +85,7 @@ Bạn cầm một mẩu giấy viết tay đến phòng công chứng. Nhân vi�
 
 Bạn không thể cầm mã đặt chỗ mà đi thẳng ra cửa máy bay — không phải vì có ai chặn bạn lại, mà vì **tờ giấy trên tay bạn sai loại**.
 
-Đó chính xác là Typestate: `DonQueue<Nhap>` và `DonQueue<MathDone>` là **hai kiểu khác nhau**, nên hàm `delivery_queue` chỉ nhận loại thứ hai. Việc "quên thanh toán" không còn là một lỗi lúc chạy — nó là **lỗi biên dịch**.
+Đó chính xác là Typestate: `Order<Nhap>` và `Order<Paid>` là **hai kiểu khác nhau**, nên hàm `delivery_queue` chỉ nhận loại thứ hai. Việc "quên thanh toán" không còn là một lỗi lúc chạy — nó là **lỗi biên dịch**.
 
 ---
 
@@ -120,16 +120,16 @@ Ví dụ kinh điển:
 // ❌ Kiểu TÍCH: 2 × (1 + n) = có 2 tổ hợp VÔ NGHĨA
 struct MalformedOrder {
     is_paid: bool,
-    id_trade: Option<String>,
+    transaction_id: Option<String>,
 }
-// Tổ hợp 1: is_paid = true,  id_trade = None      → Đã trả tiền mà không có mã?!
-// Tổ hợp 2: is_paid = false, id_trade = Some(...) → Chưa trả mà có mã giao dịch?!
+// Tổ hợp 1: is_paid = true,  transaction_id = None      → Đã trả tiền mà không có mã?!
+// Tổ hợp 2: is_paid = false, transaction_id = Some(...) → Chưa trả mà có mã giao dịch?!
 // Hệ quả: mọi hàm đọc struct này phải viết `if` phòng thủ cho hai trường hợp không thể xảy ra.
 
 // ✅ Kiểu TỔNG: 1 + n = KHÔNG CÒN tổ hợp vô nghĩa nào
 enum PaymentState {
     ChuaTra,
-    DaTra { id_trade: String },
+    DaTra { transaction_id: String },
 }
 // Trình biên dịch bảo đảm: có mã giao dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
 ```
@@ -190,8 +190,8 @@ Cách thông thường là dùng một `enum` trạng thái rồi kiểm tra lú
 
 ```rust
 // Cách thường: kiểm tra LÚC CHẠY
-fn delivery_queue(don: &mut DonQueue) -> Result<(), Failed> {
-    if don.state != State::MathDone {
+fn delivery_queue(don: &mut Order) -> Result<(), Failed> {
+    if don.state != State::Paid {
         return Err(Failed::ChuaThanhToan);  // ← lỗi này chỉ lộ ra khi chạy tới
     }
     Ok(())
@@ -203,20 +203,20 @@ Typestate đẩy phép kiểm tra đó lên **lúc biên dịch**, bằng cách 
 ```rust
 use std::marker::PhantomData;
 
-pub struct Import;          // Các kiểu "thẻ đánh dấu" — không chứa dữ liệu,
+pub struct Draft;          // Các kiểu "thẻ đánh dấu" — không chứa dữ liệu,
 pub struct Authenticated;     // chiếm 0 byte bộ nhớ, chỉ tồn tại lúc biên dịch.
-pub struct MathDone;
+pub struct Paid;
 
-pub struct DonQueue<TT> {
+pub struct Order<TT> {
     id: String,
-    dong: Vec<CloseQueue>,
+    dong: Vec<OrderLine>,
     _state: PhantomData<TT>,   // "tôi mang thẻ TT" — 0 byte
 }
 
-impl DonQueue<Import> {
-    pub fn auth(self) -> Result<DonQueue<Authenticated>, DomainError> { /* ... */ }
+impl Order<Draft> {
+    pub fn auth(self) -> Result<Order<Authenticated>, DomainError> { /* ... */ }
 }
-impl DonQueue<MathDone> {
+impl Order<Paid> {
     pub fn delivery_queue(self) -> PhieuGiaoHang { /* ... */ }   // ← chỉ tồn tại cho trạng thái này!
 }
 ```
@@ -224,9 +224,9 @@ impl DonQueue<MathDone> {
 Bây giờ đoạn mã sau **không biên dịch được**:
 
 ```rust
-let don = DonQueue::new(/* ... */);   // DonQueue<Nhap>
+let don = Order::new(/* ... */);   // Order<Nhap>
 don.delivery_queue();
-// LỖI E0599: no method named `delivery_queue` found for struct `DonQueue<Nhap>`
+// LỖI E0599: no method named `delivery_queue` found for struct `Order<Nhap>`
 ```
 
 Ba điều đáng chú ý:
@@ -245,12 +245,12 @@ Có một cám dỗ rất lớn: dùng luôn kiểu miền để nhận dữ li�
 | Mục đích | Nhận **mọi thứ** người ta gửi tới | Chỉ chứa dữ liệu **đã hợp lệ** |
 | Cấu trúc | Phẳng, toàn `String` và `Option` | Lồng nhau, dùng kiểu bọc |
 | Thái độ | Khoan dung | Nghiêm ngặt |
-| Ví dụ | `struct OrderDto { email: String }` | `struct DonQueue { khach: Email }` |
+| Ví dụ | `struct OrderDto { email: String }` | `struct Order { khach: Email }` |
 
 Cầu nối giữa hai thế giới chính là trait **`TryFrom`**:
 
 ```rust
-impl TryFrom<OrderDto> for DonQueue<Import> {
+impl TryFrom<OrderDto> for Order<Draft> {
     type Error = Vec<DomainError>;   // trả về TẤT CẢ lỗi — Applicative ở Chương 19!
     fn try_from(dto: OrderDto) -> Result<Self, Self::Error> { /* ... */ }
 }
@@ -441,9 +441,9 @@ pub mod mien {
     // KIỂU TỔNG: cách thanh toán — KHÔNG CÒN tổ hợp vô nghĩa
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum MathOp {
+    pub enum PaymentMethod {
         TienMat,
-        Transfer { id_trade: String },
+        Transfer { transaction_id: String },
         The { last_four: String },
     }
 
@@ -451,15 +451,15 @@ pub mod mien {
     // Dòng hàng: một kiểu TÍCH gồm toàn kiểu đã được công chứng
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct CloseQueue {
+    pub struct OrderLine {
         pub name: TenSanPham,
         pub quantity: Quantity,
-        pub don_price: Money,
+        pub unit_price: Money,
     }
 
-    impl CloseQueue {
-        pub fn into_tien(&self) -> Money {
-            self.don_price.nhan(self.quantity.value())
+    impl OrderLine {
+        pub fn line_total(&self) -> Money {
+            self.unit_price.nhan(self.quantity.value())
         }
     }
 }
@@ -472,25 +472,25 @@ use mien::*;
 
 /// Bốn "thẻ đánh dấu" trạng thái. Chúng chiếm 0 byte và biến mất khi biên dịch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Import;
+pub struct Draft;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Authenticated;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MathDone;
+pub struct Paid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Delivered;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DonQueue<TT> {
+pub struct Order<TT> {
     id: String,
     customer: Email,
-    dong: Vec<CloseQueue>,
-    payment: Option<MathOp>,
+    dong: Vec<OrderLine>,
+    payment: Option<PaymentMethod>,
     _state: PhantomData<TT>,
 }
 
 /// Các phương thức dùng chung cho MỌI trạng thái.
-impl<TT> DonQueue<TT> {
+impl<TT> Order<TT> {
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -504,7 +504,7 @@ impl<TT> DonQueue<TT> {
     pub fn tong_tien(&self) -> Money {
         self.dong
             .iter()
-            .map(|d| d.into_tien())
+            .map(|d| d.line_total())
             .fold(Money::dong(0), |a, b| a.gate(b))
     }
 }
@@ -512,9 +512,9 @@ impl<TT> DonQueue<TT> {
 pub const SO_DONG_TOI_DA: usize = 20;
 
 /// Trạng thái NHẬP: chỉ có đúng một hành động hợp lệ — xác thực.
-impl DonQueue<Import> {
-    pub fn new(id: &str, customer: Email, dong: Vec<CloseQueue>) -> Self {
-        DonQueue {
+impl Order<Draft> {
+    pub fn new(id: &str, customer: Email, dong: Vec<OrderLine>) -> Self {
+        Order {
             id: id.to_string(),
             customer,
             dong,
@@ -523,7 +523,7 @@ impl DonQueue<Import> {
         }
     }
 
-    pub fn auth(self) -> Result<DonQueue<Authenticated>, DomainError> {
+    pub fn auth(self) -> Result<Order<Authenticated>, DomainError> {
         if self.dong.is_empty() {
             return Err(DomainError::DonRong);
         }
@@ -533,7 +533,7 @@ impl DonQueue<Import> {
                 toi_da: SO_DONG_TOI_DA,
             });
         }
-        Ok(DonQueue {
+        Ok(Order {
             id: self.id,
             customer: self.customer,
             dong: self.dong,
@@ -544,9 +544,9 @@ impl DonQueue<Import> {
 }
 
 /// Trạng thái ĐÃ XÁC THỰC: chỉ có thể thanh toán.
-impl DonQueue<Authenticated> {
-    pub fn payment(self, cach: MathOp) -> DonQueue<MathDone> {
-        DonQueue {
+impl Order<Authenticated> {
+    pub fn payment(self, cach: PaymentMethod) -> Order<Paid> {
+        Order {
             id: self.id,
             customer: self.customer,
             dong: self.dong,
@@ -557,20 +557,20 @@ impl DonQueue<Authenticated> {
 }
 
 /// Trạng thái ĐÃ THANH TOÁN: chỉ có thể giao hàng.
-impl DonQueue<MathDone> {
-    pub fn payment_method(&self) -> &MathOp {
+impl Order<Paid> {
+    pub fn payment_method(&self) -> &PaymentMethod {
         // An toàn tuyệt đối: chỉ trạng thái này mới tồn tại, và nó LUÔN có thanh toán.
         self.payment
             .as_ref()
             .expect("bất biến của DonHang<DaThanhToan>: luôn có thông tin thanh toán")
     }
 
-    pub fn delivery_queue(self, ma_van_don: &str) -> DonQueue<Delivered> {
+    pub fn delivery_queue(self, ma_van_don: &str) -> Order<Delivered> {
         println!(
             "   [VỎ MỆNH LỆNH] Gửi email tới {} về vận đơn {}",
             self.customer, ma_van_don
         );
-        DonQueue {
+        Order {
             id: self.id,
             customer: self.customer,
             dong: self.dong,
@@ -596,10 +596,10 @@ pub struct OrderDto {
 pub struct OrderLineDto {
     pub name: String,
     pub quantity: u32,
-    pub don_price: u64,
+    pub unit_price: u64,
 }
 
-impl TryFrom<OrderDto> for DonQueue<Import> {
+impl TryFrom<OrderDto> for Order<Draft> {
     /// Trả về TẤT CẢ lỗi cùng lúc — đúng tinh thần Applicative ở Chương 19.
     type Error = Vec<DomainError>;
 
@@ -614,15 +614,15 @@ impl TryFrom<OrderDto> for DonQueue<Import> {
             }
         };
 
-        let mut dong: Vec<CloseQueue> = Vec::new();
+        let mut dong: Vec<OrderLine> = Vec::new();
         for d in &dto.dong {
             let name = TenSanPham::analyze(&d.name);
             let sl = Quantity::analyze(d.quantity);
             match (name, sl) {
-                (Ok(t), Ok(s)) => dong.push(CloseQueue {
+                (Ok(t), Ok(s)) => dong.push(OrderLine {
                     name: t,
                     quantity: s,
-                    don_price: Money::dong(d.don_price),
+                    unit_price: Money::dong(d.unit_price),
                 }),
                 (t, s) => {
                     if let Err(e) = t {
@@ -636,7 +636,7 @@ impl TryFrom<OrderDto> for DonQueue<Import> {
         }
 
         match customer {
-            Some(k) if error.is_empty() => Ok(DonQueue::new(&dto.id, k, dong)),
+            Some(k) if error.is_empty() => Ok(Order::new(&dto.id, k, dong)),
             _ => Err(error),
         }
     }
@@ -669,20 +669,20 @@ pub fn apply_discount(tong: Money, so_dong: usize) -> Money {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invoice {
-    pub computed_temp: Money,
+    pub subtotal: Money,
     pub discount: Money,
     pub phi_van_transfer: Money,
     pub total_payable: Money,
 }
 
 /// Toàn bộ phép tính hóa đơn — vẫn hoàn toàn thuần túy.
-pub fn invoice_loop(don: &DonQueue<Authenticated>) -> Invoice {
-    let computed_temp = don.tong_tien();
-    let discount = apply_discount(computed_temp, don.so_dong());
-    let after_discount = computed_temp.subtract(discount);
+pub fn invoice_loop(don: &Order<Authenticated>) -> Invoice {
+    let subtotal = don.tong_tien();
+    let discount = apply_discount(subtotal, don.so_dong());
+    let after_discount = subtotal.subtract(discount);
     let phi = shipping_fee(after_discount);
     Invoice {
-        computed_temp,
+        subtotal,
         discount,
         phi_van_transfer: phi,
         total_payable: after_discount.gate(phi),
@@ -728,11 +728,11 @@ fn main() {
         id: "ORD-0001".to_string(),
         email: "sai-email".to_string(),
         dong: vec![
-            OrderLineDto { name: "".to_string(), quantity: 0, don_price: 100 },
-            OrderLineDto { name: "Bàn phím cơ".to_string(), quantity: 2, don_price: 1_200_000 },
+            OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 100 },
+            OrderLineDto { name: "Bàn phím cơ".to_string(), quantity: 2, unit_price: 1_200_000 },
         ],
     };
-    match DonQueue::try_from(dto_hong) {
+    match Order::try_from(dto_hong) {
         Ok(_) => println!("   (không tới đây)"),
         Err(error) => {
             println!("   Từ chối đơn hàng với {} lỗi:", error.len());
@@ -750,38 +750,38 @@ fn main() {
         id: "ORD-0002".to_string(),
         email: "  Khach.Hang@Shop.VN  ".to_string(),
         dong: vec![
-            OrderLineDto { name: "Bàn phím cơ không dây".to_string(), quantity: 2, don_price: 1_200_000 },
-            OrderLineDto { name: "Chuột công thái học".to_string(), quantity: 1, don_price: 750_000 },
-            OrderLineDto { name: "Lót chuột cỡ lớn".to_string(), quantity: 3, don_price: 150_000 },
+            OrderLineDto { name: "Bàn phím cơ không dây".to_string(), quantity: 2, unit_price: 1_200_000 },
+            OrderLineDto { name: "Chuột công thái học".to_string(), quantity: 1, unit_price: 750_000 },
+            OrderLineDto { name: "Lót chuột cỡ lớn".to_string(), quantity: 3, unit_price: 150_000 },
         ],
     };
 
-    let don_import: DonQueue<Import> = DonQueue::try_from(dto_tot).expect("đơn này phải hợp lệ");
+    let draft_order: Order<Draft> = Order::try_from(dto_tot).expect("đơn này phải hợp lệ");
     println!(
         "   [Nhập]          mã={} khách={} số dòng={}",
-        don_import.id(),
-        don_import.customer(),
-        don_import.so_dong()
+        draft_order.id(),
+        draft_order.customer(),
+        draft_order.so_dong()
     );
 
-    let don_auth: DonQueue<Authenticated> = don_import.auth().expect("đơn có 3 dòng, hợp lệ");
+    let don_auth: Order<Authenticated> = draft_order.auth().expect("đơn có 3 dòng, hợp lệ");
     println!("   [Đã xác thực]   tổng hàng = {}", don_auth.tong_tien());
 
     // ---- LÕI THUẦN TÚY: lập hóa đơn (không I/O, kiểm thử được ngay) ----
     let invoice = invoice_loop(&don_auth);
     println!("   ┌─ HÓA ĐƠN (tính bởi LÕI THUẦN TÚY) ─────────────");
-    println!("   │ Tạm tính        : {}", invoice.computed_temp);
+    println!("   │ Tạm tính        : {}", invoice.subtotal);
     println!("   │ Chiết khấu      : {}", invoice.discount);
     println!("   │ Phí vận chuyển  : {}", invoice.phi_van_transfer);
     println!("   │ TỔNG THANH TOÁN : {}", invoice.total_payable);
     println!("   └────────────────────────────────────────────────");
 
-    let don_da_tra: DonQueue<MathDone> = don_auth.payment(MathOp::Transfer {
-        id_trade: "VCB-99881234".to_string(),
+    let don_da_tra: Order<Paid> = don_auth.payment(PaymentMethod::Transfer {
+        transaction_id: "VCB-99881234".to_string(),
     });
     println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
 
-    let _delivered_order: DonQueue<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
+    let _delivered_order: Order<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
     println!("   [Đã giao]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
@@ -799,7 +799,7 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n6. XÁC THỰC QUY TẮC NGHIỆP VỤ");
     let email = Email::analyze("test@shop.vn").unwrap();
-    let don_rong: DonQueue<Import> = DonQueue::new("ORD-0003", email, vec![]);
+    let don_rong: Order<Draft> = Order::new("ORD-0003", email, vec![]);
     match don_rong.auth() {
         Ok(_) => println!("   (không tới đây)"),
         Err(l) => println!("   Đơn rỗng bị chặn: {}", l),
@@ -818,21 +818,21 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn don_mau() -> DonQueue<Authenticated> {
+    fn don_mau() -> Order<Authenticated> {
         let email = Email::analyze("khach@shop.vn").unwrap();
         let dong = vec![
-            CloseQueue {
+            OrderLine {
                 name: TenSanPham::analyze("Bàn phím").unwrap(),
                 quantity: Quantity::analyze(2).unwrap(),
-                don_price: Money::dong(100_000),
+                unit_price: Money::dong(100_000),
             },
-            CloseQueue {
+            OrderLine {
                 name: TenSanPham::analyze("Chuột").unwrap(),
                 quantity: Quantity::analyze(1).unwrap(),
-                don_price: Money::dong(50_000),
+                unit_price: Money::dong(50_000),
             },
         ];
-        DonQueue::new("ORD-TEST", email, dong).auth().unwrap()
+        Order::new("ORD-TEST", email, dong).auth().unwrap()
     }
 
     #[test]
@@ -867,7 +867,7 @@ mod tests {
     #[test]
     fn empty_order_is_rejected() {
         let email = Email::analyze("a@b.vn").unwrap();
-        let don = DonQueue::new("X", email, vec![]);
+        let don = Order::new("X", email, vec![]);
         assert_eq!(don.auth().unwrap_err(), DomainError::DonRong);
     }
 
@@ -876,9 +876,9 @@ mod tests {
         let dto = OrderDto {
             id: "X".to_string(),
             email: "sai".to_string(),
-            dong: vec![OrderLineDto { name: "".to_string(), quantity: 0, don_price: 1 }],
+            dong: vec![OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 1 }],
         };
-        let error = DonQueue::try_from(dto).unwrap_err();
+        let error = Order::try_from(dto).unwrap_err();
         assert_eq!(error.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", error);
     }
 
@@ -909,7 +909,7 @@ mod tests {
     fn invoice_totals_are_correct() {
         let don = don_mau(); // tạm tính 250.000, 2 dòng -> không chiết khấu
         let hd = invoice_loop(&don);
-        assert_eq!(hd.computed_temp, Money::dong(250_000));
+        assert_eq!(hd.subtotal, Money::dong(250_000));
         assert_eq!(hd.discount, Money::dong(0));
         assert_eq!(hd.phi_van_transfer, Money::dong(30_000));
         assert_eq!(hd.total_payable, Money::dong(280_000));
@@ -918,8 +918,8 @@ mod tests {
     #[test]
     fn typestate_flow_runs_all_four_steps() {
         let don = don_mau();
-        let da_tra = don.payment(MathOp::TienMat);
-        assert_eq!(da_tra.payment_method(), &MathOp::TienMat);
+        let da_tra = don.payment(PaymentMethod::TienMat);
+        assert_eq!(da_tra.payment_method(), &PaymentMethod::TienMat);
         let delivered = da_tra.delivery_queue("VD-001");
         assert_eq!(delivered.id(), "ORD-TEST");
     }
@@ -927,9 +927,9 @@ mod tests {
     #[test]
     fn typestate_is_zero_cost_at_runtime() {
         use std::mem::size_of;
-        // PhantomData chiếm 0 byte: DonQueue<Nhap> và DonQueue<Delivered> có cùng kích thước.
-        assert_eq!(size_of::<DonQueue<Import>>(), size_of::<DonQueue<Delivered>>());
-        assert_eq!(size_of::<Import>(), 0);
+        // PhantomData chiếm 0 byte: Order<Nhap> và Order<Delivered> có cùng kích thước.
+        assert_eq!(size_of::<Order<Draft>>(), size_of::<Order<Delivered>>());
+        assert_eq!(size_of::<Draft>(), 0);
         assert_eq!(size_of::<PhantomData<Delivered>>(), 0);
     }
 }
@@ -942,10 +942,10 @@ mod tests {
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0603** | `tuple struct constructor 'Email' is private` | **Đây là lỗi TỐT!** Nó chứng minh kiểu bọc đang bảo vệ bạn: ai đó cố tạo `Email` mà không đi qua phòng công chứng. | Gọi `Email::analyze(...)` thay vì `Email(...)`. Đừng bao giờ "sửa" bằng cách thêm `pub` vào trường. |
-| **E0599** | `no method named 'delivery_queue' found for struct 'DonQueue<Nhap>'` | **Cũng là lỗi TỐT!** Typestate đang chặn một bước nhảy cóc trong quy trình. | Đi đúng thứ tự: `.auth()?` rồi `.payment(...)` rồi mới `.delivery_queue(...)`. |
+| **E0599** | `no method named 'delivery_queue' found for struct 'Order<Nhap>'` | **Cũng là lỗi TỐT!** Typestate đang chặn một bước nhảy cóc trong quy trình. | Đi đúng thứ tự: `.auth()?` rồi `.payment(...)` rồi mới `.delivery_queue(...)`. |
 | **E0382** | `use of moved value: 'don'` | Mỗi phép chuyển trạng thái **tiêu thụ** `self`, nên đơn hàng ở trạng thái cũ không còn tồn tại. | Đó là chủ ý thiết kế. Dùng biến mới cho mỗi trạng thái, hoặc `#[derive(Clone)]` nếu thật sự cần bản sao. |
-| **E0392** | `parameter 'TT' is never used` | Bạn khai báo `struct DonQueue<TT>` mà không dùng `TT` trong bất kỳ trường nào. | Thêm trường `_state: PhantomData<TT>` — đây chính là lý do `PhantomData` tồn tại. |
-| **E0277** | `the trait bound 'DonQueue<Nhap>: Debug' is not satisfied` | `#[derive(Debug)]` trên kiểu generic sinh ra ràng buộc `TT: Debug`. | Thêm `#[derive(Debug)]` cho các kiểu thẻ đánh dấu (`Nhap`, `Delivered`…), hoặc tự viết `impl Debug`. |
+| **E0392** | `parameter 'TT' is never used` | Bạn khai báo `struct Order<TT>` mà không dùng `TT` trong bất kỳ trường nào. | Thêm trường `_state: PhantomData<TT>` — đây chính là lý do `PhantomData` tồn tại. |
+| **E0277** | `the trait bound 'Order<Nhap>: Debug' is not satisfied` | `#[derive(Debug)]` trên kiểu generic sinh ra ràng buộc `TT: Debug`. | Thêm `#[derive(Debug)]` cho các kiểu thẻ đánh dấu (`Nhap`, `Delivered`…), hoặc tự viết `impl Debug`. |
 
 ### Phân tích lỗi thực tế `E0603` — khi lỗi biên dịch là dấu hiệu thành công:
 
@@ -1087,7 +1087,7 @@ Thiết kế typestate cho một kết nối cơ sở dữ liệu với ba trạ
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Mẫu giống hệt `DonQueue<TT>`. Điểm mới: `commit` và `rollback` đi **ngược** về `KetNoi<DaKetNoi>` — điều đó hoàn toàn hợp lệ, vì typestate không bắt buộc phải là đường một chiều.
+Mẫu giống hệt `Order<TT>`. Điểm mới: `commit` và `rollback` đi **ngược** về `KetNoi<DaKetNoi>` — điều đó hoàn toàn hợp lệ, vì typestate không bắt buộc phải là đường một chiều.
 </details>
 
 <details>

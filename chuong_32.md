@@ -133,18 +133,18 @@ pub struct SlottedPage {
 impl SlottedPage {
     /// Khởi tạo một trang mới tinh kích thước 4096 bytes
     pub fn new(page_id: u32) -> Self {
-        let mut state = Self {
+        let mut page = Self {
             page_id,
             data: [0u8; PAGE_SIZE],
         };
         // Ghi Header ban đầu:
         // Byte 0..4: page_id
-        state.data[0..4].copy_from_slice(&page_id.to_le_bytes());
+        page.data[0..4].copy_from_slice(&page_id.to_le_bytes());
         // Byte 4..6: slot_count = 0
-        state.data[4..6].copy_from_slice(&0u16.to_le_bytes());
+        page.data[4..6].copy_from_slice(&0u16.to_le_bytes());
         // Byte 6..8: free_space_pointer = 4096 (đáy trang)
-        state.data[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
-        state
+        page.data[6..8].copy_from_slice(&(PAGE_SIZE as u16).to_le_bytes());
+        page
     }
 
     pub fn slot_count(&self) -> u16 {
@@ -203,9 +203,9 @@ impl SlottedPage {
             return None;
         }
 
-        let slot_pos = 8 + (slot_id as usize * 4);
-        let offset = u16::from_le_bytes(self.data[slot_pos..slot_pos + 2].try_into().unwrap()) as usize;
-        let length = u16::from_le_bytes(self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap()) as usize;
+        let slot_offset = 8 + (slot_id as usize * 4);
+        let offset = u16::from_le_bytes(self.data[slot_offset..slot_offset + 2].try_into().unwrap()) as usize;
+        let length = u16::from_le_bytes(self.data[slot_offset + 2..slot_offset + 4].try_into().unwrap()) as usize;
 
         Some(&self.data[offset..offset + length])
     }
@@ -213,7 +213,7 @@ impl SlottedPage {
 
 /// Khung trang quản lý bên trong Buffer Pool
 pub struct Frame {
-    pub state: SlottedPage,
+    pub page: SlottedPage,
     pub is_dirty: bool,
 }
 
@@ -243,14 +243,14 @@ impl BufferPool {
     pub fn get_page(&mut self, page_id: u32) -> Option<&SlottedPage> {
         if self.frames.contains_key(&page_id) {
             self.touch_lru(page_id);
-            return self.frames.get(&page_id).map(|f| &f.state);
+            return self.frames.get(&page_id).map(|f| &f.page);
         }
         None
     }
 
     /// Đưa trang vào Buffer Pool - Nếu đầy, tự động trục xuất (evict) trang cũ nhất
-    pub fn put_page(&mut self, state: SlottedPage, is_dirty: bool) {
-        let id = state.page_id;
+    pub fn put_page(&mut self, page: SlottedPage, is_dirty: bool) {
+        let id = page.page_id;
 
         // Nếu trang chưa có trong buffer và buffer đã đầy sức chứa
         if !self.frames.contains_key(&id) && self.frames.len() >= self.capacity {
@@ -265,7 +265,7 @@ impl BufferPool {
             }
         }
 
-        self.frames.insert(id, Frame { state, is_dirty });
+        self.frames.insert(id, Frame { page, is_dirty });
         self.touch_lru(id);
     }
 
@@ -281,26 +281,26 @@ fn main() {
 
     // 1. Khảo sát cấu trúc trang SlottedPage kích thước 4KB
     println!("[1] Thao tác trên Trang phân khe Slotted-Page (4096 bytes):");
-    let mut state_1 = SlottedPage::new(1);
-    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", state_1.data.len());
-    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", state_1.tail_pointer());
+    let mut page_1 = SlottedPage::new(1);
+    println!("    - Khởi tạo Trang #1. Kích thước bộ đệm vật lý: {} bytes", page_1.data.len());
+    println!("    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)", page_1.tail_pointer());
 
     // Nạp các bản ghi có kích thước chuỗi thay đổi
     let record_a = b"NguoiDung: Nguyen Van An - Ha Noi";
     let record_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
     let record_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
 
-    let slot_a = state_1.add_sell_record(record_a).expect("Lỗi chèn khe A");
-    let slot_b = state_1.add_sell_record(record_b).expect("Lỗi chèn khe B");
-    let slot_c = state_1.add_sell_record(record_c).expect("Lỗi chèn khe C");
+    let slot_a = page_1.add_sell_record(record_a).expect("Lỗi chèn khe A");
+    let slot_b = page_1.add_sell_record(record_b).expect("Lỗi chèn khe B");
+    let slot_c = page_1.add_sell_record(record_c).expect("Lỗi chèn khe C");
 
     println!("    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_a);
     println!("    - Đã chèn Bản ghi B -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_b);
     println!("    - Đã chèn Bản ghi C -> Được cấp Tuple ID: (Page: 1, Slot: {})", slot_c);
-    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", state_1.slot_count(), state_1.tail_pointer());
+    println!("    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}", page_1.slot_count(), page_1.tail_pointer());
 
     // Đọc lại nội dung qua Slot ID
-    let doc_b = state_1.read_sell_record(slot_b).unwrap();
+    let doc_b = page_1.read_sell_record(slot_b).unwrap();
     println!("    - Đọc nội dung qua Slot ID {}: '{}'", slot_b, String::from_utf8_lossy(doc_b));
     assert_eq!(doc_b, record_b);
 
@@ -310,7 +310,7 @@ fn main() {
 
     // Đưa Trang 1 và Trang 2 vào Buffer Pool
     println!("    - Nạp Trang #1 (đã sửa đổi -> dirty=true) vào Buffer Pool");
-    buffer_pool.put_page(state_1, true);
+    buffer_pool.put_page(page_1, true);
 
     let state_2 = SlottedPage::new(2);
     println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
@@ -358,15 +358,15 @@ Dưới đây là các lỗi biên dịch điển hình khi thiết kế Slotted
 
 ```rust
 // Đoạn mã lỗi minh họa E0382: Di chuyển quyền sở hữu trang vào Buffer Pool
-fn broken_page(mut pool: BufferPool, state: SlottedPage) {
+fn broken_page(mut pool: BufferPool, page: SlottedPage) {
     // pool.put_page(trang, false); // Quyền sở hữu trang bị chuyển vào HashMap!
     // println!("Mã trang: {}", trang.page_id); // LỖI E0382: trang đã bị moved!
 }
 
 // Cách sửa chữa đúng chuẩn: Lấy mã ID ra trước hoặc truy cập qua Pool
-fn correct_page(mut pool: BufferPool, state: SlottedPage) {
-    let id = state.page_id;
-    pool.put_page(state, false);
+fn correct_page(mut pool: BufferPool, page: SlottedPage) {
+    let id = page.page_id;
+    pool.put_page(page, false);
     println!("Mã trang vừa nạp: {}", id);
     if let Some(p) = pool.get_page(id) {
         println!("Đọc lại trang từ bộ nhớ đệm thành công: #{}", p.page_id);
@@ -435,11 +435,11 @@ impl SlottedPage {
     /// Dữ liệu ở đáy trang vẫn nằm nguyên đó — đó là CHỦ Ý.
     pub fn delete_record(&mut self, slot_id: u16) -> bool {
         if slot_id >= self.slot_count() { return false; }
-        let slot_pos = 8 + (slot_id as usize * 4);
+        let slot_offset = 8 + (slot_id as usize * 4);
         let length = u16::from_le_bytes(
-            self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap());
+            self.data[slot_offset + 2..slot_offset + 4].try_into().unwrap());
         if length == 0 { return false; }              // đã là bia mộ rồi
-        self.data[slot_pos + 2..slot_pos + 4].copy_from_slice(&0u16.to_le_bytes());
+        self.data[slot_offset + 2..slot_offset + 4].copy_from_slice(&0u16.to_le_bytes());
         true
     }
 
@@ -449,11 +449,11 @@ impl SlottedPage {
     /// và "bản ghi đã xoá".
     pub fn read_sell_record_live(&self, slot_id: u16) -> Option<&[u8]> {
         if slot_id >= self.slot_count() { return None; }
-        let slot_pos = 8 + (slot_id as usize * 4);
+        let slot_offset = 8 + (slot_id as usize * 4);
         let offset = u16::from_le_bytes(
-            self.data[slot_pos..slot_pos + 2].try_into().unwrap()) as usize;
+            self.data[slot_offset..slot_offset + 2].try_into().unwrap()) as usize;
         let length = u16::from_le_bytes(
-            self.data[slot_pos + 2..slot_pos + 4].try_into().unwrap()) as usize;
+            self.data[slot_offset + 2..slot_offset + 4].try_into().unwrap()) as usize;
         if length == 0 { return None; }               // bia mộ
         Some(&self.data[offset..offset + length])
     }

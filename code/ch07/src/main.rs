@@ -3,9 +3,9 @@
 // Chương trình thực hành chuyên sâu về Vay mượn (Borrowing) và Tham chiếu (References)
 
 // 1. Hàm mượn chỉ đọc (&String): Nhận dữ liệu để tính toán nhưng KHÔNG cướp quyền sở hữu
-fn series_length(series: &String) -> usize {
+fn series_length(text: &String) -> usize {
     // chuoi là một tham chiếu chỉ đọc, ta chỉ có thể xem nội dung qua .len()
-    series.len()
+    text.len()
 }
 
 // 2. Hàm mượn sửa đổi (&mut String): Cho phép thay đổi trực tiếp nội dung biến gốc
@@ -73,13 +73,13 @@ fn main() {
 
     // --- PHẦN 5: CHỨNG MINH TÍNH LINH HOẠT CỦA NLL (NON-LEXICAL LIFETIMES) ---
     println!("\n5. Kiểm tra cơ chế Vòng đời không từ vựng (NLL):");
-    let mut order_log = String::from("Nhật ký ngày 01");
+    let mut log = String::from("Nhật ký ngày 01");
 
-    let read_log = &order_log; // Bắt đầu mượn đọc
+    let read_log = &log; // Bắt đầu mượn đọc
     println!("- Đọc nhật ký: {}", read_log);
     // Sau dòng print trên, read_log không còn được dùng nữa -> Hết hiệu lực mượn!
 
-    let fix_log = &mut order_log; // Được phép mượn sửa ngay lập tức mà không xung đột!
+    let fix_log = &mut log; // Được phép mượn sửa ngay lập tức mà không xung đột!
     fix_log.push_str(" - Đã ghi thêm sự kiện mới");
     println!("- Nội dung sau cập nhật: {}", fix_log);
 }

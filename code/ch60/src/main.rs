@@ -27,7 +27,7 @@ pub fn fib_qhd(n: u64) -> u64 {
 
 /// Bài toán "đổi tiền" (Coin Change): số đồng xu ÍT NHẤT để đủ số tiền.
 /// QHĐ kinh điển — LeetCode 322.
-pub fn swap_tien(cac_menh_gia: &[u64], so_tien: u64) -> Option<u64> {
+pub fn coin_change(cac_menh_gia: &[u64], so_tien: u64) -> Option<u64> {
     let n = so_tien as usize;
     let mut dp = vec![u64::MAX; n + 1];
     dp[0] = 0; // 0 đồng cần 0 xu
@@ -80,7 +80,7 @@ pub fn ba_lo(trong_luong: &[u64], value: &[u64], capacity: u64) -> u64 {
 // ============================================================================
 
 /// Sinh mọi hoán vị của một dãy — nền tảng của quay lui.
-pub fn swap_pos<T: Clone>(cac_phan_tu: &[T]) -> Vec<Vec<T>> {
+pub fn permutations<T: Clone>(cac_phan_tu: &[T]) -> Vec<Vec<T>> {
     let mut ket_qua = Vec::new();
     let mut current = Vec::new();
     let mut da_dung = vec![false; cac_phan_tu.len()];
@@ -196,17 +196,17 @@ pub fn sang_nguyen_to(n: usize) -> Vec<usize> {
 }
 
 /// Lũy thừa modulo nhanh (fast modular exponentiation) — nền của mật mã RSA.
-/// Tính (has_num^so_mu) % modulo trong O(log so_mu).
-pub fn mod_pow(mut has_num: u64, mut so_mu: u64, modulo: u64) -> u64 {
+/// Tính (base^so_mu) % modulo trong O(log so_mu).
+pub fn mod_pow(mut base: u64, mut so_mu: u64, modulo: u64) -> u64 {
     if modulo == 1 { return 0; }
     let mut kq = 1u64;
-    has_num %= modulo;
+    base %= modulo;
     while so_mu > 0 {
         if so_mu & 1 == 1 {
-            kq = (kq as u128 * has_num as u128 % modulo as u128) as u64;
+            kq = (kq as u128 * base as u128 % modulo as u128) as u64;
         }
         so_mu >>= 1;
-        has_num = (has_num as u128 * has_num as u128 % modulo as u128) as u64;
+        base = (base as u128 * base as u128 % modulo as u128) as u64;
     }
     kq
 }
@@ -218,13 +218,13 @@ fn main() {
 
     println!("\n1. QUY HOẠCH ĐỘNG");
     println!("   Fibonacci(40): ngây thơ mất O(2^n), QHĐ = {}", fib_qhd(40));
-    println!("   Đổi tiền [1,5,6,9] cho 11: {:?} xu (tối ưu)", swap_tien(&[1, 5, 6, 9], 11));
+    println!("   Đổi tiền [1,5,6,9] cho 11: {:?} xu (tối ưu)", coin_change(&[1, 5, 6, 9], 11));
     println!("   LCS(\"ABCBDAB\", \"BDCAB\"): {}", longest_common_subsequence("ABCBDAB", "BDCAB"));
     println!("   Ba lô (tl=[1,3,4,5], gt=[1,4,5,7], sức chứa 7): {}",
              ba_lo(&[1, 3, 4, 5], &[1, 4, 5, 7], 7));
 
     println!("\n2. QUAY LUI");
-    println!("   Số hoán vị của [1,2,3]: {}", swap_pos(&[1, 2, 3]).len());
+    println!("   Số hoán vị của [1,2,3]: {}", permutations(&[1, 2, 3]).len());
     for n in [4, 5, 6, 8] {
         println!("   {} quân hậu: {} cách đặt", n, n_hau(n));
     }
@@ -233,7 +233,7 @@ fn main() {
     let hop = vec![(1, 3), (2, 5), (4, 7), (1, 8), (5, 9), (8, 10)];
     println!("   Xếp nhiều cuộc họp nhất: {} cuộc (=(1,3),(4,7),(8,10))", select_active(hop));
     println!("   ⚠ Đổi tiền THAM LAM [1,3,4] cho 6: {} xu (SAI!)", greedy_change(vec![1, 3, 4], 6));
-    println!("     Đổi tiền QHĐ    [1,3,4] cho 6: {:?} xu (ĐÚNG)", swap_tien(&[1, 3, 4], 6));
+    println!("     Đổi tiền QHĐ    [1,3,4] cho 6: {:?} xu (ĐÚNG)", coin_change(&[1, 3, 4], 6));
 
     println!("\n4. LÝ THUYẾT SỐ");
     println!("   ƯCLN(48, 36) = {}, BCNN = {}", ucln(48, 36), bcnn(48, 36));
@@ -259,18 +259,18 @@ mod tests {
 
     #[test]
     fn coin_change_dp() {
-        assert_eq!(swap_tien(&[1, 5, 6, 9], 11), Some(2)); // 5+6
-        assert_eq!(swap_tien(&[2], 3), None);              // không thể
-        assert_eq!(swap_tien(&[1, 3, 4], 6), Some(2));     // 3+3
-        assert_eq!(swap_tien(&[1, 2, 5], 0), Some(0));     // 0 tiền = 0 xu
+        assert_eq!(coin_change(&[1, 5, 6, 9], 11), Some(2)); // 5+6
+        assert_eq!(coin_change(&[2], 3), None);              // không thể
+        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2));     // 3+3
+        assert_eq!(coin_change(&[1, 2, 5], 0), Some(0));     // 0 tiền = 0 xu
     }
 
     #[test]
     fn greedy_coin_change_can_be_wrong() {
         // Đây là bằng chứng: tham lam KHÔNG tối ưu với mệnh giá [1,3,4]
         assert_eq!(greedy_change(vec![1, 3, 4], 6), 3); // 4+1+1
-        assert_eq!(swap_tien(&[1, 3, 4], 6), Some(2));        // 3+3 -> QHĐ đúng
-        assert!(greedy_change(vec![1, 3, 4], 6) as u64 > swap_tien(&[1, 3, 4], 6).unwrap());
+        assert_eq!(coin_change(&[1, 3, 4], 6), Some(2));        // 3+3 -> QHĐ đúng
+        assert!(greedy_change(vec![1, 3, 4], 6) as u64 > coin_change(&[1, 3, 4], 6).unwrap());
     }
 
     #[test]
@@ -289,9 +289,9 @@ mod tests {
 
     #[test]
     fn permutations_have_correct_count() {
-        assert_eq!(swap_pos(&[1, 2, 3]).len(), 6);   // 3! = 6
-        assert_eq!(swap_pos(&[1, 2, 3, 4]).len(), 24); // 4! = 24
-        assert_eq!(swap_pos::<i32>(&[]).len(), 1);   // hoán vị của rỗng = 1 (dãy rỗng)
+        assert_eq!(permutations(&[1, 2, 3]).len(), 6);   // 3! = 6
+        assert_eq!(permutations(&[1, 2, 3, 4]).len(), 24); // 4! = 24
+        assert_eq!(permutations::<i32>(&[]).len(), 1);   // hoán vị của rỗng = 1 (dãy rỗng)
     }
 
     #[test]

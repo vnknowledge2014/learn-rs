@@ -162,7 +162,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StateProcess {
+pub enum ProcessState {
     Moi,        // vừa tạo
     SanSang,    // chờ được cấp CPU
     DangChay,   // đang giữ CPU
@@ -176,10 +176,10 @@ pub struct Process {
     pub pid: u32,
     pub name: String,
     pub arrives_at: u64,   // arrival time
-    pub time_time_can: u64,   // burst time — tổng CPU cần
+    pub time_needed: u64,   // burst time — tổng CPU cần
     pub remaining: u64,
     pub uu_tien: u8,          // số nhỏ = ưu tiên cao
-    pub state: StateProcess,
+    pub state: ProcessState,
     pub start: Option<u64>,
     pub end: Option<u64>,
 }
@@ -188,8 +188,8 @@ impl Process {
     pub fn new(pid: u32, name: &str, den: u64, can: u64, uu_tien: u8) -> Self {
         Process {
             pid, name: name.to_string(), arrives_at: den,
-            time_time_can: can, remaining: can, uu_tien,
-            state: StateProcess::Moi, start: None, end: None,
+            time_needed: can, remaining: can, uu_tien,
+            state: ProcessState::Moi, start: None, end: None,
         }
     }
     /// Thời gian hoàn thành = lúc xong - lúc đến.
@@ -198,7 +198,7 @@ impl Process {
     }
     /// Thời gian chờ = quay vòng - thời gian thực sự dùng CPU.
     pub fn time_time_wait(&self) -> Option<u64> {
-        self.turnaround_time().map(|q| q - self.time_time_can)
+        self.turnaround_time().map(|q| q - self.time_needed)
     }
 }
 
@@ -206,7 +206,7 @@ impl Process {
 pub struct KetQuaLapLich {
     pub timeline: Vec<(u64, u32)>, // (thời điểm, pid đang chạy)
     pub process: Vec<Process>,
-    pub wait_mean: f64,
+    pub avg_wait: f64,
     pub mean_turnaround: f64,
 }
 
@@ -216,7 +216,7 @@ fn tong_ket(tt: Vec<Process>, dtg: Vec<(u64, u32)>) -> KetQuaLapLich {
     let tong_qv: u64 = tt.iter().filter_map(|p| p.turnaround_time()).sum();
     KetQuaLapLich {
         timeline: dtg,
-        wait_mean: tong_cho as f64 / n,
+        avg_wait: tong_cho as f64 / n,
         mean_turnaround: tong_qv as f64 / n,
         process: tt,
     }
@@ -237,13 +237,13 @@ pub fn lap_lich_fcfs(mut tt: Vec<Process>) -> KetQuaLapLich {
             clock = p.arrives_at; // CPU rảnh, chờ tiến trình tới
         }
         p.start = Some(clock);
-        for _ in 0..p.time_time_can {
+        for _ in 0..p.time_needed {
             dtg.push((clock, p.pid));
             clock += 1;
         }
         p.remaining = 0;
         p.end = Some(clock);
-        p.state = StateProcess::Finished;
+        p.state = ProcessState::Finished;
     }
     tong_ket(tt, dtg)
 }
@@ -261,17 +261,17 @@ pub fn lap_lich_sjf(mut tt: Vec<Process>) -> KetQuaLapLich {
         // Trong số các tiến trình ĐÃ TỚI và chưa chạy, chọn cái ngắn nhất
         let pick = (0..n)
             .filter(|&i| !da_chay[i] && tt[i].arrives_at <= clock)
-            .min_by_key(|&i| (tt[i].time_time_can, tt[i].pid));
+            .min_by_key(|&i| (tt[i].time_needed, tt[i].pid));
         match pick {
             Some(i) => {
                 tt[i].start = Some(clock);
-                for _ in 0..tt[i].time_time_can {
+                for _ in 0..tt[i].time_needed {
                     dtg.push((clock, tt[i].pid));
                     clock += 1;
                 }
                 tt[i].remaining = 0;
                 tt[i].end = Some(clock);
-                tt[i].state = StateProcess::Finished;
+                tt[i].state = ProcessState::Finished;
                 da_chay[i] = true;
                 done += 1;
             }
@@ -288,18 +288,18 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
     let mut clock = 0u64;
     let mut dtg = Vec::new();
     let mut queue: VecDeque<usize> = VecDeque::new();
-    let mut da_in = vec![false; n];
+    let mut admitted = vec![false; n];
     let mut done = 0;
 
     // Đưa vào hàng đợi những tiến trình đã tới tại thời điểm 0
-    let nap = |clock: u64, queue: &mut VecDeque<usize>, da_in: &mut Vec<bool>, tt: &Vec<Process>| {
+    let nap = |clock: u64, queue: &mut VecDeque<usize>, admitted: &mut Vec<bool>, tt: &Vec<Process>| {
         let mut new: Vec<usize> = (0..tt.len())
-            .filter(|&i| !da_in[i] && tt[i].arrives_at <= clock)
+            .filter(|&i| !admitted[i] && tt[i].arrives_at <= clock)
             .collect();
         new.sort_by_key(|&i| (tt[i].arrives_at, tt[i].pid));
-        for i in new { da_in[i] = true; queue.push_back(i); }
+        for i in new { admitted[i] = true; queue.push_back(i); }
     };
-    nap(clock, &mut queue, &mut da_in, &tt);
+    nap(clock, &mut queue, &mut admitted, &tt);
 
     while done < n {
         match queue.pop_front() {
@@ -309,12 +309,12 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
                 for _ in 0..run {
                     dtg.push((clock, tt[i].pid));
                     clock += 1;
-                    nap(clock, &mut queue, &mut da_in, &tt); // tiến trình mới tới trong lúc chạy
+                    nap(clock, &mut queue, &mut admitted, &tt); // tiến trình mới tới trong lúc chạy
                 }
                 tt[i].remaining -= run;
                 if tt[i].remaining == 0 {
                     tt[i].end = Some(clock);
-                    tt[i].state = StateProcess::Finished;
+                    tt[i].state = ProcessState::Finished;
                     done += 1;
                 } else {
                     queue.push_back(i); // chưa xong -> quay lại cuối hàng
@@ -322,7 +322,7 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
             }
             None => {
                 clock += 1;
-                nap(clock, &mut queue, &mut da_in, &tt);
+                nap(clock, &mut queue, &mut admitted, &tt);
             }
         }
     }
@@ -334,21 +334,21 @@ pub fn lap_lich_round_robin(mut tt: Vec<Process>, luong_tu: u64) -> KetQuaLapLic
 // ============================================================================
 
 #[derive(Debug, PartialEq)]
-pub struct StateChange {
-    pub num_error_state: usize, // page faults
+pub struct ReplacementResult {
+    pub page_faults: usize, // page faults
     pub series_frame: Vec<Vec<u64>>,
 }
 
 /// FIFO: trang vào trước ra trước. Đơn giản nhưng có "nghịch lý Belady".
-pub fn fifo_replace(series: &[u64], num_frame: usize) -> StateChange {
+pub fn fifo_replace(refs: &[u64], num_frames: usize) -> ReplacementResult {
     let mut frame: VecDeque<u64> = VecDeque::new();
     let mut visited: HashSet<u64> = HashSet::new();
     let mut error = 0;
     let mut history = Vec::new();
-    for &t in series {
+    for &t in refs {
         if !visited.contains(&t) {
             error += 1;
-            if frame.len() == num_frame {
+            if frame.len() == num_frames {
                 if let Some(cu) = frame.pop_front() { visited.remove(&cu); }
             }
             frame.push_back(t);
@@ -356,20 +356,20 @@ pub fn fifo_replace(series: &[u64], num_frame: usize) -> StateChange {
         }
         history.push(frame.iter().copied().collect());
     }
-    StateChange { num_error_state: error, series_frame: history }
+    ReplacementResult { page_faults: error, series_frame: history }
 }
 
 /// LRU (Least Recently Used): thay trang lâu không dùng nhất.
 /// Xấp xỉ tốt cho "nguyên lý cục bộ" — chương trình hay dùng lại thứ vừa dùng.
-pub fn lru_replace(series: &[u64], num_frame: usize) -> StateChange {
+pub fn lru_replace(refs: &[u64], num_frames: usize) -> ReplacementResult {
     let mut frame: Vec<u64> = Vec::new();
     let mut last_lan: HashMap<u64, usize> = HashMap::new();
     let mut error = 0;
     let mut history = Vec::new();
-    for (timestamp, &t) in series.iter().enumerate() {
+    for (timestamp, &t) in refs.iter().enumerate() {
         if !frame.contains(&t) {
             error += 1;
-            if frame.len() == num_frame {
+            if frame.len() == num_frames {
                 // tìm trang có lần dùng cuối XA NHẤT
                 let nan_nhan = frame.iter().copied()
                     .min_by_key(|p| *last_lan.get(p).unwrap_or(&0)).unwrap();
@@ -381,23 +381,23 @@ pub fn lru_replace(series: &[u64], num_frame: usize) -> StateChange {
         last_lan.insert(t, timestamp);
         history.push(frame.clone());
     }
-    StateChange { num_error_state: error, series_frame: history }
+    ReplacementResult { page_faults: error, series_frame: history }
 }
 
 /// OPT (tối ưu, Bélády): thay trang sẽ được dùng XA NHẤT trong tương lai.
 /// Không cài được thật (cần biết tương lai) nhưng là CHUẨN SO SÁNH lý thuyết.
-pub fn optimal_replacement(series: &[u64], num_frame: usize) -> StateChange {
+pub fn optimal_replacement(refs: &[u64], num_frames: usize) -> ReplacementResult {
     let mut frame: Vec<u64> = Vec::new();
     let mut error = 0;
     let mut history = Vec::new();
-    for i in 0..series.len() {
-        let t = series[i];
+    for i in 0..refs.len() {
+        let t = refs[i];
         if !frame.contains(&t) {
             error += 1;
-            if frame.len() == num_frame {
+            if frame.len() == num_frames {
                 // trang nào KHÔNG xuất hiện lại, hoặc xuất hiện muộn nhất -> loại
                 let nan_nhan = frame.iter().copied().max_by_key(|p| {
-                    series[i + 1..].iter().position(|x| x == p).unwrap_or(usize::MAX)
+                    refs[i + 1..].iter().position(|x| x == p).unwrap_or(usize::MAX)
                 }).unwrap();
                 frame.retain(|&p| p != nan_nhan);
             }
@@ -405,7 +405,7 @@ pub fn optimal_replacement(series: &[u64], num_frame: usize) -> StateChange {
         }
         history.push(frame.clone());
     }
-    StateChange { num_error_state: error, series_frame: history }
+    ReplacementResult { page_faults: error, series_frame: history }
 }
 
 // ============================================================================
@@ -485,27 +485,27 @@ fn main() {
         ("Round-Robin", lap_lich_round_robin(tao(), 3)),
     ] {
         println!("   {} | chờ TB = {:>5.2} | quay vòng TB = {:>5.2}",
-                 name, kq.wait_mean, kq.mean_turnaround);
+                 name, kq.avg_wait, kq.mean_turnaround);
     }
     println!("   → SJF tối ưu thời gian chờ, nhưng Round-Robin công bằng hơn (không ai bị đói).");
 
     println!("\n2. THAY TRANG BỘ NHỚ ẢO (3 khung nhớ)");
-    let series = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
+    let refs = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
     for (name, kq) in [
-        ("FIFO   ", fifo_replace(&series, 3)),
-        ("LRU    ", lru_replace(&series, 3)),
-        ("Tối ưu ", optimal_replacement(&series, 3)),
+        ("FIFO   ", fifo_replace(&refs, 3)),
+        ("LRU    ", lru_replace(&refs, 3)),
+        ("Tối ưu ", optimal_replacement(&refs, 3)),
     ] {
-        println!("   {} | {} lỗi trang", name, kq.num_error_state);
+        println!("   {} | {} lỗi trang", name, kq.page_faults);
     }
     println!("   → Tối ưu là CẬN DƯỚI lý thuyết (cần biết tương lai). LRU bám sát nó nhất.");
 
     println!("\n3. NGHỊCH LÝ BÉLÁDY — thêm khung nhớ mà LỖI TRANG TĂNG!");
     let belady = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-    println!("   FIFO 3 khung: {} lỗi", fifo_replace(&belady, 3).num_error_state);
-    println!("   FIFO 4 khung: {} lỗi  ← NHIỀU HƠN dù có thêm bộ nhớ!", fifo_replace(&belady, 4).num_error_state);
-    println!("   LRU  3 khung: {} lỗi", lru_replace(&belady, 3).num_error_state);
-    println!("   LRU  4 khung: {} lỗi  ← LRU không bị nghịch lý này", lru_replace(&belady, 4).num_error_state);
+    println!("   FIFO 3 khung: {} lỗi", fifo_replace(&belady, 3).page_faults);
+    println!("   FIFO 4 khung: {} lỗi  ← NHIỀU HƠN dù có thêm bộ nhớ!", fifo_replace(&belady, 4).page_faults);
+    println!("   LRU  3 khung: {} lỗi", lru_replace(&belady, 3).page_faults);
+    println!("   LRU  4 khung: {} lỗi  ← LRU không bị nghịch lý này", lru_replace(&belady, 4).page_faults);
 
     println!("\n4. PHÁT HIỆN BẾ TẮC");
     let mut g = WaitForGraph::new();
@@ -550,8 +550,8 @@ mod tests {
         let f = lap_lich_fcfs(mau());
         let s = lap_lich_sjf(mau());
         // SJF tối ưu thời gian chờ trung bình (định lý kinh điển)
-        assert!(s.wait_mean <= f.wait_mean,
-                "SJF ({}) phải <= FCFS ({})", s.wait_mean, f.wait_mean);
+        assert!(s.avg_wait <= f.avg_wait,
+                "SJF ({}) phải <= FCFS ({})", s.avg_wait, f.avg_wait);
     }
 
     #[test]
@@ -573,10 +573,10 @@ mod tests {
 
     #[test]
     fn optimal_replacement_is_a_lower_bound() {
-        let series = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
-        let opt = optimal_replacement(&series, 3).num_error_state;
-        let lru = lru_replace(&series, 3).num_error_state;
-        let fifo = fifo_replace(&series, 3).num_error_state;
+        let refs = [7u64, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
+        let opt = optimal_replacement(&refs, 3).page_faults;
+        let lru = lru_replace(&refs, 3).page_faults;
+        let fifo = fifo_replace(&refs, 3).page_faults;
         // OPT là cận dưới lý thuyết — không thuật toán nào tốt hơn
         assert!(opt <= lru, "OPT({}) phải <= LRU({})", opt, lru);
         assert!(opt <= fifo, "OPT({}) phải <= FIFO({})", opt, fifo);
@@ -584,28 +584,28 @@ mod tests {
 
     #[test]
     fn belady_anomaly_is_real_for_fifo() {
-        let series = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-        let ba = fifo_replace(&series, 3).num_error_state;
-        let bon = fifo_replace(&series, 4).num_error_state;
+        let refs = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+        let ba = fifo_replace(&refs, 3).page_faults;
+        let bon = fifo_replace(&refs, 4).page_faults;
         // NGHỊCH LÝ: thêm khung nhớ mà lỗi trang lại TĂNG
         assert!(bon > ba, "Bélády: FIFO 4 khung ({}) phải nhiều lỗi hơn 3 khung ({})", bon, ba);
     }
 
     #[test]
     fn lru_is_immune_to_belady() {
-        let series = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-        let ba = lru_replace(&series, 3).num_error_state;
-        let bon = lru_replace(&series, 4).num_error_state;
+        let refs = [1u64, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+        let ba = lru_replace(&refs, 3).page_faults;
+        let bon = lru_replace(&refs, 4).page_faults;
         // LRU là thuật toán "ngăn xếp" -> thêm khung KHÔNG BAO GIỜ làm tệ hơn
         assert!(bon <= ba, "LRU 4 khung ({}) không được tệ hơn 3 khung ({})", bon, ba);
     }
 
     #[test]
     fn enough_frames_means_only_compulsory_faults() {
-        let series = [1u64, 2, 3, 1, 2, 3, 1, 2, 3];
+        let refs = [1u64, 2, 3, 1, 2, 3, 1, 2, 3];
         // 3 trang khác nhau, 5 khung -> chỉ 3 lỗi bắt buộc (compulsory miss)
-        assert_eq!(lru_replace(&series, 5).num_error_state, 3);
-        assert_eq!(fifo_replace(&series, 5).num_error_state, 3);
+        assert_eq!(lru_replace(&refs, 5).page_faults, 3);
+        assert_eq!(fifo_replace(&refs, 5).page_faults, 3);
     }
 
     #[test]
@@ -696,7 +696,7 @@ pub fn lap_lich_srtf(mut tt: Vec<Process>) -> KetQuaLapLich {
                 clock += 1;
                 if tt[i].remaining == 0 {
                     tt[i].end = Some(clock);
-                    tt[i].state = StateProcess::Finished;
+                    tt[i].state = ProcessState::Finished;
                     done += 1;
                 }
             }
@@ -708,7 +708,7 @@ pub fn lap_lich_srtf(mut tt: Vec<Process>) -> KetQuaLapLich {
     let tong_qv: u64 = tt.iter().filter_map(|p| p.turnaround_time()).sum();
     KetQuaLapLich {
         timeline: dtg,
-        wait_mean: tong_cho as f64 / n as f64,
+        avg_wait: tong_cho as f64 / n as f64,
         mean_turnaround: tong_qv as f64 / n as f64,
         process: tt,
     }
@@ -732,33 +732,33 @@ Clock là **xấp xỉ LRU giá rẻ**: nó chỉ cần 1 bit mỗi trang thay v
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn clock_replacement(series: &[u64], num_frame: usize) -> StateChange {
+pub fn clock_replacement(refs: &[u64], num_frames: usize) -> ReplacementResult {
     let mut frame: Vec<(u64, bool)> = Vec::new(); // (số trang, bit tham chiếu)
     let mut kim = 0usize;
     let mut error = 0;
     let mut history = Vec::new();
 
-    for &t in series {
+    for &t in refs {
         match frame.iter().position(|&(p, _)| p == t) {
             Some(i) => frame[i].1 = true,            // trúng: cho "cơ hội thứ hai"
             None => {
                 error += 1;
-                if frame.len() < num_frame {
+                if frame.len() < num_frames {
                     frame.push((t, true));
                 } else {
                     // quét kim tới khi gặp bit tham chiếu = 0
                     while frame[kim].1 {
                         frame[kim].1 = false;        // xóa bit, cho qua lần này
-                        kim = (kim + 1) % num_frame;
+                        kim = (kim + 1) % num_frames;
                     }
                     frame[kim] = (t, true);
-                    kim = (kim + 1) % num_frame;
+                    kim = (kim + 1) % num_frames;
                 }
             }
         }
         history.push(frame.iter().map(|&(p, _)| p).collect());
     }
-    StateChange { num_error_state: error, series_frame: history }
+    ReplacementResult { page_faults: error, series_frame: history }
 }
 ```
 

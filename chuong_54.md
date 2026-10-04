@@ -455,22 +455,22 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi hiện th�
 
 ```rust
 #[derive(Debug, Clone)]
-struct DonQueue {
+struct Order {
     id: u64,
 }
 
-fn log_it(dh: DonQueue) {
+fn log_it(dh: Order) {
     println!("Ghi nhật ký: {:?}", dh);
 }
 
 // Đoạn mã lỗi minh họa E0382:
-fn handle_error(dh: DonQueue) {
+fn handle_error(dh: Order) {
     // log_it(dh); // Di chuyển quyền sở hữu dh
     // println!("Đơn hàng đã xử lý: {:?}", dh); // LỖI E0382: dh đã bị di chuyển!
 }
 
 // Cách sửa chữa đúng chuẩn: Truyền tham chiếu mượn hoặc clone
-fn xu_ly_dung(dh: DonQueue) {
+fn xu_ly_dung(dh: Order) {
     log_it(dh.clone()); // Tạo bản sao độc lập
     println!("Đơn hàng an toàn: {:?}", dh); // dh ban đầu vẫn còn nguyên vẹn!
 }

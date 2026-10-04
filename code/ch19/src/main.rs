@@ -28,13 +28,13 @@ impl<T, U, E> HKT<U> for Result<T, E> {
 
 /// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
 pub trait Functor<U>: HKT<U> {
-    fn mapping<F>(self, f: F) -> Self::DichDen
+    fn fmap<F>(self, f: F) -> Self::DichDen
     where
         F: FnMut(Self::Current) -> U;
 }
 
 impl<T, U> Functor<U> for Option<T> {
-    fn mapping<F>(self, f: F) -> Option<U>
+    fn fmap<F>(self, f: F) -> Option<U>
     where
         F: FnMut(T) -> U,
     {
@@ -42,7 +42,7 @@ impl<T, U> Functor<U> for Option<T> {
     }
 }
 impl<T, U> Functor<U> for Vec<T> {
-    fn mapping<F>(self, f: F) -> Vec<U>
+    fn fmap<F>(self, f: F) -> Vec<U>
     where
         F: FnMut(T) -> U,
     {
@@ -50,7 +50,7 @@ impl<T, U> Functor<U> for Vec<T> {
     }
 }
 impl<T, U, E> Functor<U> for Result<T, E> {
-    fn mapping<F>(self, f: F) -> Result<U, E>
+    fn fmap<F>(self, f: F) -> Result<U, E>
     where
         F: FnMut(T) -> U,
     {
@@ -62,51 +62,51 @@ impl<T, U, E> Functor<U> for Result<T, E> {
 // PHẦN 2: KIỂU XÁC THỰC TÍCH LŨY LỖI (APPLICATIVE VALIDATION)
 // ============================================================================
 
-/// Khác `Result`: khi hỏng, `Auth` giữ lại TOÀN BỘ danh sách lỗi.
+/// Khác `Result`: khi hỏng, `Validation` giữ lại TOÀN BỘ danh sách lỗi.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Auth<T> {
+pub enum Validation<T> {
     Set(T),
     Hong(Vec<String>),
 }
 
-impl<T> Auth<T> {
+impl<T> Validation<T> {
     /// FUNCTOR: sơn lại giá trị bên trong mà không đụng tới danh sách lỗi.
-    pub fn mapping<U>(self, f: impl FnOnce(T) -> U) -> Auth<U> {
+    pub fn fmap<U>(self, f: impl FnOnce(T) -> U) -> Validation<U> {
         match self {
-            Auth::Set(x) => Auth::Set(f(x)),
-            Auth::Hong(error) => Auth::Hong(error),
+            Validation::Set(x) => Validation::Set(f(x)),
+            Validation::Hong(error) => Validation::Hong(error),
         }
     }
 
-    /// Chuyển từ Result sang Auth để bắt đầu tích lũy lỗi.
+    /// Chuyển từ Result sang Validation để bắt đầu tích lũy lỗi.
     pub fn tu_ket_qua(kq: Result<T, String>) -> Self {
         match kq {
-            Ok(x) => Auth::Set(x),
-            Err(e) => Auth::Hong(vec![e]),
+            Ok(x) => Validation::Set(x),
+            Err(e) => Validation::Hong(vec![e]),
         }
     }
 
     pub fn is_set(&self) -> bool {
-        matches!(self, Auth::Set(_))
+        matches!(self, Validation::Set(_))
     }
 }
 
 /// APPLICATIVE: gộp 2 kết quả ĐỘC LẬP. Nếu cả hai hỏng, giữ lại CẢ HAI lỗi.
-pub fn ghep2<A, B>(a: Auth<A>, b: Auth<B>) -> Auth<(A, B)> {
+pub fn ghep2<A, B>(a: Validation<A>, b: Validation<B>) -> Validation<(A, B)> {
     match (a, b) {
-        (Auth::Set(x), Auth::Set(y)) => Auth::Set((x, y)),
-        (Auth::Hong(mut e1), Auth::Hong(e2)) => {
+        (Validation::Set(x), Validation::Set(y)) => Validation::Set((x, y)),
+        (Validation::Hong(mut e1), Validation::Hong(e2)) => {
             e1.extend(e2); // ← đây chính là chỗ LỖI ĐƯỢC TÍCH LŨY
-            Auth::Hong(e1)
+            Validation::Hong(e1)
         }
-        (Auth::Hong(e), _) => Auth::Hong(e),
-        (_, Auth::Hong(e)) => Auth::Hong(e),
+        (Validation::Hong(e), _) => Validation::Hong(e),
+        (_, Validation::Hong(e)) => Validation::Hong(e),
     }
 }
 
 /// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
-pub fn ghep3<A, B, C>(a: Auth<A>, b: Auth<B>, c: Auth<C>) -> Auth<(A, B, C)> {
-    ghep2(ghep2(a, b), c).mapping(|((x, y), z)| (x, y, z))
+pub fn ghep3<A, B, C>(a: Validation<A>, b: Validation<B>, c: Validation<C>) -> Validation<(A, B, C)> {
+    ghep2(ghep2(a, b), c).fmap(|((x, y), z)| (x, y, z))
 }
 
 // ============================================================================
@@ -163,7 +163,7 @@ pub fn check_age(tho: &str) -> Result<u32, String> {
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC A — MONAD: toán tử `?` dừng ngay ở lỗi ĐẦU TIÊN
 // ---------------------------------------------------------------------------
-pub fn short_circuit_register(don: &DonTho) -> Result<User, String> {
+pub fn register_short_circuit(don: &DonTho) -> Result<User, String> {
     let name = check_name(&don.name)?;
     let email = validate_email(&don.email)?;
     let age = check_age(&don.age)?;
@@ -173,12 +173,12 @@ pub fn short_circuit_register(don: &DonTho) -> Result<User, String> {
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC B — APPLICATIVE: chạy cả ba, gom TẤT CẢ lỗi
 // ---------------------------------------------------------------------------
-pub fn accumulator_register(don: &DonTho) -> Auth<User> {
-    let name = Auth::tu_ket_qua(check_name(&don.name));
-    let email = Auth::tu_ket_qua(validate_email(&don.email));
-    let age = Auth::tu_ket_qua(check_age(&don.age));
+pub fn register_accumulate(don: &DonTho) -> Validation<User> {
+    let name = Validation::tu_ket_qua(check_name(&don.name));
+    let email = Validation::tu_ket_qua(validate_email(&don.email));
+    let age = Validation::tu_ket_qua(check_age(&don.age));
 
-    ghep3(name, email, age).mapping(|(name, email, age)| User { name, email, age })
+    ghep3(name, email, age).fmap(|(name, email, age)| User { name, email, age })
 }
 
 // ============================================================================
@@ -231,10 +231,10 @@ fn main() {
 
     // Dùng trait Functor tổng quát tự viết (mô phỏng HKT)
     println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
-    println!("   Option: {:?}", Some(5i32).mapping(|x| x + 1));
-    println!("   Vec   : {:?}", vec![1i32, 2, 3].mapping(|x| x * 10));
+    println!("   Option: {:?}", Some(5i32).fmap(|x| x + 1));
+    println!("   Vec   : {:?}", vec![1i32, 2, 3].fmap(|x| x * 10));
     let r: Result<i32, String> = Ok(7);
-    println!("   Result: {:?}", r.mapping(|x| x - 7));
+    println!("   Result: {:?}", r.fmap(|x| x - 7));
 
     // ------------------------------------------------------------------
     // 2. HAI LUẬT FUNCTOR
@@ -333,15 +333,15 @@ fn main() {
     };
 
     println!("\n   [A] Dùng toán tử `?` (Monad — dừng ở lỗi đầu tiên):");
-    match short_circuit_register(&don_hong) {
+    match register_short_circuit(&don_hong) {
         Ok(nd) => println!("       Thành công: {:?}", nd),
         Err(e) => println!("       Báo về 1 lỗi duy nhất: {}", e),
     }
 
     println!("\n   [B] Dùng `XacThuc` (Applicative — gom hết lỗi):");
-    match accumulator_register(&don_hong) {
-        Auth::Set(nd) => println!("       Thành công: {:?}", nd),
-        Auth::Hong(error) => {
+    match register_accumulate(&don_hong) {
+        Validation::Set(nd) => println!("       Thành công: {:?}", nd),
+        Validation::Hong(error) => {
             println!("       Báo về {} lỗi cùng lúc:", error.len());
             for (i, l) in error.iter().enumerate() {
                 println!("         {}. {}", i + 1, l);
@@ -355,8 +355,8 @@ fn main() {
         email: "  An.Nguyen@Example.COM ".into(),
         age: " 28 ".into(),
     };
-    println!("       Ngắn mạch: {:?}", short_circuit_register(&don_tot));
-    println!("       Tích lũy : hợp lệ = {}", accumulator_register(&don_tot).is_set());
+    println!("       Ngắn mạch: {:?}", register_short_circuit(&don_tot));
+    println!("       Tích lũy : hợp lệ = {}", register_accumulate(&don_tot).is_set());
 
     println!("\n============================================================");
     println!("  map = SƠN TRONG HỘP · zip = GỘP HỘP · and_then = MỞ HỘP   ");
@@ -440,11 +440,11 @@ mod tests {
             email: "khong-co-a-cong".into(),
             age: "abc".into(),
         };
-        match accumulator_register(&don) {
-            Auth::Hong(error) => {
+        match register_accumulate(&don) {
+            Validation::Hong(error) => {
                 assert_eq!(error.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", error)
             }
-            Auth::Set(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
+            Validation::Set(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
         }
     }
 
@@ -456,7 +456,7 @@ mod tests {
             age: "abc".into(),
         };
         // Toán tử `?` dừng ngay ở lỗi đầu tiên: chỉ nhận được 1 thông báo.
-        let error = short_circuit_register(&don).unwrap_err();
+        let error = register_short_circuit(&don).unwrap_err();
         assert!(error.contains("quá ngắn"), "Phải là lỗi ĐẦU TIÊN, nhận: {}", error);
     }
 
@@ -472,15 +472,15 @@ mod tests {
             email: "an.nguyen@example.com".to_string(),
             age: 28,
         };
-        assert_eq!(short_circuit_register(&don), Ok(expected.clone()));
-        assert_eq!(accumulator_register(&don), Auth::Set(expected));
+        assert_eq!(register_short_circuit(&don), Ok(expected.clone()));
+        assert_eq!(register_accumulate(&don), Validation::Set(expected));
     }
 
     #[test]
     fn the_generic_functor_works_for_three_types() {
-        assert_eq!(Some(5i32).mapping(|x| x + 1), Some(6));
-        assert_eq!(vec![1i32, 2, 3].mapping(|x| x * 10), vec![10, 20, 30]);
+        assert_eq!(Some(5i32).fmap(|x| x + 1), Some(6));
+        assert_eq!(vec![1i32, 2, 3].fmap(|x| x * 10), vec![10, 20, 30]);
         let r: Result<i32, String> = Ok(7);
-        assert_eq!(r.mapping(|x| x - 7), Ok(0));
+        assert_eq!(r.fmap(|x| x - 7), Ok(0));
     }
 }

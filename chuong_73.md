@@ -205,13 +205,13 @@ pub fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect(
 /// Chỉ 4 byte nghĩa là VA CHẠM CÓ THẬT: xác suất hai hàm khác nhau trùng
 /// chữ ký chỉ khoảng 1/2³². Đã có người cố tình tìm hàm trùng để đánh lừa
 /// giao diện ví — đó là lý do ví hiện đại hiển thị cả chữ ký đầy đủ.
-pub fn selector(period: &str) -> [u8; 4] {
-    let b = keccak256(period.as_bytes());
+pub fn selector(signature: &str) -> [u8; 4] {
+    let b = keccak256(signature.as_bytes());
     [b[0], b[1], b[2], b[3]]
 }
 
 /// Chủ đề sự kiện (topic0) dùng cả 32 byte, nên an toàn hơn hẳn.
-pub fn event_topic(period: &str) -> [u8; 32] { keccak256(period.as_bytes()) }
+pub fn event_topic(signature: &str) -> [u8; 32] { keccak256(signature.as_bytes()) }
 
 // ============================================================================
 // 3. MÃ HOÁ ABI — quy tắc xếp tham số thành các ô 32 byte
@@ -306,8 +306,8 @@ pub fn abi_encode(cac_gt: &[AbiValue]) -> Vec<u8> {
 }
 
 /// Dựng calldata hoàn chỉnh: 4 byte chữ ký hàm + tham số đã mã hoá.
-pub fn dung_calldata(period: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
-    let mut v = selector(period).to_vec();
+pub fn dung_calldata(signature: &str, cac_gt: &[AbiValue]) -> Vec<u8> {
+    let mut v = selector(signature).to_vec();
     v.extend_from_slice(&abi_encode(cac_gt));
     v
 }
@@ -450,7 +450,7 @@ impl Erc20 {
     pub fn balance_of(&self, ai: Address) -> Vec<u8> {
         dung_calldata(Self::CK_SO_DU, &[AbiValue::Address(ai)])
     }
-    pub fn wait_op(&self, ai: Address, quantity: u128) -> Vec<u8> {
+    pub fn approve(&self, ai: Address, quantity: u128) -> Vec<u8> {
         dung_calldata(Self::CK_CHO_PHEP, &[AbiValue::Address(ai), AbiValue::Uint(quantity)])
     }
     /// Giải mã giá trị `uint256` trả về từ `eth_call`.
@@ -572,10 +572,10 @@ mod tests {
         // Nếu vòng lặp bọt biển bỏ sót một khối, bài này sẽ bắt được.
         let root = vec![7u8; 300];
         let root_hash = keccak256(&root);
-        for pos_value in [0usize, 135, 136, 200, 271, 272, 299] {
+        for index in [0usize, 135, 136, 200, 271, 272, 299] {
             let mut fix = root.clone();
-            fix[pos_value] ^= 1;
-            assert_ne!(keccak256(&fix), root_hash, "lật byte {} mà băm không đổi", pos_value);
+            fix[index] ^= 1;
+            assert_ne!(keccak256(&fix), root_hash, "lật byte {} mà băm không đổi", index);
         }
     }
 
@@ -762,7 +762,7 @@ mod tests {
     }
 
     // ---------- Giao dịch ----------
-    fn trade_mau() -> Tx1559 {
+    fn sample_tx() -> Tx1559 {
         Tx1559 {
             chain_id: 1, nonce: 42,
             max_priority_fee: 2_000_000_000,
@@ -776,14 +776,14 @@ mod tests {
 
     #[test]
     fn tai_in_ky_start_table_kind_trade() {
-        assert_eq!(trade_mau().load_in_period()[0], 0x02, "EIP-1559 là loại 0x02");
+        assert_eq!(sample_tx().load_in_period()[0], 0x02, "EIP-1559 là loại 0x02");
     }
 
     #[test]
     fn changing_any_field_changes_the_hash() {
         // Bất biến sống còn: chữ ký phải phủ TOÀN BỘ nội dung giao dịch.
         // Nếu một trường lọt ra ngoài, kẻ tấn công sửa được nó mà chữ ký vẫn hợp lệ.
-        let root = trade_mau();
+        let root = sample_tx();
         let b0 = root.id_hash_ky();
         let bien_the: Vec<Tx1559> = vec![
             Tx1559 { chain_id: 5, ..root.clone() },
@@ -802,8 +802,8 @@ mod tests {
 
     #[test]
     fn make_contract_encode_dich_into_series_empty() {
-        let tao = Tx1559 { den: None, ..trade_mau() };
-        let send = trade_mau();
+        let tao = Tx1559 { den: None, ..sample_tx() };
+        let send = sample_tx();
         assert_ne!(tao.load_in_period(), send.load_in_period());
         // `den: None` phải thành 0x80 (chuỗi rỗng), không phải 20 byte 0
         assert!(tao.load_in_period().len() < send.load_in_period().len());
@@ -811,14 +811,14 @@ mod tests {
 
     #[test]
     fn max_cost_matches_the_locking_formula() {
-        let gd = trade_mau();
+        let gd = sample_tx();
         assert_eq!(gd.chi_phi_toi_da(),
                    1_000_000_000_000_000_000 + 100_000_000_000 * 21_000);
     }
 
     #[test]
     fn effective_fee_never_exceeds_the_user_cap() {
-        let gd = trade_mau();
+        let gd = sample_tx();
         for base in [1u128, 50_000_000_000, 99_000_000_000, 100_000_000_000] {
             assert!(gd.effective_fee(base) <= gd.max_fee,
                     "base {} → thực trả {} vượt trần {}",
@@ -828,14 +828,14 @@ mod tests {
 
     #[test]
     fn low_base_fee_pays_the_full_tip() {
-        let gd = trade_mau();
+        let gd = sample_tx();
         let base = 10_000_000_000u128;
         assert_eq!(gd.effective_fee(base), base + gd.max_priority_fee);
     }
 
     #[test]
     fn base_fee_near_cap_squeezes_the_tip() {
-        let gd = trade_mau();
+        let gd = sample_tx();
         let base = 99_000_000_000u128; // trần 100 gwei, chỉ còn 1 gwei cho boa
         assert_eq!(gd.effective_fee(base), 100_000_000_000,
                    "tiền boa bị cắt xuống 1 gwei chứ không phải 2");
@@ -843,7 +843,7 @@ mod tests {
 
     #[test]
     fn base_fee_above_cap_does_not_overflow() {
-        let gd = trade_mau();
+        let gd = sample_tx();
         assert_eq!(gd.effective_fee(200_000_000_000), 200_000_000_000,
                    "giao dịch này sẽ không được chọn vào khối, nhưng không được panic");
     }

@@ -8,7 +8,7 @@
 /// Giỏ hàng — ta sẽ "viết test trước, code sau" cho từng hành vi.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cart {
-    mat_queue: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
+    items: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -19,19 +19,19 @@ pub enum CartError {
 
 impl Cart {
     pub fn new() -> Self {
-        Cart { mat_queue: Vec::new() }
+        Cart { items: Vec::new() }
     }
 
     /// Thêm mặt hàng. Số lượng 0 là lỗi nghiệp vụ (không phải panic).
-    pub fn them(&mut self, name: &str, don_price: u64, quantity: u32) -> Result<(), CartError> {
+    pub fn them(&mut self, name: &str, unit_price: u64, quantity: u32) -> Result<(), CartError> {
         if quantity == 0 {
             return Err(CartError::ZeroQuantity);
         }
         // Nếu đã có, cộng dồn số lượng thay vì tạo dòng mới
-        if let Some(dong) = self.mat_queue.iter_mut().find(|(t, _, _)| t == name) {
+        if let Some(dong) = self.items.iter_mut().find(|(t, _, _)| t == name) {
             dong.2 += quantity;
         } else {
-            self.mat_queue.push((name.to_string(), don_price, quantity));
+            self.items.push((name.to_string(), unit_price, quantity));
         }
         Ok(())
     }
@@ -47,11 +47,11 @@ impl Cart {
     /// assert_eq!(gio.tong_tien(), 105_000);
     /// ```
     pub fn tong_tien(&self) -> u64 {
-        self.mat_queue.iter().map(|(_, price, sl)| price * *sl as u64).sum()
+        self.items.iter().map(|(_, price, sl)| price * *sl as u64).sum()
     }
 
     pub fn so_dong(&self) -> usize {
-        self.mat_queue.len()
+        self.items.len()
     }
 
     /// Áp mã giảm giá phần trăm (0..=100).

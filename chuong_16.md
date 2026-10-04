@@ -140,7 +140,7 @@ pub struct SensorRecord {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ThongReportUnsafe {
+pub struct DangerAlert {
     pub fold_records: usize,
     pub content: String,
     pub level_do: String,
@@ -194,9 +194,9 @@ fn main() {
     println!("\n1. Tiến hành bù trừ sai số thiết bị qua .iter_mut():");
     raw_data
         .iter_mut()
-        .filter(|sell_record| sell_record.is_valid)
-        .for_each(|sell_record| {
-            sell_record.temp_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
+        .filter(|record| record.is_valid)
+        .for_each(|record| {
+            record.temp_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
         });
     println!("-> Đã hiệu chỉnh sai số cho tất cả cảm biến hợp lệ thành công.");
 
@@ -237,11 +237,11 @@ fn main() {
     // Tạo danh sách cảnh báo khẩn cấp cho các cảm biến vượt ngưỡng (> 100°C)
     // ------------------------------------------------------------------------
     println!("\n4. Phát hiện nguy cơ và tổng hợp danh sách cảnh báo khẩn cấp:");
-    let list_edge_report: Vec<ThongReportUnsafe> = raw_data
+    let list_edge_report: Vec<DangerAlert> = raw_data
         .iter()
         .enumerate() // Cung cấp chỉ số thứ tự (0, 1, 2...) đi kèm với phần tử
         .filter(|(_, bg)| bg.is_valid && bg.temp_c > 100.0)
-        .map(|(chi_so, bg)| ThongReportUnsafe {
+        .map(|(chi_so, bg)| DangerAlert {
             fold_records: chi_so + 1,
             content: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.temp_c),
             level_do: String::from("KHẨN CẤP"),
@@ -465,17 +465,17 @@ use std::collections::{HashMap, HashSet};
 
 /// Bộ đếm ngược: minh họa việc chỉ cần cài `next()` là có ngay hàng chục
 /// phương thức miễn phí (map, filter, take, sum...).
-pub struct CountInverse {
+pub struct Countdown {
     current: u32,
 }
 
-impl CountInverse {
+impl Countdown {
     pub fn new(start: u32) -> Self {
-        CountInverse { current: start }
+        Countdown { current: start }
     }
 }
 
-impl Iterator for CountInverse {
+impl Iterator for Countdown {
     type Item = u32;
     fn next(&mut self) -> Option<u32> {
         if self.current == 0 {
@@ -493,12 +493,12 @@ impl Iterator for CountInverse {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cart {
-    mat_queue: Vec<String>,
+    items: Vec<String>,
 }
 
 impl Cart {
-    pub fn new(mat_queue: Vec<String>) -> Self {
-        Cart { mat_queue }
+    pub fn new(items: Vec<String>) -> Self {
+        Cart { items }
     }
 }
 
@@ -507,7 +507,7 @@ impl IntoIterator for Cart {
     type Item = String;
     type IntoIter = std::vec::IntoIter<String>;
     fn into_iter(self) -> Self::IntoIter {
-        self.mat_queue.into_iter()
+        self.items.into_iter()
     }
 }
 
@@ -516,14 +516,14 @@ impl<'a> IntoIterator for &'a Cart {
     type Item = &'a String;
     type IntoIter = std::slice::Iter<'a, String>;
     fn into_iter(self) -> Self::IntoIter {
-        self.mat_queue.iter()
+        self.items.iter()
     }
 }
 
 /// Và nhờ FromIterator, `collect()` gom thẳng được vào Cart.
 impl FromIterator<String> for Cart {
     fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
-        Cart { mat_queue: iter.into_iter().collect() }
+        Cart { items: iter.into_iter().collect() }
     }
 }
 
@@ -633,14 +633,14 @@ fn main() {
     // ------------------------------------------------------------------
     // 6. scan — GIỐNG fold NHƯNG NHẢ RA TỪNG BƯỚC TRUNG GIAN
     // ------------------------------------------------------------------
-    let accum_ke: Vec<u64> = gd
+    let cumulative: Vec<u64> = gd
         .iter()
         .scan(0u64, |tong, g| {
             *tong += g.so_tien;
             Some(*tong)
         })
         .collect();
-    println!("\n6. scan (tổng lũy kế từng bước): {:?}", accum_ke);
+    println!("\n6. scan (tổng lũy kế từng bước): {:?}", cumulative);
 
     // ------------------------------------------------------------------
     // 7. take_while / skip_while — DỪNG SỚM, KHÁC HẲN filter
@@ -671,11 +671,11 @@ fn main() {
     let concat: Vec<i32> = (1..3).chain(10..12).collect();
     println!("   chain         : {:?}", concat);
     // CHÚ Ý: `rev()` đòi hỏi trait `DoubleEndedIterator` — iterator phải biết đi
-    // từ CẢ HAI đầu. `CountInverse` tự viết chỉ cài `Iterator` (một chiều), nên
-    // `CountInverse::moi(5).rev()` KHÔNG biên dịch được:
-    //     error[E0277]: the trait bound `CountInverse: DoubleEndedIterator` is not satisfied
+    // từ CẢ HAI đầu. `Countdown` tự viết chỉ cài `Iterator` (một chiều), nên
+    // `Countdown::moi(5).rev()` KHÔNG biên dịch được:
+    //     error[E0277]: the trait bound `Countdown: DoubleEndedIterator` is not satisfied
     // `Vec` thì có, nên ta gom lại trước rồi mới đảo:
-    let inverse: Vec<u32> = CountInverse::new(5).collect::<Vec<u32>>().into_iter().rev().collect();
+    let inverse: Vec<u32> = Countdown::new(5).collect::<Vec<u32>>().into_iter().rev().collect();
     println!("   rev (cần DoubleEndedIterator): {:?}", inverse);
     let stepped: Vec<i32> = (0..10).step_by(3).collect();
     println!("   step_by(3)    : {:?}", stepped);
@@ -700,8 +700,8 @@ fn main() {
     // 10. collect VÀO NHIỀU KIỂU KHÁC NHAU
     // ------------------------------------------------------------------
     println!("\n10. collect() gom vào nhiều kiểu đích");
-    let series: String = id.iter().copied().collect::<Vec<&str>>().join(", ");
-    println!("   -> String     : {}", series);
+    let text: String = id.iter().copied().collect::<Vec<&str>>().join(", ");
+    println!("   -> String     : {}", text);
 
     let khu_vuc: HashSet<&str> = gd.iter().map(|g| g.khu_vuc.as_str()).collect();
     let mut kv: Vec<&&str> = khu_vuc.iter().collect();
@@ -748,9 +748,9 @@ fn main() {
     // 13. ITERATOR TỰ VIẾT VÀ IntoIterator TỰ VIẾT
     // ------------------------------------------------------------------
     println!("\n13. Iterator và IntoIterator tự cài đặt");
-    let count: Vec<u32> = CountInverse::new(5).collect();
+    let count: Vec<u32> = Countdown::new(5).collect();
     println!("   DemNguoc(5)                 : {:?}", count);
-    println!("   Miễn phí luôn map/filter/sum: {}", CountInverse::new(100).filter(|x| x % 7 == 0).sum::<u32>());
+    println!("   Miễn phí luôn map/filter/sum: {}", Countdown::new(100).filter(|x| x % 7 == 0).sum::<u32>());
 
     let gio = Cart::new(vec!["Bàn phím".into(), "Chuột".into(), "Màn hình".into()]);
     print!("   for x in &cart -> ");
@@ -815,11 +815,11 @@ mod tests {
 
     #[test]
     fn scan_emits_intermediate_steps() {
-        let accum_ke: Vec<i32> = [1, 2, 3, 4]
+        let cumulative: Vec<i32> = [1, 2, 3, 4]
             .iter()
             .scan(0, |t, x| { *t += x; Some(*t) })
             .collect();
-        assert_eq!(accum_ke, vec![1, 3, 6, 10]);
+        assert_eq!(cumulative, vec![1, 3, 6, 10]);
     }
 
     #[test]
@@ -858,8 +858,8 @@ mod tests {
 
     #[test]
     fn custom_iterator_works() {
-        assert_eq!(CountInverse::new(3).collect::<Vec<u32>>(), vec![3, 2, 1]);
-        assert_eq!(CountInverse::new(10).filter(|x| x % 3 == 0).sum::<u32>(), 18); // 9+6+3
+        assert_eq!(Countdown::new(3).collect::<Vec<u32>>(), vec![3, 2, 1]);
+        assert_eq!(Countdown::new(10).filter(|x| x % 3 == 0).sum::<u32>(), 18); // 9+6+3
     }
 
     #[test]

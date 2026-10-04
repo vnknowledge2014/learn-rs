@@ -6,23 +6,23 @@
 struct GpsCoord(f64, f64);
 
 // 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
-struct LostReport;
+struct SecurityAttestation;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
-struct AccountBank {
-    num_account: String,
+struct BankAccount {
+    account_number: String,
     account_owner: String,
     balance: f64,
     activate: bool,
 }
 
-// Khối hiện thực các phương thức và hàm liên kết cho AccountBank
-impl AccountBank {
+// Khối hiện thực các phương thức và hàm liên kết cho BankAccount
+impl BankAccount {
     // A. HÀM LIÊN KẾT (Associated Function) - Khởi tạo tài khoản mới chuẩn mực
     fn open_account(so_tk: String, chu_tk: String, so_du_dau: f64) -> Self {
         println!("-> Đang mở tài khoản mới cho khách hàng: {}", chu_tk);
         Self {
-            num_account: so_tk,
+            account_number: so_tk,
             account_owner: chu_tk,
             balance: so_du_dau,
             activate: true,
@@ -32,7 +32,7 @@ impl AccountBank {
     // B. PHƯƠNG THỨC MƯỢN ĐỌC (&self): Tra cứu thông tin số dư an toàn
     fn tra_cuu_thong_tin(&self) {
         println!("------------------------------------------------------------");
-        println!("Số tài khoản : {}", self.num_account);
+        println!("Số tài khoản : {}", self.account_number);
         println!("Chủ tài khoản: {}", self.account_owner);
         println!("Số dư hiện có: {:.2} VND", self.balance);
         println!("Trạng thái   : {}", if self.activate { "Hoạt động" } else { "Đã khóa" });
@@ -46,7 +46,7 @@ impl AccountBank {
             return;
         }
         self.balance += so_tien;
-        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.num_account);
+        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.account_number);
     }
 
     // D. PHƯƠNG THỨC MƯỢN SỬA (&mut self): Rút tiền có kiểm tra số dư
@@ -66,7 +66,7 @@ impl AccountBank {
         println!("\n*** TIẾN HÀNH TẤT TOÁN VÀ HỦY TÀI KHOẢN ***");
         println!("- Hoàn trả toàn bộ số dư cuối cùng: {:.2} VND cho ông/bà {}", 
                  self.balance, self.account_owner);
-        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.num_account);
+        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.account_number);
         // Khi hàm này kết thúc, self bị Drop ngay tại đây!
     }
 }
@@ -82,11 +82,11 @@ fn main() {
              chi_nhanh_ha_noi.0, chi_nhanh_ha_noi.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
-    let _auth_session = LostReport;
+    let _auth_session = SecurityAttestation;
     println!("Chứng thực bảo mật hệ thống: Đã kích hoạt tem xác thực điện tử.");
 
     // Mở một tài khoản ngân hàng mới thông qua hàm liên kết open_account
-    let mut account_hidden = AccountBank::open_account(
+    let mut account_hidden = BankAccount::open_account(
         String::from("1900-123-456"),
         String::from("Nguyễn Văn An"),
         1_000_000.0,
@@ -104,10 +104,10 @@ fn main() {
     account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)
-    let account_aux = AccountBank {
-        num_account: String::from("1900-999-888"),
+    let account_aux = BankAccount {
+        account_number: String::from("1900-999-888"),
         balance: 50_000.0,
-        ..AccountBank::open_account(
+        ..BankAccount::open_account(
             String::from("TEMP"),
             String::from("Nguyễn Văn An (Tài khoản tiết kiệm)"),
             0.0

@@ -143,29 +143,29 @@ impl Response {
     pub fn ok(than: impl Into<String>) -> Self { Response { id: 200, than: than.into() } }
     pub fn tao(than: impl Into<String>) -> Self { Response { id: 201, than: than.into() } }
     pub fn not_seen() -> Self { Response { id: 404, than: "Không tìm thấy".into() } }
-    pub fn data_sai(ly_do: impl Into<String>) -> Self { Response { id: 422, than: ly_do.into() } }
+    pub fn bad_data(ly_do: impl Into<String>) -> Self { Response { id: 422, than: ly_do.into() } }
 }
 
 // ============================================================================
 // 2. BỘ ĐỊNH TUYẾN (Router) — khớp phương thức + mẫu đường dẫn
 // ============================================================================
 
-pub type UnitHandle = Arc<dyn Fn(&Request, &State) -> Response + Send + Sync>;
+pub type Handler = Arc<dyn Fn(&Request, &State) -> Response + Send + Sync>;
 
 pub struct Route {
     method: Method,
     mau: Vec<String>, // ["user", ":id", "profile"]
-    handle: UnitHandle,
+    handle: Handler,
 }
 
-pub struct RouteMatcher {
+pub struct Router {
     route: Vec<Route>,
 }
 
-impl RouteMatcher {
-    pub fn new() -> Self { RouteMatcher { route: Vec::new() } }
+impl Router {
+    pub fn new() -> Self { Router { route: Vec::new() } }
 
-    pub fn them(mut self, pt: Method, mau: &str, handle: UnitHandle) -> Self {
+    pub fn them(mut self, pt: Method, mau: &str, handle: Handler) -> Self {
         self.route.push(Route {
             method: pt,
             mau: mau.trim_matches('/').split('/').map(|s| s.to_string()).collect(),
@@ -175,7 +175,7 @@ impl RouteMatcher {
     }
 
     /// Khớp một yêu cầu với tuyến. Trả về (bộ xử lý, tham số đường dẫn) nếu khớp.
-    fn fill<'a>(&'a self, yc: &Request) -> Option<(&'a UnitHandle, HashMap<String, String>)> {
+    fn fill<'a>(&'a self, yc: &Request) -> Option<(&'a Handler, HashMap<String, String>)> {
         let part: Vec<&str> = yc.path.trim_matches('/').split('/').collect();
         for t in &self.route {
             if t.method != yc.method || t.mau.len() != part.len() {
@@ -259,7 +259,7 @@ pub fn xu_ly_liet_ke(_yc: &Request, tt: &State) -> Response {
 pub fn handle_view_one(yc: &Request, tt: &State) -> Response {
     let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
         Some(x) => x,
-        None => return Response::data_sai("id không hợp lệ"),
+        None => return Response::bad_data("id không hợp lệ"),
     };
     match tt.store.lock().unwrap().get(&id) {
         Some(sp) => Response::ok(format!("{}:{}:{}", sp.id, sp.name, sp.price)),
@@ -271,11 +271,11 @@ pub fn handle_make(yc: &Request, tt: &State) -> Response {
     let field = analyze_than(&yc.than);
     let name = match field.get("ten") {
         Some(t) if !t.is_empty() => t.clone(),
-        _ => return Response::data_sai("thiếu tên sản phẩm"),
+        _ => return Response::bad_data("thiếu tên sản phẩm"),
     };
     let price: u64 = match field.get("gia").and_then(|g| g.parse().ok()) {
         Some(g) => g,
-        None => return Response::data_sai("giá phải là số nguyên"),
+        None => return Response::bad_data("giá phải là số nguyên"),
     };
     let mut id_ke = tt.next_id.lock().unwrap();
     let id = *id_ke;
@@ -287,7 +287,7 @@ pub fn handle_make(yc: &Request, tt: &State) -> Response {
 pub fn handle_remove(yc: &Request, tt: &State) -> Response {
     let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
         Some(x) => x,
-        None => return Response::data_sai("id không hợp lệ"),
+        None => return Response::bad_data("id không hợp lệ"),
     };
     if tt.store.lock().unwrap().remove(&id).is_some() {
         Response::ok(format!("Đã xóa #{}", id))
@@ -297,8 +297,8 @@ pub fn handle_remove(yc: &Request, tt: &State) -> Response {
 }
 
 /// Dựng bộ định tuyến — tương đương `Router::new().route(...)` của Axum.
-pub fn use_resp_use() -> RouteMatcher {
-    RouteMatcher::new()
+pub fn use_resp_use() -> Router {
+    Router::new()
         .them(Method::GET, "/san-pham", Arc::new(xu_ly_liet_ke))
         .them(Method::GET, "/san-pham/:id", Arc::new(handle_view_one))
         .them(Method::POST, "/san-pham", Arc::new(handle_make))
@@ -342,7 +342,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn environment() -> (RouteMatcher, Arc<State>) {
+    fn environment() -> (Router, Arc<State>) {
         (use_resp_use(), State::new())
     }
 
@@ -493,7 +493,7 @@ So sánh mã Axum với mini-router: **cùng một kiến trúc** — định tu
 | `E0596: cannot borrow data in an Arc as mutable` | Sửa trạng thái dùng chung qua `Arc` | `Arc<Mutex<T>>`, rồi `.lock().unwrap()` trước khi ghi |
 | `E0597: borrowed value does not live long enough` | Trả tham chiếu tới dữ liệu bên trong khoá | Sao chép ra khỏi vùng khoá rồi mới trả; đừng để `MutexGuard` thoát ra ngoài |
 | `E0382: use of moved value` | Dùng lại `Request` sau khi đã chuyển vào bộ xử lý | Truyền `&Request`, hoặc `clone()` nếu thật cần sở hữu |
-| Định tuyến trả 404 cho đường dẫn đúng | So khớp trước khi tách tham số động | Tách đoạn đường dẫn rồi mới so; xem `RouteMatcher` |
+| Định tuyến trả 404 cho đường dẫn đúng | So khớp trước khi tách tham số động | Tách đoạn đường dẫn rồi mới so; xem `Router` |
 
 ---
 
@@ -516,14 +516,14 @@ Thêm handler `xu_ly_cap_nhat` cho `PUT /san-pham/:id` cập nhật tên và gi�
 ```rust
 pub fn handle_update(yc: &Request, tt: &State) -> Response {
     let id: u64 = match yc.path_param.get("id").and_then(|s| s.parse().ok()) {
-        Some(x) => x, None => return Response::data_sai("id không hợp lệ"),
+        Some(x) => x, None => return Response::bad_data("id không hợp lệ"),
     };
     let field = analyze_than(&yc.than);
     let price: u64 = match field.get("gia").and_then(|g| g.parse().ok()) {
-        Some(g) => g, None => return Response::data_sai("giá phải là số"),
+        Some(g) => g, None => return Response::bad_data("giá phải là số"),
     };
     let name = match field.get("ten") { Some(t) if !t.is_empty() => t.clone(),
-        _ => return Response::data_sai("thiếu tên") };
+        _ => return Response::bad_data("thiếu tên") };
     let mut store = tt.store.lock().unwrap();
     match store.get_mut(&id) {
         Some(sp) => { sp.name = name; sp.price = price; Response::ok(format!("Đã cập nhật #{}", id)) }

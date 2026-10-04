@@ -111,14 +111,14 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct Signal<T> {
     value: Rc<RefCell<T>>,
-    session_sell: Rc<RefCell<u64>>, // tăng mỗi lần đặt giá trị -> phát hiện thay đổi
+    version: Rc<RefCell<u64>>, // tăng mỗi lần đặt giá trị -> phát hiện thay đổi
 }
 
 impl<T: Clone + PartialEq> Signal<T> {
     pub fn new(value: T) -> Self {
         Signal {
             value: Rc::new(RefCell::new(value)),
-            session_sell: Rc::new(RefCell::new(0)),
+            version: Rc::new(RefCell::new(0)),
         }
     }
     pub fn lay(&self) -> T {
@@ -128,26 +128,26 @@ impl<T: Clone + PartialEq> Signal<T> {
     pub fn set(&self, new: T) {
         if *self.value.borrow() != new {
             *self.value.borrow_mut() = new;
-            *self.session_sell.borrow_mut() += 1;
+            *self.version.borrow_mut() += 1;
         }
     }
     pub fn update(&self, f: impl FnOnce(&T) -> T) {
         let new = f(&self.value.borrow());
         self.set(new);
     }
-    pub fn session_sell(&self) -> u64 {
-        *self.session_sell.borrow()
+    pub fn version(&self) -> u64 {
+        *self.version.borrow()
     }
 }
 
 /// Giá trị DẪN XUẤT (derived/computed): tự tính lại từ các tín hiệu nguồn.
 /// Ví dụ: "tổng tiền" dẫn xuất từ "giỏ hàng". Đổi giỏ -> tổng tự cập nhật.
-pub struct DeriveExport<T> {
+pub struct Derived<T> {
     compute: Box<dyn Fn() -> T>,
 }
-impl<T> DeriveExport<T> {
+impl<T> Derived<T> {
     pub fn new(compute: impl Fn() -> T + 'static) -> Self {
-        DeriveExport { compute: Box::new(compute) }
+        Derived { compute: Box::new(compute) }
     }
     pub fn lay(&self) -> T {
         (self.compute)()
@@ -206,7 +206,7 @@ fn escape_html(s: &str) -> String {
 
 /// Một bản vá (patch) mô tả một thay đổi cần áp lên DOM thật.
 #[derive(Debug, Clone, PartialEq)]
-pub enum SellAnd {
+pub enum Patch {
     Replaced { path: Vec<usize>, nut_moi: VirtualNode },
     TextChanged { path: Vec<usize>, van_moi: String },
     AttrChanged { path: Vec<usize>, name: String, value: String },
@@ -216,12 +216,12 @@ pub enum SellAnd {
 
 /// THUẬT TOÁN DIFF: so hai cây ảo, sinh danh sách bản vá TỐI THIỂU.
 /// Đây là điều khiến React/Leptos nhanh: không dựng lại cả DOM, chỉ vá chỗ đổi.
-pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAnd> {
+pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<Patch> {
     match (cu, new) {
         // Hai văn bản khác nội dung -> vá văn bản
         (VirtualNode::Van(a), VirtualNode::Van(b)) => {
             if a != b {
-                vec![SellAnd::TextChanged { path, van_moi: b.clone() }]
+                vec![Patch::TextChanged { path, van_moi: b.clone() }]
             } else {
                 vec![]
             }
@@ -234,7 +234,7 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
             let map_cu: HashMap<_, _> = tta.iter().cloned().collect();
             for (k, v) in ttb {
                 if map_cu.get(k) != Some(v) {
-                    va.push(SellAnd::AttrChanged {
+                    va.push(Patch::AttrChanged {
                         path: path.clone(), name: k.clone(), value: v.clone(),
                     });
                 }
@@ -248,15 +248,15 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
             }
             // Con thừa ở cây mới -> thêm; thừa ở cây cũ -> xóa
             for i in shared..cb.len() {
-                va.push(SellAnd::ThemCon { path: path.clone(), nut: cb[i].clone() });
+                va.push(Patch::ThemCon { path: path.clone(), nut: cb[i].clone() });
             }
             for i in (shared..ca.len()).rev() {
-                va.push(SellAnd::ChildRemoved { path: path.clone(), chi_so: i });
+                va.push(Patch::ChildRemoved { path: path.clone(), chi_so: i });
             }
             va
         }
         // Khác loại/khác tên thẻ -> thay thế cả nút
-        _ => vec![SellAnd::Replaced { path, nut_moi: new.clone() }],
+        _ => vec![Patch::Replaced { path, nut_moi: new.clone() }],
     }
 }
 
@@ -265,13 +265,13 @@ pub fn diff(cu: &VirtualNode, new: &VirtualNode, path: Vec<usize>) -> Vec<SellAn
 // ============================================================================
 
 #[derive(Clone)]
-pub struct StateCount {
+pub struct CounterState {
     pub so: Signal<i64>,
 }
 
 /// Component đếm: một HÀM THUẦN TÚY nhận trạng thái, trả về cây giao diện ảo.
 /// Đây là bản chất của UI khai báo (declarative): giao diện là HÀM của trạng thái.
-pub fn counter_view(tt: &StateCount) -> VirtualNode {
+pub fn counter_view(tt: &CounterState) -> VirtualNode {
     VirtualNode::the("div", vec![("class", "dem")], vec![
         VirtualNode::the("h1", vec![], vec![VirtualNode::van(&format!("Đếm: {}", tt.so.lay()))]),
         VirtualNode::the("button", vec![("id", "tang")], vec![VirtualNode::van("Tăng")]),
@@ -286,24 +286,24 @@ fn main() {
 
     println!("\n1. HỆ PHẢN ỨNG");
     let so = Signal::new(0i64);
-    let tong = DeriveExport::new({
+    let tong = Derived::new({
         let so = so.clone();
         move || so.lay() * 1000 // "tổng tiền" dẫn xuất từ "số lượng"
     });
     println!("   số = {}, tổng dẫn xuất = {}", so.lay(), tong.lay());
     so.set(5);
     println!("   sau khi đặt số = 5: tổng tự cập nhật = {}", tong.lay());
-    println!("   phiên bản tín hiệu: {}", so.session_sell());
+    println!("   phiên bản tín hiệu: {}", so.version());
     so.set(5); // đặt lại cùng giá trị -> KHÔNG tăng phiên bản
-    println!("   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)", so.session_sell());
+    println!("   đặt lại cùng giá trị 5: phiên bản vẫn = {} (bỏ render thừa)", so.version());
 
     println!("\n2. COMPONENT -> VIRTUAL DOM -> HTML");
-    let tt = StateCount { so: Signal::new(3) };
+    let tt = CounterState { so: Signal::new(3) };
     let cay = counter_view(&tt);
     println!("   {}", cay.to_html());
 
     println!("\n3. DIFF — chỉ vá chỗ THAY ĐỔI");
-    let tt2 = StateCount { so: Signal::new(4) }; // số đổi 3 -> 4
+    let tt2 = CounterState { so: Signal::new(4) }; // số đổi 3 -> 4
     let cay_moi = counter_view(&tt2);
     let sell_and = diff(&cay, &cay_moi, vec![]);
     println!("   Số bản vá cần áp lên DOM thật: {} (chỉ đổi văn bản, không dựng lại cả cây!)", sell_and.len());
@@ -338,19 +338,19 @@ mod tests {
     #[test]
     fn signal_skips_redundant_updates() {
         let s = Signal::new(1i64);
-        assert_eq!(s.session_sell(), 0);
+        assert_eq!(s.version(), 0);
         s.set(2);
-        assert_eq!(s.session_sell(), 1);
+        assert_eq!(s.version(), 1);
         s.set(2); // cùng giá trị -> không tăng phiên bản
-        assert_eq!(s.session_sell(), 1, "đặt cùng giá trị không được kích hoạt render");
+        assert_eq!(s.version(), 1, "đặt cùng giá trị không được kích hoạt render");
         s.set(3);
-        assert_eq!(s.session_sell(), 2);
+        assert_eq!(s.version(), 2);
     }
 
     #[test]
     fn derived_signal_tracks_its_source() {
         let so = Signal::new(2i64);
-        let doubled = DeriveExport::new({ let so = so.clone(); move || so.lay() * 2 });
+        let doubled = Derived::new({ let so = so.clone(); move || so.lay() * 2 });
         assert_eq!(doubled.lay(), 4);
         so.set(10);
         assert_eq!(doubled.lay(), 20); // tự cập nhật, không cần gọi lại thủ công
@@ -376,25 +376,25 @@ mod tests {
         let new = VirtualNode::van("Đếm: 4");
         let va = diff(&cu, &new, vec![]);
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], SellAnd::TextChanged { .. }));
+        assert!(matches!(va[0], Patch::TextChanged { .. }));
     }
 
     #[test]
     fn diff_of_identical_trees_is_empty() {
-        let c = counter_view(&StateCount { so: Signal::new(5) });
+        let c = counter_view(&CounterState { so: Signal::new(5) });
         let va = diff(&c, &c.clone(), vec![]);
         assert!(va.is_empty(), "cây giống hệt không được sinh bản vá");
     }
 
     #[test]
     fn diff_detects_attr_and_text_changes() {
-        let a = counter_view(&StateCount { so: Signal::new(3) });
-        let b = counter_view(&StateCount { so: Signal::new(4) });
+        let a = counter_view(&CounterState { so: Signal::new(3) });
+        let b = counter_view(&CounterState { so: Signal::new(4) });
         let va = diff(&a, &b, vec![]);
         // Chỉ số trong <h1> đổi -> đúng 1 bản vá đổi văn bản, các nút button giữ nguyên
         assert_eq!(va.len(), 1);
         match &va[0] {
-            SellAnd::TextChanged { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
+            Patch::TextChanged { van_moi, .. } => assert_eq!(van_moi, "Đếm: 4"),
             other => panic!("phải là TextChanged, nhận {:?}", other),
         }
     }
@@ -404,9 +404,9 @@ mod tests {
         let cu = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a")]);
         let new = VirtualNode::the("ul", vec![], vec![VirtualNode::van("a"), VirtualNode::van("b")]);
         let them = diff(&cu, &new, vec![]);
-        assert!(them.iter().any(|v| matches!(v, SellAnd::ThemCon { .. })));
+        assert!(them.iter().any(|v| matches!(v, Patch::ThemCon { .. })));
         let remove = diff(&new, &cu, vec![]);
-        assert!(remove.iter().any(|v| matches!(v, SellAnd::ChildRemoved { .. })));
+        assert!(remove.iter().any(|v| matches!(v, Patch::ChildRemoved { .. })));
     }
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
         let cu = VirtualNode::the("div", vec![], vec![]);
         let new = VirtualNode::the("span", vec![], vec![]);
         let va = diff(&cu, &new, vec![]);
-        assert!(matches!(va[0], SellAnd::Replaced { .. }));
+        assert!(matches!(va[0], Patch::Replaced { .. }));
     }
 }
 ```
@@ -526,14 +526,14 @@ mod bt1 {
         let va = diff(&a, &b, vec![]);
         // Chỉ đổi class của <li> đầu -> 1 bản vá đổi thuộc tính
         assert_eq!(va.len(), 1);
-        assert!(matches!(va[0], SellAnd::AttrChanged { .. }));
+        assert!(matches!(va[0], Patch::AttrChanged { .. }));
     }
 }
 ```
 </details>
 
 **Bài tập 2 (Bộ nhớ hóa giá trị dẫn xuất)**
-`DeriveExport` hiện tính lại mỗi lần `lay()`. Thêm cache: chỉ tính lại khi phiên bản của tín hiệu nguồn thay đổi (ghi nhớ, Chương 60). Đây chính là tối ưu "memo" của Leptos/React.
+`Derived` hiện tính lại mỗi lần `lay()`. Thêm cache: chỉ tính lại khi phiên bản của tín hiệu nguồn thay đổi (ghi nhớ, Chương 60). Đây chính là tối ưu "memo" của Leptos/React.
 
 <details>
 <summary><b>Gợi ý</b></summary>

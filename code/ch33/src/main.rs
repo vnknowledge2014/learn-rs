@@ -141,14 +141,14 @@ fn main() {
     is_left.insert_non_full_leaf(10, "Alice (Hà Nội)");
     is_left.insert_non_full_leaf(30, "Bình (Đà Nẵng)");
 
-    let mut is_must = BPlusNode::new_leaf();
-    is_must.insert_non_full_leaf(50, "Cường (TP.HCM)");
-    is_must.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
-    is_must.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
+    let mut right_leaf = BPlusNode::new_leaf();
+    right_leaf.insert_non_full_leaf(50, "Cường (TP.HCM)");
+    right_leaf.insert_non_full_leaf(70, "Dũng (Cần Thơ)");
+    right_leaf.insert_non_full_leaf(90, "Emmy (Hải Phòng)");
 
     let root_node = BPlusNode::Internal {
         keys: vec![50],
-        children: vec![Box::new(is_left), Box::new(is_must)],
+        children: vec![Box::new(is_left), Box::new(right_leaf)],
     };
 
     let b_tree = BPlusTree {
@@ -171,16 +171,16 @@ fn main() {
 
     println!("\n[2] Kiểm tra tính năng quét dải dữ liệu (Range Scan):");
     println!("    - Tìm kiếm các bản ghi có khóa từ 25 đến 75:");
-    let list_long = b_tree.get_range(25, 75);
-    for (k, v) in &list_long {
+    let range_entries = b_tree.get_range(25, 75);
+    for (k, v) in &range_entries {
         println!("      -> Khóa {}: {}", k, v);
     }
 
     // Kết quả kỳ vọng: Khóa 30, 50, 70
-    assert_eq!(list_long.len(), 3);
-    assert_eq!(list_long[0].0, 30);
-    assert_eq!(list_long[1].0, 50);
-    assert_eq!(list_long[2].0, 70);
+    assert_eq!(range_entries.len(), 3);
+    assert_eq!(range_entries[0].0, 30);
+    assert_eq!(range_entries[1].0, 50);
+    assert_eq!(range_entries[2].0, 70);
     println!("    => Quét dải dữ liệu hoàn tất thành công vượt trội!");
 
     println!("============================================================");

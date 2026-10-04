@@ -10,14 +10,14 @@ use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawProfile {
-    pub name_dang_import: Option<String>,
+    pub username: Option<String>,
     pub email: Option<String>,
     pub age_series: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ValidProxy {
-    pub name_dang_import: String,
+pub struct ValidProfile {
+    pub username: String,
     pub email: String,
     pub age: u32,
 }
@@ -79,10 +79,10 @@ pub fn auth_proxy_num(
     profile: &RawProfile,
     check_name: &impl Fn(&str) -> bool,
     check_banned_words: &impl Fn(&str) -> bool,
-) -> Result<ValidProxy, &'static str> {
+) -> Result<ValidProfile, &'static str> {
     // 1. Xác thực và chuẩn hóa Tên đăng nhập bằng chuỗi combinators
     let name_hop_le = profile
-        .name_dang_import
+        .username
         .as_deref()                                   // Option<String> -> Option<&str>
         .map(|s| s.trim())                            // Cắt khoảng trắng
         .filter(|s| check_name(s))                  // Kiểm tra độ dài hợp lệ
@@ -109,8 +109,8 @@ pub fn auth_proxy_num(
         .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
 
     // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
-    Ok(ValidProxy {
-        name_dang_import: name_hop_le,
+    Ok(ValidProfile {
+        username: name_hop_le,
         email: email_hop_le,
         age: age_hop_le,
     })
@@ -131,14 +131,14 @@ fn main() {
 
     // Dữ liệu mẫu 1: Hồ sơ chuẩn mực hoàn hảo
     let proxy_num_standard = RawProfile {
-        name_dang_import: Some(String::from("  nguyen_an  ")),
+        username: Some(String::from("  nguyen_an  ")),
         email: Some(String::from("An.Nguyen@EXAMPLE.COM  ")),
         age_series: Some(String::from("  22  ")),
     };
 
     // Dữ liệu mẫu 2: Hồ sơ lỗi chứa từ cấm và email hỏng
     let proxy_num_error = RawProfile {
-        name_dang_import: Some(String::from("super_admin")), // Chứa từ cấm 'admin'
+        username: Some(String::from("super_admin")), // Chứa từ cấm 'admin'
         email: Some(String::from("email_khong_hop_le")),
         age_series: Some(String::from("12")),             // Dưới 16 tuổi
     };
@@ -152,7 +152,7 @@ fn main() {
     match ket_qua_1 {
         Ok(profile) => {
             println!("[THÀNH CÔNG] Dữ liệu sau khi làm sạch:");
-            println!("  - Tên đăng nhập: {}", profile.name_dang_import);
+            println!("  - Tên đăng nhập: {}", profile.username);
             println!("  - Email hợp chuẩn: {}", profile.email);
             println!("  - Tuổi: {}", profile.age);
         }

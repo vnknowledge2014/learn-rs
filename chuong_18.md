@@ -25,7 +25,7 @@ Nếu bạn chỉ đặt tên "Vị nhóm" cho kiểu dữ liệu của mình m�
 
 Mục tiêu học tập của chương này:
 - Nắm được thang bậc **Magma → Nửa nhóm → Vị nhóm → Nhóm** và biết mỗi bậc đòi hỏi thêm điều gì.
-- Viết được `trait Semigroup` và `trait PosGroup` trong Rust, cài đặt cho `String`, `Vec<T>`, số, giá trị logic và các kiểu bọc (newtype).
+- Viết được `trait Semigroup` và `trait Monoid` trong Rust, cài đặt cho `String`, `Vec<T>`, số, giá trị logic và các kiểu bọc (newtype).
 - Hiểu **vì sao `i64` có tận HAI vị nhóm** (`Tong` và `Tich`) và vì sao Rust buộc phải dùng kiểu bọc để phân biệt.
 - Nhận ra các vị nhóm **đã có sẵn trong thư viện chuẩn Rust**: `Default`, `Sum`, `Product`, `Extend`, `Ordering::then`, `Option::or`.
 - Hiểu **luật phản xạ** và lý do sâu xa vì sao `f64` chỉ có `PartialEq` chứ không có `Eq` — bài học sống động nhất về "luật có thật".
@@ -125,20 +125,20 @@ pub trait Semigroup {
 }
 
 /// Vị nhóm: nửa nhóm có thêm một "phần tử rỗng".
-pub trait PosGroup: Semigroup + Sized {
-    fn don_pos() -> Self;
+pub trait Monoid: Semigroup + Sized {
+    fn empty() -> Self;
 }
 ```
 
 Chú ý hai chi tiết thiết kế rất "Rust":
 - `fn ghep(self, khac: Self) -> Self` nhận `self` **theo giá trị**, không phải `&self`. Nhờ vậy, khi gộp hai `String` ta có thể *tái sử dụng* bộ đệm của chuỗi thứ nhất thay vì cấp phát mới — đúng tinh thần zero-cost.
-- `PosGroup: Semigroup` là quan hệ **siêu trait (supertrait)**: mọi vị nhóm bắt buộc trước hết phải là một nửa nhóm. Đây chính là cách Rust biểu diễn quan hệ "kế thừa" giữa các cấu trúc đại số. (Bạn đã gặp mẫu này ở Chương 15 với `Fn: FnMut: FnOnce`.)
+- `Monoid: Semigroup` là quan hệ **siêu trait (supertrait)**: mọi vị nhóm bắt buộc trước hết phải là một nửa nhóm. Đây chính là cách Rust biểu diễn quan hệ "kế thừa" giữa các cấu trúc đại số. (Bạn đã gặp mẫu này ở Chương 15 với `Fn: FnMut: FnOnce`.)
 
 Có hai trait đó rồi, ta viết được **một hàm gộp duy nhất dùng chung cho mọi kiểu**:
 
 ```rust
-pub fn coalesce_all_all<M: PosGroup>(list: impl IntoIterator<Item = M>) -> M {
-    list.into_iter().fold(M::don_pos(), |accumulate, x| accumulate.compose(x))
+pub fn combine_all<M: Monoid>(list: impl IntoIterator<Item = M>) -> M {
+    list.into_iter().fold(M::empty(), |accumulate, x| accumulate.compose(x))
 }
 ```
 
@@ -153,7 +153,7 @@ Kiểu `i64` có tận **hai** cấu trúc vị nhóm hoàn toàn hợp lệ:
 | Cộng | `a + b` | `0` |
 | Nhân | `a * b` | `1` |
 
-Rust không cho phép viết `impl PosGroup for i64` hai lần (lỗi **E0119: conflicting implementations**). Cách giải quyết chuẩn mực của cả Rust lẫn Haskell là **bọc số vào một kiểu mới**:
+Rust không cho phép viết `impl Monoid for i64` hai lần (lỗi **E0119: conflicting implementations**). Cách giải quyết chuẩn mực của cả Rust lẫn Haskell là **bọc số vào một kiểu mới**:
 
 ```rust
 pub struct Tong(pub i64);   // đại diện vị nhóm cộng
@@ -257,16 +257,16 @@ pub trait Semigroup {
 }
 
 /// Vị nhóm (Monoid): nửa nhóm có thêm PHẦN TỬ ĐƠN VỊ.
-pub trait PosGroup: Semigroup + Sized {
-    fn don_pos() -> Self;
+pub trait Monoid: Semigroup + Sized {
+    fn empty() -> Self;
 }
 
 /// Hàm gộp vạn năng: dùng được cho MỌI vị nhóm.
 /// Nó thay thế cho sum_all, noi_chuoi, gop_mang, tim_max... tất cả.
-pub fn coalesce_all_all<M: PosGroup>(list: impl IntoIterator<Item = M>) -> M {
+pub fn combine_all<M: Monoid>(list: impl IntoIterator<Item = M>) -> M {
     list
         .into_iter()
-        .fold(M::don_pos(), |accumulate, x| accumulate.compose(x))
+        .fold(M::empty(), |accumulate, x| accumulate.compose(x))
 }
 
 // ============================================================================
@@ -278,8 +278,8 @@ impl Semigroup for String {
         self + &other // tái sử dụng bộ đệm của chuỗi thứ nhất
     }
 }
-impl PosGroup for String {
-    fn don_pos() -> Self {
+impl Monoid for String {
+    fn empty() -> Self {
         String::new()
     }
 }
@@ -290,8 +290,8 @@ impl<T> Semigroup for Vec<T> {
         self
     }
 }
-impl<T> PosGroup for Vec<T> {
-    fn don_pos() -> Self {
+impl<T> Monoid for Vec<T> {
+    fn empty() -> Self {
         Vec::new()
     }
 }
@@ -307,8 +307,8 @@ impl Semigroup for Tong {
         Tong(self.0 + k.0)
     }
 }
-impl PosGroup for Tong {
-    fn don_pos() -> Self {
+impl Monoid for Tong {
+    fn empty() -> Self {
         Tong(0)
     }
 }
@@ -320,8 +320,8 @@ impl Semigroup for Product {
         Product(self.0.wrapping_mul(k.0))
     }
 }
-impl PosGroup for Product {
-    fn don_pos() -> Self {
+impl Monoid for Product {
+    fn empty() -> Self {
         Product(1) // Chú ý: đơn vị của phép nhân là 1, KHÔNG phải 0!
     }
 }
@@ -333,8 +333,8 @@ impl Semigroup for Max {
         Max(self.0.max(k.0))
     }
 }
-impl PosGroup for Max {
-    fn don_pos() -> Self {
+impl Monoid for Max {
+    fn empty() -> Self {
         Max(i64::MIN) // "âm vô cực": gộp với gì cũng thua
     }
 }
@@ -346,8 +346,8 @@ impl Semigroup for Min {
         Min(self.0.min(k.0))
     }
 }
-impl PosGroup for Min {
-    fn don_pos() -> Self {
+impl Monoid for Min {
+    fn empty() -> Self {
         Min(i64::MAX)
     }
 }
@@ -359,29 +359,29 @@ impl Semigroup for MoiDeu {
         MoiDeu(self.0 && k.0)
     }
 }
-impl PosGroup for MoiDeu {
-    fn don_pos() -> Self {
+impl Monoid for MoiDeu {
+    fn empty() -> Self {
         MoiDeu(true)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HasFew(pub bool); // "có ít nhất một cái đúng" — tương ứng .any()
-impl Semigroup for HasFew {
+pub struct Any(pub bool); // "có ít nhất một cái đúng" — tương ứng .any()
+impl Semigroup for Any {
     fn compose(self, k: Self) -> Self {
-        HasFew(self.0 || k.0)
+        Any(self.0 || k.0)
     }
 }
-impl PosGroup for HasFew {
-    fn don_pos() -> Self {
-        HasFew(false)
+impl Monoid for Any {
+    fn empty() -> Self {
+        Any(false)
     }
 }
 
 /// Vị nhóm "lấy cái đầu tiên có giá trị" — chính là ý tưởng của `Option::or`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FirstTien<T>(pub Option<T>);
-impl<T> Semigroup for FirstTien<T> {
+pub struct First<T>(pub Option<T>);
+impl<T> Semigroup for First<T> {
     fn compose(self, k: Self) -> Self {
         if self.0.is_some() {
             self
@@ -390,9 +390,9 @@ impl<T> Semigroup for FirstTien<T> {
         }
     }
 }
-impl<T> PosGroup for FirstTien<T> {
-    fn don_pos() -> Self {
-        FirstTien(None)
+impl<T> Monoid for First<T> {
+    fn empty() -> Self {
+        First(None)
     }
 }
 
@@ -407,9 +407,9 @@ impl<A: Semigroup, B: Semigroup> Semigroup for (A, B) {
         (self.0.compose(k.0), self.1.compose(k.1))
     }
 }
-impl<A: PosGroup, B: PosGroup> PosGroup for (A, B) {
-    fn don_pos() -> Self {
-        (A::don_pos(), B::don_pos())
+impl<A: Monoid, B: Monoid> Monoid for (A, B) {
+    fn empty() -> Self {
+        (A::empty(), B::empty())
     }
 }
 
@@ -423,9 +423,9 @@ impl<A: Semigroup, B: Semigroup, C: Semigroup, D: Semigroup> Semigroup for (A, B
         )
     }
 }
-impl<A: PosGroup, B: PosGroup, C: PosGroup, D: PosGroup> PosGroup for (A, B, C, D) {
-    fn don_pos() -> Self {
-        (A::don_pos(), B::don_pos(), C::don_pos(), D::don_pos())
+impl<A: Monoid, B: Monoid, C: Monoid, D: Monoid> Monoid for (A, B, C, D) {
+    fn empty() -> Self {
+        (A::empty(), B::empty(), C::empty(), D::empty())
     }
 }
 
@@ -434,22 +434,22 @@ impl<A: PosGroup, B: PosGroup, C: PosGroup, D: PosGroup> PosGroup for (A, B, C, 
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SellRecordAccessCap {
+pub struct AccessRecord {
     pub path: String,
-    pub id_state: u16,
+    pub status_code: u16,
     pub time_ms: i64,
 }
 
 /// Bốn chỉ số cần tính, gói trong một vị nhóm tích 4 thành phần.
-pub type ThongKe = (Tong, Max, Min, HasFew);
+pub type ThongKe = (Tong, Max, Min, Any);
 
 /// Biến một bản ghi thành "đóng góp" của nó vào thống kê tổng.
-pub fn into_thong_ke(bg: &SellRecordAccessCap) -> ThongKe {
+pub fn to_stats(bg: &AccessRecord) -> ThongKe {
     (
         Tong(bg.time_ms),
         Max(bg.time_ms),
         Min(bg.time_ms),
-        HasFew(bg.id_state >= 500),
+        Any(bg.status_code >= 500),
     )
 }
 
@@ -463,7 +463,7 @@ impl Generator {
     pub fn new(hat_giong: u64) -> Self {
         Generator(hat_giong)
     }
-    pub fn num_cont(&mut self) -> i64 {
+    pub fn next_number(&mut self) -> i64 {
         // Hằng số của cuốn Numerical Recipes
         self.0 = self
             .0
@@ -474,16 +474,16 @@ impl Generator {
 }
 
 /// Kiểm chứng LUẬT KẾT HỢP trên nhiều mẫu giả ngẫu nhiên.
-pub fn verify_link_hop<M, F>(name: &str, tao: F, samples: usize) -> bool
+pub fn verify_associativity<M, F>(name: &str, tao: F, samples: usize) -> bool
 where
     M: Semigroup + Clone + PartialEq + Debug,
     F: Fn(i64) -> M,
 {
     let mut sinh = Generator::new(2026);
     for _ in 0..samples {
-        let a = tao(sinh.num_cont());
-        let b = tao(sinh.num_cont());
-        let c = tao(sinh.num_cont());
+        let a = tao(sinh.next_number());
+        let b = tao(sinh.next_number());
+        let c = tao(sinh.next_number());
         let left = a.clone().compose(b.clone()).compose(c.clone());
         let right = a.clone().compose(b.clone().compose(c.clone()));
         if left != right {
@@ -496,15 +496,15 @@ where
 }
 
 /// Kiểm chứng LUẬT ĐƠN VỊ trên nhiều mẫu giả ngẫu nhiên.
-pub fn verify_don_pos<M, F>(name: &str, tao: F, samples: usize) -> bool
+pub fn verify_identity<M, F>(name: &str, tao: F, samples: usize) -> bool
 where
-    M: PosGroup + Clone + PartialEq + Debug,
+    M: Monoid + Clone + PartialEq + Debug,
     F: Fn(i64) -> M,
 {
     let mut sinh = Generator::new(777);
     for _ in 0..samples {
-        let a = tao(sinh.num_cont());
-        if M::don_pos().compose(a.clone()) != a || a.clone().compose(M::don_pos()) != a {
+        let a = tao(sinh.next_number());
+        if M::empty().compose(a.clone()) != a || a.clone().compose(M::empty()) != a {
             println!("  ✗ {} VI PHẠM luật đơn vị với {:?}", name, a);
             return false;
         }
@@ -527,30 +527,30 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n1. HÀM `gop_tat_ca` VẠN NĂNG");
     let so = vec![Tong(3), Tong(8), Tong(-2), Tong(11)];
-    println!("   Tổng các số       : {:?}", coalesce_all_all(so));
+    println!("   Tổng các số       : {:?}", combine_all(so));
 
     let products = vec![Product(2), Product(3), Product(7)];
-    println!("   Tích các số       : {:?}", coalesce_all_all(products));
+    println!("   Tích các số       : {:?}", combine_all(products));
 
-    let series = vec![
+    let strings = vec![
         String::from("Rust "),
         String::from("thật "),
         String::from("tuyệt!"),
     ];
-    println!("   Nối chuỗi         : {:?}", coalesce_all_all(series));
+    println!("   Nối chuỗi         : {:?}", combine_all(strings));
 
     let mang = vec![vec![1, 2], vec![3], vec![4, 5, 6]];
-    println!("   Gộp danh sách     : {:?}", coalesce_all_all(mang));
+    println!("   Gộp danh sách     : {:?}", combine_all(mang));
 
     let set = vec![MoiDeu(true), MoiDeu(true), MoiDeu(false)];
-    println!("   Tất cả đều đạt?   : {:?}", coalesce_all_all(set));
+    println!("   Tất cả đều đạt?   : {:?}", combine_all(set));
 
-    let config: Vec<FirstTien<&str>> = vec![
-        FirstTien(None),                // biến môi trường: không có
-        FirstTien(Some("config.toml")), // tệp cấu hình: có!
-        FirstTien(Some("mac_dinh")),    // giá trị mặc định (không dùng tới)
+    let config: Vec<First<&str>> = vec![
+        First(None),                // biến môi trường: không có
+        First(Some("config.toml")), // tệp cấu hình: có!
+        First(Some("mac_dinh")),    // giá trị mặc định (không dùng tới)
     ];
-    println!("   Nguồn cấu hình đầu: {:?}", coalesce_all_all(config));
+    println!("   Nguồn cấu hình đầu: {:?}", combine_all(config));
 
     // ------------------------------------------------------------------
     // 2. DANH SÁCH RỖNG — GIÁ TRỊ CỦA "HỘP RỖNG"
@@ -558,30 +558,30 @@ fn main() {
     println!("\n2. VÌ SAO CẦN PHẦN TỬ ĐƠN VỊ?");
     let empty_sum: Vec<Tong> = Vec::new();
     let rong_nhan: Vec<Product> = Vec::new();
-    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", coalesce_all_all(empty_sum));
+    println!("   Tổng của danh sách RỖNG: {:?}  (đúng: 0)", combine_all(empty_sum));
     println!(
         "   Tích của danh sách RỖNG: {:?}  (đúng: 1, KHÔNG phải 0!)",
-        coalesce_all_all(rong_nhan)
+        combine_all(rong_nhan)
     );
 
     // ------------------------------------------------------------------
     // 3. VỊ NHÓM TÍCH: 4 CHỈ SỐ TRONG 1 LƯỢT DUYỆT
     // ------------------------------------------------------------------
     println!("\n3. VỊ NHÓM TÍCH — 4 CHỈ SỐ, 1 LƯỢT DUYỆT");
-    let order_log = vec![
-        SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 42 },
-        SellRecordAccessCap { path: "/api/thanh-total".into(), id_state: 500, time_ms: 1350 },
-        SellRecordAccessCap { path: "/api/san-pham".into(), id_state: 200, time_ms: 17 },
-        SellRecordAccessCap { path: "/api/kho".into(), id_state: 404, time_ms: 8 },
-        SellRecordAccessCap { path: "/api/don-hang".into(), id_state: 200, time_ms: 63 },
+    let log = vec![
+        AccessRecord { path: "/api/don-hang".into(), status_code: 200, time_ms: 42 },
+        AccessRecord { path: "/api/thanh-total".into(), status_code: 500, time_ms: 1350 },
+        AccessRecord { path: "/api/san-pham".into(), status_code: 200, time_ms: 17 },
+        AccessRecord { path: "/api/kho".into(), status_code: 404, time_ms: 8 },
+        AccessRecord { path: "/api/don-hang".into(), status_code: 200, time_ms: 63 },
     ];
 
     let (tong, slowest, nhanh_nhat, co_loi_may_chu): ThongKe =
-        coalesce_all_all(order_log.iter().map(into_thong_ke));
+        combine_all(log.iter().map(to_stats));
 
-    println!("   Số bản ghi          : {}", order_log.len());
+    println!("   Số bản ghi          : {}", log.len());
     println!("   Tổng thời gian      : {} ms", tong.0);
-    println!("   Trung bình          : {} ms", tong.0 / order_log.len() as i64);
+    println!("   Trung bình          : {} ms", tong.0 / log.len() as i64);
     println!("   Chậm nhất           : {} ms", slowest.0);
     println!("   Nhanh nhất          : {} ms", nhanh_nhat.0);
     println!("   Có lỗi máy chủ 5xx? : {}", co_loi_may_chu.0);
@@ -590,10 +590,10 @@ fn main() {
     // 4. LUẬT KẾT HỢP CHO PHÉP CHIA NHỎ & SONG SONG HÓA
     // ------------------------------------------------------------------
     println!("\n4. CHIA NHỎ RỒI GHÉP LẠI CHO CÙNG KẾT QUẢ");
-    let all: ThongKe = coalesce_all_all(order_log.iter().map(into_thong_ke));
-    let (nua_dau, nua_sau) = order_log.split_at(2);
-    let part_1: ThongKe = coalesce_all_all(nua_dau.iter().map(into_thong_ke));
-    let part_2: ThongKe = coalesce_all_all(nua_sau.iter().map(into_thong_ke));
+    let all: ThongKe = combine_all(log.iter().map(to_stats));
+    let (nua_dau, nua_sau) = log.split_at(2);
+    let part_1: ThongKe = combine_all(nua_dau.iter().map(to_stats));
+    let part_2: ThongKe = combine_all(nua_sau.iter().map(to_stats));
     let compose_lai = part_1.compose(part_2);
     assert_eq!(all, compose_lai);
     println!("   Gộp 1 lượt     : {:?}", all);
@@ -604,13 +604,13 @@ fn main() {
     // 5. KIỂM CHỨNG LUẬT BẰNG KIỂM THỬ THEO TÍNH CHẤT
     // ------------------------------------------------------------------
     println!("\n5. KIỂM THỬ THEO TÍNH CHẤT (1.000 bộ mẫu mỗi luật)");
-    verify_link_hop("Tong   ", Tong, 1000);
-    verify_link_hop("Tich   ", Product, 1000);
-    verify_link_hop("LonNhat", Max, 1000);
-    verify_link_hop("String ", |n: i64| n.to_string(), 1000);
-    verify_don_pos("Tong   ", Tong, 1000);
-    verify_don_pos("Tich   ", Product, 1000);
-    verify_don_pos("LonNhat", Max, 1000);
+    verify_associativity("Tong   ", Tong, 1000);
+    verify_associativity("Tich   ", Product, 1000);
+    verify_associativity("LonNhat", Max, 1000);
+    verify_associativity("String ", |n: i64| n.to_string(), 1000);
+    verify_identity("Tong   ", Tong, 1000);
+    verify_identity("Tich   ", Product, 1000);
+    verify_identity("LonNhat", Max, 1000);
 
     // ------------------------------------------------------------------
     // 6. PHẢN VÍ DỤ: PHÉP TRỪ KHÔNG PHẢI NỬA NHÓM
@@ -667,23 +667,23 @@ mod tests {
 
     #[test]
     fn sum_is_associative() {
-        assert!(verify_link_hop("Tong", Tong, 500));
+        assert!(verify_associativity("Tong", Tong, 500));
     }
 
     #[test]
     fn sum_has_identity() {
-        assert!(verify_don_pos("Tong", Tong, 500));
+        assert!(verify_identity("Tong", Tong, 500));
     }
 
     #[test]
     fn product_obeys_both_laws() {
-        assert!(verify_link_hop("Tich", Product, 500));
-        assert!(verify_don_pos("Tich", Product, 500));
+        assert!(verify_associativity("Tich", Product, 500));
+        assert!(verify_identity("Tich", Product, 500));
     }
 
     #[test]
     fn string_concat_is_associative() {
-        assert!(verify_link_hop("String", |n: i64| n.to_string(), 500));
+        assert!(verify_associativity("String", |n: i64| n.to_string(), 500));
     }
 
     #[test]
@@ -691,23 +691,23 @@ mod tests {
         let empty_sum: Vec<Tong> = Vec::new();
         let rong_nhan: Vec<Product> = Vec::new();
         let rong_max: Vec<Max> = Vec::new();
-        assert_eq!(coalesce_all_all(empty_sum), Tong(0));
-        assert_eq!(coalesce_all_all(rong_nhan), Product(1));
-        assert_eq!(coalesce_all_all(rong_max), Max(i64::MIN));
+        assert_eq!(combine_all(empty_sum), Tong(0));
+        assert_eq!(combine_all(rong_nhan), Product(1));
+        assert_eq!(combine_all(rong_max), Max(i64::MIN));
     }
 
     #[test]
     fn product_monoid_aggregates_four_metrics() {
-        let order_log = vec![
-            SellRecordAccessCap { path: "/a".into(), id_state: 200, time_ms: 10 },
-            SellRecordAccessCap { path: "/b".into(), id_state: 503, time_ms: 40 },
-            SellRecordAccessCap { path: "/c".into(), id_state: 200, time_ms: 25 },
+        let log = vec![
+            AccessRecord { path: "/a".into(), status_code: 200, time_ms: 10 },
+            AccessRecord { path: "/b".into(), status_code: 503, time_ms: 40 },
+            AccessRecord { path: "/c".into(), status_code: 200, time_ms: 25 },
         ];
-        let (tong, max, min, error): ThongKe = coalesce_all_all(order_log.iter().map(into_thong_ke));
+        let (tong, max, min, error): ThongKe = combine_all(log.iter().map(to_stats));
         assert_eq!(tong, Tong(75));
         assert_eq!(max, Max(40));
         assert_eq!(min, Min(10));
-        assert_eq!(error, HasFew(true));
+        assert_eq!(error, Any(true));
     }
 
     /// Đây là bài test QUAN TRỌNG NHẤT chương: nó chứng minh rằng
@@ -716,12 +716,12 @@ mod tests {
     #[test]
     fn split_then_merge_gives_same_result() {
         let mut sinh = Generator::new(12345);
-        let data: Vec<Tong> = (0..100).map(|_| Tong(sinh.num_cont())).collect();
+        let data: Vec<Tong> = (0..100).map(|_| Tong(sinh.next_number())).collect();
 
-        let mot_luot = coalesce_all_all(data.clone());
+        let mot_luot = combine_all(data.clone());
         for diem_cat in [0usize, 1, 37, 50, 99, 100] {
             let (left, right) = data.split_at(diem_cat);
-            let compose = coalesce_all_all(left.to_vec()).compose(coalesce_all_all(right.to_vec()));
+            let compose = combine_all(left.to_vec()).compose(combine_all(right.to_vec()));
             assert_eq!(mot_luot, compose, "Sai khi cắt tại vị trí {}", diem_cat);
         }
     }
@@ -750,11 +750,11 @@ mod tests {
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0119** | `conflicting implementations of trait 'PosGroup' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Tich(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
+| **E0119** | `conflicting implementations of trait 'Monoid' for type 'i64'` | Bạn cố cài đặt cùng một trait hai lần cho một kiểu (ví dụ `i64` vừa là vị nhóm cộng vừa là vị nhóm nhân). | Dùng **kiểu bọc (newtype)**: `struct Tong(i64)` và `struct Tich(i64)` — mỗi kiểu bọc mang đúng một ý nghĩa. |
 | **E0117** | `only traits defined in the current crate can be implemented for types defined outside of the crate` | **Quy tắc mồ côi (orphan rule)**: bạn không được cài trait của người khác cho kiểu của người khác. | Hoặc trait phải là của bạn (như `Semigroup` trong chương này), hoặc kiểu phải là của bạn — lại là kiểu bọc! |
-| **E0277** | `the trait bound 'X: PosGroup' is not satisfied` | Bạn gọi `coalesce_all_all` với một kiểu chưa cài `PosGroup`, hoặc quên cài `Semigroup` (siêu trait bắt buộc). | Cài đủ **cả hai** trait. Nhớ rằng `PosGroup: Semigroup` nghĩa là muốn có vị nhóm thì phải có nửa nhóm trước. |
+| **E0277** | `the trait bound 'X: Monoid' is not satisfied` | Bạn gọi `combine_all` với một kiểu chưa cài `Monoid`, hoặc quên cài `Semigroup` (siêu trait bắt buộc). | Cài đủ **cả hai** trait. Nhớ rằng `Monoid: Semigroup` nghĩa là muốn có vị nhóm thì phải có nửa nhóm trước. |
 | **E0507** | `cannot move out of ... which is behind a shared reference` | `fn ghep(self, ...)` nhận `self` theo giá trị, nhưng bạn đang cầm `&M`. | Gọi `.clone()` trước khi gộp, hoặc dùng `.iter().map(...)` để tạo giá trị mới thay vì mượn. |
-| **E0382** | `use of moved value` | Trong vòng lặp kiểm chứng luật, bạn dùng lại `a` sau khi nó đã bị `ghep` tiêu thụ. | Thêm ràng buộc `M: Clone` và gọi `a.clone()` như trong hàm `verify_link_hop` ở trên. |
+| **E0382** | `use of moved value` | Trong vòng lặp kiểm chứng luật, bạn dùng lại `a` sau khi nó đã bị `ghep` tiêu thụ. | Thêm ràng buộc `M: Clone` và gọi `a.clone()` như trong hàm `verify_associativity` ở trên. |
 
 ### Phân tích lỗi thực tế `E0119` (vì sao bắt buộc phải dùng newtype):
 
@@ -778,7 +778,7 @@ pub struct Product(pub i64);
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Vị nhóm = phép gộp + phần tử rỗng + luật**. Nhận ra khuôn mẫu này cho phép bạn viết **một** hàm `coalesce_all_all` thay cho hàng chục hàm gộp chuyên biệt.
+1. **Vị nhóm = phép gộp + phần tử rỗng + luật**. Nhận ra khuôn mẫu này cho phép bạn viết **một** hàm `combine_all` thay cho hàng chục hàm gộp chuyên biệt.
 2. **Luật kết hợp là giấy phép song song hóa**. Vì `(a⊕b)⊕c = a⊕(b⊕c)`, bạn có thể chia dữ liệu ra nhiều nhân CPU rồi ghép lại mà chắc chắn không sai. Phép trừ vi phạm luật này, nên không bao giờ được chia nhỏ.
 3. **Kiểu bọc (newtype) giải quyết bài toán "một kiểu, nhiều ý nghĩa"** và cũng là lối thoát khỏi quy tắc mồ côi. Đây là mẫu thiết kế sẽ trở thành trung tâm ở Chương 20.
 4. **Luật phải được kiểm chứng bằng test, không phải bằng niềm tin.** Câu chuyện `f64::NAN != f64::NAN` cho thấy thư viện chuẩn Rust mã hóa luật ngay vào hệ thống trait: phá luật thì mất trait, mất trait thì mất luôn `HashMap`.
@@ -788,12 +788,12 @@ pub struct Product(pub i64);
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Vị nhóm `CuoiCung`)**
-Trong chương ta đã có `FirstTien` (giữ giá trị đầu tiên khác `None`). Hãy viết vị nhóm đối ngẫu `CuoiCung<T>` giữ **giá trị cuối cùng** khác `None`, rồi giải thích vì sao nó hữu ích khi đọc cấu hình theo thứ tự "mặc định → tệp cấu hình → biến môi trường → tham số dòng lệnh".
+Trong chương ta đã có `First` (giữ giá trị đầu tiên khác `None`). Hãy viết vị nhóm đối ngẫu `CuoiCung<T>` giữ **giá trị cuối cùng** khác `None`, rồi giải thích vì sao nó hữu ích khi đọc cấu hình theo thứ tự "mặc định → tệp cấu hình → biến môi trường → tham số dòng lệnh".
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-`FirstTien` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `other` nếu `other` có giá trị. Phần tử đơn vị (Identity element) vẫn là `None`.
+`First` giữ `self` nếu `self` có giá trị. `CuoiCung` thì làm ngược lại: giữ `other` nếu `other` có giá trị. Phần tử đơn vị (Identity element) vẫn là `None`.
 </details>
 
 <details>
@@ -808,8 +808,8 @@ impl<T> Semigroup for LastWins<T> {
         if other.0.is_some() { other } else { self }
     }
 }
-impl<T> PosGroup for LastWins<T> {
-    fn don_pos() -> Self { LastWins(None) }
+impl<T> Monoid for LastWins<T> {
+    fn empty() -> Self { LastWins(None) }
 }
 
 fn main() {
@@ -819,15 +819,15 @@ fn main() {
         LastWins(None),                // biến môi trường không đặt
         LastWins(Some("--cong=8080")), // tham số dòng lệnh thắng
     ];
-    assert_eq!(coalesce_all_all(nguon), LastWins(Some("--cong=8080")));
+    assert_eq!(combine_all(nguon), LastWins(Some("--cong=8080")));
 }
 ```
 
-**Vì sao hữu ích**: quy tắc "nguồn cấu hình sau ghi đè nguồn trước" chính xác là phép gộp của vị nhóm `CuoiCung`. Bạn chỉ cần xếp các nguồn theo đúng thứ tự ưu tiên rồi `coalesce_all_all` — không cần một dãy `if let Some(...) else if ...` dài dằng dặc.
+**Vì sao hữu ích**: quy tắc "nguồn cấu hình sau ghi đè nguồn trước" chính xác là phép gộp của vị nhóm `CuoiCung`. Bạn chỉ cần xếp các nguồn theo đúng thứ tự ưu tiên rồi `combine_all` — không cần một dãy `if let Some(...) else if ...` dài dằng dặc.
 </details>
 
 **Bài tập 2 (Vị nhóm đếm tần suất)**
-Viết kiểu bọc `BangDem(pub std::collections::HashMap<String, u32>)` là một vị nhóm: phép gộp cộng dồn số đếm của các khóa trùng nhau, phần tử đơn vị là bảng rỗng. Dùng nó cùng `coalesce_all_all` để đếm số lượt truy cập theo từng đường dẫn trong danh sách `SellRecordAccessCap`.
+Viết kiểu bọc `BangDem(pub std::collections::HashMap<String, u32>)` là một vị nhóm: phép gộp cộng dồn số đếm của các khóa trùng nhau, phần tử đơn vị là bảng rỗng. Dùng nó cùng `combine_all` để đếm số lượt truy cập theo từng đường dẫn trong danh sách `AccessRecord`.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -852,8 +852,8 @@ impl Semigroup for CountTable {
         self
     }
 }
-impl PosGroup for CountTable {
-    fn don_pos() -> Self { CountTable(HashMap::new()) }
+impl Monoid for CountTable {
+    fn empty() -> Self { CountTable(HashMap::new()) }
 }
 
 fn count_one(path: &str) -> CountTable {
@@ -864,7 +864,7 @@ fn count_one(path: &str) -> CountTable {
 
 fn main() {
     let path = ["/api/a", "/api/b", "/api/a", "/api/a"];
-    let ket_qua = coalesce_all_all(path.iter().map(|d| count_one(d)));
+    let ket_qua = combine_all(path.iter().map(|d| count_one(d)));
     assert_eq!(ket_qua.0.get("/api/a"), Some(&3));
     assert_eq!(ket_qua.0.get("/api/b"), Some(&1));
     println!("{:?}", ket_qua);
@@ -903,8 +903,8 @@ impl Semigroup for RunningMean {
         RunningMean { tong: self.tong + k.tong, quantity: self.quantity + k.quantity }
     }
 }
-impl PosGroup for RunningMean {
-    fn don_pos() -> Self { RunningMean { tong: 0.0, quantity: 0 } }
+impl Monoid for RunningMean {
+    fn empty() -> Self { RunningMean { tong: 0.0, quantity: 0 } }
 }
 impl RunningMean {
     pub fn mean(&self) -> Option<f64> {

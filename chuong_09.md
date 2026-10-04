@@ -130,23 +130,23 @@ Chương trình hoàn chỉnh dưới đây mô phỏng một hệ thống quả
 struct GpsCoord(f64, f64);
 
 // 2. Unit-like Struct: Đóng vai trò như một nhãn chứng thực bảo mật giao dịch
-struct LostReport;
+struct SecurityAttestation;
 
 // 3. Classic Struct: Định nghĩa cấu trúc tài khoản ngân hàng hoàn chỉnh
-struct AccountBank {
-    num_account: String,
+struct BankAccount {
+    account_number: String,
     account_owner: String,
     balance: f64,
     activate: bool,
 }
 
-// Khối hiện thực các phương thức và hàm liên kết cho AccountBank
-impl AccountBank {
+// Khối hiện thực các phương thức và hàm liên kết cho BankAccount
+impl BankAccount {
     // A. HÀM LIÊN KẾT (Associated Function) - Khởi tạo tài khoản mới chuẩn mực
     fn open_account(so_tk: String, chu_tk: String, so_du_dau: f64) -> Self {
         println!("-> Đang mở tài khoản mới cho khách hàng: {}", chu_tk);
         Self {
-            num_account: so_tk,
+            account_number: so_tk,
             account_owner: chu_tk,
             balance: so_du_dau,
             activate: true,
@@ -156,7 +156,7 @@ impl AccountBank {
     // B. PHƯƠNG THỨC MƯỢN ĐỌC (&self): Tra cứu thông tin số dư an toàn
     fn tra_cuu_thong_tin(&self) {
         println!("------------------------------------------------------------");
-        println!("Số tài khoản : {}", self.num_account);
+        println!("Số tài khoản : {}", self.account_number);
         println!("Chủ tài khoản: {}", self.account_owner);
         println!("Số dư hiện có: {:.2} VND", self.balance);
         println!("Trạng thái   : {}", if self.activate { "Hoạt động" } else { "Đã khóa" });
@@ -170,7 +170,7 @@ impl AccountBank {
             return;
         }
         self.balance += so_tien;
-        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.num_account);
+        println!("-> Nạp thành công {:.2} VND vào tài khoản {}", so_tien, self.account_number);
     }
 
     // D. PHƯƠNG THỨC MƯỢN SỬA (&mut self): Rút tiền có kiểm tra số dư
@@ -190,7 +190,7 @@ impl AccountBank {
         println!("\n*** TIẾN HÀNH TẤT TOÁN VÀ HỦY TÀI KHOẢN ***");
         println!("- Hoàn trả toàn bộ số dư cuối cùng: {:.2} VND cho ông/bà {}", 
                  self.balance, self.account_owner);
-        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.num_account);
+        println!("- Tài khoản số {} đã bị đóng và giải phóng khỏi hệ thống.", self.account_number);
         // Khi hàm này kết thúc, self bị Drop ngay tại đây!
     }
 }
@@ -206,11 +206,11 @@ fn main() {
              hanoi_branch.0, hanoi_branch.1);
 
     // Khởi tạo Unit-like Struct làm chứng thực an toàn cho phiên làm việc
-    let _auth_session = LostReport;
+    let _auth_session = SecurityAttestation;
     println!("Chứng thực bảo mật hệ thống: Đã kích hoạt tem xác thực điện tử.");
 
     // Mở một tài khoản ngân hàng mới thông qua hàm liên kết open_account
-    let mut account_hidden = AccountBank::open_account(
+    let mut account_hidden = BankAccount::open_account(
         String::from("1900-123-456"),
         String::from("Nguyễn Văn An"),
         1_000_000.0,
@@ -228,10 +228,10 @@ fn main() {
     account_hidden.tra_cuu_thong_tin();
 
     // Minh họa Cú pháp cập nhật Struct (Struct Update Syntax ..)
-    let account_aux = AccountBank {
-        num_account: String::from("1900-999-888"),
+    let account_aux = BankAccount {
+        account_number: String::from("1900-999-888"),
         balance: 50_000.0,
-        ..AccountBank::open_account(
+        ..BankAccount::open_account(
             String::from("TEMP"),
             String::from("Nguyễn Văn An (Tài khoản tiết kiệm)"),
             0.0
@@ -259,7 +259,7 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
 | **E0599** | `no method named 'rut_tien' found for struct 'Account' in the current scope` | Bạn gọi một phương thức chưa được khai báo trong khối `impl`, hoặc gõ sai chính tả tên hàm. | Kiểm tra lại tên phương thức trong khối `impl` và đảm bảo kiểu dữ liệu gọi phương thức là chính xác. |
 | **E0596** | `cannot borrow 'tk' as mutable, as it is not declared as mutable` | Bạn gọi phương thức đòi hỏi `&mut self` (như `nap_tien`) trên một đối tượng struct khai báo bất biến (`let tk = ...`). | Thêm từ khóa `mut` khi tạo biến: `let mut tk = ...`. |
 | **E0382** | `use of moved value: 'tk'` | Bạn gọi một phương thức nhận `self` (tiêu thụ đối tượng), sau đó lại cố sử dụng tiếp biến đó ở các dòng sau. | Đổi tham số phương thức thành `&self` hoặc `&mut self` nếu không muốn hủy đối tượng, hoặc tạo bản sao trước khi tiêu thụ. |
-| **E0063** | `missing field 'activate' in initializer of 'AccountBank'` | Bạn khởi tạo Struct nhưng quên chưa điền giá trị cho một trong các trường dữ liệu. | Điền đầy đủ tất cả các trường, hoặc sử dụng cú pháp cập nhật `..struct_cu` để lấy giá trị mặc định cho các trường còn lại. |
+| **E0063** | `missing field 'activate' in initializer of 'BankAccount'` | Bạn khởi tạo Struct nhưng quên chưa điền giá trị cho một trong các trường dữ liệu. | Điền đầy đủ tất cả các trường, hoặc sử dụng cú pháp cập nhật `..struct_cu` để lấy giá trị mặc định cho các trường còn lại. |
 
 ---
 
@@ -278,7 +278,7 @@ Dưới đây là các lỗi thường gặp khi làm việc với Structs và P
    - Phương thức `tinh_chu_vi(&self) -> f64`.
    - Phương thức `co_phai_hinh_vuong(&self) -> bool`.
 2. **Bài tập tư duy 2**: Tại sao Rust lại hỗ trợ phương thức tiêu thụ `self` (chuyển giao quyền sở hữu)? Hãy nêu một tình huống thực tế (ví dụ: gửi một bức thư điện tử hoặc đốt một que diêm) mà phương thức `self` giúp ngăn chặn người dùng sử dụng lại đối tượng đã hết giá trị.
-3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `DonQueue(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.
+3. **Bài tập Tuple Struct 3**: Định nghĩa một Tuple Struct mang tên `Order(u64, u64, u64)` đại diện cho 3 thành phần chi phí của một đơn hàng mua sắm: (tiền hàng, phí giao hàng, phụ phí đóng gói). Trong khối `impl`, viết phương thức `tinh_tong_thanh_toan(&self) -> u64` cộng tổng cả 3 khoản chi phí lại (truy xuất qua chỉ số `.0`, `.1`, `.2`). Trong hàm `main`, hãy khởi tạo một đơn hàng mẫu (ví dụ: tiền hàng 250.000đ, phí ship 30.000đ, đóng gói 10.000đ) và in ra tổng số tiền thực tế khách cần thanh toán.
 
 ---
 
@@ -374,26 +374,26 @@ Tuple struct đặt tên cho một bộ giá trị nhưng truy xuất qua chỉ 
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
-// Tuple struct: có tên kiểu (DonQueue) nhưng trường truy xuất bằng chỉ số.
-struct DonQueue(u64, u64, u64); // (tiền hàng, phí giao, phụ phí đóng gói)
+// Tuple struct: có tên kiểu (Order) nhưng trường truy xuất bằng chỉ số.
+struct Order(u64, u64, u64); // (tiền hàng, phí giao, phụ phí đóng gói)
 
-impl DonQueue {
+impl Order {
     fn tinh_tong_thanh_toan(&self) -> u64 {
         self.0 + self.1 + self.2   // truy xuất qua .0 .1 .2, không có tên trường
     }
 }
 
 fn main() {
-    let don = DonQueue(250_000, 30_000, 10_000);
+    let don = Order(250_000, 30_000, 10_000);
     println!("Tổng thanh toán: {}đ", don.tinh_tong_thanh_toan());
 }
 
 #[test]
 fn tong_ba_khoan_chi_phi() {
-    let don = DonQueue(250_000, 30_000, 10_000);
+    let don = Order(250_000, 30_000, 10_000);
     assert_eq!(don.tinh_tong_thanh_toan(), 290_000);
 }
 ```
 
-Tuple struct hợp khi bạn muốn một **kiểu riêng có tên** (để trình biên dịch phân biệt `DonQueue` với một `(u64,u64,u64)` bất kỳ) nhưng bản thân các trường đã rõ nghĩa theo thứ tự, không cần đặt tên. Đánh đổi: gọn hơn struct thường, nhưng `.0/.1/.2` kém tự mô tả — nhầm thứ tự tiền hàng và phí ship là lỗi âm thầm. Quy tắc thực dụng: ít trường và thứ tự hiển nhiên thì dùng tuple struct; nhiều trường hoặc dễ lẫn thì đặt tên trường.
+Tuple struct hợp khi bạn muốn một **kiểu riêng có tên** (để trình biên dịch phân biệt `Order` với một `(u64,u64,u64)` bất kỳ) nhưng bản thân các trường đã rõ nghĩa theo thứ tự, không cần đặt tên. Đánh đổi: gọn hơn struct thường, nhưng `.0/.1/.2` kém tự mô tả — nhầm thứ tự tiền hàng và phí ship là lỗi âm thầm. Quy tắc thực dụng: ít trường và thứ tự hiển nhiên thì dùng tuple struct; nhiều trường hoặc dễ lẫn thì đặt tên trường.
 </details>

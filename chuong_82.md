@@ -224,7 +224,7 @@ pub fn is_bearish_engulfing(hom_qua: &Candle, hom_nay: &Candle) -> bool {
 
 /// Nhận diện mẫu hình tại nến CUỐI của `history`.
 /// Chỉ nhìn dữ liệu ĐÃ CÓ — không bao giờ chạm tới nến tương lai.
-pub fn recv_elec(history: &[Candle]) -> Pattern {
+pub fn detect_pattern(history: &[Candle]) -> Pattern {
     let n = match history.last() { Some(n) => n, None => return Pattern::KhongCo };
     if let Some(q) = history.len().checked_sub(2).map(|i| &history[i]) {
         if la_nhan_chim_tang(q, n) { return Pattern::NhanChimTang; }
@@ -367,7 +367,7 @@ impl BollingerBands {
         if self.mid.abs() < 1e-12 { 0.0 } else { (self.above - self.below) / self.mid }
     }
     /// Vị trí của giá trong dải: 0 = chạm đáy, 1 = chạm đỉnh.
-    pub fn pos_value_percent(&self, price: f64) -> f64 {
+    pub fn percent_b(&self, price: f64) -> f64 {
         let d = self.above - self.below;
         if d.abs() < 1e-12 { 0.5 } else { (price - self.below) / d }
     }
@@ -447,7 +447,7 @@ pub fn gen_candle(n: usize, hat_giong: u64) -> Vec<Candle> {
     }).collect()
 }
 
-pub fn price_close(candle: &[Candle]) -> Vec<f64> { candle.iter().map(|n| n.dong as f64).collect() }
+pub fn close_price(candle: &[Candle]) -> Vec<f64> { candle.iter().map(|n| n.dong as f64).collect() }
 
 fn main() {
     println!("═══════════════════════════════════════════════════════════");
@@ -455,7 +455,7 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     let candle = gen_candle(500, 2024);
-    let price = price_close(&candle);
+    let price = close_price(&candle);
 
     println!("\n1. NẾN OHLCV");
     let n = &candle[100];
@@ -469,7 +469,7 @@ fn main() {
     println!("\n2. MẪU HÌNH NẾN — đếm trên 500 nến");
     let mut count = std::collections::BTreeMap::new();
     for i in 0..candle.len() {
-        *count.entry(format!("{:?}", recv_elec(&candle[..=i]))).or_insert(0) += 1;
+        *count.entry(format!("{:?}", detect_pattern(&candle[..=i]))).or_insert(0) += 1;
     }
     for (k, v) in &count { println!("   {:<16} {:>4} lần", k, v); }
 
@@ -516,14 +516,14 @@ fn main() {
     for i in [100usize, 300, 499] {
         let b = bollinger(&price[..=i], 20, 2.0).unwrap();
         println!("   Nến {:>3}: dưới {:>8.1} · giữa {:>8.1} · trên {:>8.1} · giá ở {:>5.0}% dải",
-                 i, b.below, b.mid, b.above, b.pos_value_percent(price[i]) * 100.0);
+                 i, b.below, b.mid, b.above, b.percent_b(price[i]) * 100.0);
     }
-    let out = (20..price.len()).filter(|&i| {
+    let outside = (20..price.len()).filter(|&i| {
         let b = bollinger(&price[..=i], 20, 2.0).unwrap();
         price[i] > b.above || price[i] < b.below
     }).count();
     println!("   Số phiên giá vượt ra ngoài dải: {} / {} ({:.1}%)",
-             out, price.len() - 20, out as f64 * 100.0 / (price.len() - 20) as f64);
+             outside, price.len() - 20, outside as f64 * 100.0 / (price.len() - 20) as f64);
     println!("   → Lý thuyết nói ~5% nằm ngoài 2σ. Thực tế thị trường thường nhiều hơn:");
     println!("     phân bố giá có ĐUÔI DÀY hơn phân bố chuẩn.");
 
@@ -623,15 +623,15 @@ mod tests {
         // nến trước. Vi phạm điều này là "vẽ lại" (repainting).
         let candle = gen_candle(300, 7);
         for i in 0..candle.len() {
-            let short = recv_elec(&candle[..=i]);
-            let long = recv_elec(&candle[..=i]); // cùng lát cắt
+            let short = detect_pattern(&candle[..=i]);
+            let long = detect_pattern(&candle[..=i]); // cùng lát cắt
             assert_eq!(short, long, "phải tất định tại nến {}", i);
         }
     }
 
     #[test]
     fn an_empty_series_has_no_patterns() {
-        assert_eq!(recv_elec(&[]), Pattern::KhongCo);
+        assert_eq!(detect_pattern(&[]), Pattern::KhongCo);
     }
 
     // ---------- Trung bình động ----------
@@ -717,7 +717,7 @@ mod tests {
     #[test]
     fn rsi_always_stays_within_0_and_100() {
         for hat in [1u64, 42, 2024, 31337] {
-            let price = price_close(&gen_candle(500, hat));
+            let price = close_price(&gen_candle(500, hat));
             for x in rsi_series(&price, 14).into_iter().flatten() {
                 assert!((0.0..=100.0).contains(&x), "RSI ra ngoài thang: {}", x);
             }
@@ -734,7 +734,7 @@ mod tests {
     // ---------- MACD ----------
     #[test]
     fn the_macd_histogram_is_the_difference_of_the_two_lines() {
-        let price = price_close(&gen_candle(200, 5));
+        let price = close_price(&gen_candle(200, 5));
         for m in macd_series(&price, 12, 26, 9).into_iter().flatten() {
             assert!((m.histogram - (m.macd - m.signal)).abs() < 1e-9);
         }
@@ -772,7 +772,7 @@ mod tests {
 
     #[test]
     fn the_bands_are_symmetric_about_the_middle() {
-        let price = price_close(&gen_candle(100, 9));
+        let price = close_price(&gen_candle(100, 9));
         let b = bollinger(&price, 20, 2.0).unwrap();
         assert!(((b.above - b.mid) - (b.mid - b.below)).abs() < 1e-9,
                 "hai dải phải cách đều đường giữa");
@@ -792,12 +792,12 @@ mod tests {
     #[test]
     fn percent_b_is_exact_at_both_bands() {
         let b = BollingerBands { above: 120.0, mid: 100.0, below: 80.0 };
-        assert!((b.pos_value_percent(80.0) - 0.0).abs() < 1e-9);
-        assert!((b.pos_value_percent(100.0) - 0.5).abs() < 1e-9);
-        assert!((b.pos_value_percent(120.0) - 1.0).abs() < 1e-9);
+        assert!((b.percent_b(80.0) - 0.0).abs() < 1e-9);
+        assert!((b.percent_b(100.0) - 0.5).abs() < 1e-9);
+        assert!((b.percent_b(120.0) - 1.0).abs() < 1e-9);
         // Dải rỗng không được chia cho 0
         let hep = BollingerBands { above: 100.0, mid: 100.0, below: 100.0 };
-        assert_eq!(hep.pos_value_percent(100.0), 0.5);
+        assert_eq!(hep.percent_b(100.0), 0.5);
     }
 
     // ---------- ATR ----------
@@ -868,7 +868,7 @@ mod tests {
         // giống hệt nhau dù ta đưa vào 201 nến hay 500 nến. Vi phạm điều này
         // là "nhìn trộm tương lai", và mọi kết quả kiểm định trở nên vô nghĩa.
         let candle = gen_candle(500, 2024);
-        let price = price_close(&candle);
+        let price = close_price(&candle);
         let i = 200;
 
         assert_eq!(sma_series(&price[..=i], 20)[i], sma_series(&price, 20)[i]);

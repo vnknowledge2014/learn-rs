@@ -95,7 +95,7 @@ Xét đoạn mã bật đèn rồi tắt:
 
 Trình tối ưu hóa lý luận: "ghi 1 rồi ghi 0 vào cùng chỗ mà không đọc ở giữa — lệnh đầu vô nghĩa, xóa đi." Kết quả: đèn không bao giờ nhấp nháy. Tệ hơn, nếu ta ghi trong vòng lặp mà không đọc, cả vòng lặp có thể bị xóa sạch.
 
-`read_volatile`/`write_volatile` nói với trình biên dịch: **mỗi** thao tác đều có tác dụng phụ ngoài tầm hiểu biết của mày, đừng gộp, đừng xóa, đừng đảo thứ tự. Trong chương này, `IntoRecordPrice` đếm số lần đọc/ghi để bạn *thấy* được điều đó trong bài kiểm thử.
+`read_volatile`/`write_volatile` nói với trình biên dịch: **mỗi** thao tác đều có tác dụng phụ ngoài tầm hiểu biết của mày, đừng gộp, đừng xóa, đừng đảo thứ tự. Trong chương này, `FakeRegisters` đếm số lần đọc/ghi để bạn *thấy* được điều đó trong bài kiểm thử.
 
 ### 3. Đọc-Sửa-Ghi và cái bẫy ngắt
 
@@ -111,7 +111,7 @@ Ba cách xử lý:
 Điểm mấu chốt của typestate là chữ ký hàm:
 
 ```rust
-pub fn into_output(self, tg: &IntoRecordPrice) -> Block<Output>
+pub fn into_output(self, tg: &FakeRegisters) -> Pin<Output>
 //                  ^^^^ nhận `self` theo GIÁ TRỊ, không phải `&self`
 ```
 
@@ -153,7 +153,7 @@ if !DA_LAY { DA_LAY = true; giao_ngoai_vi() }
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Mã dưới đây chạy được trên máy tính để bàn (để kiểm thử được). Trên vi điều khiển thật, bạn thêm `#![no_std]` + `#![no_main]`, thay `IntoRecordPrice` bằng `read_volatile`/`write_volatile` trên địa chỉ thật, và dùng crate HAL của dòng chip (`stm32f4xx-hal`, `rp2040-hal`, `esp-hal`…).
+Mã dưới đây chạy được trên máy tính để bàn (để kiểm thử được). Trên vi điều khiển thật, bạn thêm `#![no_std]` + `#![no_main]`, thay `FakeRegisters` bằng `read_volatile`/`write_volatile` trên địa chỉ thật, và dùng crate HAL của dòng chip (`stm32f4xx-hal`, `rp2040-hal`, `esp-hal`…).
 
 Chạy bằng `cargo run -p ch66`, kiểm thử bằng `cargo test -p ch66`.
 
@@ -163,7 +163,7 @@ Chạy bằng `cargo run -p ch66`, kiểm thử bằng `cargo test -p ch66`.
 //! cho ngoại vi, typestate cho chân GPIO, số dấu phẩy tĩnh, và bộ đệm vòng không cấp phát.
 //!
 //! Ghi chú: tệp này chạy trên máy tính để bàn để KIỂM THỬ ĐƯỢC. Trên vi điều khiển
-//! thật, bạn thêm `#![no_std]` + `#![no_main]` và thay `IntoRecordPrice` bằng địa chỉ thật.
+//! thật, bạn thêm `#![no_std]` + `#![no_main]` và thay `FakeRegisters` bằng địa chỉ thật.
 
 use core::marker::PhantomData;
 use std::cell::Cell;
@@ -176,18 +176,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Trên vi điều khiển, ghi vào địa chỉ 0x4002_0014 sẽ BẬT một chân đèn.
 /// Không có `volatile`, trình tối ưu hóa có quyền xóa lệnh ghi đó — vì theo
 /// nó, ghi vào bộ nhớ rồi không đọc lại là việc vô nghĩa.
-pub struct IntoRecordPrice {
+pub struct FakeRegisters {
     small_cell: Cell<u32>,
-    pub count_record: Cell<u32>,
+    pub write_count: Cell<u32>,
     pub so_lan_doc: Cell<u32>,
 }
 
-impl IntoRecordPrice {
+impl FakeRegisters {
     pub fn new(value: u32) -> Self {
-        IntoRecordPrice { small_cell: Cell::new(value), count_record: Cell::new(0), so_lan_doc: Cell::new(0) }
+        FakeRegisters { small_cell: Cell::new(value), write_count: Cell::new(0), so_lan_doc: Cell::new(0) }
     }
     /// Tương ứng `core::ptr::write_volatile` — MỖI lệnh ghi đều phải xảy ra thật.
-    pub fn record(&self, v: u32) { self.small_cell.set(v); self.count_record.set(self.count_record.get() + 1); }
+    pub fn record(&self, v: u32) { self.small_cell.set(v); self.write_count.set(self.write_count.get() + 1); }
     /// Tương ứng `core::ptr::read_volatile` — không được lưu vào thanh ghi CPU dùng lại.
     pub fn doc(&self) -> u32 { self.so_lan_doc.set(self.so_lan_doc.get() + 1); self.small_cell.get() }
 
@@ -216,47 +216,47 @@ impl IntoRecordPrice {
 pub struct Unconfigured;
 pub struct Input;
 pub struct Output;
-pub struct Wall;   // analog — cho ADC
+pub struct Analog;   // analog — cho ADC
 
-pub struct Block<CheDo> {
+pub struct Pin<CheDo> {
     serial: u8,
     _che_do: PhantomData<CheDo>,
 }
 
-impl Block<Unconfigured> {
+impl Pin<Unconfigured> {
     /// `unsafe` vì tạo hai `Chan` cùng số hiệu sẽ phá vỡ độc quyền phần cứng.
     /// Trong thực tế bạn chỉ gọi nó qua Singleton ở mục 3.
-    pub unsafe fn new(serial: u8) -> Self { Block { serial, _che_do: PhantomData } }
+    pub unsafe fn new(serial: u8) -> Self { Pin { serial, _che_do: PhantomData } }
 }
 
-impl<CheDo> Block<CheDo> {
+impl<CheDo> Pin<CheDo> {
     pub fn serial(&self) -> u8 { self.serial }
     /// Chuyển chế độ TIÊU THỤ chân cũ (`self`) và trả về chân kiểu mới.
     /// Nhờ vậy không tồn tại đồng thời hai cách nhìn về cùng một chân.
-    pub fn into_output(self, tg: &IntoRecordPrice) -> Block<Output> {
+    pub fn into_output(self, tg: &FakeRegisters) -> Pin<Output> {
         tg.record_field(self.serial * 2, 2, 0b01); // MODER = 01 (output)
-        Block { serial: self.serial, _che_do: PhantomData }
+        Pin { serial: self.serial, _che_do: PhantomData }
     }
-    pub fn into_input(self, tg: &IntoRecordPrice) -> Block<Input> {
+    pub fn into_input(self, tg: &FakeRegisters) -> Pin<Input> {
         tg.record_field(self.serial * 2, 2, 0b00); // MODER = 00 (input)
-        Block { serial: self.serial, _che_do: PhantomData }
+        Pin { serial: self.serial, _che_do: PhantomData }
     }
-    pub fn into_wall(self, tg: &IntoRecordPrice) -> Block<Wall> {
+    pub fn into_wall(self, tg: &FakeRegisters) -> Pin<Analog> {
         tg.record_field(self.serial * 2, 2, 0b11); // MODER = 11 (analog)
-        Block { serial: self.serial, _che_do: PhantomData }
+        Pin { serial: self.serial, _che_do: PhantomData }
     }
 }
 
 // CHỈ chân đầu ra mới có `bat`/`tat` — gọi trên chân đầu vào là lỗi biên dịch.
-impl Block<Output> {
-    pub fn bat(&mut self, data: &IntoRecordPrice) { data.set_bit(self.serial); }
-    pub fn tat(&mut self, data: &IntoRecordPrice) { data.clear_bit(self.serial); }
-    pub fn dao(&mut self, data: &IntoRecordPrice) { data.dao_bit(self.serial); }
+impl Pin<Output> {
+    pub fn bat(&mut self, data: &FakeRegisters) { data.set_bit(self.serial); }
+    pub fn tat(&mut self, data: &FakeRegisters) { data.clear_bit(self.serial); }
+    pub fn dao(&mut self, data: &FakeRegisters) { data.dao_bit(self.serial); }
 }
 
 // CHỈ chân đầu vào mới có `doc`.
-impl Block<Input> {
-    pub fn doc(&self, data: &IntoRecordPrice) -> bool { data.test_bit(self.serial) }
+impl Pin<Input> {
+    pub fn doc(&self, data: &FakeRegisters) -> bool { data.test_bit(self.serial) }
 }
 
 // ============================================================================
@@ -264,9 +264,9 @@ impl Block<Input> {
 // ============================================================================
 
 /// Gói TẤT CẢ ngoại vi của con chip. Ai cầm được nó là chủ duy nhất của phần cứng.
-pub struct UnitOutPos {
-    pub gate_a: Block<Unconfigured>,
-    pub gate_b: Block<Unconfigured>,
+pub struct Peripherals {
+    pub gate_a: Pin<Unconfigured>,
+    pub gate_b: Pin<Unconfigured>,
 }
 
 /// Cờ nguyên tử thay cho `static mut`: an toàn cả khi có ngắt xen giữa.
@@ -275,15 +275,15 @@ pub struct UnitOutPos {
 /// có thể khiến ngoại vi bị giao HAI lần.
 static DA_LAY: AtomicBool = AtomicBool::new(false);
 
-impl UnitOutPos {
+impl Peripherals {
     /// Trả `Some` đúng MỘT lần trong suốt vòng đời chương trình.
     /// Lần thứ hai trả `None` — không thể có hai chủ sở hữu cùng điều khiển chip.
-    pub fn lay() -> Option<UnitOutPos> {
+    pub fn lay() -> Option<Peripherals> {
         if DA_LAY.swap(true, Ordering::SeqCst) {
             return None; // đã có người lấy trước
         }
         // An toàn: cờ trên bảo đảm đoạn này chạy đúng một lần.
-        Some(unsafe { UnitOutPos { gate_a: Block::new(5), gate_b: Block::new(13) } })
+        Some(unsafe { Peripherals { gate_a: Pin::new(5), gate_b: Pin::new(13) } })
     }
     #[doc(hidden)]
     pub fn reset_for_test() { DA_LAY.store(false, Ordering::SeqCst); }
@@ -325,7 +325,7 @@ pub fn adc_sang_nhiet_do(adc: u16) -> Q16 {
 /// Không `Vec`, không `Box`, không heap. Bộ nhớ nằm gọn trong struct,
 /// kích thước biết trước lúc biên dịch. Đây là kiểu dữ liệu chủ lực của
 /// ngắt UART: ISR đẩy byte vào, vòng lặp chính lấy ra.
-pub struct CountRound<const N: usize> {
+pub struct RingBuffer<const N: usize> {
     o: [u8; N],
     /// Vị trí ĐỌC kế tiếp.
     head: usize,
@@ -334,8 +334,8 @@ pub struct CountRound<const N: usize> {
     quantity: usize,
 }
 
-impl<const N: usize> CountRound<N> {
-    pub const fn new() -> Self { CountRound { o: [0; N], head: 0, tail: 0, quantity: 0 } }
+impl<const N: usize> RingBuffer<N> {
+    pub const fn new() -> Self { RingBuffer { o: [0; N], head: 0, tail: 0, quantity: 0 } }
     pub fn capacity(&self) -> usize { N }
     pub fn quantity(&self) -> usize { self.quantity }
     pub fn rong(&self) -> bool { self.quantity == 0 }
@@ -403,15 +403,15 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. THANH GHI ÁNH XẠ BỘ NHỚ");
-    let moder = IntoRecordPrice::new(0);
-    let odr = IntoRecordPrice::new(0);
+    let moder = FakeRegisters::new(0);
+    let odr = FakeRegisters::new(0);
     moder.record_field(10, 2, 0b01);
     println!("   MODER sau khi đặt chân 5 thành output: 0b{:032b}", moder.doc());
-    println!("   Số lệnh ghi thực sự chạm phần cứng   : {}", moder.count_record.get());
+    println!("   Số lệnh ghi thực sự chạm phần cứng   : {}", moder.write_count.get());
 
     println!("\n2. TYPESTATE GPIO — sai kiểu là không biên dịch được");
-    let bo = UnitOutPos::lay().expect("lần đầu phải lấy được");
-    println!("   BoNgoaiVi::lay() lần hai → {:?}", UnitOutPos::lay().is_none());
+    let bo = Peripherals::lay().expect("lần đầu phải lấy được");
+    println!("   BoNgoaiVi::lay() lần hai → {:?}", Peripherals::lay().is_none());
     let mut den = bo.gate_a.into_output(&moder);
     let nut = bo.gate_b.into_input(&moder);
     den.bat(&odr);
@@ -429,7 +429,7 @@ fn main() {
     println!("   3.5 × 2.0 = {} · 3.5 ÷ 2.0 = {}", a.nhan(b).into_real(), a.chia(b).into_real());
 
     println!("\n4. BỘ ĐỆM VÒNG KHÔNG CẤP PHÁT (4 byte)");
-    let mut count: CountRound<4> = CountRound::new();
+    let mut count: RingBuffer<4> = RingBuffer::new();
     for b in b"RUST" { count.push(*b).unwrap(); }
     println!("   Đầy: {} | đẩy thêm 'X' → {:?}", count.day(), count.push(b'X').unwrap_err() as char);
     println!("   Ghi đè 'X' → mất byte {:?}", count.overwrite_buffer(b'X').map(|b| b as char));
@@ -457,7 +457,7 @@ mod tests {
     // ---------- MMIO ----------
     #[test]
     fn bit_ops_leave_other_bits_alone() {
-        let tg = IntoRecordPrice::new(0b1010_0000);
+        let tg = FakeRegisters::new(0b1010_0000);
         tg.set_bit(0);
         assert_eq!(tg.doc(), 0b1010_0001, "đặt bit 0 phải giữ nguyên bit 5 và 7");
         tg.clear_bit(7);
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn field_write_uses_exactly_its_width() {
-        let tg = IntoRecordPrice::new(0xFFFF_FFFF);
+        let tg = FakeRegisters::new(0xFFFF_FFFF);
         tg.record_field(4, 3, 0b010); // đặt 3 bit tại vị trí 4
         assert_eq!(tg.read_field(4, 3), 0b010);
         assert_eq!(tg.doc(), 0xFFFF_FFAF, "mọi bit ngoài trường phải nguyên vẹn");
@@ -476,33 +476,33 @@ mod tests {
 
     #[test]
     fn values_are_truncated_to_the_field_width() {
-        let tg = IntoRecordPrice::new(0);
+        let tg = FakeRegisters::new(0);
         tg.record_field(0, 2, 0b1111); // chỉ 2 bit chứa được
         assert_eq!(tg.doc(), 0b11, "phần thừa bị mặt nạ chặn, không tràn sang bit 2");
     }
 
     #[test]
     fn read_modify_write_issues_one_store() {
-        let tg = IntoRecordPrice::new(0);
+        let tg = FakeRegisters::new(0);
         tg.set_bit(3);
-        assert_eq!(tg.count_record.get(), 1);
+        assert_eq!(tg.write_count.get(), 1);
         assert_eq!(tg.so_lan_doc.get(), 1);
     }
 
     // ---------- Typestate GPIO ----------
     #[test]
     fn mode_switch_writes_correct_moder_bits() {
-        let moder = IntoRecordPrice::new(0);
-        let c = unsafe { Block::new(5) };
+        let moder = FakeRegisters::new(0);
+        let c = unsafe { Pin::new(5) };
         let _ra = c.into_output(&moder);
         assert_eq!(moder.read_field(10, 2), 0b01, "chân 5 → bit 10-11 = 01 (output)");
     }
 
     #[test]
     fn output_toggles_the_right_pin() {
-        let moder = IntoRecordPrice::new(0);
-        let odr = IntoRecordPrice::new(0);
-        let mut c = unsafe { Block::new(3) }.into_output(&moder);
+        let moder = FakeRegisters::new(0);
+        let odr = FakeRegisters::new(0);
+        let mut c = unsafe { Pin::new(3) }.into_output(&moder);
         c.bat(&odr);
         assert_eq!(odr.doc(), 0b1000);
         c.dao(&odr);
@@ -511,8 +511,8 @@ mod tests {
 
     #[test]
     fn pin_lifecycle_moves_through_modes() {
-        let moder = IntoRecordPrice::new(0);
-        let c = unsafe { Block::new(2) };
+        let moder = FakeRegisters::new(0);
+        let c = unsafe { Pin::new(2) };
         let ra = c.into_output(&moder);
         let input_pin = ra.into_input(&moder);      // tiêu thụ chân đầu ra
         let tt = input_pin.into_wall(&moder);      // rồi thành analog
@@ -522,11 +522,11 @@ mod tests {
 
     #[test]
     fn singleton_hands_out_peripheral_once() {
-        UnitOutPos::reset_for_test();
-        assert!(UnitOutPos::lay().is_some(), "lần đầu phải thành công");
-        assert!(UnitOutPos::lay().is_none(), "lần hai phải bị từ chối");
-        assert!(UnitOutPos::lay().is_none());
-        UnitOutPos::reset_for_test();
+        Peripherals::reset_for_test();
+        assert!(Peripherals::lay().is_some(), "lần đầu phải thành công");
+        assert!(Peripherals::lay().is_none(), "lần hai phải bị từ chối");
+        assert!(Peripherals::lay().is_none());
+        Peripherals::reset_for_test();
     }
 
     // ---------- Q16.16 ----------
@@ -570,7 +570,7 @@ mod tests {
     // ---------- Bộ đệm vòng ----------
     #[test]
     fn ring_buffer_is_fifo() {
-        let mut d: CountRound<4> = CountRound::new();
+        let mut d: RingBuffer<4> = RingBuffer::new();
         for b in [1u8, 2, 3] { d.push(b).unwrap(); }
         assert_eq!(d.take(), Some(1));
         assert_eq!(d.take(), Some(2));
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn ring_buffer_errors_instead_of_allocating() {
-        let mut d: CountRound<2> = CountRound::new();
+        let mut d: RingBuffer<2> = RingBuffer::new();
         d.push(1).unwrap();
         d.push(2).unwrap();
         assert_eq!(d.push(3), Err(3), "đầy thì TRẢ LẠI byte, không được lớn thêm");
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn ring_buffer_wraps_correctly() {
-        let mut d: CountRound<3> = CountRound::new();
+        let mut d: RingBuffer<3> = RingBuffer::new();
         for i in 0..30u8 {
             d.push(i).unwrap();
             assert_eq!(d.take(), Some(i), "chỉ số phải quay vòng đúng qua biên mảng");
@@ -598,7 +598,7 @@ mod tests {
 
     #[test]
     fn overwrite_mode_drops_oldest() {
-        let mut d: CountRound<3> = CountRound::new();
+        let mut d: RingBuffer<3> = RingBuffer::new();
         for b in [1u8, 2, 3] { d.push(b).unwrap(); }
         assert_eq!(d.overwrite_buffer(4), Some(1), "phần tử CŨ NHẤT bị hy sinh");
         let con: Vec<u8> = std::iter::from_fn(|| d.take()).collect();
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn empty_ring_returns_none() {
-        let mut d: CountRound<4> = CountRound::new();
+        let mut d: RingBuffer<4> = RingBuffer::new();
         assert_eq!(d.take(), None);
         assert!(d.rong() && !d.day());
     }
@@ -657,7 +657,7 @@ use panic_halt as _;   // panic = dừng CPU (bản phát hành dùng panic-rese
 
 #[entry]
 fn khoi_dong() -> ! {           // trả về `!` — hàm này KHÔNG BAO GIỜ kết thúc
-    let bo = UnitOutPos::lay().unwrap();
+    let bo = Peripherals::lay().unwrap();
     let moder = unsafe { &*(0x4002_0000 as *const ThanhGhiThat) };
     let mut den = bo.gate_a.into_output(moder);
 
@@ -705,12 +705,12 @@ Bộ công cụ: `cargo install probe-rs-tools`, rồi `cargo embed` để nạp
 
 ### Bài tập rèn luyện tự giải
 
-**Bài 1.** Cài **bộ lọc trung bình trượt** cho dữ liệu cảm biến, dùng `CountRound` và số Q16.16, **không cấp phát**.
+**Bài 1.** Cài **bộ lọc trung bình trượt** cho dữ liệu cảm biến, dùng `RingBuffer` và số Q16.16, **không cấp phát**.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Giữ một `CountRound<N>` các mẫu **và** một biến `tong` chạy. Khi đẩy mẫu mới vào bộ đệm đầy, trừ mẫu bị đuổi ra khỏi `tong` rồi cộng mẫu mới vào. Nhờ vậy tính trung bình là O(1) thay vì O(N).
+Giữ một `RingBuffer<N>` các mẫu **và** một biến `tong` chạy. Khi đẩy mẫu mới vào bộ đệm đầy, trừ mẫu bị đuổi ra khỏi `tong` rồi cộng mẫu mới vào. Nhờ vậy tính trung bình là O(1) thay vì O(N).
 
 Cẩn thận với tràn số: `tong` phải đủ rộng để chứa `N` mẫu Q16.16 cộng lại.
 </details>
@@ -765,23 +765,23 @@ pub struct Floating;
 
 pub struct InputWith<Tro>(PhantomData<Tro>);
 
-impl<Tro> Block<InputWith<Tro>> {
-    fn doc_tho(&self, data: &IntoRecordPrice) -> bool { data.test_bit(self.serial()) }
+impl<Tro> Pin<InputWith<Tro>> {
+    fn doc_tho(&self, data: &FakeRegisters) -> bool { data.test_bit(self.serial()) }
 }
 
 // Chỉ chân có điện trở kéo mới có `doc()` — trạng thái nghỉ xác định.
-impl Block<InputWith<PullUp>> {
+impl Pin<InputWith<PullUp>> {
     /// Nút chưa bấm = mức CAO (bị điện trở kéo lên). Bấm = nối đất = THẤP.
-    pub fn doc(&self, data: &IntoRecordPrice) -> bool { self.doc_tho(data) }
+    pub fn doc(&self, data: &FakeRegisters) -> bool { self.doc_tho(data) }
 }
-impl Block<InputWith<PullDown>> {
-    pub fn doc(&self, data: &IntoRecordPrice) -> bool { self.doc_tho(data) }
+impl Pin<InputWith<PullDown>> {
+    pub fn doc(&self, data: &FakeRegisters) -> bool { self.doc_tho(data) }
 }
 
-impl Block<InputWith<Floating>> {
+impl Pin<InputWith<Floating>> {
     /// Tên dài và xấu là CỐ Ý: chân thả nổi không có mức nghỉ xác định.
     /// Chỉ dùng khi mạch ngoài đã tự có điện trở kéo.
-    pub fn read_unchecked(&self, data: &IntoRecordPrice) -> bool {
+    pub fn read_unchecked(&self, data: &FakeRegisters) -> bool {
         self.doc_tho(data)
     }
 }

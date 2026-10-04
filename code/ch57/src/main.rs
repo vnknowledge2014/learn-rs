@@ -9,8 +9,8 @@
 
 /// ❌ DÍNH LỖI: ghép chuỗi thẳng vào câu SQL. Kẻ tấn công gửi
 /// `' OR '1'='1` để vượt qua điều kiện.
-pub fn build_vulnerable_sql(name_dang_import: &str) -> String {
-    format!("SELECT * FROM users WHERE username = '{}'", name_dang_import)
+pub fn build_vulnerable_sql(username: &str) -> String {
+    format!("SELECT * FROM users WHERE username = '{}'", username)
 }
 
 /// ✅ SỬA: dùng tham số hóa (placeholder). Dữ liệu người dùng KHÔNG BAO GIỜ
@@ -20,10 +20,10 @@ pub struct SafeSql {
     pub mau: String,           // "... WHERE username = ?"
     pub param: Vec<String>,  // giá trị điền vào, tách RỜI khỏi cú pháp
 }
-pub fn build_safe_sql(name_dang_import: &str) -> SafeSql {
+pub fn build_safe_sql(username: &str) -> SafeSql {
     SafeSql {
         mau: "SELECT * FROM users WHERE username = ?".to_string(),
-        param: vec![name_dang_import.to_string()],
+        param: vec![username.to_string()],
     }
 }
 
@@ -70,7 +70,7 @@ pub struct Invoice {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ErrorAccessCap {
+pub enum AccessError {
     NotFound,
     Forbidden, // đây là lỗ hổng IDOR nếu quên kiểm tra
 }
@@ -86,10 +86,10 @@ pub fn invoice_view_safe<'a>(
     store: &'a [Invoice],
     id: u64,
     caller: u64,
-) -> Result<&'a Invoice, ErrorAccessCap> {
-    let hd = store.iter().find(|h| h.id == id).ok_or(ErrorAccessCap::NotFound)?;
+) -> Result<&'a Invoice, AccessError> {
+    let hd = store.iter().find(|h| h.id == id).ok_or(AccessError::NotFound)?;
     if hd.owner != caller {
-        return Err(ErrorAccessCap::Forbidden);
+        return Err(AccessError::Forbidden);
     }
     Ok(hd)
 }
@@ -161,25 +161,25 @@ pub fn so_sanh_bat_bien(a: &[u8], b: &[u8]) -> bool {
 
 /// Kiểm tra ĐỘ MẠNH mật khẩu — chính sách tối thiểu.
 #[derive(Debug, PartialEq)]
-pub enum ErrorPassword {
+pub enum PasswordError {
     TooShort,
     MissingUppercase,
     MissingDigit,
     MissingSymbol,
 }
-pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
+pub fn check_strength(mk: &str) -> Result<(), Vec<PasswordError>> {
     let mut error = Vec::new();
     if mk.chars().count() < 12 {
-        error.push(ErrorPassword::TooShort);
+        error.push(PasswordError::TooShort);
     }
     if !mk.chars().any(|c| c.is_uppercase()) {
-        error.push(ErrorPassword::MissingUppercase);
+        error.push(PasswordError::MissingUppercase);
     }
     if !mk.chars().any(|c| c.is_ascii_digit()) {
-        error.push(ErrorPassword::MissingDigit);
+        error.push(PasswordError::MissingDigit);
     }
     if !mk.chars().any(|c| !c.is_alphanumeric()) {
-        error.push(ErrorPassword::MissingSymbol);
+        error.push(PasswordError::MissingSymbol);
     }
     if error.is_empty() { Ok(()) } else { Err(error) }
 }
@@ -190,7 +190,7 @@ pub fn check_do_strong(mk: &str) -> Result<(), Vec<ErrorPassword>> {
 
 /// ✅ Chuẩn hóa và kiểm tra đường dẫn tệp do người dùng cung cấp.
 /// Chặn `..` để không thoát ra khỏi thư mục gốc cho phép.
-pub fn path_safe(root: &str, required: &str) -> Result<String, String> {
+pub fn safe_path(root: &str, required: &str) -> Result<String, String> {
     if required.contains("..") || required.starts_with('/') || required.contains('\0') {
         return Err(format!("Đường dẫn nguy hiểm bị chặn: {:?}", required));
     }
@@ -225,19 +225,19 @@ fn main() {
     println!("   ✅ Bản sửa chặn  : {:?}", invoice_view_safe(&store, 101, 1));
 
     println!("\n4. SSRF");
-    let wait_op = ["api.doitac.vn", "cdn.congty.vn"];
+    let allowed_hosts = ["api.doitac.vn", "cdn.congty.vn"];
     for u in ["https://api.doitac.vn/data", "http://169.254.169.254/latest/meta-data/", "https://evil.com"] {
-        println!("   {:>45} -> {:?}", u, is_safe_url(u, &wait_op));
+        println!("   {:>45} -> {:?}", u, is_safe_url(u, &allowed_hosts));
     }
 
     println!("\n5. XÁC THỰC");
     println!("   So sánh token bất biến: {}", so_sanh_bat_bien(b"secret123", b"secret123"));
-    println!("   Mật khẩu 'abc': {:?}", check_do_strong("abc").is_err());
-    println!("   Mật khẩu 'Rust@2026!Secure': {:?}", check_do_strong("Rust@2026!Secure"));
+    println!("   Mật khẩu 'abc': {:?}", check_strength("abc").is_err());
+    println!("   Mật khẩu 'Rust@2026!Secure': {:?}", check_strength("Rust@2026!Secure"));
 
     println!("\n6. PATH TRAVERSAL");
-    println!("   {:?}", path_safe("/var/www/uploads", "avatar.png"));
-    println!("   {:?}", path_safe("/var/www/uploads", "../../etc/passwd"));
+    println!("   {:?}", safe_path("/var/www/uploads", "avatar.png"));
+    println!("   {:?}", safe_path("/var/www/uploads", "../../etc/passwd"));
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   ĐỪNG TIN DỮ LIỆU NGƯỜI DÙNG · DÙNG DANH SÁCH TRẮNG · KIỂM QUYỀN ");
@@ -277,9 +277,9 @@ mod tests {
         // Người #1 xem hóa đơn của chính mình -> OK
         assert!(invoice_view_safe(&store, 100, 1).is_ok());
         // Người #1 xem hóa đơn người #2 -> BỊ CHẶN
-        assert_eq!(invoice_view_safe(&store, 101, 1), Err(ErrorAccessCap::Forbidden));
+        assert_eq!(invoice_view_safe(&store, 101, 1), Err(AccessError::Forbidden));
         // Hóa đơn không tồn tại
-        assert_eq!(invoice_view_safe(&store, 999, 1), Err(ErrorAccessCap::NotFound));
+        assert_eq!(invoice_view_safe(&store, 999, 1), Err(AccessError::NotFound));
     }
 
     #[test]
@@ -307,18 +307,18 @@ mod tests {
 
     #[test]
     fn password_strength() {
-        assert!(check_do_strong("abc").is_err());
-        assert!(check_do_strong("khongcosohoa!X").is_err()); // thiếu số
-        assert!(check_do_strong("Rust@2026!Secure").is_ok());
-        let error = check_do_strong("short").unwrap_err();
-        assert!(error.contains(&ErrorPassword::TooShort));
+        assert!(check_strength("abc").is_err());
+        assert!(check_strength("khongcosohoa!X").is_err()); // thiếu số
+        assert!(check_strength("Rust@2026!Secure").is_ok());
+        let error = check_strength("short").unwrap_err();
+        assert!(error.contains(&PasswordError::TooShort));
     }
 
     #[test]
     fn path_traversal_is_blocked() {
-        assert!(path_safe("/uploads", "anh.png").is_ok());
-        assert!(path_safe("/uploads", "../../etc/passwd").is_err());
-        assert!(path_safe("/uploads", "/etc/passwd").is_err());
-        assert!(path_safe("/uploads", "a/../../secret").is_err());
+        assert!(safe_path("/uploads", "anh.png").is_ok());
+        assert!(safe_path("/uploads", "../../etc/passwd").is_err());
+        assert!(safe_path("/uploads", "/etc/passwd").is_err());
+        assert!(safe_path("/uploads", "a/../../secret").is_err());
     }
 }

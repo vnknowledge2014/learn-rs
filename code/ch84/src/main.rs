@@ -52,7 +52,7 @@ pub fn correlation(x: &[f64], y: &[f64]) -> Option<f64> {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ResultRegression {
+pub struct RegressionResult {
     /// Hệ số góc — trong tài chính gọi là beta, hay TỈ LỆ PHÒNG HỘ.
     pub beta: f64,
     /// Hệ số chặn — phần lợi suất không giải thích được bằng biến kia.
@@ -65,7 +65,7 @@ pub struct ResultRegression {
 }
 
 /// Hồi quy bình phương tối thiểu: y = alpha + beta·x + nhiễu.
-pub fn regression(x: &[f64], y: &[f64]) -> Option<ResultRegression> {
+pub fn regression(x: &[f64], y: &[f64]) -> Option<RegressionResult> {
     let n = x.len().min(y.len());
     if n < 3 { return None; }
     let vx = variance(&x[..n]);
@@ -76,12 +76,12 @@ pub fn regression(x: &[f64], y: &[f64]) -> Option<ResultRegression> {
     let du: Vec<f64> = (0..n).map(|i| y[i] - (alpha + beta * x[i])).collect();
     let vy = variance(&y[..n]);
     let r2 = if vy < 1e-12 { 0.0 } else { (1.0 - variance(&du) / vy).clamp(0.0, 1.0) };
-    Some(ResultRegression { beta, alpha, r_squared: r2,
+    Some(RegressionResult { beta, alpha, r_squared: r2,
                         sai_num_standard: stddev(&du), so_quan_sat: n })
 }
 
 /// Phần dư của hồi quy — chính là CHÊNH LỆCH mà arbitrage cặp giao dịch.
-pub fn part_data(x: &[f64], y: &[f64], kq: &ResultRegression) -> Vec<f64> {
+pub fn residuals(x: &[f64], y: &[f64], kq: &RegressionResult) -> Vec<f64> {
     let n = x.len().min(y.len());
     (0..n).map(|i| y[i] - (kq.alpha + kq.beta * x[i])).collect()
 }
@@ -140,13 +140,13 @@ pub struct KalmanFilter {
     pub process_noise: f64,
     /// Mức nhiễu của quan sát. Càng lớn càng ít tin dữ liệu mới.
     pub observation_noise: f64,
-    pub num_step: usize,
+    pub num_steps: usize,
 }
 
 impl KalmanFilter {
     pub fn new(beta_dau: f64, process_noise: f64, observation_noise: f64) -> Self {
         KalmanFilter { beta: beta_dau, estimated_variance: 1.0,
-                    process_noise, observation_noise, num_step: 0 }
+                    process_noise, observation_noise, num_steps: 0 }
     }
 
     /// Cập nhật với một cặp quan sát (x, y). Trả về sai số dự báo — chính là
@@ -161,7 +161,7 @@ impl KalmanFilter {
         let k = if s.abs() < 1e-12 { 0.0 } else { p_truoc * x / s };
         self.beta += k * sai_so;
         self.estimated_variance = (1.0 - k * x) * p_truoc;
-        self.num_step += 1;
+        self.num_steps += 1;
         sai_so
     }
 }
@@ -247,25 +247,25 @@ pub struct TestSegment {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ResultWalkForward {
+pub struct WalkForwardResult {
     pub segments: Vec<TestSegment>,
-    pub mean_in_mau: f64,
-    pub mean_out_mau: f64,
+    pub in_sample_mean: f64,
+    pub out_of_sample_mean: f64,
     /// Mức tụt điểm khi ra ngoài mẫu. Tụt nhiều = đã khớp vào nhiễu.
-    pub level_drawdown: f64,
+    pub degradation: f64,
 }
 
 /// `cham_diem(param, tu, den)` chấm điểm một tham số trên đoạn `[tu, den)`.
 pub fn walk_forward<F>(
     total_do_long: usize, do_dai_trong_mau: usize, do_dai_ngoai_mau: usize,
     all_params: &[usize], mut cham_diem: F,
-) -> ResultWalkForward
+) -> WalkForwardResult
 where F: FnMut(usize, usize, usize) -> f64
 {
     let mut segments = Vec::new();
     if all_params.is_empty() || do_dai_ngoai_mau == 0 {
-        return ResultWalkForward { segments, mean_in_mau: 0.0,
-                                    mean_out_mau: 0.0, level_drawdown: 0.0 };
+        return WalkForwardResult { segments, in_sample_mean: 0.0,
+                                    out_of_sample_mean: 0.0, degradation: 0.0 };
     }
     let mut first = 0usize;
     while first + do_dai_trong_mau + do_dai_ngoai_mau <= total_do_long {
@@ -286,9 +286,9 @@ where F: FnMut(usize, usize, usize) -> f64
                                        .collect::<Vec<_>>());
     let avg_out = mean(&segments.iter().map(|d| d.point_out_mau)
                                        .collect::<Vec<_>>());
-    ResultWalkForward {
-        segments, mean_in_mau: avg_in, mean_out_mau: avg_out,
-        level_drawdown: avg_in - avg_out,
+    WalkForwardResult {
+        segments, in_sample_mean: avg_in, out_of_sample_mean: avg_out,
+        degradation: avg_in - avg_out,
     }
 }
 
@@ -379,7 +379,7 @@ fn main() {
     for (name, x, y) in [("đồng liên kết thật", &a, &b),
                         ("chỉ tương quan cao", &c, &d)] {
         let h = regression(x, y).unwrap();
-        let e = part_data(x, y, &h);
+        let e = residuals(x, y, &h);
         let dlk = cointegration_test(&e, -0.05).unwrap();
         println!("   {:<24} {:>12.4} {:>16.4} {:>14.1}",
                  name, correlation(x, y).unwrap(), dlk.reversion_coef, dlk.half_life);
@@ -402,13 +402,13 @@ fn main() {
     let ls_a = gen_returns(1_000, 1, 0.02, 0.0005);
     let ls_b = gen_returns(1_000, 999, 0.02, 0.0005);
     let mot_ma = portfolio_stats(&[ls_a.clone()], &[1.0], 0.0).unwrap();
-    let two_id = portfolio_stats(&[ls_a.clone(), ls_b.clone()], &[0.5, 0.5], 0.0).unwrap();
+    let two_assets = portfolio_stats(&[ls_a.clone(), ls_b.clone()], &[0.5, 0.5], 0.0).unwrap();
     println!("   Chỉ mã A    : lợi suất {:.5} · rủi ro {:.5} · Sharpe {:.3}",
              mot_ma.expected_return, mot_ma.stddev, mot_ma.sharpe_ratio);
     println!("   Nửa A nửa B : lợi suất {:.5} · rủi ro {:.5} · Sharpe {:.3}",
-             two_id.expected_return, two_id.stddev, two_id.sharpe_ratio);
+             two_assets.expected_return, two_assets.stddev, two_assets.sharpe_ratio);
     println!("   → Lợi suất kỳ vọng gần như không đổi, nhưng rủi ro giảm {:.0}%.",
-             (1.0 - two_id.stddev / mot_ma.stddev) * 100.0);
+             (1.0 - two_assets.stddev / mot_ma.stddev) * 100.0);
     println!("     Đó là vì hai mã không tương quan hoàn toàn.");
 
     println!("\n5. RỦI RO ĐUÔI");
@@ -437,7 +437,7 @@ fn main() {
                  i + 1, d.query_param, d.point_in_mau, d.point_out_mau);
     }
     println!("   Trung bình trong mẫu {:.3} · ngoài mẫu {:.3} · SỤT {:.3}",
-             kq.mean_in_mau, kq.mean_out_mau, kq.level_drawdown);
+             kq.in_sample_mean, kq.out_of_sample_mean, kq.degradation);
     println!("   → Điểm trong mẫu luôn đẹp hơn, vì ta ĐÃ CHỌN tham số cho nó.");
     println!("     Chỉ điểm ngoài mẫu mới là con số đáng tin.");
 
@@ -527,7 +527,7 @@ mod tests {
         // hồi quy đã cài sai.
         let (a, b) = sinh_cap_dong_lien_ket(500, 11, 1.5);
         let h = regression(&a, &b).unwrap();
-        let e = part_data(&a, &b, &h);
+        let e = residuals(&a, &b, &h);
         assert!(mean(&e).abs() < 1e-9,
                 "trung bình phần dư {:.2e}", mean(&e));
     }
@@ -538,7 +538,7 @@ mod tests {
         // tương quan thì vẫn còn thông tin chưa khai thác hết.
         let (a, b) = sinh_cap_dong_lien_ket(500, 13, 1.5);
         let h = regression(&a, &b).unwrap();
-        let e = part_data(&a, &b, &h);
+        let e = residuals(&a, &b, &h);
         let r = correlation(&a, &e).unwrap();
         assert!(r.abs() < 1e-9, "phần dư còn tương quan {:.2e} với x", r);
     }
@@ -548,7 +548,7 @@ mod tests {
     fn identifies_the_cointegrated_pair() {
         let (a, b) = sinh_cap_dong_lien_ket(1_000, 2024, 1.5);
         let h = regression(&a, &b).unwrap();
-        let e = part_data(&a, &b, &h);
+        let e = residuals(&a, &b, &h);
         let k = cointegration_test(&e, -0.05).unwrap();
         assert!(k.has_cointegration, "hệ số kéo về {:.4} phải đủ âm", k.reversion_coef);
         assert!(k.reversion_coef < 0.0);
@@ -563,7 +563,7 @@ mod tests {
         let r = correlation(&c, &d).unwrap();
         assert!(r > 0.8, "hai chuỗi này TƯƠNG QUAN rất cao: {:.3}", r);
         let h = regression(&c, &d).unwrap();
-        let e = part_data(&c, &d, &h);
+        let e = residuals(&c, &d, &h);
         let k = cointegration_test(&e, -0.05).unwrap();
         assert!(!k.has_cointegration,
                 "nhưng KHÔNG đồng liên kết: hệ số kéo về chỉ {:.4}", k.reversion_coef);
@@ -615,7 +615,7 @@ mod tests {
         assert!(lk.estimated_variance < first,
                 "càng nhiều dữ liệu thì càng tự tin: {:.2e} so với {:.2e}",
                 lk.estimated_variance, first);
-        assert_eq!(lk.num_step, 200);
+        assert_eq!(lk.num_steps, 200);
     }
 
     #[test]
@@ -727,9 +727,9 @@ mod tests {
             candle + deterministic_noise(tu, p) * 0.8
         };
         let kq = walk_forward(2_000, 200, 100, &[5, 10, 20, 50, 100], cham);
-        assert!(kq.level_drawdown > 0.0,
+        assert!(kq.degradation > 0.0,
                 "điểm phải TỤT khi ra ngoài mẫu: trong {:.3} ngoài {:.3}",
-                kq.mean_in_mau, kq.mean_out_mau);
+                kq.in_sample_mean, kq.out_of_sample_mean);
     }
 
     #[test]
@@ -738,7 +738,7 @@ mod tests {
         // bằng điểm trong mẫu.
         let cham = |p: usize, _tu: usize, _den: usize| if p == 20 { 1.0 } else { 0.3 };
         let kq = walk_forward(1_000, 200, 100, &[5, 10, 20, 50], cham);
-        assert!(kq.level_drawdown.abs() < 1e-9, "sụt {:.6}", kq.level_drawdown);
+        assert!(kq.degradation.abs() < 1e-9, "sụt {:.6}", kq.degradation);
         assert!(kq.segments.iter().all(|d| d.query_param == 20),
                 "phải luôn chọn đúng tham số tốt thật");
     }
@@ -748,7 +748,7 @@ mod tests {
         let cham = |_p: usize, _tu: usize, _den: usize| 1.0;
         let kq = walk_forward(100, 200, 100, &[5], cham);
         assert!(kq.segments.is_empty());
-        assert_eq!(kq.level_drawdown, 0.0);
+        assert_eq!(kq.degradation, 0.0);
     }
 
     #[test]

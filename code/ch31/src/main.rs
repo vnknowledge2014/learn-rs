@@ -6,13 +6,13 @@ use std::path::Path;
 
 /// Cấu trúc bản ghi người dùng trong cơ sở dữ liệu
 #[derive(Debug, PartialEq, Clone)]
-pub struct SellRecordUser {
+pub struct UserRecord {
     pub id: u32,       // 4 bytes cố định
     pub age: u8,      // 1 byte cố định
     pub full_name: String,// Độ dài biến thiên
 }
 
-impl SellRecordUser {
+impl UserRecord {
     pub fn new(id: u32, age: u8, full_name: &str) -> Self {
         Self {
             id,
@@ -26,7 +26,7 @@ impl SellRecordUser {
     /// [ID: 4B] + [Tuổi: 1B] + [Độ dài tên: 2B] + [Dữ liệu chuỗi tên: NB]
     pub fn serialize(&self) -> Vec<u8> {
         let ten_bytes = self.full_name.as_bytes();
-        let do_long_name = ten_bytes.len() as u16;
+        let name_len = ten_bytes.len() as u16;
 
         // Ước tính trước kích thước để cấp phát bộ nhớ một lần duy nhất
         let mut bo_dem_byte = Vec::with_capacity(4 + 1 + 2 + ten_bytes.len());
@@ -36,7 +36,7 @@ impl SellRecordUser {
         // 2. Ghi Tuổi (1 byte)
         bo_dem_byte.push(self.age);
         // 3. Ghi Độ dài chuỗi tên (2 bytes Little-Endian)
-        bo_dem_byte.extend_from_slice(&do_long_name.to_le_bytes());
+        bo_dem_byte.extend_from_slice(&name_len.to_le_bytes());
         // 4. Ghi Chuỗi byte nội dung tên UTF-8
         bo_dem_byte.extend_from_slice(ten_bytes);
 
@@ -66,9 +66,9 @@ impl SellRecordUser {
         let len_bytes: [u8; 2] = data[5..7].try_into().map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã độ dài chuỗi")
         })?;
-        let do_long_name = u16::from_le_bytes(len_bytes) as usize;
+        let name_len = u16::from_le_bytes(len_bytes) as usize;
 
-        let total_size = 7 + do_long_name;
+        let total_size = 7 + name_len;
         if data.len() < total_size {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -81,16 +81,16 @@ impl SellRecordUser {
             io::Error::new(io::ErrorKind::InvalidData, e.to_string())
         })?;
 
-        Ok((SellRecordUser { id, age, full_name }, total_size))
+        Ok((UserRecord { id, age, full_name }, total_size))
     }
 }
 
 /// Động cơ tệp nhị phân đơn giản lưu trữ các bản ghi xuống đĩa cứng
-pub struct BinaryPageStore {
+pub struct BinaryStore {
     file: File,
 }
 
-impl BinaryPageStore {
+impl BinaryStore {
     /// Mở hoặc tạo mới tệp lưu trữ dữ liệu
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = OpenOptions::new()
@@ -102,10 +102,10 @@ impl BinaryPageStore {
     }
 
     /// Ghi thêm bản ghi vào cuối tệp - Trả về tọa độ byte (Offset) bắt đầu của bản ghi
-    pub fn record_sell_record(&mut self, sell_record: &SellRecordUser) -> io::Result<u64> {
+    pub fn record_sell_record(&mut self, record: &UserRecord) -> io::Result<u64> {
         // Nhảy đến cuối tệp để ghi nối đuôi tuần tự (Sequential Append)
         let vi_tri_offset = self.file.seek(SeekFrom::End(0))?;
-        let bytes_to_write = sell_record.serialize();
+        let bytes_to_write = record.serialize();
         self.file.write_all(&bytes_to_write)?;
         // Ép dữ liệu từ bộ nhớ đệm hệ điều hành xuống đĩa vật lý
         self.file.flush()?;
@@ -113,7 +113,7 @@ impl BinaryPageStore {
     }
 
     /// Nhảy đến vị trí Offset chính xác và đọc một bản ghi lên RAM - O(1) Disk Seek
-    pub fn read_record_at(&mut self, offset: u64) -> io::Result<SellRecordUser> {
+    pub fn read_record_at(&mut self, offset: u64) -> io::Result<UserRecord> {
         self.file.seek(SeekFrom::Start(offset))?;
         
         // Đọc trước 7 bytes phần đầu để biết độ dài chuỗi tên
@@ -121,19 +121,19 @@ impl BinaryPageStore {
         self.file.read_exact(&mut header)?;
 
         let len_bytes: [u8; 2] = header[5..7].try_into().unwrap();
-        let do_long_name = u16::from_le_bytes(len_bytes) as usize;
+        let name_len = u16::from_le_bytes(len_bytes) as usize;
 
         // Đọc tiếp phần thân chuỗi tên
-        let mut ten_buffer = vec![0u8; do_long_name];
+        let mut ten_buffer = vec![0u8; name_len];
         self.file.read_exact(&mut ten_buffer)?;
 
         // Ghép toàn bộ byte lại và giải mã
-        let mut toan_bo_byte = Vec::with_capacity(7 + do_long_name);
+        let mut toan_bo_byte = Vec::with_capacity(7 + name_len);
         toan_bo_byte.extend_from_slice(&header);
         toan_bo_byte.extend_from_slice(&ten_buffer);
 
-        let (sell_record, _) = SellRecordUser::deserialize(&toan_bo_byte)?;
-        Ok(sell_record)
+        let (record, _) = UserRecord::deserialize(&toan_bo_byte)?;
+        Ok(record)
     }
 }
 
@@ -146,13 +146,13 @@ fn main() -> io::Result<()> {
     let path_file = "kho_du_lieu_tam.bin";
 
     // 1. Khởi tạo kho lưu trữ
-    let mut store = BinaryPageStore::open(path_file)?;
+    let mut store = BinaryStore::open(path_file)?;
     println!("[1] Đã mở tệp lưu trữ nhị phân: '{}'", path_file);
 
     // 2. Chuẩn bị dữ liệu và tuần tự hóa thành chuỗi byte
-    let nguoi_1 = SellRecordUser::new(101, 24, "Nguyễn Văn An");
-    let nguoi_2 = SellRecordUser::new(102, 30, "Trần Thị Bình");
-    let nguoi_3 = SellRecordUser::new(103, 19, "Lê Hoàng Cường");
+    let nguoi_1 = UserRecord::new(101, 24, "Nguyễn Văn An");
+    let nguoi_2 = UserRecord::new(102, 30, "Trần Thị Bình");
+    let nguoi_3 = UserRecord::new(103, 19, "Lê Hoàng Cường");
 
     println!("\n[2] Ghi tuần tự các bản ghi xuống đĩa:");
     let offset_1 = store.record_sell_record(&nguoi_1)?;

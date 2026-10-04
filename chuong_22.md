@@ -167,10 +167,10 @@ Dưới đây là một chương trình hoàn chỉnh minh họa toàn diện:
 macro_rules! phep_tinh_noi_bo {
     ( $input:expr ) => {
         {
-            // Khai báo biến tạm mang tên 'value_temp' bên trong macro
-            let value_temp = $input * 2;
-            println!("  [Trong Macro] gia_tri_tam = {}", value_temp);
-            value_temp + 5
+            // Khai báo biến tạm mang tên 'temp_value' bên trong macro
+            let temp_value = $input * 2;
+            println!("  [Trong Macro] gia_tri_tam = {}", temp_value);
+            temp_value + 5
         }
     };
 }
@@ -235,15 +235,15 @@ fn main() {
     // TÌNH HUỐNG 1: Kiểm chứng Tính vệ sinh không làm ô nhiễm biến ngoài
     // ------------------------------------------------------------------------
     println!("\n1. Kiểm chứng Tính vệ sinh của Macro (Macro Hygiene):");
-    let value_temp = 7777; // Biến trùng tên ở phạm vi hàm main
-    println!("Trước khi gọi macro: gia_tri_tam = {}", value_temp);
+    let temp_value = 7777; // Biến trùng tên ở phạm vi hàm main
+    println!("Trước khi gọi macro: gia_tri_tam = {}", temp_value);
 
     let ket_qua_macro = phep_tinh_noi_bo!(10);
     println!("Kết quả trả về từ macro: {}", ket_qua_macro);
 
-    // Xác nhận biến value_temp ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
-    println!("Sau khi gọi macro: gia_tri_tam = {}", value_temp);
-    assert_eq!(value_temp, 7777);
+    // Xác nhận biến temp_value ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
+    println!("Sau khi gọi macro: gia_tri_tam = {}", temp_value);
+    assert_eq!(temp_value, 7777);
     println!("-> KẾT LUẬN: Biến trong macro được cách ly vô trùng tuyệt đối!");
 
     // ------------------------------------------------------------------------
@@ -256,8 +256,8 @@ fn main() {
         [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
     ];
 
-    for (num_queue, queue) in ma_tran_diem.iter().enumerate() {
-        println!("  Hàng #{}: {:?}", num_queue + 1, queue);
+    for (row_index, queue) in ma_tran_diem.iter().enumerate() {
+        println!("  Hàng #{}: {:?}", row_index + 1, queue);
     }
     assert_eq!(ma_tran_diem[1][1], 50);
 

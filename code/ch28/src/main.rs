@@ -41,18 +41,18 @@ pub fn is_balanced_brackets(bieu_thuc: &str) -> bool {
 
 /// Mô hình Đơn hàng trong hệ thống thương mại điện tử
 #[derive(Debug, PartialEq, Clone)]
-pub struct DonQueue {
+pub struct Order {
     pub order_code: u32,
     pub customer_name: String,
     pub tong_tien: f64,
 }
 
 /// ỨNG DỤNG 2 CỦA QUEUE: Hệ thống quản lý hàng đợi đơn hàng chuẩn FIFO
-pub struct QueueDonQueue {
-    list: VecDeque<DonQueue>,
+pub struct OrderQueue {
+    list: VecDeque<Order>,
 }
 
-impl QueueDonQueue {
+impl OrderQueue {
     pub fn new() -> Self {
         Self {
             list: VecDeque::new(),
@@ -60,22 +60,22 @@ impl QueueDonQueue {
     }
 
     /// Khách đặt hàng: Xếp vào cuối hàng đợi - O(1)
-    pub fn them_don(&mut self, don: DonQueue) {
+    pub fn them_don(&mut self, don: Order) {
         self.list.push_back(don);
     }
 
     /// Đơn hàng VIP (Ưu tiên khẩn cấp): Chèn thẳng vào đầu hàng đợi - O(1)
-    pub fn them_don_vip(&mut self, don: DonQueue) {
+    pub fn them_don_vip(&mut self, don: Order) {
         self.list.push_front(don);
     }
 
     /// Nhà bếp / Kho xuất hàng: Phục vụ đơn đến trước - O(1)
-    pub fn handle_don_ke_cont(&mut self) -> Option<DonQueue> {
+    pub fn process_next_order(&mut self) -> Option<Order> {
         self.list.pop_front()
     }
 
     /// Xem trước đơn sắp được phục vụ mà không xóa khỏi hàng đợi
-    pub fn first_view_don(&self) -> Option<&DonQueue> {
+    pub fn first_view_don(&self) -> Option<&Order> {
         self.list.front()
     }
 
@@ -84,7 +84,7 @@ impl QueueDonQueue {
     }
 }
 
-impl Default for QueueDonQueue {
+impl Default for OrderQueue {
     fn default() -> Self {
         Self::new()
     }
@@ -111,15 +111,15 @@ fn main() {
 
     // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
     println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
-    let mut he_thong = QueueDonQueue::new();
+    let mut he_thong = OrderQueue::new();
 
     // Khách hàng thông thường đặt hàng lần lượt
-    he_thong.them_don(DonQueue {
+    he_thong.them_don(Order {
         order_code: 101,
         customer_name: String::from("Nguyễn Văn A"),
         tong_tien: 150.0,
     });
-    he_thong.them_don(DonQueue {
+    he_thong.them_don(Order {
         order_code: 102,
         customer_name: String::from("Trần Thị B"),
         tong_tien: 80.0,
@@ -128,7 +128,7 @@ fn main() {
     println!("    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}", he_thong.so_don_dang_cho());
 
     // Đơn hàng hỏa tốc VIP xuất hiện! Đưa thẳng vào đầu hàng đợi
-    he_thong.them_don_vip(DonQueue {
+    he_thong.them_don_vip(Order {
         order_code: 999,
         customer_name: String::from("Khách VIP Kim Cương"),
         tong_tien: 500.0,
@@ -144,7 +144,7 @@ fn main() {
     // Tiến hành xuất kho lần lượt theo đúng thứ tự ưu tiên
     println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
     let mut handles = Vec::new();
-    while let Some(don) = he_thong.handle_don_ke_cont() {
+    while let Some(don) = he_thong.process_next_order() {
         println!("    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k", don.order_code, don.customer_name, don.tong_tien);
         handles.push(don.order_code);
     }
@@ -164,8 +164,8 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn don(id: u32, name: &str) -> DonQueue {
-        DonQueue { order_code: id, customer_name: name.into(), tong_tien: 100.0 }
+    fn don(id: u32, name: &str) -> Order {
+        Order { order_code: id, customer_name: name.into(), tong_tien: 100.0 }
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn fifo_queue_and_vip_priority() {
-        let mut hd = QueueDonQueue::new();
+        let mut hd = OrderQueue::new();
         hd.them_don(don(1, "A"));
         hd.them_don(don(2, "B"));
         hd.them_don_vip(don(9, "VIP")); // chen lên đầu
@@ -187,9 +187,9 @@ mod tests {
         assert_eq!(hd.first_view_don().map(|d| d.order_code), Some(9));
 
         // VIP ra trước, phần còn lại giữ đúng thứ tự FIFO
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(9));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(1));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(2));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), None);
+        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(9));
+        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(1));
+        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(2));
+        assert_eq!(hd.process_next_order().map(|d| d.order_code), None);
     }
 }

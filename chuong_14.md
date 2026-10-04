@@ -263,7 +263,7 @@ pub fn ghep3<A, B, C, D>(
 }
 
 /// Bộ kết hợp `identity`: phần tử đơn vị của phép ghép hàm.
-pub fn closest<T>(x: T) -> T {
+pub fn identity<T>(x: T) -> T {
     x
 }
 
@@ -282,12 +282,12 @@ pub fn flip_args<A, B, C>(f: impl Fn(A, B) -> C) -> impl Fn(B, A) -> C {
 // ============================================================================
 
 /// Cắt bỏ khoảng trắng thừa ở hai đầu.
-pub fn cut_range_state(s: &str) -> String {
+pub fn trim_whitespace(s: &str) -> String {
     s.trim().to_string()
 }
 
 /// Thu gọn nhiều khoảng trắng liên tiếp thành một khoảng trắng duy nhất.
-pub fn reduce_range(s: String) -> String {
+pub fn collapse_whitespace(s: String) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
@@ -343,7 +343,7 @@ pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
 
 /// Bản ghi nhật ký kiểm duyệt (thay cho việc ghi ra tệp thật).
 #[derive(Debug, Clone, PartialEq)]
-pub struct SellRecordLog {
+pub struct LogRecord {
     pub ma_binh_luan: u32,
     pub ket_luan: String,
 }
@@ -357,10 +357,10 @@ pub fn make_validator<L>(
     mut log_it: L,
 ) -> impl FnMut(u32, &str) -> String
 where
-    L: FnMut(SellRecordLog),
+    L: FnMut(LogRecord),
 {
     move |id: u32, tho: &str| {
-        let standard = cut_range_state(tho);
+        let standard = trim_whitespace(tho);
         // Kiểm tra TRƯỚC khi che — nếu che trước thì từ cấm biến mất
         // và bộ kiểm tra sẽ luôn báo "hợp lệ". Thứ tự các bước rất quan trọng!
         let ket_luan = if check_clean(&standard) {
@@ -369,7 +369,7 @@ where
             "CHỨA TỪ CẤM — ĐÃ CHE"
         };
         let cleaned = sanitize(standard);
-        log_it(SellRecordLog {
+        log_it(LogRecord {
             ma_binh_luan: id,
             ket_luan: ket_luan.to_string(),
         });
@@ -389,7 +389,7 @@ fn main() {
     // ------------------------------------------------------------------
     // 1. LẮP REN ỐNG NƯỚC: ghép 3 hàm nhỏ thành 1 đường ống chuẩn hóa
     // ------------------------------------------------------------------
-    let normalize = ghep3(cut_range_state, reduce_range, capitalize_first);
+    let normalize = ghep3(trim_whitespace, collapse_whitespace, capitalize_first);
 
     let tho = "   xin    chào     các bạn  ";
     println!("\n1. GHÉP HÀM (Composition)");
@@ -399,8 +399,8 @@ fn main() {
     // ------------------------------------------------------------------
     // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
     // ------------------------------------------------------------------
-    let way_a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-    let way_b = compose(cut_range_state, compose(reduce_range, capitalize_first));
+    let way_a = compose(compose(trim_whitespace, collapse_whitespace), capitalize_first);
+    let way_b = compose(trim_whitespace, compose(collapse_whitespace, capitalize_first));
     assert_eq!(way_a(tho), way_b(tho));
     println!("\n2. LUẬT KẾT HỢP");
     println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", way_a(tho));
@@ -408,7 +408,7 @@ fn main() {
     // ------------------------------------------------------------------
     // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
     // ------------------------------------------------------------------
-    let with_don_pos = compose(closest::<&str>, &normalize);
+    let with_don_pos = compose(identity::<&str>, &normalize);
     assert_eq!(with_don_pos(tho), normalize(tho));
     println!("\n3. LUẬT ĐƠN VỊ");
     println!("   identity ∘ f == f  ✓ (kết quả không đổi)");
@@ -441,11 +441,11 @@ fn main() {
     // 6. TIÊM PHỤ THUỘC: khóa "bộ ghi nhật ký" vào bộ kiểm duyệt
     // ------------------------------------------------------------------
     println!("\n6. TIÊM PHỤ THUỘC BẰNG ÁP DỤNG TỪNG PHẦN");
-    let mut num_log: Vec<SellRecordLog> = Vec::new();
+    let mut num_log: Vec<LogRecord> = Vec::new();
 
     {
         // Phụ thuộc thật: ghi vào sổ nhật ký trong bộ nhớ.
-        let record_in_num = |sell_record: SellRecordLog| num_log.push(sell_record);
+        let record_in_num = |record: LogRecord| num_log.push(record);
         let mut validator = make_validator(&is_clean, &che_di, record_in_num);
 
         println!("   #101 -> {}", validator(101, "  Bài viết rất hay!  "));
@@ -453,8 +453,8 @@ fn main() {
     }
 
     println!("   Nhật ký thu được ({} dòng):", num_log.len());
-    for sell_record in &num_log {
-        println!("     - Bình luận #{}: {}", sell_record.ma_binh_luan, sell_record.ket_luan);
+    for record in &num_log {
+        println!("     - Bình luận #{}: {}", record.ma_binh_luan, record.ket_luan);
     }
 
     // ------------------------------------------------------------------
@@ -473,7 +473,7 @@ fn main() {
     // 8. `identity` GIÚP LỌC BỎ None — ỨNG DỤNG THỰC TẾ
     // ------------------------------------------------------------------
     let raw_data: Vec<Option<i32>> = vec![Some(1), None, Some(3), None, Some(5)];
-    let clean: Vec<i32> = raw_data.into_iter().flat_map(closest).collect();
+    let clean: Vec<i32> = raw_data.into_iter().flat_map(identity).collect();
     println!("\n8. identity LỌC BỎ None: {:?}", clean);
     assert_eq!(clean, vec![1, 3, 5]);
 
@@ -517,16 +517,16 @@ mod tests {
     fn composition_is_associative() {
         let mau = ["  a   b ", "Xin   chào", "   rust  "];
         for s in mau {
-            let a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-            let b = compose(cut_range_state, compose(reduce_range, capitalize_first));
+            let a = compose(compose(trim_whitespace, collapse_whitespace), capitalize_first);
+            let b = compose(trim_whitespace, compose(collapse_whitespace, capitalize_first));
             assert_eq!(a(s), b(s), "Luật kết hợp bị vi phạm với đầu vào {:?}", s);
         }
     }
 
     #[test]
     fn composition_has_identity() {
-        let f = compose(cut_range_state, capitalize_first);
-        let left = compose(closest::<&str>, &f);
+        let f = compose(trim_whitespace, capitalize_first);
+        let left = compose(identity::<&str>, &f);
         for s in ["  xin chào ", "rust"] {
             assert_eq!(left(s), f(s));
         }
@@ -567,7 +567,7 @@ mod tests {
 | **E0507** | `cannot move out of '...', a captured variable in an 'Fn' closure` | Closure trả về từ nhà máy được đánh dấu `Fn` (gọi nhiều lần) nhưng bên trong bạn lại chuyển quyền sở hữu biến đã bắt giữ ra ngoài — lần gọi thứ hai sẽ không còn gì. | Dùng `.clone()` bên trong closure (như hàm `queue_num` ở trên), hoặc chỉ mượn tham chiếu `&`. |
 | **E0525** | `expected a closure that implements 'Fn' … only implements 'FnMut'` | Closure của bạn thay đổi trạng thái bên ngoài (ví dụ ghi vào sổ nhật ký) nên nó là `FnMut`, không phải `Fn`. | Đổi ràng buộc thành `FnMut` và đánh dấu biến closure là `mut` — xem hàm `make_validator` ở trên. |
 | **E0562** | `'impl Trait' is not allowed in this position` | Bạn viết `impl Fn(...)` ở vị trí trường của `struct` hoặc bí danh kiểu (`type`). | Dùng tham số generic `struct S<F: Fn()> { f: F }`, hoặc `Box<dyn Fn(...)>`. |
-| **E0282** | `type annotations needed` | Gọi hàm generic như `closest` hoặc `queue_num` mà trình biên dịch không suy ra được kiểu. | Chỉ định tường minh bằng cú pháp cá voi (turbofish): `closest::<&str>`, `queue_num::<i32, &str>(0)`. |
+| **E0282** | `type annotations needed` | Gọi hàm generic như `identity` hoặc `queue_num` mà trình biên dịch không suy ra được kiểu. | Chỉ định tường minh bằng cú pháp cá voi (turbofish): `identity::<&str>`, `queue_num::<i32, &str>(0)`. |
 
 ### Phân tích lỗi thực tế `E0373` (quên `move` khi trả về closure):
 

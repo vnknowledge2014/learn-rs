@@ -79,18 +79,18 @@ pub const DONG_CACHE: usize = 64;
 /// nhưng phần cứng chỉ biết tới dòng cache — nên chúng giành nhau quyền sở
 /// hữu dòng đó, ping-pong qua lại. Chậm hơn hàng chục lần mà nhìn mã không thấy.
 #[repr(C)]
-pub struct SharedBuffer { pub a: AtomicUsize, pub b: AtomicUsize }
+pub struct SameLineCounters { pub a: AtomicUsize, pub b: AtomicUsize }
 
 /// Đệm cho mỗi bộ đếm chiếm trọn một dòng cache riêng.
 #[repr(C, align(64))]
-pub struct CountHasCount { pub value: AtomicUsize, _count: [u8; DONG_CACHE - 8] }
+pub struct PaddedCounter { pub value: AtomicUsize, _count: [u8; DONG_CACHE - 8] }
 
-impl CountHasCount {
-    pub fn new() -> Self { CountHasCount { value: AtomicUsize::new(0), _count: [0; DONG_CACHE - 8] } }
+impl PaddedCounter {
+    pub fn new() -> Self { PaddedCounter { value: AtomicUsize::new(0), _count: [0; DONG_CACHE - 8] } }
 }
 
 #[repr(C)]
-pub struct BufferSplitClose { pub a: CountHasCount, pub b: CountHasCount }
+pub struct SplitLineCounters { pub a: PaddedCounter, pub b: PaddedCounter }
 
 // ============================================================================
 // 3. VÒNG ĐỆM KHÔNG KHOÁ KIỂU DISRUPTOR
@@ -107,9 +107,9 @@ pub struct BufferSplitClose { pub a: CountHasCount, pub b: CountHasCount }
 pub struct DisruptorRing<T, const N: usize> {
     o: UnsafeCell<[Option<T>; N]>,
     _dem1: [u8; DONG_CACHE],
-    pos_value_record: AtomicUsize,
+    write_pos: AtomicUsize,
     _dem2: [u8; DONG_CACHE - 8],
-    pos_value_read: AtomicUsize,
+    read_pos: AtomicUsize,
     _dem3: [u8; DONG_CACHE - 8],
 }
 
@@ -123,8 +123,8 @@ impl<T, const N: usize> DisruptorRing<T, N> {
         DisruptorRing {
             o: UnsafeCell::new(std::array::from_fn(|_| None)),
             _dem1: [0; DONG_CACHE],
-            pos_value_record: AtomicUsize::new(0), _dem2: [0; DONG_CACHE - 8],
-            pos_value_read: AtomicUsize::new(0), _dem3: [0; DONG_CACHE - 8],
+            write_pos: AtomicUsize::new(0), _dem2: [0; DONG_CACHE - 8],
+            read_pos: AtomicUsize::new(0), _dem3: [0; DONG_CACHE - 8],
         }
     }
 
@@ -132,7 +132,7 @@ impl<T, const N: usize> DisruptorRing<T, N> {
     fn chi_so(v: usize) -> usize { v & (N - 1) } // thay cho v % N
 
     pub fn quantity(&self) -> usize {
-        self.pos_value_record.load(Ordering::Acquire) - self.pos_value_read.load(Ordering::Acquire)
+        self.write_pos.load(Ordering::Acquire) - self.read_pos.load(Ordering::Acquire)
     }
     pub fn rong(&self) -> bool { self.quantity() == 0 }
     pub fn day(&self) -> bool { self.quantity() == N }
@@ -141,37 +141,37 @@ impl<T, const N: usize> DisruptorRing<T, N> {
     /// Gọi từ luồng SẢN XUẤT. Trả `Err` khi đầy — không bao giờ chặn,
     /// vì chặn trên đường nóng là điều cấm kỵ.
     pub fn push(&self, gt: T) -> Result<(), T> {
-        let record = self.pos_value_record.load(Ordering::Relaxed); // ta là bên duy nhất ghi nó
-        let doc = self.pos_value_read.load(Ordering::Acquire);
+        let record = self.write_pos.load(Ordering::Relaxed); // ta là bên duy nhất ghi nó
+        let doc = self.read_pos.load(Ordering::Acquire);
         if record - doc == N { return Err(gt); }
         unsafe { (*self.o.get())[Self::chi_so(record)] = Some(gt); }
         // Release: bảo đảm dữ liệu ghi xong TRƯỚC khi bên đọc thấy con trỏ mới
-        self.pos_value_record.store(record + 1, Ordering::Release);
+        self.write_pos.store(record + 1, Ordering::Release);
         Ok(())
     }
 
     /// Gọi từ luồng TIÊU THỤ.
     pub fn take(&self) -> Option<T> {
-        let doc = self.pos_value_read.load(Ordering::Relaxed);
-        let record = self.pos_value_record.load(Ordering::Acquire);
+        let doc = self.read_pos.load(Ordering::Relaxed);
+        let record = self.write_pos.load(Ordering::Acquire);
         if doc == record { return None; }
         let gt = unsafe { (*self.o.get())[Self::chi_so(doc)].take() };
-        self.pos_value_read.store(doc + 1, Ordering::Release);
+        self.read_pos.store(doc + 1, Ordering::Release);
         gt
     }
 
     /// Lấy cả LÔ — mấu chốt của thông lượng cao: một lần đồng bộ cho nhiều
     /// phần tử, nên chi phí hàng rào bộ nhớ được chia đều cho cả lô.
     pub fn lay_lo(&self, toi_da: usize, ra: &mut Vec<T>) -> usize {
-        let doc = self.pos_value_read.load(Ordering::Relaxed);
-        let record = self.pos_value_record.load(Ordering::Acquire);
+        let doc = self.read_pos.load(Ordering::Relaxed);
+        let record = self.write_pos.load(Ordering::Acquire);
         let n = (record - doc).min(toi_da);
         for i in 0..n {
             if let Some(x) = unsafe { (*self.o.get())[Self::chi_so(doc + i)].take() } {
                 ra.push(x);
             }
         }
-        if n > 0 { self.pos_value_read.store(doc + n, Ordering::Release); }
+        if n > 0 { self.read_pos.store(doc + n, Ordering::Release); }
         n
     }
 }
@@ -233,13 +233,13 @@ impl<T: Default + Clone> ObjectPool<T> {
 /// Trường được xếp theo kích thước GIẢM DẦN để trình biên dịch không phải đệm.
 #[derive(Clone, Copy, Default)]
 pub struct QuoteAoS {
-    pub price_buy: i64,
-    pub price_sell: i64,
+    pub bid_price: i64,
+    pub ask_price: i64,
     pub timestamp: u64,
     pub co: u64,
     pub id_chain: u32,
-    pub qty_buy: u32,
-    pub qty_sell: u32,
+    pub bid_qty: u32,
+    pub ask_qty: u32,
     pub count: u32,
 }
 
@@ -249,24 +249,24 @@ pub struct QuoteAoS {
 #[derive(Default)]
 pub struct QuoteTableSoA {
     pub id_chain: Vec<u32>,
-    pub price_buy: Vec<i64>,
-    pub price_sell: Vec<i64>,
-    pub qty_buy: Vec<u32>,
-    pub qty_sell: Vec<u32>,
+    pub bid_price: Vec<i64>,
+    pub ask_price: Vec<i64>,
+    pub bid_qty: Vec<u32>,
+    pub ask_qty: Vec<u32>,
     pub timestamp: Vec<u64>,
 }
 
 impl QuoteTableSoA {
     pub fn new(n: usize) -> Self {
         QuoteTableSoA {
-            id_chain: vec![0; n], price_buy: vec![0; n], price_sell: vec![0; n],
-            qty_buy: vec![0; n], qty_sell: vec![0; n], timestamp: vec![0; n],
+            id_chain: vec![0; n], bid_price: vec![0; n], ask_price: vec![0; n],
+            bid_qty: vec![0; n], ask_qty: vec![0; n], timestamp: vec![0; n],
         }
     }
     pub fn quantity(&self) -> usize { self.id_chain.len() }
 
-    /// Quét chỉ trường `price_buy` — đây là chỗ SoA thắng đậm.
-    pub fn total_price_buy(&self) -> i128 { self.price_buy.iter().map(|&x| x as i128).sum() }
+    /// Quét chỉ trường `bid_price` — đây là chỗ SoA thắng đậm.
+    pub fn total_price_buy(&self) -> i128 { self.bid_price.iter().map(|&x| x as i128).sum() }
 
     /// Số byte thực sự phải kéo từ RAM để quét một trường 8 byte.
     pub fn bytes_to_read_one_field(&self) -> usize { self.quantity() * 8 }
@@ -305,7 +305,7 @@ impl LatencyBudget {
 
 /// Sinh mẫu độ trễ tất định có ĐUÔI DÀI — giống hệt hệ thống thật:
 /// phần lớn nhanh, thỉnh thoảng một cú chậm gấp hàng trăm lần.
-pub fn gen_mau_latency(n: usize, hat_giong: u64) -> Vec<u64> {
+pub fn gen_latency_samples(n: usize, hat_giong: u64) -> Vec<u64> {
     let mut s = hat_giong;
     (0..n).map(|_| {
         s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -325,7 +325,7 @@ fn main() {
 
     println!("\n1. VÌ SAO TRUNG BÌNH LÀ CON SỐ VÔ DỤNG");
     let mut bd = LatencyHistogram::new();
-    for x in gen_mau_latency(1_000_000, 42) { bd.record(x); }
+    for x in gen_latency_samples(1_000_000, 42) { bd.record(x); }
     println!("   {}", bd.tom_tat());
     println!("   Trung bình {:.0} ns nghe rất đẹp…", bd.mean());
     println!("   …nhưng 1 trên 1000 lệnh rơi vào dải tới {} ns, và cú chậm nhất là {} ns",
@@ -336,11 +336,11 @@ fn main() {
 
     println!("\n2. CHIA SẺ GIẢ — kích thước quyết định tốc độ");
     println!("   BoDemChungDong: {} byte (hai bộ đếm CÙNG một dòng cache)",
-             std::mem::size_of::<SharedBuffer>());
+             std::mem::size_of::<SameLineCounters>());
     println!("   BoDemTachDong : {} byte (mỗi bộ đếm một dòng riêng)",
-             std::mem::size_of::<BufferSplitClose>());
+             std::mem::size_of::<SplitLineCounters>());
     println!("   → Tốn thêm {} byte để tránh ping-pong dòng cache giữa hai lõi.",
-             std::mem::size_of::<BufferSplitClose>() - std::mem::size_of::<SharedBuffer>());
+             std::mem::size_of::<SplitLineCounters>() - std::mem::size_of::<SameLineCounters>());
 
     println!("\n3. VÒNG ĐỆM DISRUPTOR");
     let v: DisruptorRing<u64, 1024> = DisruptorRing::new();
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn percentiles_are_monotonic() {
         let mut b = LatencyHistogram::new();
-        for x in gen_mau_latency(10_000, 7) { b.record(x); }
+        for x in gen_latency_samples(10_000, 7) { b.record(x); }
         let (p50, p90, p99, p999) = (b.percentile(0.5), b.percentile(0.9),
                                      b.percentile(0.99), b.percentile(0.999));
         assert!(p50 <= p90 && p90 <= p99 && p99 <= p999,
@@ -448,7 +448,7 @@ mod tests {
         // Đây là bài học trung tâm của chương: 99% mẫu ở 200–300 ns, nhưng
         // 0.1% ở 50 µs kéo trung bình lên và che mất phân bố thật.
         let mut b = LatencyHistogram::new();
-        for x in gen_mau_latency(100_000, 42) { b.record(x); }
+        for x in gen_latency_samples(100_000, 42) { b.record(x); }
 
         // Phân bố thật: p50 ≈ 250 ns, p99 ≈ 299 ns, p99.9 ≈ 2.5 µs, max ≈ 60 µs.
         // Chú ý p99 vẫn NHANH — phải soi tới p99.9 mới thấy dấu vết đuôi,
@@ -479,20 +479,20 @@ mod tests {
     // ---------- Chia sẻ giả ----------
     #[test]
     fn padded_counter_owns_a_whole_cache_line() {
-        assert_eq!(std::mem::size_of::<CountHasCount>(), DONG_CACHE);
-        assert_eq!(std::mem::align_of::<CountHasCount>(), DONG_CACHE,
+        assert_eq!(std::mem::size_of::<PaddedCounter>(), DONG_CACHE);
+        assert_eq!(std::mem::align_of::<PaddedCounter>(), DONG_CACHE,
                    "phải căn theo dòng cache, không chỉ đủ kích thước");
     }
 
     #[test]
     fn padded_counters_never_share_a_line() {
-        let b = BufferSplitClose { a: CountHasCount::new(), b: CountHasCount::new() };
+        let b = SplitLineCounters { a: PaddedCounter::new(), b: PaddedCounter::new() };
         let dc_a = &b.a as *const _ as usize;
         let dc_b = &b.b as *const _ as usize;
         assert!(dc_b - dc_a >= DONG_CACHE,
                 "hai bộ đếm cách nhau {} byte, phải ít nhất {}", dc_b - dc_a, DONG_CACHE);
         // Ngược lại, phiên bản không đệm thì chúng nằm sát nhau
-        let c = SharedBuffer { a: AtomicUsize::new(0), b: AtomicUsize::new(0) };
+        let c = SameLineCounters { a: AtomicUsize::new(0), b: AtomicUsize::new(0) };
         let ca = &c.a as *const _ as usize;
         let cb = &c.b as *const _ as usize;
         assert!(cb - ca < DONG_CACHE,
@@ -627,7 +627,7 @@ mod tests {
     #[test]
     fn soa_computes_the_correct_sum() {
         let mut t = QuoteTableSoA::new(5);
-        for i in 0..5 { t.price_buy[i] = (i as i64 + 1) * 100; }
+        for i in 0..5 { t.bid_price[i] = (i as i64 + 1) * 100; }
         assert_eq!(t.total_price_buy(), 100 + 200 + 300 + 400 + 500);
     }
 
@@ -692,13 +692,13 @@ mod tests {
     // ---------- Sinh mẫu ----------
     #[test]
     fn sample_generation_is_deterministic() {
-        assert_eq!(gen_mau_latency(100, 5), gen_mau_latency(100, 5));
-        assert_ne!(gen_mau_latency(100, 5), gen_mau_latency(100, 6));
+        assert_eq!(gen_latency_samples(100, 5), gen_latency_samples(100, 5));
+        assert_ne!(gen_latency_samples(100, 5), gen_latency_samples(100, 6));
     }
 
     #[test]
     fn samples_span_exactly_three_latency_bands() {
-        let m = gen_mau_latency(100_000, 1);
+        let m = gen_latency_samples(100_000, 1);
         let fast = m.iter().filter(|&&x| x < 1_000).count();
         let vua = m.iter().filter(|&&x| (1_000..10_000).contains(&x)).count();
         let cham = m.iter().filter(|&&x| x >= 10_000).count();

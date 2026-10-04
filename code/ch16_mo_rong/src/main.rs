@@ -11,7 +11,7 @@ pub struct SensorRecord {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ThongReportUnsafe {
+pub struct DangerAlert {
     pub fold_records: usize,
     pub content: String,
     pub level_do: String,
@@ -65,9 +65,9 @@ fn main() {
     println!("\n1. Tiến hành bù trừ sai số thiết bị qua .iter_mut():");
     raw_data
         .iter_mut()
-        .filter(|sell_record| sell_record.is_valid)
-        .for_each(|sell_record| {
-            sell_record.temp_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
+        .filter(|record| record.is_valid)
+        .for_each(|record| {
+            record.temp_c -= 0.5; // Trừ trực tiếp trên ô nhớ RAM
         });
     println!("-> Đã hiệu chỉnh sai số cho tất cả cảm biến hợp lệ thành công.");
 
@@ -108,11 +108,11 @@ fn main() {
     // Tạo danh sách cảnh báo khẩn cấp cho các cảm biến vượt ngưỡng (> 100°C)
     // ------------------------------------------------------------------------
     println!("\n4. Phát hiện nguy cơ và tổng hợp danh sách cảnh báo khẩn cấp:");
-    let list_edge_report: Vec<ThongReportUnsafe> = raw_data
+    let list_edge_report: Vec<DangerAlert> = raw_data
         .iter()
         .enumerate() // Cung cấp chỉ số thứ tự (0, 1, 2...) đi kèm với phần tử
         .filter(|(_, bg)| bg.is_valid && bg.temp_c > 100.0)
-        .map(|(chi_so, bg)| ThongReportUnsafe {
+        .map(|(chi_so, bg)| DangerAlert {
             fold_records: chi_so + 1,
             content: format!("Cảm biến [{}] vượt ngưỡng nhiệt độ: {:.2}°C", bg.ma_cam_bien, bg.temp_c),
             level_do: String::from("KHẨN CẤP"),

@@ -237,20 +237,20 @@ fn main() {
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 2: Giao ước FnMut - Bắt giữ tham chiếu sửa đổi (&mut T)
     // ------------------------------------------------------------------------
-    let mut total_amount_access_cap: usize = 0;
+    let mut total_traffic: usize = 0;
     let mut activity_log: Vec<String> = Vec::new();
 
-    // Closure tang_truy_cap mượn sửa đổi biến total_amount_access_cap và activity_log
+    // Closure tang_truy_cap mượn sửa đổi biến total_traffic và activity_log
     let record_view = |lan_lap: usize| {
-        total_amount_access_cap += 10;
+        total_traffic += 10;
         activity_log.push(format!("Đợt ghi nhận #{}: +10 yêu cầu", lan_lap));
-        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", total_amount_access_cap);
+        println!("  -> Đang tích lũy... Tổng lưu lượng hiện tại: {}", total_traffic);
     };
 
     // Thực thi 3 vòng lặp tích lũy
     exec_swap("Bộ đếm lưu lượng mạng", record_view, 3);
     println!("Kết quả sau khi kết thúc FnMut:");
-    println!("- Tổng lưu lượng cuối cùng: {}", total_amount_access_cap);
+    println!("- Tổng lưu lượng cuối cùng: {}", total_traffic);
     println!("- Chi tiết nhật ký: {:?}", activity_log);
 
     // ------------------------------------------------------------------------

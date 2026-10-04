@@ -3,10 +3,10 @@
 // Chương trình minh họa tư duy Lập trình hàm và Xây dựng Đường ống (Data Pipelines) trong Rust
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MatQueue {
+pub struct Item {
     pub ma_san_pham: String,
-    pub name_queue: String,
-    pub don_price: f64,
+    pub product_name: String,
+    pub unit_price: f64,
     pub quantity: u32,
     pub is_paid: bool,
 }
@@ -17,8 +17,8 @@ pub struct MatQueue {
 
 /// Hàm thuần túy: Tính thành tiền của một mặt hàng
 /// Nhận dữ liệu đầu vào và trả về giá trị mới, không thay đổi bất kỳ trạng thái nào
-pub fn to_money(queue: &MatQueue) -> f64 {
-    queue.don_price * (queue.quantity as f64)
+pub fn to_money(queue: &Item) -> f64 {
+    queue.unit_price * (queue.quantity as f64)
 }
 
 /// Hàm thuần túy: Áp dụng phiếu giảm giá tỷ lệ phần trăm
@@ -38,29 +38,29 @@ pub fn apply_down_price(tien_goc: f64, phan_tram_giam: f64) -> f64 {
 
 /// CÁCH 1: Phong cách Mệnh lệnh (Imperative)
 /// Dùng vòng lặp thủ công, biến cờ mut tạm thời, dễ xảy ra lỗi ngoài ý muốn
-pub fn xu_ly_menh_lenh(list: &[MatQueue]) -> (f64, Vec<String>) {
+pub fn xu_ly_menh_lenh(list: &[Item]) -> (f64, Vec<String>) {
     let mut tong_doanh_thu: f64 = 0.0;
-    let mut list_name: Vec<String> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
 
     // Vòng lặp thủ công với nhiều bước điều kiện lồng nhau
     for i in 0..list.len() {
         let queue = &list[i];
         // Chỉ xử lý các đơn hàng đã thanh toán và có giá trị trên 50.0
         if queue.is_paid {
-            let into_tien = to_money(queue);
-            if into_tien >= 50.0 {
-                tong_doanh_thu += into_tien;
-                list_name.push(queue.name_queue.clone());
+            let line_total = to_money(queue);
+            if line_total >= 50.0 {
+                tong_doanh_thu += line_total;
+                names.push(queue.product_name.clone());
             }
         }
     }
 
-    (tong_doanh_thu, list_name)
+    (tong_doanh_thu, names)
 }
 
 /// CÁCH 2: Phong cách Lập trình Hàm Khai báo (Declarative Pipeline)
 /// Dữ liệu chảy qua chuỗi lọc và ánh xạ, không dùng biến mut nào trong quá trình xử lý!
-pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
+pub fn handle_declaration(list: &[Item]) -> (f64, Vec<String>) {
     // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
     let tong_doanh_thu: f64 = list
         .iter()
@@ -70,13 +70,13 @@ pub fn handle_declaration(list: &[MatQueue]) -> (f64, Vec<String>) {
         .sum();                                        // Bước 4: Gom tụ tính tổng
 
     // 2. Nhánh trích xuất danh sách tên mặt hàng
-    let list_name: Vec<String> = list
+    let names: Vec<String> = list
         .iter()
         .filter(|queue| queue.is_paid && to_money(queue) >= 50.0)
-        .map(|queue| queue.name_queue.clone())             // Ánh xạ sang chuỗi tên
+        .map(|queue| queue.product_name.clone())             // Ánh xạ sang chuỗi tên
         .collect();                                    // Gom vào vector mới
 
-    (tong_doanh_thu, list_name)
+    (tong_doanh_thu, names)
 }
 
 fn main() {
@@ -85,32 +85,32 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo tập dữ liệu ban đầu bất biến
-    let gio_hang: Vec<MatQueue> = vec![
-        MatQueue {
+    let gio_hang: Vec<Item> = vec![
+        Item {
             ma_san_pham: String::from("SP-01"),
-            name_queue: String::from("Sổ tay Lập trình Rust"),
-            don_price: 45.0,
+            product_name: String::from("Sổ tay Lập trình Rust"),
+            unit_price: 45.0,
             quantity: 2,
             is_paid: true, // Thành tiền = 90.0 (Thỏa mãn >= 50)
         },
-        MatQueue {
+        Item {
             ma_san_pham: String::from("SP-02"),
-            name_queue: String::from("Bút bi kỹ thuật"),
-            don_price: 15.0,
+            product_name: String::from("Bút bi kỹ thuật"),
+            unit_price: 15.0,
             quantity: 1,
             is_paid: true, // Thành tiền = 15.0 (Bị loại do < 50)
         },
-        MatQueue {
+        Item {
             ma_san_pham: String::from("SP-03"),
-            name_queue: String::from("Bàn phím cơ không dây"),
-            don_price: 120.0,
+            product_name: String::from("Bàn phím cơ không dây"),
+            unit_price: 120.0,
             quantity: 1,
             is_paid: false, // Chưa thanh toán (Bị loại)
         },
-        MatQueue {
+        Item {
             ma_san_pham: String::from("SP-04"),
-            name_queue: String::from("Chuột công thái học"),
-            don_price: 75.0,
+            product_name: String::from("Chuột công thái học"),
+            unit_price: 75.0,
             quantity: 1,
             is_paid: true, // Thành tiền = 75.0 (Thỏa mãn >= 50)
         },

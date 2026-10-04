@@ -190,7 +190,7 @@ pub struct SessionEvent {
 /// Phiên đã ghi. Bất biến sống còn: `timestamp` không giảm.
 #[derive(Debug, Clone, Default)]
 pub struct RecordedSession {
-    pub all_event: Vec<SessionEvent>,
+    pub events: Vec<SessionEvent>,
 }
 
 impl RecordedSession {
@@ -201,28 +201,28 @@ impl RecordedSession {
     /// Từ chối sự kiện lùi thời gian thay vì im lặng sắp xếp lại — dữ liệu
     /// xếp sai thứ tự là lỗi thu thập, và giấu nó đi thì phát lại sẽ nói dối.
     pub fn record(&mut self, sk: SessionEvent) -> bool {
-        if let Some(last) = self.all_event.last() {
+        if let Some(last) = self.events.last() {
             if sk.timestamp < last.timestamp {
                 return false;
             }
         }
-        self.all_event.push(sk);
+        self.events.push(sk);
         true
     }
 
     pub fn event_count(&self) -> usize {
-        self.all_event.len()
+        self.events.len()
     }
 
     pub fn span_ns(&self) -> Nanos {
-        match (self.all_event.first(), self.all_event.last()) {
+        match (self.events.first(), self.events.last()) {
             (Some(a), Some(b)) => b.timestamp - a.timestamp,
             _ => 0,
         }
     }
 
     pub fn is_ordered(&self) -> bool {
-        self.all_event.windows(2).all(|w| w[0].timestamp <= w[1].timestamp)
+        self.events.windows(2).all(|w| w[0].timestamp <= w[1].timestamp)
     }
 }
 
@@ -531,11 +531,11 @@ impl LitVenue {
             if con <= 0 {
                 break;
             }
-            let swap_resp = match l.side {
+            let contra_side = match l.side {
                 Side::Buy => self.ban.iter().next().map(|(&g, &k)| (g, k)),
                 Side::Sell => self.buy.iter().next_back().map(|(&g, &k)| (g, k)),
             };
-            let (g, k) = match swap_resp {
+            let (g, k) = match contra_side {
                 Some(x) => x,
                 None => break,
             };
@@ -683,9 +683,9 @@ impl ChainVenue {
         }
         let (dt_vao, dt_ra) =
             if x_in { (self.reserve_x, self.reserve_y) } else { (self.reserve_y, self.reserve_x) };
-        let next_phi = amount_in * (10_000 - self.fee_bps as u128);
+        let after_fee = amount_in * (10_000 - self.fee_bps as u128);
         // Làm tròn LUÔN có lợi cho bể — đó là chủ ý, không phải cẩu thả.
-        Ok((next_phi * dt_ra) / (dt_vao * 10_000 + next_phi))
+        Ok((after_fee * dt_ra) / (dt_vao * 10_000 + after_fee))
     }
 
     pub fn swap(&mut self, x_in: bool, amount_in: u128, toi_thieu_ra: u128) -> Result<u128, SwapError> {
@@ -1011,19 +1011,19 @@ impl Strategy for ManagedMaker {
         let skew = ratio * self.skew_factor * self.target_spread as f64;
         let half = self.target_spread as f64 / 2.0;
 
-        let mut price_buy = (mid - half - skew).round() as Price;
-        let mut price_sell = (mid + half - skew).round() as Price;
+        let mut bid_price = (mid - half - skew).round() as Price;
+        let mut ask_price = (mid + half - skew).round() as Price;
 
         // KHÔNG BAO GIỜ cắt qua sổ. Một nhà tạo lập cắt giá sẽ TRẢ chênh lệch
         // thay vì THU nó — nó trở thành người chủ động, và toàn bộ mô hình kinh
         // doanh sụp đổ. Đây là ràng buộc, không phải tối ưu hoá.
         if let Some(b) = snap.lit_sell {
-            price_buy = price_buy.min(b.price - 1);
+            bid_price = bid_price.min(b.price - 1);
         }
         if let Some(m) = snap.lit_buy {
-            price_sell = price_sell.max(m.price + 1);
+            ask_price = ask_price.max(m.price + 1);
         }
-        if price_buy <= 0 || price_sell <= price_buy {
+        if bid_price <= 0 || ask_price <= bid_price {
             return Vec::new();
         }
 
@@ -1034,7 +1034,7 @@ impl Strategy for ManagedMaker {
             ra.push(Intent::Place {
                 san: Venue::Lit,
                 side: Side::Buy,
-                price: price_buy,
+                price: bid_price,
                 quantity: self.quantity,
             });
         }
@@ -1042,7 +1042,7 @@ impl Strategy for ManagedMaker {
             ra.push(Intent::Place {
                 san: Venue::Lit,
                 side: Side::Sell,
-                price: price_sell,
+                price: ask_price,
                 quantity: self.quantity,
             });
         }
@@ -1150,10 +1150,10 @@ impl LatencyHistogram {
             return 0;
         }
         let level = (self.samples as f64 * p).ceil() as u64;
-        let mut accum_ke = 0;
+        let mut cumulative = 0;
         for (&k, &c) in &self.thung {
-            accum_ke += c;
-            if accum_ke >= level {
+            cumulative += c;
+            if cumulative >= level {
                 return if k == 0 { 0 } else { 1u64 << (k - 1) };
             }
         }
@@ -1164,7 +1164,7 @@ impl LatencyHistogram {
 #[derive(Debug, Clone, Default)]
 pub struct Metrics {
     pub signal_to_order: LatencyHistogram,
-    pub intents: u64,
+    pub intent_count: u64,
     pub orders_sent: u64,
     pub orders_blocked: u64,
     pub fill_count: u64,
@@ -1179,10 +1179,10 @@ impl Metrics {
     }
 
     pub fn block_ratio(&self) -> f64 {
-        if self.intents == 0 {
+        if self.intent_count == 0 {
             0.0
         } else {
-            self.orders_blocked as f64 / self.intents as f64
+            self.orders_blocked as f64 / self.intent_count as f64
         }
     }
 
@@ -1425,7 +1425,7 @@ impl Ecosystem {
         let pnl = self.position.total_pnl(self.reference_price());
 
         for y in cac_y {
-            self.metrics.intents += 1;
+            self.metrics.intent_count += 1;
 
             // --- lệnh chính + phòng vệ theo khối lượng đã khớp ---
             if let Intent::PlaceHedged { san, side, price, quantity, hedge_on } = y {
@@ -1506,7 +1506,7 @@ impl Ecosystem {
 
     /// Chạy trọn một phiên. Đây là điểm mà mọi mảnh của chương 74–78 gặp nhau.
     pub fn run(&mut self, session: &RecordedSession, cac_chien_luoc: &mut [Box<dyn Strategy>]) {
-        for sk in &session.all_event {
+        for sk in &session.events {
             // 1. Thời gian tiến tới thời điểm sự kiện.
             if !self.clock.advance(sk.timestamp) {
                 continue;
@@ -1578,7 +1578,7 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
     let mut t: Nanos = 1_000_000_000;
     let mut id: OrderId = 1;
     let mut song: VecDeque<OrderId> = VecDeque::new();
-    let mut price_show = gia_neo;
+    let mut current_price = gia_neo;
     // Bản sao bể để chọn CHIỀU hoán đổi. Nó đại diện cho **phần còn lại của
     // thị trường**: những nhà chênh lệch khác liên tục kéo giá bể về sát sàn
     // truyền thống. Không có lực này, bể trôi tự do và mọi chiến lược chênh
@@ -1591,16 +1591,16 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
 
         // Bước ngẫu nhiên có neo: kéo giá về `gia_neo` để chuỗi không trôi mất.
         let step = (hash64(r) % 5) as Price - 2;
-        price_show = (price_show + step).max(gia_neo - 40).min(gia_neo + 40);
+        current_price = (current_price + step).max(gia_neo - 40).min(gia_neo + 40);
 
         let fast = r % 100;
         if fast < 8 {
             // Hoán đổi trên bể chuỗi khối. Chiều được chọn để KÉO giá bể về
             // phía giá sàn truyền thống, cộng thêm một phần nhiễu từ người
             // giao dịch thường.
-            let lech = pool.price_x() - price_show as f64;
-            let many = hash64(r ^ 0x5A5A) % 5 == 0; // 20% là nhiễu thuần
-            let x_in = if many { (r >> 8) % 2 == 0 } else { lech > 0.0 };
+            let lech = pool.price_x() - current_price as f64;
+            let noise = hash64(r ^ 0x5A5A) % 5 == 0; // 20% là nhiễu thuần
+            let x_in = if noise { (r >> 8) % 2 == 0 } else { lech > 0.0 };
             let kl = 1 + (hash64(r ^ 0xABC) % 500) as u128;
             let _ = pool.swap(x_in, kl, 0);
             p.record(SessionEvent {
@@ -1614,7 +1614,7 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
             p.record(SessionEvent {
                 timestamp: t,
                 san: Venue::Lit,
-                kind: EventKind::Traded { price: price_show, quantity: kl },
+                kind: EventKind::Traded { price: current_price, quantity: kl },
             });
         } else if song.len() >= 120 || (fast < 55 && song.len() > 20) {
             // Huỷ lệnh SỐNG CŨ NHẤT — mô phỏng đúng hành vi nhà tạo lập thật.
@@ -1626,12 +1626,12 @@ pub fn generate_session(event_count: usize, hat_giong: u64, gia_neo: Price) -> R
                 });
             }
         } else {
-            let side_buy = (r >> 16) % 2 == 0;
+            let is_buy = (r >> 16) % 2 == 0;
             let lech = 1 + (hash64(r ^ 0x777) % 6) as Price;
-            let (side, price) = if side_buy {
-                (Side::Buy, price_show - lech)
+            let (side, price) = if is_buy {
+                (Side::Buy, current_price - lech)
             } else {
-                (Side::Sell, price_show + lech)
+                (Side::Sell, current_price + lech)
             };
             let kl = 10 + (hash64(r ^ 0x999) % 90) as Quantity;
             p.record(SessionEvent {
@@ -1706,7 +1706,7 @@ fn main() {
     eco.run(&session, &mut cls);
 
     let m = &eco.metrics;
-    println!("   ý định sinh ra     : {}", m.intents);
+    println!("   ý định sinh ra     : {}", m.intent_count);
     println!("   lệnh gửi đi        : {}", m.orders_sent);
     println!("   bị cổng rủi ro chặn: {} ({:.1}%)", m.orders_blocked, m.block_ratio() * 100.0);
     println!("   số lần khớp        : {}", m.fill_count);
@@ -1821,8 +1821,8 @@ mod tests {
     #[test]
     fn session_covers_both_venues() {
         let p = generate_session(5_000, 7, 10_000);
-        let tt = p.all_event.iter().filter(|s| s.san == Venue::Lit).count();
-        let ck = p.all_event.iter().filter(|s| s.san == Venue::Chain).count();
+        let tt = p.events.iter().filter(|s| s.san == Venue::Lit).count();
+        let ck = p.events.iter().filter(|s| s.san == Venue::Chain).count();
         assert!(tt > 0 && ck > 0, "phiên phải phủ cả hai loại thị trường");
     }
 
@@ -1864,7 +1864,7 @@ mod tests {
         let mut has_cancel = LitVenue::new();
         let mut no_cancel = LitVenue::new();
         let p = generate_session(3_000, 42, 10_000);
-        for sk in &p.all_event {
+        for sk in &p.events {
             if sk.san != Venue::Lit {
                 continue;
             }
@@ -2302,7 +2302,7 @@ mod tests {
         let mut h = new_ecosystem();
         let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
         h.run(&p, &mut cls);
-        assert!(h.metrics.intents > 0, "chiến lược phải sinh ra ý định");
+        assert!(h.metrics.intent_count > 0, "chiến lược phải sinh ra ý định");
         assert!(h.metrics.orders_sent > 0, "phải có lệnh ra khỏi cổng rủi ro");
         assert!(h.metrics.fill_count > 0, "phải có lệnh được khớp");
     }
@@ -2432,7 +2432,7 @@ mod tests {
         let mut cls: Vec<Box<dyn Strategy>> = vec![Box::new(ManagedMaker::new(200))];
         h.run(&p, &mut cls);
         assert_eq!(h.order_log.len() as u64, h.metrics.orders_sent);
-        assert_eq!(h.metrics.intents, h.metrics.orders_sent + h.metrics.orders_blocked);
+        assert_eq!(h.metrics.intent_count, h.metrics.orders_sent + h.metrics.orders_blocked);
     }
 
     #[test]
@@ -2470,7 +2470,7 @@ mod tests {
                 ]
             };
             h.run(&p, &mut cls);
-            h.metrics.intents
+            h.metrics.intent_count
         };
         assert!(count(2) > count(1), "thêm chiến lược thì phải có thêm ý định");
     }

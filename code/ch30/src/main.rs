@@ -17,21 +17,21 @@ pub fn thong_ke_from_region(van_ban: &str) -> HashMap<String, usize> {
 /// PHẦN 2: CẤU TRÚC ĐỒ THỊ AN TOÀN VÀ THUẬT TOÁN BFS
 pub struct Graph {
     adjacency_list: Vec<Vec<usize>>,
-    name_all_peak: Vec<String>,
+    vertex_names: Vec<String>,
 }
 
 impl Graph {
     pub fn new() -> Self {
         Graph {
             adjacency_list: Vec::new(),
-            name_all_peak: Vec::new(),
+            vertex_names: Vec::new(),
         }
     }
 
     /// Thêm một đỉnh mới vào đồ thị và trả về chỉ số của đỉnh đó
-    pub fn add_peak(&mut self, name: &str) -> usize {
-        let chi_so = self.name_all_peak.len();
-        self.name_all_peak.push(name.to_string());
+    pub fn add_vertex(&mut self, name: &str) -> usize {
+        let chi_so = self.vertex_names.len();
+        self.vertex_names.push(name.to_string());
         self.adjacency_list.push(Vec::new());
         chi_so
     }
@@ -75,7 +75,7 @@ impl Graph {
     }
 
     pub fn lay_ten(&self, chi_so: usize) -> &str {
-        &self.name_all_peak[chi_so]
+        &self.vertex_names[chi_so]
     }
 }
 
@@ -130,11 +130,11 @@ fn main() {
     // 2. Kiểm thử Mạng lưới Đồ thị và Thuật toán BFS
     println!("\n[2] Mô phỏng mạng xã hội kết nối bạn bè bằng Đồ thị & BFS:");
     let mut array_remote_hoi = Graph::new();
-    let an = array_remote_hoi.add_peak("An");       // Đỉnh 0
-    let binh = array_remote_hoi.add_peak("Bình");   // Đỉnh 1
-    let chi = array_remote_hoi.add_peak("Chi");     // Đỉnh 2
-    let dung = array_remote_hoi.add_peak("Dũng");   // Đỉnh 3
-    let hoa = array_remote_hoi.add_peak("Hoa");     // Đỉnh 4 (ở xa)
+    let an = array_remote_hoi.add_vertex("An");       // Đỉnh 0
+    let binh = array_remote_hoi.add_vertex("Bình");   // Đỉnh 1
+    let chi = array_remote_hoi.add_vertex("Chi");     // Đỉnh 2
+    let dung = array_remote_hoi.add_vertex("Dũng");   // Đỉnh 3
+    let hoa = array_remote_hoi.add_vertex("Hoa");     // Đỉnh 4 (ở xa)
 
     // Thiết lập các mối quan hệ bạn bè (Cạnh)
     // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
@@ -213,10 +213,10 @@ mod tests {
     #[test]
     fn bfs_finds_shortest_path() {
         let mut g = Graph::new();
-        let a = g.add_peak("A");
-        let b = g.add_peak("B");
-        let c = g.add_peak("C");
-        let d = g.add_peak("D");
+        let a = g.add_vertex("A");
+        let b = g.add_vertex("B");
+        let c = g.add_vertex("C");
+        let d = g.add_vertex("D");
         g.add_edge(a, b);
         g.add_edge(b, c);
         g.add_edge(a, d);
@@ -228,8 +228,8 @@ mod tests {
     #[test]
     fn bfs_reports_no_path() {
         let mut g = Graph::new();
-        let a = g.add_peak("A");
-        let b = g.add_peak("B"); // cô lập
+        let a = g.add_vertex("A");
+        let b = g.add_vertex("B"); // cô lập
         assert_eq!(g.bfs_shortest_distance(a, b), None);
     }
 }

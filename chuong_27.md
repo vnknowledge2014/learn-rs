@@ -175,15 +175,15 @@ struct Nut<T> {
 }
 
 /// Cấu trúc Danh sách liên kết đơn (Singly Linked List)
-pub struct ListLienLink<T> {
+pub struct LinkedList<T> {
     peak: Option<Box<Nut<T>>>,
     length: usize,
 }
 
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Khởi tạo một danh sách liên kết rỗng
     pub fn new() -> Self {
-        ListLienLink {
+        LinkedList {
             peak: None,
             length: 0,
         }
@@ -233,7 +233,7 @@ impl<T> ListLienLink<T> {
 
 /// Cài đặt hàm hủy bộ nhớ an toàn (Safe Drop)
 /// Sử dụng vòng lặp tuần tự thay vì đệ quy để triệt tiêu nguy cơ tràn ngăn xếp (Stack Overflow)
-impl<T> Drop for ListLienLink<T> {
+impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
         let mut current_node = self.peak.take();
         // Lặp tuần tự gỡ từng Box trên Heap đưa vào biến cục bộ rồi giải phóng
@@ -245,7 +245,7 @@ impl<T> Drop for ListLienLink<T> {
 }
 
 // Cài đặt Default trait chuẩn phong cách Rust
-impl<T> Default for ListLienLink<T> {
+impl<T> Default for LinkedList<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -256,7 +256,7 @@ fn main() {
     println!("     HIỆN THỰC DANH SÁCH LIÊN KẾT & SMART POINTERS TRONG RUST");
     println!("============================================================");
 
-    let mut list: ListLienLink<i32> = ListLienLink::new();
+    let mut list: LinkedList<i32> = LinkedList::new();
     println!("Khởi tạo danh sách rỗng: len = {}", list.len());
     assert!(list.is_empty());
 
@@ -295,7 +295,7 @@ fn main() {
     // 3. Kiểm thử khả năng chịu tải chống tràn ngăn xếp (Drop 100.000 phần tử)
     println!("\n[3] Kiểm thử độ bền của hàm hủy Drop an toàn:");
     {
-        let mut long_list = ListLienLink::new();
+        let mut long_list = LinkedList::new();
         for i in 0..100_000 {
             long_list.push_front(i);
         }
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn push_pop_is_lifo_at_head() {
-        let mut list: ListLienLink<i32> = ListLienLink::new();
+        let mut list: LinkedList<i32> = LinkedList::new();
         assert!(list.is_empty());
         list.push_front(1);
         list.push_front(2);
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn new_list_is_empty() {
-        let list: ListLienLink<String> = ListLienLink::new();
+        let list: LinkedList<String> = LinkedList::new();
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
         assert_eq!(list.peek_front(), None);
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn dropping_long_list_does_not_overflow_stack() {
         // Bằng chứng cho mục "Drop lặp thay vì đệ quy": 1 triệu nút không sập.
-        let mut list: ListLienLink<u32> = ListLienLink::new();
+        let mut list: LinkedList<u32> = LinkedList::new();
         for i in 0..1_000_000 {
             list.push_front(i);
         }
@@ -408,7 +408,7 @@ mod tests {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Bộ đếm phần tử)**:  
-   Không sử dụng trường `length`, hãy viết thêm một phương thức `fn dem_phan_tu_thu_cong(&self) -> usize` cho `ListLienLink`. Phương thức này sử dụng một con trỏ tham chiếu chạy từ đỉnh duyệt lần lượt qua từng nút cho đến khi gặp `None` để đếm tổng số nút. Phân tích độ phức tạp thời gian của phương thức này ($O(N)$).
+   Không sử dụng trường `length`, hãy viết thêm một phương thức `fn dem_phan_tu_thu_cong(&self) -> usize` cho `LinkedList`. Phương thức này sử dụng một con trỏ tham chiếu chạy từ đỉnh duyệt lần lượt qua từng nút cho đến khi gặp `None` để đếm tổng số nút. Phân tích độ phức tạp thời gian của phương thức này ($O(N)$).
 2. **Bài tập 2 (Tìm kiếm giá trị)**:  
    Cài đặt phương thức `fn chua_phan_tu(&self, value: &T) -> bool` kiểm tra xem một giá trị có tồn tại trong danh sách liên kết hay không (với điều kiện `T: PartialEq`).
 3. **Bài tập 3 (Tư duy con trỏ thông minh)**:  
@@ -428,7 +428,7 @@ Dùng một biến `&Option<Box<Nut<T>>>` chạy dọc danh sách. Mỗi vòng l
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
 ```rust
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Đếm bằng cách DUYỆT, không đọc trường `length`.
     /// Độ phức tạp O(N): phải chạm từng nút đúng một lần.
     pub fn dem_phan_tu_thu_cong(&self) -> usize {
@@ -444,12 +444,12 @@ impl<T> ListLienLink<T> {
 
 #[test]
 fn dem_thu_cong_khop_voi_len() {
-    let mut ds = ListLienLink::new();
+    let mut ds = LinkedList::new();
     for i in 0..5 { ds.push_front(i); }
     assert_eq!(ds.dem_phan_tu_thu_cong(), 5);
     assert_eq!(ds.dem_phan_tu_thu_cong(), ds.len());
 
-    let rong: ListLienLink<i32> = ListLienLink::new();
+    let rong: LinkedList<i32> = LinkedList::new();
     assert_eq!(rong.dem_phan_tu_thu_cong(), 0);
 }
 ```
@@ -467,7 +467,7 @@ Duyệt giống bài 1, nhưng so sánh giá trị mỗi nút. Cần ràng buộ
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-impl<T: PartialEq> ListLienLink<T> {
+impl<T: PartialEq> LinkedList<T> {
     pub fn chua_phan_tu(&self, value: &T) -> bool {
         let mut hien_tai = &self.peak;
         while let Some(nut) = hien_tai {
@@ -482,19 +482,19 @@ impl<T: PartialEq> ListLienLink<T> {
 
 #[test]
 fn tim_thay_va_khong_tim_thay() {
-    let mut ds = ListLienLink::new();
+    let mut ds = LinkedList::new();
     ds.push_front("b");
     ds.push_front("a");
     assert!(ds.chua_phan_tu(&"a"));
     assert!(ds.chua_phan_tu(&"b"));
     assert!(!ds.chua_phan_tu(&"z"));
 
-    let rong: ListLienLink<i32> = ListLienLink::new();
+    let rong: LinkedList<i32> = LinkedList::new();
     assert!(!rong.chua_phan_tu(&1));
 }
 ```
 
-Chú ý `impl<T: PartialEq>` là một khối **riêng**, không gộp vào `impl<T>`. Nhờ vậy `ListLienLink<T>` vẫn dùng được với kiểu `T` không so sánh bằng — chỉ có mỗi `chua_phan_tu` là không gọi được. Đây là cách Rust cho phép "tính năng có điều kiện" mà không hy sinh tính tổng quát.
+Chú ý `impl<T: PartialEq>` là một khối **riêng**, không gộp vào `impl<T>`. Nhờ vậy `LinkedList<T>` vẫn dùng được với kiểu `T` không so sánh bằng — chỉ có mỗi `chua_phan_tu` là không gọi được. Đây là cách Rust cho phép "tính năng có điều kiện" mà không hy sinh tính tổng quát.
 </details>
 
 <details>

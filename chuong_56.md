@@ -82,10 +82,10 @@ Hệ quả thực hành rất cụ thể: sau khi đã chọn được các mẩ
 Một tác tử không "biết làm mọi thứ". Nó chỉ làm được đúng những gì bạn **cấp công cụ**. Tập công cụ đó gọi là **bộ khung (harness)**, và trong Rust nó được biểu diễn tự nhiên bằng `trait`:
 
 ```rust
-pub trait LegacyTool {
+pub trait Tool {
     fn name(&self) -> &str;
     fn description(&self) -> &str;              // phần này nạp vào ngữ cảnh cho mô hình đọc
-    fn run(&self, param: &str) -> LegacyToolResult;
+    fn run(&self, param: &str) -> ToolResult;
 }
 ```
 
@@ -93,7 +93,7 @@ Ba nguyên tắc thiết kế bộ khung:
 
 1. **Mô tả công cụ chính là giao diện người dùng của tác tử.** Mô hình chỉ biết công cụ qua phần `description`. Viết mô tả mơ hồ thì tác tử gọi sai — đây là "lỗi giao diện", không phải "lỗi mô hình".
 2. **Danh sách trắng, không phải danh sách đen.** Tác tử chỉ gọi được thứ đã đăng ký; mọi thứ khác trả lỗi. Trong mã dưới đây, `khung.goi("xoa_o_cung", "/")` **luôn** thất bại vì công cụ đó chưa từng được đăng ký.
-3. **Trả lỗi có nội dung, đừng panic.** `LegacyToolResult::Loi("\"x\" không phải số")` cho tác tử cơ hội **tự sửa** ở lượt sau. Một `panic!` thì giết cả tiến trình.
+3. **Trả lỗi có nội dung, đừng panic.** `ToolResult::Loi("\"x\" không phải số")` cho tác tử cơ hội **tự sửa** ở lượt sau. Một `panic!` thì giết cả tiến trình.
 
 > Đây chính là kiến trúc "lõi thuần túy — vỏ mệnh lệnh" ở Chương 20, áp dụng vào AI: bộ khung là **vỏ** kiểm soát mọi tác dụng phụ, còn logic quyết định là **lõi**.
 
@@ -146,7 +146,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Một mẩu ngữ cảnh có thể nạp vào cửa sổ của mô hình.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EdgePattern {
+pub struct ContextChunk {
     pub nhan: String,
     pub content: String,
     pub token: usize,
@@ -158,8 +158,8 @@ pub struct EdgePattern {
 
 /// Kết quả sau khi cắt gọt theo ngân sách.
 #[derive(Debug, PartialEq)]
-pub struct EdgeCall {
-    pub all_mau: Vec<EdgePattern>,
+pub struct ContextPack {
+    pub chunks: Vec<ContextChunk>,
     pub tong_token: usize,
     pub samples_is_kind: usize,
 }
@@ -167,13 +167,13 @@ pub struct EdgeCall {
 /// CONTEXT ENGINEERING: chọn tập con ngữ cảnh tốt nhất trong ngân sách token.
 /// Đây là bài toán xếp ba lô (knapsack) đơn giản hóa: ưu tiên điểm liên quan
 /// trên mỗi token, và luôn giữ các mẩu bị ghim.
-pub fn close_edge_call(mut mau: Vec<EdgePattern>, ngan_sach: usize) -> EdgeCall {
+pub fn pack_context(mut mau: Vec<ContextChunk>, ngan_sach: usize) -> ContextPack {
     let first_total_sell = mau.len();
 
     // 1. Tách phần ghim cứng — luôn được nạp trước
     let (ghim, mut tuy_chon): (Vec<_>, Vec<_>) = mau.drain(..).partition(|m| m.ghim);
     let mut da_dung: usize = ghim.iter().map(|m| m.token).sum();
-    let mut pick: Vec<EdgePattern> = ghim;
+    let mut pick: Vec<ContextChunk> = ghim;
 
     // 2. Xếp phần còn lại theo MẬT ĐỘ giá trị (liên quan / token) giảm dần
     tuy_chon.sort_by(|a, b| {
@@ -194,22 +194,22 @@ pub fn close_edge_call(mut mau: Vec<EdgePattern>, ngan_sach: usize) -> EdgeCall 
     // 4. "Lost in the middle": đặt mẩu quan trọng nhất ở ĐẦU và CUỐI
     pick = forgetting_resistant_sort(pick);
 
-    EdgeCall {
+    ContextPack {
         tong_token: da_dung,
         samples_is_kind: first_total_sell - pick.len(),
-        all_mau: pick,
+        chunks: pick,
     }
 }
 
 /// Chống hiện tượng "Lost in the Middle": mô hình nhớ tốt phần đầu và phần cuối,
 /// hay quên phần giữa. Vậy hãy đẩy thứ quan trọng nhất ra hai đầu.
-pub fn forgetting_resistant_sort(mut mau: Vec<EdgePattern>) -> Vec<EdgePattern> {
+pub fn forgetting_resistant_sort(mut mau: Vec<ContextChunk>) -> Vec<ContextChunk> {
     mau.sort_by(|a, b| {
         b.lien_quan.partial_cmp(&a.lien_quan).unwrap_or(std::cmp::Ordering::Equal)
             .then(a.nhan.cmp(&b.nhan))
     });
-    let mut first: Vec<EdgePattern> = Vec::new();
-    let mut last: Vec<EdgePattern> = Vec::new();
+    let mut first: Vec<ContextChunk> = Vec::new();
+    let mut last: Vec<ContextChunk> = Vec::new();
     for (i, m) in mau.into_iter().enumerate() {
         if i % 2 == 0 { first.push(m) } else { last.push(m) }
     }
@@ -223,73 +223,73 @@ pub fn forgetting_resistant_sort(mut mau: Vec<EdgePattern>) -> Vec<EdgePattern> 
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LegacyToolResult {
+pub enum ToolResult {
     Finished(String),
     Failed(String),
 }
 
 /// Một CÔNG CỤ mà tác tử được phép gọi. Đây chính là "harness":
 /// bạn định nghĩa tác tử ĐƯỢC LÀM GÌ, và mọi thứ khác đều bị cấm.
-pub trait LegacyTool {
+pub trait Tool {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
-    fn run(&self, param: &str) -> LegacyToolResult;
+    fn run(&self, param: &str) -> ToolResult;
 }
 
-pub struct LegacyComputeTool;
-impl LegacyTool for LegacyComputeTool {
+pub struct CalculatorTool;
+impl Tool for CalculatorTool {
     fn name(&self) -> &str { "sum_all" }
     fn description(&self) -> &str { "Cộng các số cách nhau bởi dấu phẩy. Ví dụ: \"3,4,5\"" }
-    fn run(&self, param: &str) -> LegacyToolResult {
+    fn run(&self, param: &str) -> ToolResult {
         let mut tong: i64 = 0;
         for part in param.split(',') {
             match part.trim().parse::<i64>() {
                 Ok(n) => tong += n,
-                Err(_) => return LegacyToolResult::Failed(format!("{:?} không phải số", part.trim())),
+                Err(_) => return ToolResult::Failed(format!("{:?} không phải số", part.trim())),
             }
         }
-        LegacyToolResult::Finished(tong.to_string())
+        ToolResult::Finished(tong.to_string())
     }
 }
 
 pub struct LookupTool {
     pub store: HashMap<String, String>,
 }
-impl LegacyTool for LookupTool {
+impl Tool for LookupTool {
     fn name(&self) -> &str { "tra_cuu" }
     fn description(&self) -> &str { "Tra cứu định nghĩa một thuật ngữ trong kho tri thức." }
-    fn run(&self, param: &str) -> LegacyToolResult {
+    fn run(&self, param: &str) -> ToolResult {
         match self.store.get(param.trim()) {
-            Some(v) => LegacyToolResult::Finished(v.clone()),
-            None => LegacyToolResult::Failed(format!("Không tìm thấy {:?}", param.trim())),
+            Some(v) => ToolResult::Finished(v.clone()),
+            None => ToolResult::Failed(format!("Không tìm thấy {:?}", param.trim())),
         }
     }
 }
 
 /// Bộ khung (harness) giữ danh mục công cụ và ÁP ĐẶT GIỚI HẠN.
-pub struct UnitFrame {
-    legacy_tool: Vec<Box<dyn LegacyTool>>,
+pub struct Harness {
+    tools: Vec<Box<dyn Tool>>,
     pub so_lan_goi_toi_da: usize,
 }
 
-impl UnitFrame {
+impl Harness {
     pub fn new(so_lan_goi_toi_da: usize) -> Self {
-        UnitFrame { legacy_tool: Vec::new(), so_lan_goi_toi_da }
+        Harness { tools: Vec::new(), so_lan_goi_toi_da }
     }
-    pub fn register(mut self, cc: Box<dyn LegacyTool>) -> Self {
-        self.legacy_tool.push(cc);
+    pub fn register(mut self, cc: Box<dyn Tool>) -> Self {
+        self.tools.push(cc);
         self
     }
     /// Bản mô tả công cụ để nhét vào ngữ cảnh — đây là "giao diện" tác tử nhìn thấy.
     pub fn legacy_open_gate(&self) -> String {
-        self.legacy_tool.iter()
+        self.tools.iter()
             .map(|c| format!("- {}: {}", c.name(), c.description()))
             .collect::<Vec<_>>().join("\n")
     }
-    pub fn goi(&self, name: &str, param: &str) -> LegacyToolResult {
-        match self.legacy_tool.iter().find(|c| c.name() == name) {
+    pub fn goi(&self, name: &str, param: &str) -> ToolResult {
+        match self.tools.iter().find(|c| c.name() == name) {
             Some(c) => c.run(param),
-            None => LegacyToolResult::Failed(format!("Công cụ {:?} không tồn tại trong bộ khung", name)),
+            None => ToolResult::Failed(format!("Công cụ {:?} không tồn tại trong bộ khung", name)),
         }
     }
 }
@@ -299,15 +299,15 @@ impl UnitFrame {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExecClose {
+pub enum Action {
     CallTool { name: String, param: String },
     Answer(String),
 }
 
 /// Bộ não của tác tử. Trong thực tế đây là lời gọi tới mô hình ngôn ngữ;
 /// ở đây ta dùng một bản GIẢ TẤT ĐỊNH để chương trình kiểm thử được.
-pub trait UnitWhich {
-    fn decide(&self, nhiem_vu: &str, history: &[String]) -> ExecClose;
+pub trait Brain {
+    fn decide(&self, nhiem_vu: &str, history: &[String]) -> Action;
 }
 
 #[derive(Debug, PartialEq)]
@@ -318,50 +318,50 @@ pub enum StopReason {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ResultRoundLoop {
-    pub return_error: Option<String>,
-    pub num_step: usize,
+pub struct LoopResult {
+    pub answer: Option<String>,
+    pub num_steps: usize,
     pub stop_reason: StopReason,
-    pub order_log: Vec<String>,
+    pub log: Vec<String>,
 }
 
 /// LOOP ENGINEERING: vòng lặp tác tử với BA điều kiện dừng bắt buộc.
 /// Một vòng lặp thiếu điều kiện dừng là một hóa đơn API không giới hạn.
-pub fn run_round_loop(nhiem_vu: &str, which: &dyn UnitWhich, frame: &UnitFrame) -> ResultRoundLoop {
+pub fn run_agent_loop(nhiem_vu: &str, which: &dyn Brain, frame: &Harness) -> LoopResult {
     let mut history: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
     for step in 1..=frame.so_lan_goi_toi_da {
         match which.decide(nhiem_vu, &history) {
-            ExecClose::Answer(t) => {
+            Action::Answer(t) => {
                 history.push(format!("[{}] TRẢ LỜI: {}", step, t));
-                return ResultRoundLoop {
-                    return_error: Some(t), num_step: step,
-                    stop_reason: StopReason::Done, order_log: history,
+                return LoopResult {
+                    answer: Some(t), num_steps: step,
+                    stop_reason: StopReason::Done, log: history,
                 };
             }
-            ExecClose::CallTool { name, param } => {
+            Action::CallTool { name, param } => {
                 // DỪNG #3: phát hiện lặp vô hạn (gọi y hệt lần trước)
                 let first_van_manual = format!("{}::{}", name, param);
                 if !seen.insert(first_van_manual.clone()) {
                     history.push(format!("[{}] PHÁT HIỆN LẶP: {}", step, first_van_manual));
-                    return ResultRoundLoop {
-                        return_error: None, num_step: step,
-                        stop_reason: StopReason::LapVoHan, order_log: history,
+                    return LoopResult {
+                        answer: None, num_steps: step,
+                        stop_reason: StopReason::LapVoHan, log: history,
                     };
                 }
                 let kq = frame.goi(&name, &param);
                 history.push(match kq {
-                    LegacyToolResult::Finished(v) => format!("[{}] {}({}) -> {}", step, name, param, v),
-                    LegacyToolResult::Failed(e) => format!("[{}] {}({}) -> LỖI: {}", step, name, param, e),
+                    ToolResult::Finished(v) => format!("[{}] {}({}) -> {}", step, name, param, v),
+                    ToolResult::Failed(e) => format!("[{}] {}({}) -> LỖI: {}", step, name, param, e),
                 });
             }
         }
     }
     // DỪNG #2: hết ngân sách lượt gọi
-    ResultRoundLoop {
-        return_error: None, num_step: frame.so_lan_goi_toi_da,
-        stop_reason: StopReason::HetLuotGoi, order_log: history,
+    LoopResult {
+        answer: None, num_steps: frame.so_lan_goi_toi_da,
+        stop_reason: StopReason::HetLuotGoi, log: history,
     }
 }
 
@@ -371,14 +371,14 @@ pub fn run_round_loop(nhiem_vu: &str, which: &dyn UnitWhich, frame: &UnitFrame) 
 
 /// Đồ thị tri thức: các thực thể nối với nhau bằng quan hệ có nhãn.
 /// Đây là nền của GraphRAG — truy xuất theo QUAN HỆ, không chỉ theo từ khóa.
-pub struct RealValueGraph {
+pub struct KnowledgeGraph {
     edge: HashMap<String, Vec<(String, String)>>, // đỉnh -> [(nhãn quan hệ, đỉnh đích)]
     description: HashMap<String, String>,
 }
 
-impl RealValueGraph {
+impl KnowledgeGraph {
     pub fn new() -> Self {
-        RealValueGraph { edge: HashMap::new(), description: HashMap::new() }
+        KnowledgeGraph { edge: HashMap::new(), description: HashMap::new() }
     }
     pub fn add_entity(&mut self, name: &str, description: &str) {
         self.description.insert(name.to_string(), description.to_string());
@@ -425,15 +425,15 @@ impl RealValueGraph {
 
 /// Bộ não giả: quyết định dựa trên luật cố định, nên chương trình TẤT ĐỊNH
 /// và kiểm thử được — không cần khóa API, không cần mạng.
-pub struct UnitWhichPrice {
-    pub size_sell: Vec<ExecClose>,
+pub struct FakeBrain {
+    pub scenarios: Vec<Action>,
 }
-impl UnitWhich for UnitWhichPrice {
-    fn decide(&self, _nhiem_vu: &str, history: &[String]) -> ExecClose {
-        self.size_sell
+impl Brain for FakeBrain {
+    fn decide(&self, _nhiem_vu: &str, history: &[String]) -> Action {
+        self.scenarios
             .get(history.len())
             .cloned()
-            .unwrap_or_else(|| ExecClose::Answer("Hết kịch bản".to_string()))
+            .unwrap_or_else(|| Action::Answer("Hết kịch bản".to_string()))
     }
 }
 
@@ -445,15 +445,15 @@ fn main() {
     // ---- 1. CONTEXT ENGINEERING ----
     println!("\n1. KỸ NGHỆ NGỮ CẢNH — nhồi 4000 token vào cửa sổ 1000 token");
     let mau = vec![
-        EdgePattern { nhan: "quy_tac_an_toan".into(), content: "Không tiết lộ khóa bí mật".into(), token: 50, lien_quan: 0.3, ghim: true },
-        EdgePattern { nhan: "tai_lieu_A".into(), content: "...".into(), token: 800, lien_quan: 0.9, ghim: false },
-        EdgePattern { nhan: "tai_lieu_B".into(), content: "...".into(), token: 200, lien_quan: 0.85, ghim: false },
-        EdgePattern { nhan: "tai_lieu_C".into(), content: "...".into(), token: 2000, lien_quan: 0.95, ghim: false },
-        EdgePattern { nhan: "lich_su_chat_cu".into(), content: "...".into(), token: 900, lien_quan: 0.1, ghim: false },
+        ContextChunk { nhan: "quy_tac_an_toan".into(), content: "Không tiết lộ khóa bí mật".into(), token: 50, lien_quan: 0.3, ghim: true },
+        ContextChunk { nhan: "tai_lieu_A".into(), content: "...".into(), token: 800, lien_quan: 0.9, ghim: false },
+        ContextChunk { nhan: "tai_lieu_B".into(), content: "...".into(), token: 200, lien_quan: 0.85, ghim: false },
+        ContextChunk { nhan: "tai_lieu_C".into(), content: "...".into(), token: 2000, lien_quan: 0.95, ghim: false },
+        ContextChunk { nhan: "lich_su_chat_cu".into(), content: "...".into(), token: 900, lien_quan: 0.1, ghim: false },
     ];
-    let goi = close_edge_call(mau, 1000);
+    let goi = pack_context(mau, 1000);
     println!("   Dùng {} / 1000 token, loại bỏ {} mẩu", goi.tong_token, goi.samples_is_kind);
-    for m in &goi.all_mau {
+    for m in &goi.chunks {
         println!("     [{:>4} tok · lq {:.2}{}] {}", m.token, m.lien_quan,
                  if m.ghim { " · GHIM" } else { "" }, m.nhan);
     }
@@ -464,31 +464,31 @@ fn main() {
     println!("\n2-3. BỘ KHUNG & VÒNG LẶP TÁC TỬ");
     let mut store = HashMap::new();
     store.insert("Rust".to_string(), "Ngôn ngữ hệ thống an toàn bộ nhớ".to_string());
-    let frame = UnitFrame::new(5)
-        .register(Box::new(LegacyComputeTool))
+    let frame = Harness::new(5)
+        .register(Box::new(CalculatorTool))
         .register(Box::new(LookupTool { store }));
     println!("   Công cụ tác tử được phép dùng:\n{}", frame.legacy_open_gate());
 
-    let which = UnitWhichPrice { size_sell: vec![
-        ExecClose::CallTool { name: "tra_cuu".into(), param: "Rust".into() },
-        ExecClose::CallTool { name: "sum_all".into(), param: "10,20,12".into() },
-        ExecClose::Answer("Rust là ngôn ngữ hệ thống; tổng là 42.".into()),
+    let which = FakeBrain { scenarios: vec![
+        Action::CallTool { name: "tra_cuu".into(), param: "Rust".into() },
+        Action::CallTool { name: "sum_all".into(), param: "10,20,12".into() },
+        Action::Answer("Rust là ngôn ngữ hệ thống; tổng là 42.".into()),
     ]};
-    let kq = run_round_loop("Tra cứu Rust rồi cộng 10+20+12", &which, &frame);
-    for d in &kq.order_log { println!("   {}", d); }
-    println!("   Dừng vì: {:?} sau {} bước", kq.stop_reason, kq.num_step);
+    let kq = run_agent_loop("Tra cứu Rust rồi cộng 10+20+12", &which, &frame);
+    for d in &kq.log { println!("   {}", d); }
+    println!("   Dừng vì: {:?} sau {} bước", kq.stop_reason, kq.num_steps);
 
     // Vòng lặp hỏng: tác tử lặp mãi một lời gọi
-    let which_link = UnitWhichPrice { size_sell: vec![
-        ExecClose::CallTool { name: "tra_cuu".into(), param: "X".into() },
-        ExecClose::CallTool { name: "tra_cuu".into(), param: "X".into() },
+    let which_link = FakeBrain { scenarios: vec![
+        Action::CallTool { name: "tra_cuu".into(), param: "X".into() },
+        Action::CallTool { name: "tra_cuu".into(), param: "X".into() },
     ]};
-    let kq2 = run_round_loop("nhiệm vụ hỏng", &which_link, &frame);
-    println!("   [Tác tử kẹt] dừng vì: {:?} sau {} bước", kq2.stop_reason, kq2.num_step);
+    let kq2 = run_agent_loop("nhiệm vụ hỏng", &which_link, &frame);
+    println!("   [Tác tử kẹt] dừng vì: {:?} sau {} bước", kq2.stop_reason, kq2.num_steps);
 
     // ---- 4. GRAPH ENGINEERING ----
     println!("\n4. ĐỒ THỊ TRI THỨC — truy xuất lan tỏa 2 bước");
-    let mut g = RealValueGraph::new();
+    let mut g = KnowledgeGraph::new();
     g.add_entity("DonHang", "Đơn hàng của khách");
     g.add_entity("KhachHang", "Người mua");
     g.add_entity("ThanhToan", "Giao dịch trừ tiền");
@@ -512,16 +512,16 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn mau(nhan: &str, token: usize, lq: f64, ghim: bool) -> EdgePattern {
-        EdgePattern { nhan: nhan.into(), content: "x".into(), token, lien_quan: lq, ghim }
+    fn mau(nhan: &str, token: usize, lq: f64, ghim: bool) -> ContextChunk {
+        ContextChunk { nhan: nhan.into(), content: "x".into(), token, lien_quan: lq, ghim }
     }
 
     #[test]
     fn context_never_exceeds_budget() {
         let list = vec![mau("a", 400, 0.9, false), mau("b", 400, 0.8, false), mau("c", 400, 0.7, false)];
-        let g = close_edge_call(list, 1000);
+        let g = pack_context(list, 1000);
         assert!(g.tong_token <= 1000, "vượt ngân sách: {}", g.tong_token);
-        assert_eq!(g.all_mau.len(), 2);
+        assert_eq!(g.chunks.len(), 2);
     }
 
     #[test]
@@ -530,17 +530,17 @@ mod tests {
             mau("quy_tac", 100, 0.01, true),  // liên quan cực thấp nhưng GHIM
             mau("to", 900, 0.99, false),
         ];
-        let g = close_edge_call(list, 1000);
-        assert!(g.all_mau.iter().any(|m| m.nhan == "quy_tac"), "mẩu ghim bị loại!");
+        let g = pack_context(list, 1000);
+        assert!(g.chunks.iter().any(|m| m.nhan == "quy_tac"), "mẩu ghim bị loại!");
     }
 
     #[test]
     fn ranks_by_value_density_not_raw_score() {
         // "nho" có điểm thấp hơn nhưng mật độ (lq/token) cao hơn nhiều
         let list = vec![mau("to", 900, 0.9, false), mau("nho", 90, 0.5, false)];
-        let g = close_edge_call(list, 500);
-        assert_eq!(g.all_mau.len(), 1);
-        assert_eq!(g.all_mau[0].nhan, "nho");
+        let g = pack_context(list, 500);
+        assert_eq!(g.chunks.len(), 1);
+        assert_eq!(g.chunks[0].nhan, "nho");
     }
 
     #[test]
@@ -554,61 +554,61 @@ mod tests {
 
     #[test]
     fn tool_answers_correctly_and_errors_clearly() {
-        let cc = LegacyComputeTool;
-        assert_eq!(cc.run("1,2,3"), LegacyToolResult::Finished("6".into()));
-        assert!(matches!(cc.run("1,x"), LegacyToolResult::Failed(_)));
+        let cc = CalculatorTool;
+        assert_eq!(cc.run("1,2,3"), ToolResult::Finished("6".into()));
+        assert!(matches!(cc.run("1,x"), ToolResult::Failed(_)));
     }
 
     #[test]
     fn harness_rejects_unregistered_tools() {
-        let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
+        let frame = Harness::new(3).register(Box::new(CalculatorTool));
         // Tác tử KHÔNG THỂ gọi thứ không được đăng ký — đây là ranh giới an toàn.
-        assert!(matches!(frame.goi("xoa_o_cung", "/"), LegacyToolResult::Failed(_)));
+        assert!(matches!(frame.goi("xoa_o_cung", "/"), ToolResult::Failed(_)));
     }
 
     #[test]
     fn loop_stops_on_completion() {
-        let frame = UnitFrame::new(5).register(Box::new(LegacyComputeTool));
-        let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::CallTool { name: "sum_all".into(), param: "40,2".into() },
-            ExecClose::Answer("42".into()),
+        let frame = Harness::new(5).register(Box::new(CalculatorTool));
+        let which = FakeBrain { scenarios: vec![
+            Action::CallTool { name: "sum_all".into(), param: "40,2".into() },
+            Action::Answer("42".into()),
         ]};
-        let kq = run_round_loop("nv", &which, &frame);
+        let kq = run_agent_loop("nv", &which, &frame);
         assert_eq!(kq.stop_reason, StopReason::Done);
-        assert_eq!(kq.return_error, Some("42".to_string()));
-        assert_eq!(kq.num_step, 2);
+        assert_eq!(kq.answer, Some("42".to_string()));
+        assert_eq!(kq.num_steps, 2);
     }
 
     #[test]
     fn loop_stops_when_out_of_calls() {
-        let frame = UnitFrame::new(3).register(Box::new(LegacyComputeTool));
+        let frame = Harness::new(3).register(Box::new(CalculatorTool));
         // Bộ não không bao giờ trả lời, chỉ gọi công cụ với tham số KHÁC nhau
-        let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() },
-            ExecClose::CallTool { name: "sum_all".into(), param: "2".into() },
-            ExecClose::CallTool { name: "sum_all".into(), param: "3".into() },
-            ExecClose::CallTool { name: "sum_all".into(), param: "4".into() },
+        let which = FakeBrain { scenarios: vec![
+            Action::CallTool { name: "sum_all".into(), param: "1".into() },
+            Action::CallTool { name: "sum_all".into(), param: "2".into() },
+            Action::CallTool { name: "sum_all".into(), param: "3".into() },
+            Action::CallTool { name: "sum_all".into(), param: "4".into() },
         ]};
-        let kq = run_round_loop("nv", &which, &frame);
+        let kq = run_agent_loop("nv", &which, &frame);
         assert_eq!(kq.stop_reason, StopReason::HetLuotGoi);
-        assert_eq!(kq.num_step, 3, "phải dừng đúng ở ngân sách 3 lượt");
+        assert_eq!(kq.num_steps, 3, "phải dừng đúng ở ngân sách 3 lượt");
     }
 
     #[test]
     fn loop_detects_stuck_agent() {
-        let frame = UnitFrame::new(50).register(Box::new(LegacyComputeTool));
-        let which = UnitWhichPrice { size_sell: vec![
-            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() },
-            ExecClose::CallTool { name: "sum_all".into(), param: "1".into() }, // y hệt
+        let frame = Harness::new(50).register(Box::new(CalculatorTool));
+        let which = FakeBrain { scenarios: vec![
+            Action::CallTool { name: "sum_all".into(), param: "1".into() },
+            Action::CallTool { name: "sum_all".into(), param: "1".into() }, // y hệt
         ]};
-        let kq = run_round_loop("nv", &which, &frame);
+        let kq = run_agent_loop("nv", &which, &frame);
         assert_eq!(kq.stop_reason, StopReason::LapVoHan);
-        assert!(kq.num_step < 50, "phải dừng SỚM, không chạy hết 50 lượt");
+        assert!(kq.num_steps < 50, "phải dừng SỚM, không chạy hết 50 lượt");
     }
 
     #[test]
     fn graph_retrieval_respects_depth() {
-        let mut g = RealValueGraph::new();
+        let mut g = KnowledgeGraph::new();
         g.add_entity("A", "a"); g.add_entity("B", "b");
         g.add_entity("C", "c"); g.add_entity("D", "d");
         g.add_relation("A", "r1", "B");
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn graph_walk_terminates_on_cycles() {
-        let mut g = RealValueGraph::new();
+        let mut g = KnowledgeGraph::new();
         g.add_entity("A", "a"); g.add_entity("B", "b");
         g.add_relation("A", "r", "B");
         g.add_relation("B", "r", "A"); // chu trình
@@ -640,16 +640,16 @@ mod tests {
 
 ## Từ mô hình giả tới mô hình thật
 
-Mã trên dùng `UnitWhichPrice` để mọi thứ tất định và kiểm thử được. Khi nối vào mô hình thật, bạn **chỉ thay đúng một cài đặt trait**:
+Mã trên dùng `FakeBrain` để mọi thứ tất định và kiểm thử được. Khi nối vào mô hình thật, bạn **chỉ thay đúng một cài đặt trait**:
 
 ```rust
 pub struct RealBrain { pub khoa_api: String, pub mo_hinh: String }
 
-impl UnitWhich for RealBrain {
-    fn decide(&self, nhiem_vu: &str, history: &[String]) -> ExecClose {
-        // 1. Dựng ngữ cảnh bằng `close_edge_call` (tôn trọng ngân sách token)
+impl Brain for RealBrain {
+    fn decide(&self, nhiem_vu: &str, history: &[String]) -> Action {
+        // 1. Dựng ngữ cảnh bằng `pack_context` (tôn trọng ngân sách token)
         // 2. Gửi HTTP tới nhà cung cấp mô hình (reqwest + serde_json)
-        // 3. Phân tích phản hồi thành ExecClose::CallTool hoặc ExecClose::Answer
+        // 3. Phân tích phản hồi thành Action::CallTool hoặc Action::Answer
         todo!("gọi mô hình thật")
     }
 }
@@ -664,7 +664,7 @@ Toàn bộ phần còn lại — bộ khung, vòng lặp, đồ thị, và **t�
 | [`rig`](https://github.com/0xPlaygrounds/rig) | Khung xây tác tử LLM: nhà cung cấp mô hình, công cụ, RAG, kho vector |
 | `async-openai` / `anthropic-sdk` | Client cho từng nhà cung cấp |
 | `qdrant-client`, `lancedb` | Kho vector cho truy xuất theo độ tương tự |
-| `tiktoken-rs` | Đếm token chính xác — cần cho `close_edge_call` phiên bản thật |
+| `tiktoken-rs` | Đếm token chính xác — cần cho `pack_context` phiên bản thật |
 | `tokio` + `reqwest` | Bất đồng bộ và HTTP (Chương 49) |
 
 > **Vì sao dùng Rust cho tác tử AI?** Ba lý do rất thực tế: (1) một tiến trình tác tử Rust tốn ~15MB RAM thay vì 500MB, quan trọng khi chạy hàng nghìn tác tử song song (Chương 48); (2) hệ thống kiểu biến "công cụ" thành hợp đồng kiểm tra được lúc biên dịch, thay vì dictionary lỏng lẻo; (3) `tokio` cho phép chạy hàng nghìn tác tử đồng thời trên một máy (Chương 49).
@@ -675,8 +675,8 @@ Toàn bộ phần còn lại — bộ khung, vòng lặp, đồ thị, và **t�
 
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
-| `E0038: the trait cannot be made into an object` | `Box<dyn LegacyTool>` nhưng trait có phương thức generic hoặc trả `Self` | Giữ trait "object-safe": bỏ generic khỏi phương thức, trả `Box<dyn ...>` thay vì `Self` |
-| `E0277: Sized is not satisfied` | Chứa `dyn LegacyTool` trực tiếp trong `Vec` | `Vec<Box<dyn LegacyTool>>` — trait object không có kích thước biết trước |
+| `E0038: the trait cannot be made into an object` | `Box<dyn Tool>` nhưng trait có phương thức generic hoặc trả `Self` | Giữ trait "object-safe": bỏ generic khỏi phương thức, trả `Box<dyn ...>` thay vì `Self` |
+| `E0277: Sized is not satisfied` | Chứa `dyn Tool` trực tiếp trong `Vec` | `Vec<Box<dyn Tool>>` — trait object không có kích thước biết trước |
 | `E0502: cannot borrow as mutable` | Vừa duyệt danh mục công cụ vừa muốn thêm kết quả vào nó | Thu kết quả vào `Vec` cục bộ, gộp lại sau vòng lặp |
 | `E0716: temporary value dropped while borrowed` | Mượn kết quả của một biểu thức tạm khi dựng ngữ cảnh | Gán vào biến `let` trước rồi mới mượn |
 | Ngân sách ngữ cảnh vượt hạn mà không báo | Cộng token sau khi đã thêm vào danh sách | Kiểm ngân sách **trước** khi thêm, không phải sau |
@@ -687,14 +687,14 @@ Toàn bộ phần còn lại — bộ khung, vòng lặp, đồ thị, và **t�
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Ngữ cảnh là tài nguyên có hạn** — bài toán chọn ngữ cảnh là bài toán xếp ba lô, ưu tiên theo *mật độ giá trị* chứ không theo điểm thô. Ghim cứng những gì không được phép mất.
-2. **Bộ khung là hợp đồng kiểu**: tác tử chỉ làm được những gì `trait LegacyTool` cho phép. Danh sách trắng, lỗi có nội dung, mô tả rõ ràng.
+2. **Bộ khung là hợp đồng kiểu**: tác tử chỉ làm được những gì `trait Tool` cho phép. Danh sách trắng, lỗi có nội dung, mô tả rõ ràng.
 3. **Vòng lặp phải có ba cái phanh**: hoàn thành, hết ngân sách, phát hiện lặp. Thiếu cái thứ ba là thiếu cái quan trọng nhất.
 4. **Đồ thị tri thức giải được lớp câu hỏi nhiều bước** mà tìm kiếm theo độ tương tự bó tay — nhưng bắt buộc phải giới hạn độ sâu và giữ tập đã thăm.
 
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Công cụ mới trong bộ khung)**
-Viết `CongCuThoiTiet` trả về nhiệt độ cho một thành phố từ một `HashMap` cố định, và trả lỗi rõ ràng cho thành phố không có. Đăng ký vào `UnitFrame` rồi viết test chứng minh tác tử gọi được nó.
+Viết `CongCuThoiTiet` trả về nhiệt độ cho một thành phố từ một `HashMap` cố định, và trả lỗi rõ ràng cho thành phố không có. Đăng ký vào `Harness` rồi viết test chứng minh tác tử gọi được nó.
 
 <details>
 <summary><b>Lời giải</b></summary>
@@ -702,13 +702,13 @@ Viết `CongCuThoiTiet` trả về nhiệt độ cho một thành phố từ m�
 ```rust
 pub struct WeatherTool { pub data: HashMap<String, i32> }
 
-impl LegacyTool for WeatherTool {
+impl Tool for WeatherTool {
     fn name(&self) -> &str { "thoi_tiet" }
     fn description(&self) -> &str { "Trả về nhiệt độ (°C) của một thành phố. Ví dụ: \"Hà Nội\"" }
-    fn run(&self, param: &str) -> LegacyToolResult {
+    fn run(&self, param: &str) -> ToolResult {
         match self.data.get(param.trim()) {
-            Some(t) => LegacyToolResult::Finished(format!("{}°C", t)),
-            None => LegacyToolResult::Failed(format!("Chưa có dữ liệu cho {:?}", param.trim())),
+            Some(t) => ToolResult::Finished(format!("{}°C", t)),
+            None => ToolResult::Failed(format!("Chưa có dữ liệu cho {:?}", param.trim())),
         }
     }
 }
@@ -720,16 +720,16 @@ mod bt1 {
     fn agent_can_call_weather_tool() {
         let mut dl = HashMap::new();
         dl.insert("Hà Nội".to_string(), 28);
-        let frame = UnitFrame::new(3).register(Box::new(WeatherTool { data: dl }));
-        assert_eq!(frame.goi("thoi_tiet", "Hà Nội"), LegacyToolResult::Finished("28°C".into()));
-        assert!(matches!(frame.goi("thoi_tiet", "Sao Hỏa"), LegacyToolResult::Failed(_)));
+        let frame = Harness::new(3).register(Box::new(WeatherTool { data: dl }));
+        assert_eq!(frame.goi("thoi_tiet", "Hà Nội"), ToolResult::Finished("28°C".into()));
+        assert!(matches!(frame.goi("thoi_tiet", "Sao Hỏa"), ToolResult::Failed(_)));
     }
 }
 ```
 </details>
 
 **Bài tập 2 (Phanh thứ tư: ngân sách token)**
-Thêm vào `UnitFrame` một trường `token_toi_da: usize` và vào `ResultRoundLoop` một biến thể `StopReason::HetToken`. Mỗi lượt gọi công cụ cộng dồn độ dài kết quả vào bộ đếm; vượt ngưỡng thì dừng.
+Thêm vào `Harness` một trường `token_toi_da: usize` và vào `LoopResult` một biến thể `StopReason::HetToken`. Mỗi lượt gọi công cụ cộng dồn độ dài kết quả vào bộ đếm; vượt ngưỡng thì dừng.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -742,11 +742,11 @@ Thêm vào `UnitFrame` một trường `token_toi_da: usize` và vào `ResultRou
 
 ```rust
 // Thêm vào enum:  StopReason::HetToken
-// Trong run_round_loop, sau mỗi lời gọi công cụ:
+// Trong run_agent_loop, sau mỗi lời gọi công cụ:
 //     da_dung_token += ket_qua_text.len() / 4;   // xấp xỉ: 4 ký tự ~ 1 token
 //     if da_dung_token > khung.token_toi_da {
-//         return ResultRoundLoop { return_error: None, num_step: buoc,
-//                                stop_reason: StopReason::HetToken, order_log: history };
+//         return LoopResult { answer: None, num_steps: buoc,
+//                                stop_reason: StopReason::HetToken, log: history };
 //     }
 ```
 

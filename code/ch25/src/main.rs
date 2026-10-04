@@ -12,10 +12,10 @@ pub fn index_access_o1(list: &[i32], chi_so: usize) -> Option<i32> {
 /// Minh họa giải thuật O(N) - Tìm kiếm tuyến tính (Linear Search)
 /// Trong trường hợp xấu nhất (Worst-case), phần tử cần tìm nằm ở cuối danh sách
 /// hoặc không tồn tại, hàm bắt buộc phải duyệt qua toàn bộ N phần tử.
-pub fn linear_search_on(list: &[i32], level_spend: i32) -> Option<usize> {
-    for (pos_value, &value) in list.iter().enumerate() {
-        if value == level_spend {
-            return Some(pos_value); // Tìm thấy tại vị trí pos_value
+pub fn linear_search_on(list: &[i32], target: i32) -> Option<usize> {
+    for (index, &value) in list.iter().enumerate() {
+        if value == target {
+            return Some(index); // Tìm thấy tại vị trí index
         }
     }
     None // Không tìm thấy sau khi duyệt hết N phần tử
@@ -24,7 +24,7 @@ pub fn linear_search_on(list: &[i32], level_spend: i32) -> Option<usize> {
 /// Minh họa giải thuật O(log N) - Tìm kiếm nhị phân (Binary Search)
 /// Điều kiện tiên quyết: Mảng đầu vào PHẢI được sắp xếp tăng dần từ trước.
 /// Tại mỗi bước, ta so sánh mục tiêu với phần tử ở giữa và loại bỏ 50% phạm vi tìm kiếm.
-pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
+pub fn binary_search_ologn(list: &[i32], target: i32) -> Option<usize> {
     if list.is_empty() {
         return None;
     }
@@ -37,9 +37,9 @@ pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
         let mid = left + (right - left) / 2;
         let value_mid = list[mid];
 
-        if value_mid == level_spend {
+        if value_mid == target {
             return Some(mid);
-        } else if value_mid < level_spend {
+        } else if value_mid < target {
             // Mục tiêu nằm ở nửa bên phải, dời biên trái lên
             left = mid + 1;
         } else {
@@ -83,7 +83,7 @@ fn main() {
     println!("Khởi tạo danh sách gồm {} phần tử...", scale);
     let list: Vec<i32> = (0..scale as i32).collect();
 
-    let level_spend: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
+    let target: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
     let bat_dau_o1 = Instant::now();
@@ -95,7 +95,7 @@ fn main() {
 
     // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
     let bat_dau_on = Instant::now();
-    let ket_qua_on = linear_search_on(&list, level_spend);
+    let ket_qua_on = linear_search_on(&list, target);
     let thoi_gian_on = bat_dau_on.elapsed();
     println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_on);
@@ -103,7 +103,7 @@ fn main() {
 
     // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
     let bat_dau_ologn = Instant::now();
-    let ket_qua_ologn = binary_search_ologn(&list, level_spend);
+    let ket_qua_ologn = binary_search_ologn(&list, target);
     let thoi_gian_ologn = bat_dau_ologn.elapsed();
     println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
     println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
@@ -149,12 +149,12 @@ mod tests {
     #[test]
     fn binary_search_matches_linear() {
         let list: Vec<i32> = (0..1000).map(|x| x * 3).collect();
-        for &level_spend in &[0, 297, 1500, 2997, 1, 2998] {
+        for &target in &[0, 297, 1500, 2997, 1, 2998] {
             // hai thuật toán phải cho CÙNG kết luận có/không
             assert_eq!(
-                binary_search_ologn(&list, level_spend).is_some(),
-                linear_search_on(&list, level_spend).is_some(),
-                "bất đồng ở {}", level_spend
+                binary_search_ologn(&list, target).is_some(),
+                linear_search_on(&list, target).is_some(),
+                "bất đồng ở {}", target
             );
         }
         assert_eq!(binary_search_ologn(&list, 297), Some(99));

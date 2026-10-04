@@ -40,7 +40,7 @@ Trong chương mở đầu của Topic 9, chúng ta sẽ phân tích:
 │ Tuyến phố dài có các cửa hàng độc lập:                                           │
 │ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐     │
 │ │ Tiệm Bánh Mì   │ │ Tiệm Thuốc Tây │ │ Tiệm Quần Áo   │ │ Quầy Thu Ngân  │     │
-│ │ (Auth Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
+│ │ (Validation Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
 │ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘     │
 │ Ưu điểm: Nếu Tiệm Bánh Mì mất điện, Tiệm Thuốc vẫn mở cửa bán bình thường!      │
 │ Nhược điểm: Khách muốn mua cả bánh và thuốc phải đi bộ qua lại (Độ trễ mạng)!    │

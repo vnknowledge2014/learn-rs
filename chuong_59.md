@@ -72,7 +72,7 @@ Ba chiến lược khác nhau về *cách chọn máy chủ tiếp theo*:
 - **Ít kết nối nhất**: tốt khi các yêu cầu tốn công không đều (một số kéo dài lâu).
 - **Trọng số**: khi các máy chủ mạnh yếu khác nhau.
 
-Trong Rust, cả ba cài chung một `trait StrategyCanTable` (Chương 12), nên đổi chiến lược không cần sửa mã gọi — đúng tinh thần đa hình và tiêm phụ thuộc.
+Trong Rust, cả ba cài chung một `trait BalancingStrategy` (Chương 12), nên đổi chiến lược không cần sửa mã gọi — đúng tinh thần đa hình và tiêm phụ thuộc.
 
 ### 3. Băm nhất quán — vì sao `hash % N` là thảm họa
 
@@ -139,38 +139,38 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 #[derive(Debug, Clone)]
 pub struct Server {
     pub name: String,
-    pub current_connect: u32,
+    pub current_connection: u32,
     pub weight: u32, // máy mạnh hơn có trọng số cao hơn
 }
 
-pub trait StrategyCanTable {
+pub trait BalancingStrategy {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server>;
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
-pub struct RoundRobin { pos_value: usize }
-impl RoundRobin { pub fn new() -> Self { RoundRobin { pos_value: 0 } } }
-impl StrategyCanTable for RoundRobin {
+pub struct RoundRobin { index: usize }
+impl RoundRobin { pub fn new() -> Self { RoundRobin { index: 0 } } }
+impl BalancingStrategy for RoundRobin {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
         if server.is_empty() { return None; }
-        let m = &server[self.pos_value % server.len()];
-        self.pos_value += 1;
+        let m = &server[self.index % server.len()];
+        self.index += 1;
         Some(m)
     }
 }
 
 /// Ít kết nối nhất (Least-Connections): gửi tới máy đang rảnh nhất.
-pub struct FewConnect;
-impl StrategyCanTable for FewConnect {
+pub struct LeastConnections;
+impl BalancingStrategy for LeastConnections {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        server.iter().min_by_key(|m| m.current_connect)
+        server.iter().min_by_key(|m| m.current_connection)
     }
 }
 
 /// Xoay vòng có trọng số (Weighted): máy mạnh nhận nhiều hơn theo tỷ lệ trọng số.
 pub struct WeightedRoundRobin { count: u32 }
 impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
-impl StrategyCanTable for WeightedRoundRobin {
+impl BalancingStrategy for WeightedRoundRobin {
     fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
         if server.is_empty() { return None; }
         let tong: u32 = server.iter().map(|m| m.weight).sum();
@@ -256,7 +256,7 @@ impl TokenBucket {
         TokenBucket { capacity, token: capacity, measured_rate }
     }
     /// Nạp token theo thời gian trôi qua (giây), rồi thử tiêu 1 token.
-    pub fn wait_op(&mut self, thoi_gian_troi: f64) -> bool {
+    pub fn try_acquire(&mut self, thoi_gian_troi: f64) -> bool {
         self.token = (self.token + thoi_gian_troi * self.measured_rate).min(self.capacity);
         if self.token >= 1.0 {
             self.token -= 1.0;
@@ -281,15 +281,15 @@ pub enum KetQuaNhan {
 /// Hàng đợi có giới hạn: khi đầy, TỪ CHỐI thay vì phình vô hạn.
 /// Đây là cốt lõi của back-pressure: hệ thống chậm phải BÁO cho hệ thống nhanh
 /// biết mà giảm tốc, thay vì âm thầm chất đống đến khi hết RAM.
-pub struct QueueLimit<T> {
+pub struct BoundedQueue<T> {
     queue: VecDeque<T>,
     capacity: usize,
     da_reject: u64,
 }
 
-impl<T> QueueLimit<T> {
+impl<T> BoundedQueue<T> {
     pub fn new(capacity: usize) -> Self {
-        QueueLimit { queue: VecDeque::new(), capacity, da_reject: 0 }
+        BoundedQueue { queue: VecDeque::new(), capacity, da_reject: 0 }
     }
     pub fn send(&mut self, viec: T) -> KetQuaNhan {
         if self.queue.len() >= self.capacity {
@@ -311,16 +311,16 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     let may = vec![
-        Server { name: "web-1".into(), current_connect: 5, weight: 1 },
-        Server { name: "web-2".into(), current_connect: 2, weight: 3 },
-        Server { name: "web-3".into(), current_connect: 8, weight: 1 },
+        Server { name: "web-1".into(), current_connection: 5, weight: 1 },
+        Server { name: "web-2".into(), current_connection: 2, weight: 3 },
+        Server { name: "web-3".into(), current_connection: 8, weight: 1 },
     ];
 
     println!("\n1. CÂN BẰNG TẢI");
     let mut xv = RoundRobin::new();
     let series: Vec<&str> = (0..5).filter_map(|_| xv.pick(&may).map(|m| m.name.as_str())).collect();
     println!("   Xoay vòng     : {:?}", series);
-    println!("   Ít kết nối    : {:?}", FewConnect.pick(&may).map(|m| &m.name)); // web-2 (2 kết nối)
+    println!("   Ít kết nối    : {:?}", LeastConnections.pick(&may).map(|m| &m.name)); // web-2 (2 kết nối)
     let mut wt = WeightedRoundRobin::new();
     let ws: Vec<&str> = (0..5).filter_map(|_| wt.pick(&may).map(|m| m.name.as_str())).collect();
     println!("   Trọng số      : {:?} (web-2 xuất hiện nhiều nhất)", ws);
@@ -344,13 +344,13 @@ fn main() {
     println!("\n3. GIỚI HẠN TẦN SUẤT (Token Bucket: 3 token, đổ 1/giây)");
     let mut xor = TokenBucket::new(3.0, 1.0);
     for i in 1..=5 {
-        print!("   Yêu cầu {} (tức thì): {} | ", i, if xor.wait_op(0.0) { "CHO" } else { "CHẶN" });
+        print!("   Yêu cầu {} (tức thì): {} | ", i, if xor.try_acquire(0.0) { "CHO" } else { "CHẶN" });
     }
     println!();
-    println!("   Chờ 2 giây rồi thử lại: {}", if xor.wait_op(2.0) { "CHO" } else { "CHẶN" });
+    println!("   Chờ 2 giây rồi thử lại: {}", if xor.try_acquire(2.0) { "CHO" } else { "CHẶN" });
 
     println!("\n4. BACK-PRESSURE (hàng đợi sức chứa 3)");
-    let mut hq: QueueLimit<u32> = QueueLimit::new(3);
+    let mut hq: BoundedQueue<u32> = BoundedQueue::new(3);
     for i in 1..=5 {
         println!("   Gửi việc {}: {:?}", i, hq.send(i));
     }
@@ -367,9 +367,9 @@ mod tests {
 
     fn server3() -> Vec<Server> {
         vec![
-            Server { name: "a".into(), current_connect: 5, weight: 1 },
-            Server { name: "b".into(), current_connect: 2, weight: 3 },
-            Server { name: "c".into(), current_connect: 8, weight: 1 },
+            Server { name: "a".into(), current_connection: 5, weight: 1 },
+            Server { name: "b".into(), current_connection: 2, weight: 3 },
+            Server { name: "c".into(), current_connection: 8, weight: 1 },
         ]
     }
 
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn least_connections_picks_idlest() {
-        assert_eq!(FewConnect.pick(&server3()).unwrap().name, "b"); // b có 2 kết nối
+        assert_eq!(LeastConnections.pick(&server3()).unwrap().name, "b"); // b có 2 kết nối
     }
 
     #[test]
@@ -427,26 +427,26 @@ mod tests {
     fn token_bucket_limits_and_refills() {
         let mut xor = TokenBucket::new(3.0, 1.0);
         // 3 token đầu -> cho; token thứ 4 tức thì -> chặn
-        assert!(xor.wait_op(0.0));
-        assert!(xor.wait_op(0.0));
-        assert!(xor.wait_op(0.0));
-        assert!(!xor.wait_op(0.0));
+        assert!(xor.try_acquire(0.0));
+        assert!(xor.try_acquire(0.0));
+        assert!(xor.try_acquire(0.0));
+        assert!(!xor.try_acquire(0.0));
         // Chờ 1 giây -> đổ lại 1 token -> cho đúng 1 lần
-        assert!(xor.wait_op(1.0));
-        assert!(!xor.wait_op(0.0));
+        assert!(xor.try_acquire(1.0));
+        assert!(!xor.try_acquire(0.0));
     }
 
     #[test]
     fn token_bucket_never_exceeds_capacity() {
         let mut xor = TokenBucket::new(2.0, 100.0);
         // chờ rất lâu nhưng token bị GHIM ở dung lượng, không tràn
-        xor.wait_op(1000.0);
+        xor.try_acquire(1000.0);
         assert!(xor.token_con() <= 2.0);
     }
 
     #[test]
     fn back_pressure_rejects_when_full() {
-        let mut hq: QueueLimit<u32> = QueueLimit::new(2);
+        let mut hq: BoundedQueue<u32> = BoundedQueue::new(2);
         assert_eq!(hq.send(1), KetQuaNhan::DaNhan);
         assert_eq!(hq.send(2), KetQuaNhan::DaNhan);
         assert_eq!(hq.send(3), KetQuaNhan::RejectReason); // đầy!
@@ -476,7 +476,7 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
-| `E0038: the trait cannot be made into an object` | `Box<dyn StrategyCanTable>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
+| `E0038: the trait cannot be made into an object` | `Box<dyn BalancingStrategy>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
 | `E0106: missing lifetime specifier` | Trả `Option<&Server>` từ lát cắt truyền vào | Ràng buộc vòng đời tường minh: `fn pick<'a>(&mut self, s: &'a [Server]) -> Option<&'a Server>` |
 | `E0502: cannot borrow as mutable` | `self.pos` đổi trong khi còn mượn `&self.servers` | Đọc chỉ số ra biến trước, tăng `self.pos` sau |
 | `attempt to subtract with overflow` | Trừ dấu thời gian `u64` khi cửa sổ chưa đầy | `saturating_sub` — thời gian có thể chưa trôi đủ |
@@ -507,7 +507,7 @@ Thêm trường `khoe_manh: bool` vào `Server` và một chiến lược `XoayV
 #[derive(Debug, Clone)]
 pub struct HealthyServer {
     pub name: String,
-    pub current_connect: u32,
+    pub current_connection: u32,
     pub weight: u32,
     /// Do luồng kiểm tra sức khoẻ nền cập nhật.
     pub healthy: bool,
@@ -534,9 +534,9 @@ impl RoundRobinSkipDead {
 #[test]
 fn dead_servers_are_never_picked() {
     let servers = vec![
-        HealthyServer { name: "a".into(), current_connect: 0, weight: 1, healthy: true },
-        HealthyServer { name: "b".into(), current_connect: 0, weight: 1, healthy: false },
-        HealthyServer { name: "c".into(), current_connect: 0, weight: 1, healthy: true },
+        HealthyServer { name: "a".into(), current_connection: 0, weight: 1, healthy: true },
+        HealthyServer { name: "b".into(), current_connection: 0, weight: 1, healthy: false },
+        HealthyServer { name: "c".into(), current_connection: 0, weight: 1, healthy: true },
     ];
     let mut lb = RoundRobinSkipDead::new();
     let picked: Vec<&str> = (0..6).filter_map(|_| lb.pick(&servers)).map(|s| s.name.as_str()).collect();
@@ -547,7 +547,7 @@ fn dead_servers_are_never_picked() {
 #[test]
 fn all_dead_returns_none() {
     let servers = vec![
-        HealthyServer { name: "a".into(), current_connect: 0, weight: 1, healthy: false },
+        HealthyServer { name: "a".into(), current_connection: 0, weight: 1, healthy: false },
     ];
     // Không có máy nào sống thì phải TRẢ VỀ None, không phải chọn bừa.
     assert!(RoundRobinSkipDead::new().pick(&servers).is_none());
@@ -576,7 +576,7 @@ impl SlidingWindow {
     pub fn new(limit: usize, cua_so_giay: u64) -> Self {
         SlidingWindow { dau_thoi_gian: VecDeque::new(), limit, cua_so_giay }
     }
-    pub fn wait_op(&mut self, now: u64) -> bool {
+    pub fn try_acquire(&mut self, now: u64) -> bool {
         while let Some(&cu) = self.dau_thoi_gian.front() {
             if cu + self.cua_so_giay <= now { self.dau_thoi_gian.pop_front(); } else { break; }
         }
@@ -592,9 +592,9 @@ mod bt2 {
     #[test]
     fn limits_three_requests_per_ten_seconds() {
         let mut cs = SlidingWindow::new(3, 10);
-        assert!(cs.wait_op(0)); assert!(cs.wait_op(1)); assert!(cs.wait_op(2));
-        assert!(!cs.wait_op(3));      // đã đủ 3 trong cửa sổ
-        assert!(cs.wait_op(11));      // cái ở t=0 đã hết hạn (11 >= 0+10)
+        assert!(cs.try_acquire(0)); assert!(cs.try_acquire(1)); assert!(cs.try_acquire(2));
+        assert!(!cs.try_acquire(3));      // đã đủ 3 trong cửa sổ
+        assert!(cs.try_acquire(11));      // cái ở t=0 đã hết hạn (11 >= 0+10)
     }
 }
 ```

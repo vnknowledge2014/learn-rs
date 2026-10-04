@@ -194,18 +194,18 @@ impl RoutingTable {
 #[derive(Debug, PartialEq)]
 pub struct KetQuaTraCuu {
     pub nearest: Vec<MaNut>,
-    pub num_round: usize,
+    pub num_rounds: usize,
     pub so_nut_da_hoi: usize,
 }
 
 /// Mạng mô phỏng: mỗi nút có bảng định tuyến riêng.
-pub struct BucketArray { pub nut: BTreeMap<MaNut, RoutingTable> }
+pub struct SimNetwork { pub nut: BTreeMap<MaNut, RoutingTable> }
 
-impl BucketArray {
+impl SimNetwork {
     /// Dựng mạng và cho các nút "gặp nhau" theo kiểu bootstrap thật:
     /// mỗi nút mới tự tra cứu chính mình qua một nút đã có sẵn.
-    pub fn dung(ids: &[u64]) -> BucketArray {
-        let mut m = BucketArray { nut: BTreeMap::new() };
+    pub fn dung(ids: &[u64]) -> SimNetwork {
+        let mut m = SimNetwork { nut: BTreeMap::new() };
         for &x in ids {
             let id = MaNut(x);
             m.nut.insert(id, RoutingTable::new(id));
@@ -227,13 +227,13 @@ impl BucketArray {
     pub fn tra_cuu(&self, tu: MaNut, dich: MaNut, alpha: usize) -> KetQuaTraCuu {
         let mut candidates: Vec<MaNut> = self.nut[&tu].nearest(dich, K);
         let mut da_hoi: HashSet<MaNut> = HashSet::new();
-        let mut num_round = 0;
+        let mut num_rounds = 0;
 
         loop {
             let hoi: Vec<MaNut> = candidates.iter().copied()
                 .filter(|n| !da_hoi.contains(n)).take(alpha).collect();
             if hoi.is_empty() { break; }
-            num_round += 1;
+            num_rounds += 1;
             let mut new = Vec::new();
             for n in hoi {
                 da_hoi.insert(n);
@@ -245,10 +245,10 @@ impl BucketArray {
             candidates.dedup();
             candidates.truncate(K);
             // Không tiến gần hơn → dừng. Đây là điều kiện hội tụ của Kademlia.
-            if candidates.first().map(|n| n.distance(dich)) == prev && num_round > 1 { break; }
-            if num_round > 64 { break; } // chặn an toàn
+            if candidates.first().map(|n| n.distance(dich)) == prev && num_rounds > 1 { break; }
+            if num_rounds > 64 { break; } // chặn an toàn
         }
-        KetQuaTraCuu { nearest: candidates, num_round, so_nut_da_hoi: da_hoi.len() }
+        KetQuaTraCuu { nearest: candidates, num_rounds, so_nut_da_hoi: da_hoi.len() }
     }
 }
 
@@ -257,8 +257,8 @@ impl BucketArray {
 // ============================================================================
 
 #[derive(Debug, PartialEq)]
-pub struct ResultPropagate {
-    pub num_round: usize,
+pub struct PropagationResult {
+    pub num_rounds: usize,
     pub so_nut_nhan: usize,
     /// Tổng số bản tin đã gửi — thước đo chi phí băng thông.
     pub so_ban_tin: usize,
@@ -272,15 +272,15 @@ pub fn gossip_propagate(
     nguon: MaNut,
     bac: usize,
     max_num_round: usize,
-) -> ResultPropagate {
+) -> PropagationResult {
     let mut seen: HashSet<MaNut> = HashSet::new();
     seen.insert(nguon);
     let mut dang_lan = vec![nguon];
     let mut so_ban_tin = 0;
-    let mut num_round = 0;
+    let mut num_rounds = 0;
 
-    while !dang_lan.is_empty() && num_round < max_num_round {
-        num_round += 1;
+    while !dang_lan.is_empty() && num_rounds < max_num_round {
+        num_rounds += 1;
         let mut next = Vec::new();
         for n in &dang_lan {
             let lg = match neighbors.get(n) { Some(l) => l, None => continue };
@@ -292,8 +292,8 @@ pub fn gossip_propagate(
         }
         dang_lan = next;
     }
-    ResultPropagate {
-        num_round,
+    PropagationResult {
+        num_rounds,
         so_nut_nhan: seen.len(),
         so_ban_tin,
         fully_parallel: seen.len() == neighbors.len(),
@@ -305,7 +305,7 @@ pub fn gossip_propagate(
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecPos { Honest, Im, HaiMat }
+pub enum Behavior { Honest, Im, HaiMat }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ballot { Thuan(u32), Chong }
@@ -335,7 +335,7 @@ pub fn quorum_threshold(n: usize) -> usize {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ResultRound {
+pub struct RoundResult {
     pub decide: Option<u32>,
     pub votes_received: usize,
     pub threshold_can: usize,
@@ -343,16 +343,16 @@ pub struct ResultRound {
 
 /// Một vòng đồng thuận kiểu Tendermint/PBFT rút gọn: nút đề xuất phát giá trị,
 /// các nút bỏ phiếu, đạt quorum thì chốt.
-pub fn consensus_round(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound {
+pub fn consensus_round(hanh_vi: &[Behavior], gia_tri_de_xuat: u32) -> RoundResult {
     let n = hanh_vi.len();
     let threshold = quorum_threshold(n);
     let mut thung: HashMap<Ballot, usize> = HashMap::new();
 
     for (i, &h) in hanh_vi.iter().enumerate() {
         match h {
-            ExecPos::Honest => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
-            ExecPos::Im => {}  // không gửi gì — lỗi "dừng", dạng nhẹ nhất
-            ExecPos::HaiMat => {
+            Behavior::Honest => *thung.entry(Ballot::Thuan(gia_tri_de_xuat)).or_insert(0) += 1,
+            Behavior::Im => {}  // không gửi gì — lỗi "dừng", dạng nhẹ nhất
+            Behavior::HaiMat => {
                 // Nút phản bội gửi giá trị KHÁC NHAU cho các nhóm khác nhau.
                 // Đây là lỗi Byzantine thực thụ, khó hơn hẳn lỗi "im lặng".
                 *thung.entry(Ballot::Thuan(gia_tri_de_xuat.wrapping_add(i as u32 + 1)))
@@ -366,25 +366,25 @@ pub fn consensus_round(hanh_vi: &[ExecPos], gia_tri_de_xuat: u32) -> ResultRound
         Some((_, &c)) => (None, c),
         None => (None, 0),
     };
-    ResultRound { decide, votes_received: so_phieu, threshold_can: threshold }
+    RoundResult { decide, votes_received: so_phieu, threshold_can: threshold }
 }
 
 // ============================================================================
 // 6. BẢNG BĂM PHÂN TÁN — lưu và tìm dữ liệu không cần máy chủ
 // ============================================================================
 
-pub struct HashMapPartTan {
-    pub mang: BucketArray,
+pub struct DistributedHashTable {
+    pub mang: SimNetwork,
     /// Mỗi nút giữ một phần kho. Dữ liệu nằm ở `r` nút gần khoá nhất.
     pub store: HashMap<MaNut, HashMap<u64, String>>,
     pub he_so_nhan_ban: usize,
 }
 
-impl HashMapPartTan {
+impl DistributedHashTable {
     pub fn new(ids: &[u64], he_so_nhan_ban: usize) -> Self {
-        let mang = BucketArray::dung(ids);
+        let mang = SimNetwork::dung(ids);
         let store = ids.iter().map(|&x| (MaNut(x), HashMap::new())).collect();
-        HashMapPartTan { mang, store, he_so_nhan_ban }
+        DistributedHashTable { mang, store, he_so_nhan_ban }
     }
 
     /// Ghi vào `r` nút gần khoá nhất. Nhân bản là cách DHT chịu được việc
@@ -433,7 +433,7 @@ fn main() {
 
     println!("\n2. BẢNG ĐỊNH TUYẾN — biết ít mà tới được mọi nơi");
     let id: Vec<u64> = (0..64u64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15)).collect();
-    let mang = BucketArray::dung(&id);
+    let mang = SimNetwork::dung(&id);
     let toi = MaNut(id[0]);
     let b0 = &mang.nut[&toi];
     println!("   Mạng {} nút · nút này chỉ lưu {} địa chỉ ({} xô không rỗng)",
@@ -442,7 +442,7 @@ fn main() {
     println!("\n3. TRA CỨU LẶP");
     let dich = MaNut(id[50]);
     let kq = mang.tra_cuu(toi, dich, 3);
-    println!("   Tìm {:x} → {} vòng, hỏi {} nút", dich.0, kq.num_round, kq.so_nut_da_hoi);
+    println!("   Tìm {:x} → {} vòng, hỏi {} nút", dich.0, kq.num_rounds, kq.so_nut_da_hoi);
     println!("   Tìm thấy đúng đích: {}", kq.nearest.contains(&dich));
 
     println!("\n4. GOSSIP — đánh đổi tốc độ lấy băng thông");
@@ -456,7 +456,7 @@ fn main() {
     for bac in [1usize, 2, 3, 5] {
         let r = gossip_propagate(&lg, toi, bac, 50);
         println!("   bậc {} → {:>2} vòng · phủ {:>2}/{} nút · {:>3} bản tin",
-                 bac, r.num_round, r.so_nut_nhan, id.len(), r.so_ban_tin);
+                 bac, r.num_rounds, r.so_nut_nhan, id.len(), r.so_ban_tin);
     }
     println!("   → Bậc cao phủ nhanh hơn nhưng tốn băng thông theo cấp số nhân.");
 
@@ -465,11 +465,11 @@ fn main() {
         println!("   {:>3} nút → chịu được {:>2} nút phản bội · cần {:>2} phiếu",
                  n, fault_tolerance(n), quorum_threshold(n));
     }
-    let hv = vec![ExecPos::Honest; 10];
+    let hv = vec![Behavior::Honest; 10];
     println!("\n   10 nút, tăng dần số kẻ phản bội:");
     for so_gian in 0..5 {
         let mut h = hv.clone();
-        for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
+        for i in 0..so_gian { h[i] = Behavior::HaiMat; }
         let r = consensus_round(&h, 42);
         println!("   {} kẻ gian → {:?} ({}/{} phiếu){}",
                  so_gian, r.decide, r.votes_received, r.threshold_can,
@@ -477,7 +477,7 @@ fn main() {
     }
 
     println!("\n6. BẢNG BĂM PHÂN TÁN — chịu được nút rời mạng");
-    let mut dht = HashMapPartTan::new(&id, 3);
+    let mut dht = DistributedHashTable::new(&id, 3);
     let n = dht.set(toi, 0xDEADBEEF, "xin chao P2P");
     println!("   Ghi khoá 0xDEADBEEF vào {} nút gần nhất", n);
     println!("   Đọc lại: {:?}", dht.lay(MaNut(id[30]), 0xDEADBEEF));
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn routing_table_is_far_smaller_than_the_network() {
         let id = color_code(256);
-        let m = BucketArray::dung(&id);
+        let m = SimNetwork::dung(&id);
         let b = &m.nut[&MaNut(id[0])];
         assert!(b.tong_so_nut() < id.len(),
                 "biết {} trong tổng {} nút — đó là ý nghĩa của định tuyến log n",
@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn lookup_finds_the_target_node() {
         let id = color_code(128);
-        let m = BucketArray::dung(&id);
+        let m = SimNetwork::dung(&id);
         let tu = MaNut(id[0]);
         for &x in id.iter().skip(1).take(20) {
             let kq = m.tra_cuu(tu, MaNut(x), 3);
@@ -625,17 +625,17 @@ mod tests {
     #[test]
     fn lookup_queries_far_fewer_than_all_nodes() {
         let id = color_code(256);
-        let m = BucketArray::dung(&id);
+        let m = SimNetwork::dung(&id);
         let kq = m.tra_cuu(MaNut(id[0]), MaNut(id[200]), 3);
         assert!(kq.so_nut_da_hoi < id.len() / 2,
                 "hỏi {} nút trên tổng {} — tra cứu phải RẺ", kq.so_nut_da_hoi, id.len());
-        assert!(kq.num_round <= 64, "phải hội tụ, không lặp vô hạn");
+        assert!(kq.num_rounds <= 64, "phải hội tụ, không lặp vô hạn");
     }
 
     #[test]
     fn lookup_works_even_for_unowned_keys() {
         let id = color_code(64);
-        let m = BucketArray::dung(&id);
+        let m = SimNetwork::dung(&id);
         let key = MaNut(0x1234_5678_9ABC_DEF0);
         let kq = m.tra_cuu(MaNut(id[0]), key, 3);
         assert!(!kq.nearest.is_empty(), "vẫn phải trả về nút gần nhất");
@@ -669,7 +669,7 @@ mod tests {
         }
         let it = gossip_propagate(&lg, MaNut(id[0]), 1, 100);
         let many = gossip_propagate(&lg, MaNut(id[0]), 4, 100);
-        assert!(many.num_round < it.num_round, "bậc cao phải phủ nhanh hơn");
+        assert!(many.num_rounds < it.num_rounds, "bậc cao phải phủ nhanh hơn");
         assert!(many.so_ban_tin > it.so_ban_tin, "và tốn nhiều băng thông hơn");
     }
 
@@ -737,8 +737,8 @@ mod tests {
         let n = 10;
         let f = fault_tolerance(n); // 3
         for so_gian in 0..=f {
-            let mut h = vec![ExecPos::Honest; n];
-            for i in 0..so_gian { h[i] = ExecPos::HaiMat; }
+            let mut h = vec![Behavior::Honest; n];
+            for i in 0..so_gian { h[i] = Behavior::HaiMat; }
             let r = consensus_round(&h, 42);
             assert_eq!(r.decide, Some(42),
                        "{} kẻ gian (<= f={}) vẫn phải chốt được", so_gian, f);
@@ -749,8 +749,8 @@ mod tests {
     fn consensus_fails_beyond_the_threshold() {
         let n = 10;
         let f = fault_tolerance(n);
-        let mut h = vec![ExecPos::Honest; n];
-        for i in 0..=f + 1 { h[i] = ExecPos::HaiMat; }
+        let mut h = vec![Behavior::Honest; n];
+        for i in 0..=f + 1 { h[i] = Behavior::HaiMat; }
         let r = consensus_round(&h, 42);
         assert_eq!(r.decide, None, "quá f kẻ gian → THÀ DỪNG còn hơn chốt sai");
     }
@@ -760,9 +760,9 @@ mod tests {
         // Lỗi "dừng" nhẹ hơn lỗi Byzantine: nút im chỉ không đóng góp,
         // còn nút hai mặt vừa không đóng góp vừa gây nhiễu phiếu.
         let n = 10;
-        let mut im = vec![ExecPos::Honest; n];
-        let mut time = vec![ExecPos::Honest; n];
-        for i in 0..3 { im[i] = ExecPos::Im; time[i] = ExecPos::HaiMat; }
+        let mut im = vec![Behavior::Honest; n];
+        let mut time = vec![Behavior::Honest; n];
+        for i in 0..3 { im[i] = Behavior::Im; time[i] = Behavior::HaiMat; }
         assert_eq!(consensus_round(&im, 42).decide, Some(42));
         assert_eq!(consensus_round(&time, 42).decide, Some(42));
         // Cùng 7 phiếu thật; khác nhau ở chỗ nút hai mặt còn tạo thêm phiếu rác
@@ -774,11 +774,11 @@ mod tests {
     fn four_nodes_tolerate_exactly_one_traitor() {
         assert_eq!(fault_tolerance(4), 1);
         assert_eq!(quorum_threshold(4), 3);
-        let r = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
-                                  ExecPos::Honest, ExecPos::HaiMat], 7);
+        let r = consensus_round(&[Behavior::Honest, Behavior::Honest,
+                                  Behavior::Honest, Behavior::HaiMat], 7);
         assert_eq!(r.decide, Some(7));
-        let r2 = consensus_round(&[ExecPos::Honest, ExecPos::Honest,
-                                   ExecPos::HaiMat, ExecPos::HaiMat], 7);
+        let r2 = consensus_round(&[Behavior::Honest, Behavior::Honest,
+                                   Behavior::HaiMat, Behavior::HaiMat], 7);
         assert_eq!(r2.decide, None, "2 kẻ gian trên 4 nút là quá ngưỡng");
     }
 
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn dht_value_readable_from_any_node() {
         let id = color_code(64);
-        let mut d = HashMapPartTan::new(&id, 3);
+        let mut d = DistributedHashTable::new(&id, 3);
         d.set(MaNut(id[0]), 999, "gia tri");
         for &x in id.iter().take(10) {
             assert_eq!(d.lay(MaNut(x), 999), Some("gia tri".to_string()),
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn dht_replicates_the_right_number_of_copies() {
         let id = color_code(64);
-        let mut d = HashMapPartTan::new(&id, 3);
+        let mut d = DistributedHashTable::new(&id, 3);
         assert_eq!(d.set(MaNut(id[0]), 555, "x"), 3);
         let giu = d.store.values().filter(|k| k.contains_key(&555)).count();
         assert_eq!(giu, 3);
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn dht_survives_losing_one_replica() {
         let id = color_code(64);
-        let mut d = HashMapPartTan::new(&id, 3);
+        let mut d = DistributedHashTable::new(&id, 3);
         d.set(MaNut(id[0]), 777, "ben bi");
         let giu: Vec<MaNut> = d.store.iter()
             .filter(|(_, k)| k.contains_key(&777)).map(|(n, _)| *n).collect();
@@ -818,7 +818,7 @@ mod tests {
     #[test]
     fn dht_returns_none_for_unknown_key() {
         let id = color_code(32);
-        let d = HashMapPartTan::new(&id, 3);
+        let d = DistributedHashTable::new(&id, 3);
         assert_eq!(d.lay(MaNut(id[0]), 12345), None);
     }
 }

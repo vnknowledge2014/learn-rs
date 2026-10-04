@@ -130,7 +130,7 @@ Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Ru
 /// Hàm tính tổng các phần tử sử dụng lát cắt mượn &[i32]
 /// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
-pub fn total_tile_latency(data: &[i32]) -> i64 {
+pub fn sum_slice(data: &[i32]) -> i64 {
     let mut tong: i64 = 0;
     for &value in data {
         tong += value as i64;
@@ -139,7 +139,7 @@ pub fn total_tile_latency(data: &[i32]) -> i64 {
 }
 
 /// Hàm đảo ngược các phần tử tại chỗ trên một lát cắt khả biến &mut [i32]
-pub fn reverse_inverse_tai_wait(data: &mut [i32]) {
+pub fn reverse_in_place(data: &mut [i32]) {
     if data.is_empty() {
         return;
     }
@@ -158,15 +158,15 @@ fn main() {
     println!("============================================================");
 
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
-    let computed_array: [i32; 5] = [10, 20, 30, 40, 50];
+    let static_array: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&computed_array));
-    println!("    - Số lượng phần tử  : {}", computed_array.len());
+    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&static_array));
+    println!("    - Số lượng phần tử  : {}", static_array.len());
     
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
-    for i in 0..computed_array.len() {
-        let address = &computed_array[i] as *const i32 as usize;
+    for i in 0..static_array.len() {
+        let address = &static_array[i] as *const i32 as usize;
         print!("[Phần tử {}: đuôi ...{:x}] ", i, address % 0x1000);
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
@@ -215,16 +215,16 @@ fn main() {
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
     // Lấy lát cắt từ mảng tĩnh
-    let lat_cat_mang = &computed_array[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    let lat_cat_mang = &static_array[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
     println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
-    let tong_mang = total_tile_latency(lat_cat_mang);
+    let tong_mang = sum_slice(lat_cat_mang);
     println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
     assert_eq!(tong_mang, 90);
 
     // Lấy lát cắt từ vector động
     let lat_cat_vec = &vec_dong[0..5]; // Lấy 5 phần tử đầu tiên
     println!("    - Lát cắt từ vector [0..5]   : {:?}", lat_cat_vec);
-    let tong_vec = total_tile_latency(lat_cat_vec);
+    let tong_vec = sum_slice(lat_cat_vec);
     println!("    - Tổng tính từ lát cắt vector: {}", tong_vec);
     assert_eq!(tong_vec, 150);
 
@@ -233,7 +233,7 @@ fn main() {
     println!("\n[5] Đảo ngược tại chỗ trên lát cắt khả biến:");
     println!("    - Mảng ban đầu : {:?}", mang_can_dao);
     // Đảo ngược chỉ một đoạn ở giữa: từ chỉ số 1 đến 4 (các số 2, 3, 4, 5)
-    reverse_inverse_tai_wait(&mut mang_can_dao[1..5]);
+    reverse_in_place(&mut mang_can_dao[1..5]);
     println!("    - Sau khi đảo đoạn [1..5]: {:?}", mang_can_dao);
     assert_eq!(mang_can_dao, [1, 5, 4, 3, 2, 6]);
 
@@ -304,14 +304,14 @@ mod tests {
 
     #[test]
     fn tong_lat_cat() {
-        assert_eq!(total_tile_latency(&[10, 20, 30]), 60);
-        assert_eq!(total_tile_latency(&[]), 0);
+        assert_eq!(sum_slice(&[10, 20, 30]), 60);
+        assert_eq!(sum_slice(&[]), 0);
     }
 
     #[test]
     fn reverse_in_place_without_allocating() {
         let mut v = vec![1, 2, 3, 4, 5];
-        reverse_inverse_tai_wait(&mut v);
+        reverse_in_place(&mut v);
         assert_eq!(v, vec![5, 4, 3, 2, 1]);
     }
 
@@ -319,18 +319,18 @@ mod tests {
     fn reverse_twice_is_identity() {
         let root = vec![7, 3, 9, 1];
         let mut v = root.clone();
-        reverse_inverse_tai_wait(&mut v);
-        reverse_inverse_tai_wait(&mut v);
+        reverse_in_place(&mut v);
+        reverse_in_place(&mut v);
         assert_eq!(v, root); // đảo hai lần = phép đồng nhất
     }
 
     #[test]
     fn odd_length_reverse_keeps_middle() {
         let mut v = vec![1, 2, 3];
-        reverse_inverse_tai_wait(&mut v);
+        reverse_in_place(&mut v);
         assert_eq!(v, vec![3, 2, 1]);
         let mut r = vec![42];
-        reverse_inverse_tai_wait(&mut r);
+        reverse_in_place(&mut r);
         assert_eq!(r, vec![42]);
     }
 }

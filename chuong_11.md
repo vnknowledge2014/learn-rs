@@ -158,19 +158,19 @@ Chương trình dưới đây mô phỏng một hệ thống đọc tệp cấu 
 
 // 1. Tự định nghĩa kiểu Lỗi Nghiệp Vụ Tùy Biến (Custom Error Type) bằng Enum
 #[derive(Debug)]
-enum MathError {
+enum PaymentError {
     InvalidAmount(String),
     AccountLocked,
     InsufficientBalance { balance: f64, can_rut: f64 },
 }
 
 // Cài đặt khả năng in ấn đẹp mắt cho kiểu lỗi của chúng ta
-impl std::fmt::Display for MathError {
+impl std::fmt::Display for PaymentError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            MathError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
-            MathError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
-            MathError::InsufficientBalance { balance, can_rut } => {
+            PaymentError::InvalidAmount(msg) => write!(f, "Số tiền không hợp lệ: {}", msg),
+            PaymentError::AccountLocked => write!(f, "Tài khoản đang bị khóa do vi phạm an ninh!"),
+            PaymentError::InsufficientBalance { balance, can_rut } => {
                 write!(f, "Số dư không đủ (Hiện có: {:.2}, Yêu cầu rút: {:.2})", balance, can_rut)
             }
         }
@@ -178,27 +178,27 @@ impl std::fmt::Display for MathError {
 }
 
 // 2. Hàm kiểm tra tính hợp lệ của số tiền nhập vào
-fn check_num_tien(input_buffer: &str) -> Result<f64, MathError> {
+fn check_num_tien(input_buffer: &str) -> Result<f64, PaymentError> {
     let so_tien: f64 = input_buffer.trim().parse().map_err(|_| {
-        MathError::InvalidAmount(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
+        PaymentError::InvalidAmount(String::from("Vui lòng chỉ nhập các chữ số hợp lệ!"))
     })?;
 
     if so_tien <= 0.0 {
-        return Err(MathError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
+        return Err(PaymentError::InvalidAmount(String::from("Số tiền phải lớn hơn 0!")));
     }
 
     Ok(so_tien)
 }
 
 // 3. Hàm thực hiện giao dịch: Tận dụng toán tử '?' để lan truyền lỗi siêu gọn
-fn display_trade(
+fn execute_trade(
     input_buffer: &str, 
     mut so_du_hien_tai: f64, 
     is_account_active: bool
-) -> Result<f64, MathError> {
+) -> Result<f64, PaymentError> {
     // Bước 1: Kiểm tra trạng thái tài khoản
     if !is_account_active {
-        return Err(MathError::AccountLocked);
+        return Err(PaymentError::AccountLocked);
     }
 
     // Bước 2: Phân tích số tiền bằng toán tử '?'
@@ -207,7 +207,7 @@ fn display_trade(
 
     // Bước 3: Kiểm tra hạn mức số dư
     if so_tien_can_rut > so_du_hien_tai {
-        return Err(MathError::InsufficientBalance {
+        return Err(PaymentError::InsufficientBalance {
             balance: so_du_hien_tai,
             can_rut: so_tien_can_rut,
         });
@@ -223,32 +223,32 @@ fn main() {
     println!("     CỔNG THANH TOÁN TÀI CHÍNH AN TOÀN - RUST BANKING       ");
     println!("============================================================");
 
-    let first_balance_sell = 5_000_000.0;
+    let initial_balance = 5_000_000.0;
 
     // --- KỊCH BẢN 1: GIAO DỊCH THÀNH CÔNG HỢP LỆ ---
     println!("\n[Kịch bản 1] Rút 1.500.000 VND hợp lệ:");
-    match display_trade("1500000", first_balance_sell, true) {
+    match execute_trade("1500000", initial_balance, true) {
         Ok(new_balance) => println!("-> Giao dịch THÀNH CÔNG! Số dư còn lại: {:.2} VND", new_balance),
         Err(e) => println!("-> Giao dịch THẤT BẠI: {}", e),
     }
 
     // --- KỊCH BẢN 2: LỖI NHẬP LIỆU KHÔNG PHẢI CHỮ SỐ ---
     println!("\n[Kịch bản 2] Người dùng nhập chữ linh tinh:");
-    match display_trade("mot_trieu", first_balance_sell, true) {
+    match execute_trade("mot_trieu", initial_balance, true) {
         Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Hệ thống xử lý êm dịu: [{}]", e),
     }
 
     // --- KỊCH BẢN 3: LỖI SỐ DƯ KHÔNG ĐỦ ĐỂ RÚT ---
     println!("\n[Kịch bản 3] Rút số tiền vượt hạn mức số dư:");
-    match display_trade("10000000", first_balance_sell, true) {
+    match execute_trade("10000000", initial_balance, true) {
         Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Báo cáo lỗi chính xác: [{}]", e),
     }
 
     // --- KỊCH BẢN 4: LỖI TÀI KHOẢN BỊ KHÓA AN NINH ---
     println!("\n[Kịch bản 4] Tài khoản bị phong tỏa:");
-    match display_trade("500000", first_balance_sell, false) {
+    match execute_trade("500000", initial_balance, false) {
         Ok(new_balance) => println!("-> Thành công: {:.2} VND", new_balance),
         Err(e) => println!("-> Từ chối truy cập: [{}]", e),
     }
@@ -269,7 +269,7 @@ Dưới đây là các lỗi kinh điển khi sử dụng cơ chế xử lý l�
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn sử dụng dấu hỏi chấm `?` bên trong một hàm không có kiểu trả về `Result` (ví dụ hàm `fn main()` thông thường mặc định trả về kiểu rỗng `()`). | Sửa kiểu trả về của hàm đang chứa `?` thành `Result<T, E>`. Nếu muốn dùng `?` ngay trong hàm `main`, hãy đổi kiểu trả về của hàm `main` thành `fn main() -> Result<(), std::io::Error>` (khi đọc/ghi dữ liệu I/O) hoặc `fn main() -> Result<(), String>` / `Result<(), MathError>`. |
+| **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn sử dụng dấu hỏi chấm `?` bên trong một hàm không có kiểu trả về `Result` (ví dụ hàm `fn main()` thông thường mặc định trả về kiểu rỗng `()`). | Sửa kiểu trả về của hàm đang chứa `?` thành `Result<T, E>`. Nếu muốn dùng `?` ngay trong hàm `main`, hãy đổi kiểu trả về của hàm `main` thành `fn main() -> Result<(), std::io::Error>` (khi đọc/ghi dữ liệu I/O) hoặc `fn main() -> Result<(), String>` / `Result<(), PaymentError>`. |
 | **E0308** | `mismatched types: expected 'f64', found 'Result<f64, _>'` | Bạn gọi một hàm trả về `Result` và cố tình gán thẳng vào một biến số thực mà chưa mở hộp `Ok` hay dùng toán tử `?`. | Thêm toán tử `?` ở cuối lời gọi hàm (nếu đang ở trong hàm trả về Result), hoặc dùng `match` / `.unwrap_or(...)`. |
 | **Cảnh báo `unused`** | `warning: unused 'Result' that must be used` | Gọi một thao tác có nguy cơ thất bại (như ghi file) nhưng không gán kết quả cho biến nào và không kiểm tra lỗi. | Thêm `let _ = ...` nếu cố ý bỏ qua, hoặc dùng `?` để kiểm tra lỗi đúng quy chuẩn. |
 | **E0599** | `no method named 'unwrap' found for type ...` | Bạn gọi `.unwrap()` trên một biến không phải là `Option` hay `Result`. | Kiểm tra lại kiểu dữ liệu của biến trước khi mở gói. |

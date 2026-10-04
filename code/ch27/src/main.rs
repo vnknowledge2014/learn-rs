@@ -6,15 +6,15 @@ struct Nut<T> {
 }
 
 /// Cấu trúc Danh sách liên kết đơn (Singly Linked List)
-pub struct ListLienLink<T> {
+pub struct LinkedList<T> {
     peak: Option<Box<Nut<T>>>,
     length: usize,
 }
 
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Khởi tạo một danh sách liên kết rỗng
     pub fn new() -> Self {
-        ListLienLink {
+        LinkedList {
             peak: None,
             length: 0,
         }
@@ -64,7 +64,7 @@ impl<T> ListLienLink<T> {
 
 /// Cài đặt hàm hủy bộ nhớ an toàn (Safe Drop)
 /// Sử dụng vòng lặp tuần tự thay vì đệ quy để triệt tiêu nguy cơ tràn ngăn xếp (Stack Overflow)
-impl<T> Drop for ListLienLink<T> {
+impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
         let mut current_node = self.peak.take();
         // Lặp tuần tự gỡ từng Box trên Heap đưa vào biến cục bộ rồi giải phóng
@@ -76,7 +76,7 @@ impl<T> Drop for ListLienLink<T> {
 }
 
 // Cài đặt Default trait chuẩn phong cách Rust
-impl<T> Default for ListLienLink<T> {
+impl<T> Default for LinkedList<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -87,7 +87,7 @@ fn main() {
     println!("     HIỆN THỰC DANH SÁCH LIÊN KẾT & SMART POINTERS TRONG RUST");
     println!("============================================================");
 
-    let mut list: ListLienLink<i32> = ListLienLink::new();
+    let mut list: LinkedList<i32> = LinkedList::new();
     println!("Khởi tạo danh sách rỗng: len = {}", list.len());
     assert!(list.is_empty());
 
@@ -126,7 +126,7 @@ fn main() {
     // 3. Kiểm thử khả năng chịu tải chống tràn ngăn xếp (Drop 100.000 phần tử)
     println!("\n[3] Kiểm thử độ bền của hàm hủy Drop an toàn:");
     {
-        let mut long_list = ListLienLink::new();
+        let mut long_list = LinkedList::new();
         for i in 0..100_000 {
             long_list.push_front(i);
         }
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn push_pop_is_lifo_at_head() {
-        let mut list: ListLienLink<i32> = ListLienLink::new();
+        let mut list: LinkedList<i32> = LinkedList::new();
         assert!(list.is_empty());
         list.push_front(1);
         list.push_front(2);
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn new_list_is_empty() {
-        let list: ListLienLink<String> = ListLienLink::new();
+        let list: LinkedList<String> = LinkedList::new();
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
         assert_eq!(list.peek_front(), None);
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn dropping_long_list_does_not_overflow_stack() {
         // Bằng chứng cho mục "Drop lặp thay vì đệ quy": 1 triệu nút không sập.
-        let mut list: ListLienLink<u32> = ListLienLink::new();
+        let mut list: LinkedList<u32> = LinkedList::new();
         for i in 0..1_000_000 {
             list.push_front(i);
         }

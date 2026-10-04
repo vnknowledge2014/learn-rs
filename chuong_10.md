@@ -110,12 +110,12 @@ Cụm từ *Kiểu dữ liệu đại số* nghe rất kêu, nhưng ý nghĩa c�
 
 ```rust
 // ❌ Kiểu TÍCH: có 2 tổ hợp VÔ NGHĨA
-struct DonQueue { is_paid: bool, id_trade: Option<String> }
+struct Order { is_paid: bool, transaction_id: Option<String> }
 //   (true, None)      -> đã trả tiền mà không có mã giao dịch?!
 //   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
 
 // ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
-enum PaymentState { ChuaTra, DaTra { id_trade: String } }
+enum PaymentState { ChuaTra, DaTra { transaction_id: String } }
 ```
 
 Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** để loại bỏ cả một lớp lỗi khỏi chương trình.
@@ -216,7 +216,7 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử l
 
 // 1. Enum biểu diễn các trạng thái đa dạng của một đơn hàng trực tuyến
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
-enum StateDonQueue {
+enum OrderStatus {
     AwaitingPayment,
     DangDongGoi { store_export_queue: String },
     InTransit { ma_van_don: String, ten_tai_xe: String },
@@ -236,27 +236,27 @@ fn safe_divide(so_keo: u32, so_tre_em: u32) -> Option<u32> {
 }
 
 // 3. Hàm xử lý trạng thái đơn hàng bằng cấu trúc so khớp mẫu 'match' toàn diện
-fn update_process(don_hang: &StateDonQueue) {
+fn update_progress(don_hang: &OrderStatus) {
     println!("------------------------------------------------------------");
     match don_hang {
-        StateDonQueue::AwaitingPayment => {
+        OrderStatus::AwaitingPayment => {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
-        StateDonQueue::DangDongGoi { store_export_queue } => {
+        OrderStatus::DangDongGoi { store_export_queue } => {
             println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", store_export_queue);
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
-        StateDonQueue::InTransit { ma_van_don, ten_tai_xe } => {
+        OrderStatus::InTransit { ma_van_don, ten_tai_xe } => {
             println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
             println!("  + Mã vận đơn : {}", ma_van_don);
             println!("  + Shipper    : {}", ten_tai_xe);
         }
-        StateDonQueue::Delivered { recipient, time_time_recv } => {
+        OrderStatus::Delivered { recipient, time_time_recv } => {
             println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
             println!("  + Người ký nhận: {}", recipient);
             println!("  + Thời điểm    : {}", time_time_recv);
         }
-        StateDonQueue::Cancelled(ly_do) => {
+        OrderStatus::Cancelled(ly_do) => {
             println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", ly_do);
         }
     }
@@ -268,25 +268,25 @@ fn main() {
     println!("============================================================");
 
     // --- PHẦN 1: SO KHỚP MẪU VỚI ENUM CHỨA DỮ LIỆU ---
-    let don_cho = StateDonQueue::AwaitingPayment;
-    let don_dong_goi = StateDonQueue::DangDongGoi {
+    let don_cho = OrderStatus::AwaitingPayment;
+    let don_dong_goi = OrderStatus::DangDongGoi {
         store_export_queue: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
     };
-    let don_van_transfer = StateDonQueue::InTransit {
+    let don_van_transfer = OrderStatus::InTransit {
         ma_van_don: String::from("SPX-987654321"),
         ten_tai_xe: String::from("Bác Ba Giao Hàng"),
     };
-    let order_delivered = StateDonQueue::Delivered {
+    let order_delivered = OrderStatus::Delivered {
         recipient: String::from("Trần Thị Bình"),
         time_time_recv: String::from("14:30 ngày 05/09/2026"),
     };
-    let don_cancel = StateDonQueue::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
+    let don_cancel = OrderStatus::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
 
-    update_process(&don_cho);
-    update_process(&don_dong_goi);
-    update_process(&don_van_transfer);
-    update_process(&order_delivered);
-    update_process(&don_cancel);
+    update_progress(&don_cho);
+    update_progress(&don_dong_goi);
+    update_progress(&don_van_transfer);
+    update_progress(&order_delivered);
+    update_progress(&don_cancel);
 
     // --- PHẦN 2: LÀM VIỆC VỚI OPTION<T> VÀ TRIỆT TIÊU NULL ---
     println!("\n=== KIỂM THỬ TÍNH TOÁN AN TOÀN VỚI OPTION ===");
@@ -338,7 +338,7 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
 |---|---|---|---|
 | **E0004** | `non-exhaustive patterns: 'None' not covered` | Bạn dùng `match` trên một biến `Option` hoặc `Enum` nhưng quên không viết nhánh xử lý cho một số trường hợp. | Bổ sung thêm các nhánh còn thiếu vào khối `match`, hoặc thêm nhánh đại diện `_ => ...` để bắt toàn bộ các trường hợp còn lại. |
 | **E0308** | `mismatched types: expected integer, found 'Option<{integer}>'` | Bạn cố tình lấy một biến `Option<i32>` ra cộng trừ nhân chia trực tiếp với một số nguyên mà quên mở nắp hộp. | Dùng `match`, `if let`, hoặc phương thức `.unwrap_or(0)` để lấy giá trị số nguyên thực sự bên trong hộp ra trước khi tính toán. |
-| **E0425** | `cannot find value 'ChoThanhToan' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `StateDonQueue::ChoThanhToan`. |
+| **E0425** | `cannot find value 'ChoThanhToan' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `OrderStatus::ChoThanhToan`. |
 | **E0005** | `refutable pattern in local binding` | Bạn dùng `let Some(x) = bien_option;` để gán biến. Rust từ chối vì nếu `bien_option` là `None` thì lệnh gán sẽ thất bại. | Chuyển sang sử dụng cú pháp `if let Some(x) = ...` hoặc `let Some(x) = ... else { return; };`. |
 
 ---

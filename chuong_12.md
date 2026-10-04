@@ -230,14 +230,14 @@ mod thiet_bi_thong_minh {
 
     // 2. Struct Cảm biến Nhiệt độ phòng
     pub struct TempSensor {
-        pub pos_value: String,
+        pub location: String,
         pub do_c: f64,
     }
 
     // Cài đặt Display cho TempSensor (thỏa mãn điều kiện Sensor: Display)
     impl Display for TempSensor {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "Cảm biến Nhiệt độ tại {}", self.pos_value)
+            write!(f, "Cảm biến Nhiệt độ tại {}", self.location)
         }
     }
 
@@ -282,13 +282,13 @@ mod trung_tam_dieu_khien {
         cam_bien.check_computed_state();
 
         let value = cam_bien.read_value();
-        let don_pos = cam_bien.don_pos_do();
+        let unit = cam_bien.don_pos_do();
 
-        println!("Chỉ số đo được : {:.2} {}", value, don_pos);
+        println!("Chỉ số đo được : {:.2} {}", value, unit);
 
         if value >= nguong_canh_bao {
             println!("[CẢNH BÁO NGUY HIỂM] Chỉ số vượt ngưỡng an toàn ({:.2} {})!", 
-                     nguong_canh_bao, don_pos);
+                     nguong_canh_bao, unit);
         } else {
             println!("[AN TOÀN] Chỉ số nằm trong giới hạn cho phép.");
         }
@@ -306,7 +306,7 @@ fn main() {
 
     // Khởi tạo cảm biến nhiệt độ phòng máy chủ
     let cb_nhiet = TempSensor {
-        pos_value: String::from("Phòng Máy Chủ Tầng 5"),
+        location: String::from("Phòng Máy Chủ Tầng 5"),
         do_c: 28.5,
     };
 

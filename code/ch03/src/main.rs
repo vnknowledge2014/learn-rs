@@ -18,13 +18,13 @@ fn main() {
 
     println!("\n=== 3. KỸ THUẬT CHE KHUẤT BIẾN (SHADOWING) ===");
     // Giả sử nhận được dữ liệu dạng chuỗi văn bản từ người dùng nhập
-    let quantity_ve = "5"; 
-    println!("Dữ liệu người dùng nhập (chuỗi): {}", quantity_ve);
+    let ticket_count = "5"; 
+    println!("Dữ liệu người dùng nhập (chuỗi): {}", ticket_count);
 
     // Dán đè một biến mới cùng tên nhưng đổi kiểu dữ liệu sang số nguyên:
-    let quantity_ve: u32 = quantity_ve.parse().expect("Không phải con số hợp lệ!");
-    let tong_tien = quantity_ve * 100_000; // Rust cho phép dùng dấu gạch dưới _ để số dễ đọc hơn
-    println!("Số vé sau khi chuyển đổi: {} vé", quantity_ve);
+    let ticket_count: u32 = ticket_count.parse().expect("Không phải con số hợp lệ!");
+    let tong_tien = ticket_count * 100_000; // Rust cho phép dùng dấu gạch dưới _ để số dễ đọc hơn
+    println!("Số vé sau khi chuyển đổi: {} vé", ticket_count);
     println!("Tổng tiền cần thanh toán : {} VND", tong_tien);
 
     println!("\n=== 4. CÁC KIỂU DỮ LIỆU SỐ HỌC NGUYÊN BẢN ===");

@@ -178,7 +178,7 @@ pub fn norm_cdf(x: f64) -> f64 {
 }
 
 /// Hàm mật độ xác suất chuẩn tắc — dùng cho gamma và vega.
-pub fn mat_do_standard(x: f64) -> f64 {
+pub fn normal_pdf(x: f64) -> f64 {
     (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt()
 }
 
@@ -187,7 +187,7 @@ pub fn mat_do_standard(x: f64) -> f64 {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OptionKind { Buy, Sell }
+pub enum OptionKind { Call, Put }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OptionParams {
@@ -230,8 +230,8 @@ impl OptionParams {
     /// Giá trị NỘI TẠI: phần lãi nếu thực hiện ngay lập tức.
     pub fn intrinsic_value(&self, kind: OptionKind) -> f64 {
         match kind {
-            OptionKind::Buy => (self.spot - self.strike).max(0.0),
-            OptionKind::Sell => (self.strike - self.spot).max(0.0),
+            OptionKind::Call => (self.spot - self.strike).max(0.0),
+            OptionKind::Put => (self.strike - self.spot).max(0.0),
         }
     }
 
@@ -252,8 +252,8 @@ impl OptionParams {
     pub fn european_lower_bound(&self, kind: OptionKind) -> f64 {
         let k_ck = self.discounted_strike();
         match kind {
-            OptionKind::Buy => (self.spot - k_ck).max(0.0),
-            OptionKind::Sell => (k_ck - self.spot).max(0.0),
+            OptionKind::Call => (self.spot - k_ck).max(0.0),
+            OptionKind::Put => (k_ck - self.spot).max(0.0),
         }
     }
 }
@@ -266,8 +266,8 @@ pub fn gia_black_scholes(t: &OptionParams, kind: OptionKind) -> f64 {
         Some((d1, d2)) => {
             let k_ck = t.discounted_strike();
             match kind {
-                OptionKind::Buy => t.spot * norm_cdf(d1) - k_ck * norm_cdf(d2),
-                OptionKind::Sell => k_ck * norm_cdf(-d2) - t.spot * norm_cdf(-d1),
+                OptionKind::Call => t.spot * norm_cdf(d1) - k_ck * norm_cdf(d2),
+                OptionKind::Put => k_ck * norm_cdf(-d2) - t.spot * norm_cdf(-d1),
             }
         }
     }
@@ -275,7 +275,7 @@ pub fn gia_black_scholes(t: &OptionParams, kind: OptionKind) -> f64 {
 
 /// Giá trị THỜI GIAN = giá thị trường − giá trị nội tại. Nó luôn ≥ 0 và tan
 /// dần về 0 khi tới ngày đáo hạn. Đây chính là thứ người bán quyền chọn ăn.
-pub fn value_time_time(t: &OptionParams, kind: OptionKind) -> f64 {
+pub fn time_value(t: &OptionParams, kind: OptionKind) -> f64 {
     (gia_black_scholes(t, kind) - t.intrinsic_value(kind)).max(0.0)
 }
 
@@ -303,16 +303,16 @@ pub fn greeks(t: &OptionParams, kind: OptionKind) -> Greeks {
         None => {
             // Đã đáo hạn: delta là bậc thang 0/1, mọi thứ khác bằng 0
             let in_tien = match kind {
-                OptionKind::Buy => t.spot > t.strike,
-                OptionKind::Sell => t.spot < t.strike,
+                OptionKind::Call => t.spot > t.strike,
+                OptionKind::Put => t.spot < t.strike,
             };
             let d = if !in_tien { 0.0 }
-                    else if kind == OptionKind::Buy { 1.0 } else { -1.0 };
+                    else if kind == OptionKind::Call { 1.0 } else { -1.0 };
             return Greeks { delta: d, gamma: 0.0, vega: 0.0, theta: 0.0, rho: 0.0 };
         }
     };
     let sqrt_t = t.years.sqrt();
-    let md = mat_do_standard(d1);
+    let md = normal_pdf(d1);
     let k_ck = t.discounted_strike();
 
     // Gamma và vega GIỐNG HỆT NHAU cho quyền mua và quyền bán cùng tham số —
@@ -321,13 +321,13 @@ pub fn greeks(t: &OptionParams, kind: OptionKind) -> Greeks {
     let vega = t.spot * md * sqrt_t / 100.0; // trên 1 điểm phần trăm
 
     let (delta, theta, rho) = match kind {
-        OptionKind::Buy => (
+        OptionKind::Call => (
             norm_cdf(d1),
             (-t.spot * md * t.bien_dong / (2.0 * sqrt_t)
              - t.rate * k_ck * norm_cdf(d2)) / 365.0,
             k_ck * t.years * norm_cdf(d2) / 100.0,
         ),
-        OptionKind::Sell => (
+        OptionKind::Put => (
             norm_cdf(d1) - 1.0,
             (-t.spot * md * t.bien_dong / (2.0 * sqrt_t)
              + t.rate * k_ck * norm_cdf(-d2)) / 365.0,
@@ -379,11 +379,11 @@ pub fn implied_volatility(t: &OptionParams, kind: OptionKind, gia_thi_truong: f6
 // phải nhớ tên chiến lược, mà là đọc được ĐỒ THỊ LÃI/LỖ của nó tại đáo hạn.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum KindLeg { Call, QuyenBan, TaiSanCoSo }
+pub enum LegKind { Call, QuyenBan, TaiSanCoSo }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leg {
-    pub kind: KindLeg,
+    pub kind: LegKind,
     /// Dương = bid (trường vị), âm = bán (đoản vị).
     pub quantity: f64,
     pub strike: f64,
@@ -395,25 +395,25 @@ impl Leg {
     /// Lãi/lỗ của riêng cấu phần này tại giá đáo hạn `s`.
     pub fn pnl(&self, s: f64) -> f64 {
         let value = match self.kind {
-            KindLeg::Call => (s - self.strike).max(0.0),
-            KindLeg::QuyenBan => (self.strike - s).max(0.0),
-            KindLeg::TaiSanCoSo => s,
+            LegKind::Call => (s - self.strike).max(0.0),
+            LegKind::QuyenBan => (self.strike - s).max(0.0),
+            LegKind::TaiSanCoSo => s,
         };
         self.quantity * (value - self.premium)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OptionStrategy { pub name: String, pub leg: Vec<Leg> }
+pub struct OptionStrategy { pub name: String, pub legs: Vec<Leg> }
 
 impl OptionStrategy {
     pub fn pnl(&self, s: f64) -> f64 {
-        self.leg.iter().map(|c| c.pnl(s)).sum()
+        self.legs.iter().map(|c| c.pnl(s)).sum()
     }
 
     /// Chi phí ban đầu. Dương = phải trả tiền, âm = được nhận tiền.
-    pub fn first_only_phi_sell(&self) -> f64 {
-        self.leg.iter().map(|c| c.quantity * c.premium).sum()
+    pub fn initial_cost(&self) -> f64 {
+        self.legs.iter().map(|c| c.quantity * c.premium).sum()
     }
 
     /// Các điểm hoà vốn, tìm bằng cách quét dải giá và bắt chỗ đổi dấu.
@@ -453,10 +453,10 @@ impl OptionStrategy {
 pub fn straddle(strike: f64, phi_mua: f64, phi_ban: f64) -> OptionStrategy {
     OptionStrategy {
         name: "Straddle (mua đôi cùng giá)".into(),
-        leg: vec![
-            Leg { kind: KindLeg::Call, quantity: 1.0, strike,
+        legs: vec![
+            Leg { kind: LegKind::Call, quantity: 1.0, strike,
                       premium: phi_mua },
-            Leg { kind: KindLeg::QuyenBan, quantity: 1.0, strike,
+            Leg { kind: LegKind::QuyenBan, quantity: 1.0, strike,
                       premium: phi_ban },
         ],
     }
@@ -464,16 +464,16 @@ pub fn straddle(strike: f64, phi_mua: f64, phi_ban: f64) -> OptionStrategy {
 
 /// Như straddle nhưng hai giá thực hiện cách xa nhau: rẻ hơn, nhưng cần giá
 /// động mạnh hơn mới có lãi.
-pub fn strangle(price_sell: f64, price_buy: f64, phi_mua: f64, phi_ban: f64)
+pub fn strangle(put_strike: f64, call_strike: f64, phi_mua: f64, phi_ban: f64)
     -> OptionStrategy
 {
     OptionStrategy {
         name: "Strangle (mua đôi khác giá)".into(),
-        leg: vec![
-            Leg { kind: KindLeg::Call, quantity: 1.0,
-                      strike: price_buy, premium: phi_mua },
-            Leg { kind: KindLeg::QuyenBan, quantity: 1.0,
-                      strike: price_sell, premium: phi_ban },
+        legs: vec![
+            Leg { kind: LegKind::Call, quantity: 1.0,
+                      strike: call_strike, premium: phi_mua },
+            Leg { kind: LegKind::QuyenBan, quantity: 1.0,
+                      strike: put_strike, premium: phi_ban },
         ],
     }
 }
@@ -485,10 +485,10 @@ pub fn spread_price_up(gia_thap: f64, gia_cao: f64, phi_thap: f64, phi_cao: f64)
 {
     OptionStrategy {
         name: "Chênh lệch giá tăng".into(),
-        leg: vec![
-            Leg { kind: KindLeg::Call, quantity: 1.0,
+        legs: vec![
+            Leg { kind: LegKind::Call, quantity: 1.0,
                       strike: gia_thap, premium: phi_thap },
-            Leg { kind: KindLeg::Call, quantity: -1.0,
+            Leg { kind: LegKind::Call, quantity: -1.0,
                       strike: gia_cao, premium: phi_cao },
         ],
     }
@@ -501,10 +501,10 @@ pub fn covered_call(cost_basis: f64, strike: f64, phi: f64)
 {
     OptionStrategy {
         name: "Quyền mua có bảo đảm".into(),
-        leg: vec![
-            Leg { kind: KindLeg::TaiSanCoSo, quantity: 1.0,
+        legs: vec![
+            Leg { kind: LegKind::TaiSanCoSo, quantity: 1.0,
                       strike: 0.0, premium: cost_basis },
-            Leg { kind: KindLeg::Call, quantity: -1.0,
+            Leg { kind: LegKind::Call, quantity: -1.0,
                       strike, premium: phi },
         ],
     }
@@ -517,14 +517,14 @@ pub fn dieu_hau_sat(ban_thap: f64, mua_thap: f64, ban_cao: f64, mua_cao: f64,
 {
     OptionStrategy {
         name: "Điều hâu sắt".into(),
-        leg: vec![
-            Leg { kind: KindLeg::QuyenBan, quantity: 1.0,
+        legs: vec![
+            Leg { kind: LegKind::QuyenBan, quantity: 1.0,
                       strike: mua_thap, premium: phi[0] },
-            Leg { kind: KindLeg::QuyenBan, quantity: -1.0,
+            Leg { kind: LegKind::QuyenBan, quantity: -1.0,
                       strike: ban_thap, premium: phi[1] },
-            Leg { kind: KindLeg::Call, quantity: -1.0,
+            Leg { kind: LegKind::Call, quantity: -1.0,
                       strike: ban_cao, premium: phi[2] },
-            Leg { kind: KindLeg::Call, quantity: 1.0,
+            Leg { kind: LegKind::Call, quantity: 1.0,
                       strike: mua_cao, premium: phi[3] },
         ],
     }
@@ -547,12 +547,12 @@ fn main() {
     println!("   Cơ sở {} · thực hiện {} · {} tháng · lãi suất {}% · biến động {}%",
              t.spot, t.strike, t.years * 12.0,
              t.rate * 100.0, t.bien_dong * 100.0);
-    let c = gia_black_scholes(&t, OptionKind::Buy);
-    let p = gia_black_scholes(&t, OptionKind::Sell);
+    let c = gia_black_scholes(&t, OptionKind::Call);
+    let p = gia_black_scholes(&t, OptionKind::Put);
     println!("   Quyền mua {:.4} (nội tại {:.2} + thời gian {:.4})",
-             c, t.intrinsic_value(OptionKind::Buy), value_time_time(&t, OptionKind::Buy));
+             c, t.intrinsic_value(OptionKind::Call), time_value(&t, OptionKind::Call));
     println!("   Quyền bán {:.4} (nội tại {:.2} + thời gian {:.4})",
-             p, t.intrinsic_value(OptionKind::Sell), value_time_time(&t, OptionKind::Sell));
+             p, t.intrinsic_value(OptionKind::Put), time_value(&t, OptionKind::Put));
 
     println!("\n3. NGANG GIÁ MUA-BÁN — bất biến kiểm chứng được");
     let left = c - p;
@@ -564,8 +564,8 @@ fn main() {
     println!("     KHÔNG RỦI RO. Vì thế nó gần như không bao giờ lệch.");
 
     println!("\n4. CÁC THAM SỐ NHẠY");
-    let gm = greeks(&t, OptionKind::Buy);
-    let gb = greeks(&t, OptionKind::Sell);
+    let gm = greeks(&t, OptionKind::Call);
+    let gb = greeks(&t, OptionKind::Put);
     println!("   {:<12} {:>14} {:>14}", "", "quyền mua", "quyền bán");
     println!("   {:<12} {:>14.4} {:>14.4}", "delta", gm.delta, gb.delta);
     println!("   {:<12} {:>14.4} {:>14.4}", "gamma", gm.gamma, gb.gamma);
@@ -581,9 +581,9 @@ fn main() {
              "giá cơ sở", "delta bid", "gamma", "giá quyền");
     for s in [70.0f64, 90.0, 100.0, 110.0, 130.0] {
         let x = OptionParams { spot: s, ..t };
-        let g = greeks(&x, OptionKind::Buy);
+        let g = greeks(&x, OptionKind::Call);
         println!("   {:>10.0} {:>12.4} {:>12.4} {:>12.4}",
-                 s, g.delta, g.gamma, gia_black_scholes(&x, OptionKind::Buy));
+                 s, g.delta, g.gamma, gia_black_scholes(&x, OptionKind::Call));
     }
     println!("   → Delta đi từ 0 tới 1. Gamma lớn nhất quanh giá thực hiện —");
     println!("     đó là chỗ delta thay đổi nhanh nhất, và cũng nguy hiểm nhất.");
@@ -593,8 +593,8 @@ fn main() {
     for ngay in [90.0f64, 60.0, 30.0, 7.0, 1.0, 0.0] {
         let x = OptionParams { years: ngay / 365.0, ..t };
         println!("   {:>11.0} ngày {:>16.4} {:>18.4}",
-                 ngay, gia_black_scholes(&x, OptionKind::Buy),
-                 value_time_time(&x, OptionKind::Buy));
+                 ngay, gia_black_scholes(&x, OptionKind::Call),
+                 time_value(&x, OptionKind::Call));
     }
     println!("   → Giá trị thời gian tan NHANH DẦN về cuối. Đó là lý do người bán");
     println!("     quyền chọn thích những tuần cuối, còn người mua thì sợ chúng.");
@@ -602,8 +602,8 @@ fn main() {
     println!("\n7. BIẾN ĐỘNG NGỤ Ý");
     for bd_that in [0.10f64, 0.20, 0.35, 0.60] {
         let x = OptionParams { bien_dong: bd_that, ..t };
-        let price = gia_black_scholes(&x, OptionKind::Buy);
-        let bd_tim = implied_volatility(&x, OptionKind::Buy, price).unwrap();
+        let price = gia_black_scholes(&x, OptionKind::Call);
+        let bd_tim = implied_volatility(&x, OptionKind::Call, price).unwrap();
         println!("   biến động thật {:>5.1}% → giá {:>7.4} → tìm ngược ra {:>5.2}%",
                  bd_that * 100.0, price, bd_tim * 100.0);
     }
@@ -628,7 +628,7 @@ fn main() {
              "chiến lược", "chi phí đầu", "lãi tối đa", "lỗ tối đa");
     for c in &cl {
         println!("   {:<28} {:>12.1} {:>12.1} {:>14.1}",
-                 c.name, c.first_only_phi_sell(),
+                 c.name, c.initial_cost(),
                  c.lai_max_in_long(0.0, 300.0, 0.5),
                  c.lo_max_in_long(0.0, 300.0, 0.5));
     }
@@ -676,10 +676,10 @@ mod tests {
 
     #[test]
     fn the_normal_pdf_peaks_at_zero() {
-        let peak = mat_do_standard(0.0);
+        let peak = normal_pdf(0.0);
         assert!((peak - 0.398_942_28).abs() < 1e-7);
-        assert!(mat_do_standard(1.0) < peak);
-        assert!((mat_do_standard(1.5) - mat_do_standard(-1.5)).abs() < 1e-12, "hàm chẵn");
+        assert!(normal_pdf(1.0) < peak);
+        assert!((normal_pdf(1.5) - normal_pdf(-1.5)).abs() < 1e-12, "hàm chẵn");
     }
 
     // ---------- Black–Scholes ----------
@@ -694,8 +694,8 @@ mod tests {
                         let t = OptionParams { spot: s, strike: k,
                                               years: tg, rate: 0.05,
                                               bien_dong: v };
-                        let c = gia_black_scholes(&t, OptionKind::Buy);
-                        let p = gia_black_scholes(&t, OptionKind::Sell);
+                        let c = gia_black_scholes(&t, OptionKind::Call);
+                        let p = gia_black_scholes(&t, OptionKind::Put);
                         let lech = (c - p) - (s - t.discounted_strike());
                         assert!(lech.abs() < 1e-4,
                                 "ngang giá lệch {:.2e} tại S={} K={} v={} T={}",
@@ -713,8 +713,8 @@ mod tests {
                 let t = OptionParams { spot: s, strike: k,
                                       years: 0.5, rate: 0.05,
                                       bien_dong: 0.3 };
-                assert!(gia_black_scholes(&t, OptionKind::Buy) >= -1e-9);
-                assert!(gia_black_scholes(&t, OptionKind::Sell) >= -1e-9);
+                assert!(gia_black_scholes(&t, OptionKind::Call) >= -1e-9);
+                assert!(gia_black_scholes(&t, OptionKind::Put) >= -1e-9);
             }
         }
     }
@@ -726,7 +726,7 @@ mod tests {
         for s in [20.0f64, 60.0, 100.0, 150.0, 300.0] {
             for tg in [0.1f64, 1.0, 5.0] {
                 let t = OptionParams { spot: s, years: tg, ..ts() };
-                for kind in [OptionKind::Buy, OptionKind::Sell] {
+                for kind in [OptionKind::Call, OptionKind::Put] {
                     assert!(gia_black_scholes(&t, kind) >= t.european_lower_bound(kind) - 1e-9,
                             "S={} T={} loại {:?}", s, tg, kind);
                 }
@@ -740,10 +740,10 @@ mod tests {
         // K·e^(−rT) < K), nên quyền mua không bao giờ rẻ hơn nội tại.
         for s in [60.0f64, 100.0, 200.0] {
             let t = OptionParams { spot: s, ..ts() };
-            assert!(t.european_lower_bound(OptionKind::Buy)
-                    >= t.intrinsic_value(OptionKind::Buy) - 1e-9);
-            assert!(gia_black_scholes(&t, OptionKind::Buy)
-                    >= t.intrinsic_value(OptionKind::Buy) - 1e-9);
+            assert!(t.european_lower_bound(OptionKind::Call)
+                    >= t.intrinsic_value(OptionKind::Call) - 1e-9);
+            assert!(gia_black_scholes(&t, OptionKind::Call)
+                    >= t.intrinsic_value(OptionKind::Call) - 1e-9);
         }
     }
 
@@ -753,23 +753,23 @@ mod tests {
         // kiểu Mỹ đắt hơn quyền bán châu Âu cùng tham số.
         let t = OptionParams { spot: 50.0, strike: 100.0,
                               years: 2.0, rate: 0.05, bien_dong: 0.15 };
-        let price = gia_black_scholes(&t, OptionKind::Sell);
-        let intrinsic = t.intrinsic_value(OptionKind::Sell);
+        let price = gia_black_scholes(&t, OptionKind::Put);
+        let intrinsic = t.intrinsic_value(OptionKind::Put);
         assert!(price < intrinsic,
                 "quyền bán {:.3} phải rẻ hơn nội tại {:.3}", price, intrinsic);
-        assert!(price >= t.european_lower_bound(OptionKind::Sell) - 1e-9,
+        assert!(price >= t.european_lower_bound(OptionKind::Put) - 1e-9,
                 "nhưng vẫn phải trên cận dưới châu Âu");
         // Không có arbitrage: không được phép thực hiện sớm để ăn chênh lệch
-        assert!(t.european_lower_bound(OptionKind::Sell) < intrinsic);
+        assert!(t.european_lower_bound(OptionKind::Put) < intrinsic);
     }
 
     #[test]
     fn at_expiry_price_equals_intrinsic_value() {
         for s in [80.0f64, 100.0, 120.0] {
             let t = OptionParams { spot: s, years: 0.0, ..ts() };
-            assert_eq!(gia_black_scholes(&t, OptionKind::Buy), (s - 100.0f64).max(0.0));
-            assert_eq!(gia_black_scholes(&t, OptionKind::Sell), (100.0f64 - s).max(0.0));
-            assert_eq!(value_time_time(&t, OptionKind::Buy), 0.0,
+            assert_eq!(gia_black_scholes(&t, OptionKind::Call), (s - 100.0f64).max(0.0));
+            assert_eq!(gia_black_scholes(&t, OptionKind::Put), (100.0f64 - s).max(0.0));
+            assert_eq!(time_value(&t, OptionKind::Call), 0.0,
                        "đáo hạn thì giá trị thời gian bằng 0");
         }
     }
@@ -777,8 +777,8 @@ mod tests {
     #[test]
     fn zero_volatility_means_no_time_value() {
         let t = OptionParams { bien_dong: 0.0, ..ts() };
-        assert_eq!(gia_black_scholes(&t, OptionKind::Buy),
-                   t.intrinsic_value(OptionKind::Buy));
+        assert_eq!(gia_black_scholes(&t, OptionKind::Call),
+                   t.intrinsic_value(OptionKind::Call));
     }
 
     #[test]
@@ -786,7 +786,7 @@ mod tests {
         let mut prev = -1.0;
         for s in [50.0f64, 80.0, 100.0, 120.0, 200.0] {
             let g = gia_black_scholes(&OptionParams { spot: s, ..ts() },
-                                      OptionKind::Buy);
+                                      OptionKind::Call);
             assert!(g > prev, "quyền mua phải đắt dần theo giá cơ sở");
             prev = g;
         }
@@ -796,7 +796,7 @@ mod tests {
     fn option_price_rises_with_volatility() {
         // Đây là lý do "bán biến động" là một chiến lược có thật: giá quyền
         // đơn điệu tăng theo biến động, nên bán khi biến động cao là bán đắt.
-        for kind in [OptionKind::Buy, OptionKind::Sell] {
+        for kind in [OptionKind::Call, OptionKind::Put] {
             let mut prev = -1.0;
             for v in [0.05f64, 0.1, 0.2, 0.4, 0.8] {
                 let g = gia_black_scholes(&OptionParams { bien_dong: v, ..ts() }, kind);
@@ -811,7 +811,7 @@ mod tests {
         let mut prev = -1.0;
         for tg in [0.01f64, 0.1, 0.25, 1.0, 2.0] {
             let g = gia_black_scholes(&OptionParams { years: tg, ..ts() },
-                                      OptionKind::Buy);
+                                      OptionKind::Call);
             assert!(g > prev, "còn nhiều thời gian thì quyền đắt hơn");
             prev = g;
         }
@@ -822,8 +822,8 @@ mod tests {
     fn call_delta_in_unit_range_put_delta_negative() {
         for s in [20.0f64, 60.0, 100.0, 140.0, 300.0] {
             let t = OptionParams { spot: s, ..ts() };
-            let dm = greeks(&t, OptionKind::Buy).delta;
-            let db = greeks(&t, OptionKind::Sell).delta;
+            let dm = greeks(&t, OptionKind::Call).delta;
+            let db = greeks(&t, OptionKind::Put).delta;
             assert!((0.0..=1.0).contains(&dm), "delta bid {} tại S={}", dm, s);
             assert!((-1.0..=0.0).contains(&db), "delta bán {} tại S={}", db, s);
             assert!((dm - db - 1.0).abs() < 1e-9,
@@ -834,10 +834,10 @@ mod tests {
     #[test]
     fn call_delta_approaches_one_deep_in_the_money() {
         let next = greeks(&OptionParams { spot: 500.0, ..ts() },
-                              OptionKind::Buy).delta;
+                              OptionKind::Call).delta;
         assert!(next > 0.99, "rất sâu trong tiền → delta ≈ 1, thực tế {:.4}", next);
         let out = greeks(&OptionParams { spot: 10.0, ..ts() },
-                                OptionKind::Buy).delta;
+                                OptionKind::Call).delta;
         assert!(out < 0.01, "rất ngoài tiền → delta ≈ 0, thực tế {:.4}", out);
     }
 
@@ -847,8 +847,8 @@ mod tests {
         // đạo hàm theo biến động không phân biệt quyền mua hay quyền bán.
         for s in [70.0f64, 100.0, 130.0] {
             let t = OptionParams { spot: s, ..ts() };
-            let a = greeks(&t, OptionKind::Buy);
-            let b = greeks(&t, OptionKind::Sell);
+            let a = greeks(&t, OptionKind::Call);
+            let b = greeks(&t, OptionKind::Put);
             assert!((a.gamma - b.gamma).abs() < 1e-12);
             assert!((a.vega - b.vega).abs() < 1e-12);
         }
@@ -858,10 +858,10 @@ mod tests {
     fn gamma_peaks_near_the_strike() {
         // Gamma là chỗ nguy hiểm nhất: quanh giá thực hiện, delta đổi nhanh
         // nhất, nên vị thế phòng hộ mất cân bằng nhanh nhất.
-        let g_mid = greeks(&ts(), OptionKind::Buy).gamma;
+        let g_mid = greeks(&ts(), OptionKind::Call).gamma;
         for s in [60.0f64, 80.0, 130.0, 180.0] {
             let g = greeks(&OptionParams { spot: s, ..ts() },
-                                OptionKind::Buy).gamma;
+                                OptionKind::Call).gamma;
             assert!(g < g_mid, "gamma tại S={} phải nhỏ hơn tại giá thực hiện", s);
         }
     }
@@ -871,7 +871,7 @@ mod tests {
         for s in [50.0f64, 100.0, 200.0] {
             for v in [0.1f64, 0.3, 0.8] {
                 let g = greeks(&OptionParams { spot: s, bien_dong: v, ..ts() },
-                                    OptionKind::Buy);
+                                    OptionKind::Call);
                 assert!(g.gamma >= 0.0 && g.vega >= 0.0);
             }
         }
@@ -880,19 +880,19 @@ mod tests {
     #[test]
     fn theta_is_negative_for_a_near_the_money_call() {
         // Thời gian là kẻ thù của người MUA quyền chọn.
-        let th = greeks(&ts(), OptionKind::Buy).theta;
+        let th = greeks(&ts(), OptionKind::Call).theta;
         assert!(th < 0.0, "theta phải âm, thực tế {:.6}", th);
     }
 
     #[test]
     fn greeks_at_expiry_are_a_step_function() {
         let itm = greeks(&OptionParams { spot: 120.0, years: 0.0,
-                                               ..ts() }, OptionKind::Buy);
+                                               ..ts() }, OptionKind::Call);
         assert_eq!(itm.delta, 1.0);
         assert_eq!(itm.gamma, 0.0);
         assert_eq!(itm.theta, 0.0);
         let out = greeks(&OptionParams { spot: 80.0, years: 0.0,
-                                               ..ts() }, OptionKind::Buy);
+                                               ..ts() }, OptionKind::Call);
         assert_eq!(out.delta, 0.0);
     }
 
@@ -903,11 +903,11 @@ mod tests {
         for s in [80.0f64, 100.0, 120.0] {
             let t = OptionParams { spot: s, ..ts() };
             let len = gia_black_scholes(&OptionParams { spot: s + h, ..ts() },
-                                        OptionKind::Buy);
+                                        OptionKind::Call);
             let xuong = gia_black_scholes(&OptionParams { spot: s - h, ..ts() },
-                                          OptionKind::Buy);
+                                          OptionKind::Call);
             let dao_ham_so = (len - xuong) / (2.0 * h);
-            let d = greeks(&t, OptionKind::Buy).delta;
+            let d = greeks(&t, OptionKind::Call).delta;
             assert!((d - dao_ham_so).abs() < 1e-4,
                     "delta {:.6} so với đạo hàm số {:.6} tại S={}", d, dao_ham_so, s);
         }
@@ -921,7 +921,7 @@ mod tests {
         for v_that in [0.05f64, 0.1, 0.2, 0.35, 0.6, 1.0] {
             for s in [80.0f64, 100.0, 120.0] {
                 let t = OptionParams { spot: s, bien_dong: v_that, ..ts() };
-                for kind in [OptionKind::Buy, OptionKind::Sell] {
+                for kind in [OptionKind::Call, OptionKind::Put] {
                     let price = gia_black_scholes(&t, kind);
                     let tim = implied_volatility(&t, kind, price)
                         .unwrap_or_else(|| panic!("không tìm được IV tại S={} v={}", s, v_that));
@@ -944,7 +944,7 @@ mod tests {
         // xác. Đây là hạn chế THẬT của biến động ngụ ý, không phải lỗi cài đặt.
         for v_that in [0.05f64, 0.1, 0.2, 0.35, 0.6, 1.0] {
             let t = OptionParams { bien_dong: v_that, ..ts() }; // S = K = 100
-            for kind in [OptionKind::Buy, OptionKind::Sell] {
+            for kind in [OptionKind::Call, OptionKind::Put] {
                 let price = gia_black_scholes(&t, kind);
                 let tim = implied_volatility(&t, kind, price).unwrap();
                 assert!((tim - v_that).abs() < 1e-5,
@@ -959,8 +959,8 @@ mod tests {
         // tiền gần bằng 0, nên biến động ngụ ý ở đó gần như vô nghĩa.
         let next = OptionParams { spot: 500.0, ..ts() };
         let mid = ts();
-        let vega_deep = greeks(&next, OptionKind::Buy).vega;
-        let vega_atm = greeks(&mid, OptionKind::Buy).vega;
+        let vega_deep = greeks(&next, OptionKind::Call).vega;
+        let vega_atm = greeks(&mid, OptionKind::Call).vega;
         assert!(vega_deep < vega_atm / 100.0,
                 "vega sâu trong tiền {:.8} phải nhỏ hơn hẳn ở giá thực hiện {:.8}",
                 vega_deep, vega_atm);
@@ -970,21 +970,21 @@ mod tests {
     fn a_price_below_intrinsic_is_rejected() {
         // Giá như vậy là bất khả — dữ liệu hỏng, hoặc có cơ hội arbitrage.
         let t = OptionParams { spot: 150.0, ..ts() };
-        let lower_bound = t.european_lower_bound(OptionKind::Buy);
-        assert_eq!(implied_volatility(&t, OptionKind::Buy, lower_bound - 1.0), None);
+        let lower_bound = t.european_lower_bound(OptionKind::Call);
+        assert_eq!(implied_volatility(&t, OptionKind::Call, lower_bound - 1.0), None);
     }
 
     #[test]
     fn an_unreachable_price_returns_none() {
         let t = ts();
-        assert_eq!(implied_volatility(&t, OptionKind::Buy, 99.0), None,
+        assert_eq!(implied_volatility(&t, OptionKind::Call, 99.0), None,
                    "không biến động nào cho ra giá đó");
     }
 
     #[test]
     fn an_expired_option_has_no_implied_vol() {
         let t = OptionParams { years: 0.0, ..ts() };
-        assert_eq!(implied_volatility(&t, OptionKind::Buy, 5.0), None);
+        assert_eq!(implied_volatility(&t, OptionKind::Call, 5.0), None);
     }
 
     // ---------- Chiến lược ----------
@@ -994,7 +994,7 @@ mod tests {
         assert!((s.pnl(100.0) + 7.0).abs() < 1e-9, "đúng giá thực hiện → mất cả 7");
         assert!(s.pnl(80.0) > s.pnl(100.0), "giá động mạnh xuống → có lãi");
         assert!(s.pnl(120.0) > s.pnl(100.0), "giá động mạnh lên → có lãi");
-        assert_eq!(s.first_only_phi_sell(), 7.0);
+        assert_eq!(s.initial_cost(), 7.0);
     }
 
     #[test]
@@ -1011,7 +1011,7 @@ mod tests {
     fn a_strangle_is_cheaper_but_needs_a_bigger_move() {
         let st = straddle(100.0, 4.0, 3.0);
         let sg = strangle(95.0, 105.0, 2.0, 1.5);
-        assert!(sg.first_only_phi_sell() < st.first_only_phi_sell(), "strangle rẻ hơn");
+        assert!(sg.initial_cost() < st.initial_cost(), "strangle rẻ hơn");
         // Ở ngay giá 100, strangle lỗ ít hơn (vì rẻ hơn)
         assert!(sg.pnl(100.0) > st.pnl(100.0));
         // Nhưng khi giá động vừa phải, straddle lãi hơn
@@ -1058,7 +1058,7 @@ mod tests {
 
     #[test]
     fn a_short_leg_mirrors_the_long_leg_pnl() {
-        let buy = Leg { kind: KindLeg::Call, quantity: 1.0,
+        let buy = Leg { kind: LegKind::Call, quantity: 1.0,
                             strike: 100.0, premium: 5.0 };
         let ban = Leg { quantity: -1.0, ..buy };
         for s in [80.0f64, 100.0, 130.0] {
@@ -1069,9 +1069,9 @@ mod tests {
 
     #[test]
     fn an_empty_strategy_has_no_pnl() {
-        let c = OptionStrategy { name: "rỗng".into(), leg: vec![] };
+        let c = OptionStrategy { name: "rỗng".into(), legs: vec![] };
         assert_eq!(c.pnl(100.0), 0.0);
-        assert_eq!(c.first_only_phi_sell(), 0.0);
+        assert_eq!(c.initial_cost(), 0.0);
         assert!(c.breakeven(0.0, 200.0, 1.0).is_empty());
     }
 
@@ -1124,31 +1124,31 @@ Black-Scholes chỉ định giá quyền chọn châu Âu. Với quyền chọn 
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn binomial_tree(ts: &OptionParams, kind: OptionKind, num_step: usize, kieu_my: bool) -> f64 {
-    let dt = ts.years / num_step as f64;
+pub fn binomial_tree(ts: &OptionParams, kind: OptionKind, num_steps: usize, kieu_my: bool) -> f64 {
+    let dt = ts.years / num_steps as f64;
     let u: f64 = (ts.bien_dong * dt.sqrt()).exp();       // hệ số lên
     let d: f64 = 1.0 / u;                                 // hệ số xuống
     let p = ((ts.rate * dt).exp() - d) / (u - d);// xác suất trung hoà rủi ro
     let discount = (-ts.rate * dt).exp();
 
     // Giá trị tại đáo hạn
-    let mut gt: Vec<f64> = (0..=num_step).map(|i| {
-        let s = ts.spot * u.powi(i as i32) * d.powi((num_step - i) as i32);
+    let mut gt: Vec<f64> = (0..=num_steps).map(|i| {
+        let s = ts.spot * u.powi(i as i32) * d.powi((num_steps - i) as i32);
         match kind {
-            OptionKind::Buy => (s - ts.strike).max(0.0),
-            OptionKind::Sell => (ts.strike - s).max(0.0),
+            OptionKind::Call => (s - ts.strike).max(0.0),
+            OptionKind::Put => (ts.strike - s).max(0.0),
         }
     }).collect();
 
     // Lùi dần về hiện tại
-    for step in (0..num_step).rev() {
+    for step in (0..num_steps).rev() {
         for i in 0..=step {
             let giu = discount * (p * gt[i + 1] + (1.0 - p) * gt[i]);
             gt[i] = if kieu_my {
                 let s = ts.spot * u.powi(i as i32) * d.powi((step - i) as i32);
                 let exercise_now = match kind {
-                    OptionKind::Buy => (s - ts.strike).max(0.0),
-                    OptionKind::Sell => (ts.strike - s).max(0.0),
+                    OptionKind::Call => (s - ts.strike).max(0.0),
+                    OptionKind::Put => (ts.strike - s).max(0.0),
                 };
                 giu.max(exercise_now)      // ĐÂY là điểm khác biệt của kiểu Mỹ
             } else { giu };
@@ -1158,8 +1158,8 @@ pub fn binomial_tree(ts: &OptionParams, kind: OptionKind, num_step: usize, kieu_
 }
 
 /// Phần giá trị chỉ quyền chọn Mỹ mới có.
-pub fn early_exercise_value(ts: &OptionParams, kind: OptionKind, num_step: usize) -> f64 {
-    binomial_tree(ts, kind, num_step, true) - binomial_tree(ts, kind, num_step, false)
+pub fn early_exercise_value(ts: &OptionParams, kind: OptionKind, num_steps: usize) -> f64 {
+    binomial_tree(ts, kind, num_steps, true) - binomial_tree(ts, kind, num_steps, false)
 }
 ```
 

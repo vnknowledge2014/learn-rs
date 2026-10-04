@@ -8,24 +8,24 @@ use std::collections::HashMap;
 // 1. GIAO ƯỚC VÀ CÁC THỰC THỂ ĐƯỢC TỰ ĐỘNG SINH MÃ BỞI DERIVE MACRO
 // ============================================================================
 
-/// Trait mà Derive Macro #[derive(AuditLostReport)] sẽ tự động sinh mã
-pub trait AuditLostReport {
+/// Trait mà Derive Macro #[derive(SecurityAudit)] sẽ tự động sinh mã
+pub trait SecurityAudit {
     fn export_thong_info_safe(&self) -> Vec<(&'static str, String)>;
     fn id_part_kind() -> &'static str;
 }
 
-pub struct AccountBank {
-    pub num_account: String,
+pub struct BankAccount {
+    pub account_number: String,
     pub account_owner: String,
     pub ma_pin_bi_mat: String, // Trường nhạy cảm: không được xuất ra nhật ký!
 }
 
-// Đoạn mã mà Custom Derive Macro tự động sinh ra cho AccountBank:
-impl AuditLostReport for AccountBank {
+// Đoạn mã mà Custom Derive Macro tự động sinh ra cho BankAccount:
+impl SecurityAudit for BankAccount {
     fn export_thong_info_safe(&self) -> Vec<(&'static str, String)> {
         // Macro thông minh tự động lọc bỏ trường nhạy cảm có gắn nhãn helper attribute
         vec![
-            ("so_tai_khoan", self.num_account.clone()),
+            ("so_tai_khoan", self.account_number.clone()),
             ("chu_tai_khoan", self.account_owner.clone()),
             ("ma_pin_bi_mat", String::from("***ĐÃ_ẨN_BẢO_MẬT***")),
         ]
@@ -55,11 +55,11 @@ pub fn safe_transfer(
 
     // [THÂN HÀM NGUYÊN BẢN CỦA LẬP TRÌNH VIÊN]:
     println!("  -> Đang thực hiện chuyển {:.2} đồng từ {} sang {}", so_tien, sender, recipient);
-    let id_trade = "GD-99882233";
+    let transaction_id = "GD-99882233";
 
     // [MÃ DO ATTRIBUTE MACRO TỰ ĐỘNG CHÈN VÀO CUỐI HÀM]:
-    println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", id_trade);
-    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", id_trade))
+    println!("[BẢO VỆ ATTRIBUTE] Giao dịch hoàn tất thành công. Mã định danh: {}", transaction_id);
+    Ok(format!("Chuyển tiền thành công! Mã giao dịch: {}", transaction_id))
 }
 
 // ============================================================================
@@ -92,13 +92,13 @@ fn main() {
     // 1. Kiểm chứng Custom Derive Macro với Helper Attribute
     // ------------------------------------------------------------------------
     println!("\n1. Ứng dụng Custom Derive Macro [KiemToanBaoMat]:");
-    let account = AccountBank {
-        num_account: String::from("1900-8888-9999"),
+    let account = BankAccount {
+        account_number: String::from("1900-8888-9999"),
         account_owner: String::from("Nguyễn Văn An"),
         ma_pin_bi_mat: String::from("SecretPin1234"),
     };
 
-    println!("Mã phân loại thực thể: {}", AccountBank::id_part_kind());
+    println!("Mã phân loại thực thể: {}", BankAccount::id_part_kind());
     println!("Danh sách trường được xuất ra an toàn:");
     for (field_name, value) in account.export_thong_info_safe() {
         println!("  - {}: {}", field_name, value);

@@ -69,7 +69,7 @@ impl Order<DangSoan> {
 
 impl<TT> Order<TT> {
     pub fn remaining(&self) -> Quantity { self.quantity - self.filled }
-    fn transfer<Moi>(self) -> Order<Moi> {
+    fn transition<Moi>(self) -> Order<Moi> {
         Order { id: self.id, id_chain: self.id_chain, side: self.side, price: self.price,
                quantity: self.quantity, filled: self.filled, _tt: PhantomData }
     }
@@ -77,7 +77,7 @@ impl<TT> Order<TT> {
 
 // Chỉ lệnh ĐÃ QUA kiểm tra rủi ro mới gửi được vào sổ lệnh.
 impl Order<RiskChecked> {
-    pub fn send(self) -> Order<Sent> { self.transfer() }
+    pub fn send(self) -> Order<Sent> { self.transition() }
 }
 
 // ============================================================================
@@ -85,40 +85,40 @@ impl Order<RiskChecked> {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ErrorRisk {
+pub enum RiskError {
     NonPositiveQuantity(Quantity),
     NonPositivePrice(Price),
     ExceedsMaxValue { value: i64, tran: i64 },
-    ExceedsMaxPosition { next_order: i64, tran: i64 },
+    ExceedsMaxPosition { position_after: i64, tran: i64 },
     UnknownSymbol(String),
 }
 
 pub struct Limit {
     pub max_order_value: i64,
     pub max_position: i64,
-    pub list_wait_op: Vec<String>,
+    pub allowed_symbols: Vec<String>,
 }
 
 impl Limit {
     /// Trả `Result` chứ không panic: từ chối lệnh là chuyện BÌNH THƯỜNG,
     /// không phải lỗi lập trình. Đây là ranh giới "parse, đừng validate".
     pub fn check(&self, l: Order<DangSoan>, vi_the_hien_tai: i64)
-        -> Result<Order<RiskChecked>, ErrorRisk>
+        -> Result<Order<RiskChecked>, RiskError>
     {
-        if l.quantity <= 0 { return Err(ErrorRisk::NonPositiveQuantity(l.quantity)); }
-        if l.price <= 0 { return Err(ErrorRisk::NonPositivePrice(l.price)); }
-        if !self.list_wait_op.iter().any(|m| *m == l.id_chain) {
-            return Err(ErrorRisk::UnknownSymbol(l.id_chain.clone()));
+        if l.quantity <= 0 { return Err(RiskError::NonPositiveQuantity(l.quantity)); }
+        if l.price <= 0 { return Err(RiskError::NonPositivePrice(l.price)); }
+        if !self.allowed_symbols.iter().any(|m| *m == l.id_chain) {
+            return Err(RiskError::UnknownSymbol(l.id_chain.clone()));
         }
         let value = l.price * l.quantity;
         if value > self.max_order_value {
-            return Err(ErrorRisk::ExceedsMaxValue { value, tran: self.max_order_value });
+            return Err(RiskError::ExceedsMaxValue { value, tran: self.max_order_value });
         }
-        let next_order = vi_the_hien_tai + l.side.first() * l.quantity;
-        if next_order.abs() > self.max_position {
-            return Err(ErrorRisk::ExceedsMaxPosition { next_order, tran: self.max_position });
+        let position_after = vi_the_hien_tai + l.side.first() * l.quantity;
+        if position_after.abs() > self.max_position {
+            return Err(RiskError::ExceedsMaxPosition { position_after, tran: self.max_position });
         }
-        Ok(l.transfer())
+        Ok(l.transition())
     }
 }
 
@@ -129,7 +129,7 @@ impl Limit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fill {
     pub order_aggressive: OrderId,
-    pub order_passive: OrderId,
+    pub passive_order: OrderId,
     pub price: Price,
     pub quantity: Quantity,
 }
@@ -139,16 +139,16 @@ pub struct Fill {
 /// `VecDeque` ở mỗi mức giá giữ ưu tiên THỜI GIAN: ai đặt trước khớp trước.
 pub struct OrderBook {
     /// Bên mua: khóa là giá ÂM để `BTreeMap` (vốn tăng dần) trả giá CAO nhất trước.
-    side_buy: BTreeMap<Price, VecDeque<Order<Sent>>>,
+    buy_side: BTreeMap<Price, VecDeque<Order<Sent>>>,
     ben_ban: BTreeMap<Price, VecDeque<Order<Sent>>>,
 }
 
 impl OrderBook {
-    pub fn new() -> Self { OrderBook { side_buy: BTreeMap::new(), ben_ban: BTreeMap::new() } }
+    pub fn new() -> Self { OrderBook { buy_side: BTreeMap::new(), ben_ban: BTreeMap::new() } }
 
     /// Giá mua cao nhất — cái giá tốt nhất mà người bán có thể nhận ngay.
     pub fn best_bid(&self) -> Option<Price> {
-        self.side_buy.keys().next().map(|k| -k)
+        self.buy_side.keys().next().map(|k| -k)
     }
     /// Giá bán thấp nhất.
     pub fn best_ask(&self) -> Option<Price> {
@@ -163,30 +163,30 @@ impl OrderBook {
         Some((self.best_ask()? + self.best_bid()?) / 2)
     }
     pub fn qty_at(&self, side: Side, price: Price) -> Quantity {
-        let ban = match side { Side::Buy => &self.side_buy, Side::Sell => &self.ben_ban };
+        let ban = match side { Side::Buy => &self.buy_side, Side::Sell => &self.ben_ban };
         let key = match side { Side::Buy => -price, Side::Sell => price };
         ban.get(&key).map_or(0, |q| q.iter().map(|l| l.remaining()).sum())
     }
     pub fn total_order_book(&self) -> usize {
-        self.side_buy.values().map(|q| q.len()).sum::<usize>()
+        self.buy_side.values().map(|q| q.len()).sum::<usize>()
             + self.ben_ban.values().map(|q| q.len()).sum::<usize>()
     }
 
     /// Nạp lệnh và khớp ngay phần khớp được; phần dư nằm lại sổ.
     /// Đây là trái tim của sàn: ƯU TIÊN GIÁ trước, rồi ƯU TIÊN THỜI GIAN.
     pub fn nap(&mut self, mut order: Order<Sent>) -> Vec<Fill> {
-        let mut all_fill = Vec::new();
-        let swap_resp_is_sell = order.side == Side::Buy;
+        let mut fills = Vec::new();
+        let contra_is_sell = order.side == Side::Buy;
 
         loop {
             if order.remaining() == 0 { break; }
             // Mức giá đối ứng tốt nhất còn khớp được với giá giới hạn của ta?
             let key_good = {
-                let swap_resp = if swap_resp_is_sell { &self.ben_ban } else { &self.side_buy };
-                match swap_resp.keys().next().copied() {
+                let contra_side = if contra_is_sell { &self.ben_ban } else { &self.buy_side };
+                match contra_side.keys().next().copied() {
                     Some(k) => {
-                        let price_true = if swap_resp_is_sell { k } else { -k };
-                        let fill_can = if swap_resp_is_sell { price_true <= order.price }
+                        let price_true = if contra_is_sell { k } else { -k };
+                        let fill_can = if contra_is_sell { price_true <= order.price }
                                         else { price_true >= order.price };
                         if fill_can { Some((k, price_true)) } else { None }
                     }
@@ -195,16 +195,16 @@ impl OrderBook {
             };
             let (key, gia_khop) = match key_good { Some(x) => x, None => break };
 
-            let swap_resp = if swap_resp_is_sell { &mut self.ben_ban } else { &mut self.side_buy };
-            let queue = swap_resp.get_mut(&key).unwrap();
+            let contra_side = if contra_is_sell { &mut self.ben_ban } else { &mut self.buy_side };
+            let queue = contra_side.get_mut(&key).unwrap();
             while order.remaining() > 0 {
                 let head_task = match queue.front_mut() { Some(d) => d, None => break };
                 let amount = order.remaining().min(head_task.remaining());
                 order.filled += amount;
                 head_task.filled += amount;
-                all_fill.push(Fill {
+                fills.push(Fill {
                     order_aggressive: order.id,
-                    order_passive: head_task.id,
+                    passive_order: head_task.id,
                     // Giá khớp là giá của lệnh ĐÃ NẰM SẴN trong sổ — người
                     // đến sau được hưởng giá tốt hơn nếu có. Đây là quy tắc
                     // "cải thiện giá" của mọi sàn nghiêm túc.
@@ -213,19 +213,19 @@ impl OrderBook {
                 });
                 if head_task.remaining() == 0 { queue.pop_front(); }
             }
-            if queue.is_empty() { swap_resp.remove(&key); }
+            if queue.is_empty() { contra_side.remove(&key); }
         }
 
         if order.remaining() > 0 {
             let key = if order.side == Side::Buy { -order.price } else { order.price };
-            let ban = if order.side == Side::Buy { &mut self.side_buy } else { &mut self.ben_ban };
+            let ban = if order.side == Side::Buy { &mut self.buy_side } else { &mut self.ben_ban };
             ban.entry(key).or_default().push_back(order);
         }
-        all_fill
+        fills
     }
 
     pub fn cancel(&mut self, id: OrderId) -> bool {
-        for ban in [&mut self.side_buy, &mut self.ben_ban] {
+        for ban in [&mut self.buy_side, &mut self.ben_ban] {
             let mut rong = None;
             for (key, queue) in ban.iter_mut() {
                 if let Some(i) = queue.iter().position(|l| l.id == id) {
@@ -266,7 +266,7 @@ impl Position {
         }
     }
     /// Giá trị ròng khi định giá lại theo giá thị trường hiện tại.
-    pub fn value_empty(&self, gia_thi_truong: Price) -> i64 {
+    pub fn net_value(&self, gia_thi_truong: Price) -> i64 {
         self.tien_mat + self.quantity * gia_thi_truong
     }
 }
@@ -289,7 +289,7 @@ pub trait Strategy {
 }
 
 /// Giao cắt trung bình động: kinh điển, dễ hiểu, và cố tình đơn giản.
-pub struct MeanCross { pub fast: usize, pub cham: usize, pub don_pos: Quantity }
+pub struct MeanCross { pub fast: usize, pub cham: usize, pub lot_size: Quantity }
 
 fn mean(candle: &[Candle], n: usize) -> Option<Price> {
     if candle.len() < n { return None; }
@@ -303,17 +303,17 @@ impl Strategy for MeanCross {
             (Some(a), Some(b)) => (a, b),
             _ => return Signal::Giu, // chưa đủ dữ liệu — KHÔNG đoán mò
         };
-        if fast > cham && position.quantity <= 0 { Signal::Buy(self.don_pos) }
+        if fast > cham && position.quantity <= 0 { Signal::Buy(self.lot_size) }
         else if fast < cham && position.quantity > 0 { Signal::Sell(position.quantity) }
         else { Signal::Giu }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ResultTest {
+pub struct BacktestResult {
     pub last_position: Position,
     pub last_value: i64,
-    pub num_trade: usize,
+    pub num_trades: usize,
     /// Mức sụt giảm sâu nhất từ đỉnh — con số quan trọng hơn cả lợi nhuận,
     /// vì nó quyết định bạn có chịu nổi để đi hết chiến lược hay không.
     pub max_drawdown: i64,
@@ -322,14 +322,14 @@ pub struct ResultTest {
 
 /// Chạy kiểm định. Có mô hình TRƯỢT GIÁ và PHÍ — bỏ hai thứ này là cách
 /// nhanh nhất để tự lừa mình bằng một đường vốn đẹp nhưng không có thật.
-pub fn run_test(
+pub fn run_backtest(
     data: &[Candle],
     strategy: &mut dyn Strategy,
     slippage_ticks: Price,
     phi_new_don_pos: i64,
-) -> ResultTest {
+) -> BacktestResult {
     let mut position = Position::RONG;
-    let mut num_trade = 0;
+    let mut num_trades = 0;
     let mut equity_curve = Vec::with_capacity(data.len());
     let mut peak = i64::MIN;
     let mut max_dd = 0;
@@ -344,27 +344,27 @@ pub fn run_test(
             let (side, amount) = match signal {
                 Signal::Buy(q) => (Side::Buy, q),
                 Signal::Sell(q) => (Side::Sell, q),
-                Signal::Giu => { equity_curve.push(position.value_empty(data[i].dong)); continue; }
+                Signal::Giu => { equity_curve.push(position.net_value(data[i].dong)); continue; }
             };
             if amount > 0 {
                 // Trượt giá: ta luôn mua đắt hơn và bán rẻ hơn giá lý thuyết.
                 let price = nen_sau.mo + side.first() * slippage_ticks;
                 position = position.compose(Position::from_fill(side, price, amount));
                 position.tien_mat -= phi_new_don_pos * amount;
-                num_trade += 1;
+                num_trades += 1;
             }
         }
-        let gt = position.value_empty(data[i].dong);
+        let gt = position.net_value(data[i].dong);
         equity_curve.push(gt);
         peak = peak.max(gt);
         max_dd = max_dd.max(peak - gt);
     }
 
     let last_price = data.last().map_or(0, |n| n.dong);
-    ResultTest {
-        last_value: position.value_empty(last_price),
+    BacktestResult {
+        last_value: position.net_value(last_price),
         last_position: position,
-        num_trade: num_trade,
+        num_trades: num_trades,
         max_drawdown: max_dd,
         equity_curve,
     }
@@ -403,7 +403,7 @@ fn main() {
 
     println!("\n2. CỔNG RỦI RO");
     let hm = Limit { max_order_value: 1_000_000, max_position: 500,
-                      list_wait_op: vec!["VNM".into(), "FPT".into()] };
+                      allowed_symbols: vec!["VNM".into(), "FPT".into()] };
     for (description, l) in [
         ("hợp lệ         ", Order::new(1, "VNM", Side::Buy, 8_500, 100)),
         ("mã lạ          ", Order::new(2, "XYZ", Side::Buy, 8_500, 100)),
@@ -420,7 +420,7 @@ fn main() {
     let mut so = OrderBook::new();
     let send = |id, side, price, sl| {
         Order::<DangSoan>::new(id, "VNM", side, price, sl)
-            .transfer::<RiskChecked>().send()
+            .transition::<RiskChecked>().send()
     };
     for (id, price, sl) in [(10u64, 8_400i64, 100i64), (11, 8_400, 200), (12, 8_390, 500)] {
         so.nap(send(id, Side::Buy, price, sl));
@@ -438,7 +438,7 @@ fn main() {
     let fill = so.nap(send(30, Side::Sell, 8_390, 250));
     for k in &fill {
         println!("   {} đơn vị @ {} (đối tác lệnh #{})",
-                 k.quantity, tick_to_string(k.price), k.order_passive);
+                 k.quantity, tick_to_string(k.price), k.passive_order);
     }
     println!("   → Lệnh #10 (đặt trước) khớp hết TRƯỚC lệnh #11, dù cùng giá.");
     println!("   → Khớp ở giá {} chứ không phải {} — người đến sau được cải thiện giá.",
@@ -454,10 +454,10 @@ fn main() {
     println!("\n6. KIỂM ĐỊNH CHIẾN LƯỢC — 500 nến, có phí và trượt giá");
     let data = gen_data(500, 8_000, 42);
     for (truot, phi) in [(0i64, 0i64), (2, 3)] {
-        let mut cl = MeanCross { fast: 5, cham: 20, don_pos: 100 };
-        let kq = run_test(&data, &mut cl, truot, phi);
+        let mut cl = MeanCross { fast: 5, cham: 20, lot_size: 100 };
+        let kq = run_backtest(&data, &mut cl, truot, phi);
         println!("   trượt {} tick, phí {}/đv → lãi {:>8} tick · {} lệnh · sụt sâu nhất {} tick",
-                 truot, phi, kq.last_value, kq.num_trade, kq.max_drawdown);
+                 truot, phi, kq.last_value, kq.num_trades, kq.max_drawdown);
     }
     println!("   → Cùng một chiến lược: bỏ qua phí và trượt giá là tự lừa mình.");
 
@@ -470,8 +470,8 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn order_sent(id: OrderId, side: Side, price: Price, sl: Quantity) -> Order<Sent> {
-        Order::<DangSoan>::new(id, "VNM", side, price, sl).transfer::<RiskChecked>().send()
+    fn sent_order(id: OrderId, side: Side, price: Price, sl: Quantity) -> Order<Sent> {
+        Order::<DangSoan>::new(id, "VNM", side, price, sl).transition::<RiskChecked>().send()
     }
 
     // ---------- Tiền & kiểu ----------
@@ -494,28 +494,28 @@ mod tests {
     #[test]
     fn risk_gate_blocks_each_violation_kind() {
         let hm = Limit { max_order_value: 1_000_000, max_position: 500,
-                          list_wait_op: vec!["VNM".into()] };
+                          allowed_symbols: vec!["VNM".into()] };
         // Dùng `unwrap_err()` chứ không `assert_eq!` cả `Result`: `Lenh` không
         // cài `PartialEq` (so sánh hai lệnh theo giá trị là vô nghĩa — mỗi lệnh
         // có danh tính riêng qua `ma`).
         assert!(hm.check(Order::new(1, "VNM", Side::Buy, 8_500, 100), 0).is_ok());
         assert_eq!(hm.check(Order::new(2, "VNM", Side::Buy, 8_500, 0), 0).unwrap_err(),
-                   ErrorRisk::NonPositiveQuantity(0));
+                   RiskError::NonPositiveQuantity(0));
         assert_eq!(hm.check(Order::new(3, "VNM", Side::Buy, 0, 10), 0).unwrap_err(),
-                   ErrorRisk::NonPositivePrice(0));
+                   RiskError::NonPositivePrice(0));
         assert_eq!(hm.check(Order::new(4, "XYZ", Side::Buy, 100, 10), 0).unwrap_err(),
-                   ErrorRisk::UnknownSymbol("XYZ".into()));
+                   RiskError::UnknownSymbol("XYZ".into()));
         assert!(matches!(hm.check(Order::new(5, "VNM", Side::Buy, 8_500, 1_000), 0).unwrap_err(),
-                         ErrorRisk::ExceedsMaxValue { .. }));
+                         RiskError::ExceedsMaxValue { .. }));
     }
 
     #[test]
     fn position_limit_covers_the_short_side_too() {
         let hm = Limit { max_order_value: i64::MAX, max_position: 100,
-                          list_wait_op: vec!["VNM".into()] };
+                          allowed_symbols: vec!["VNM".into()] };
         // bán khống 150 khi đang giữ 0 → vị thế -150, vượt trần 100
         assert_eq!(hm.check(Order::new(1, "VNM", Side::Sell, 100, 150), 0).unwrap_err(),
-                   ErrorRisk::ExceedsMaxPosition { next_order: -150, tran: 100 });
+                   RiskError::ExceedsMaxPosition { position_after: -150, tran: 100 });
         // nhưng bán 150 khi đang giữ 100 → còn -50, hợp lệ
         assert!(hm.check(Order::new(2, "VNM", Side::Sell, 100, 150), 100).is_ok());
     }
@@ -524,10 +524,10 @@ mod tests {
     #[test]
     fn book_reports_best_on_both_sides() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Buy, 100, 10));
-        s.nap(order_sent(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên mua
-        s.nap(order_sent(3, Side::Sell, 120, 10));
-        s.nap(order_sent(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
+        s.nap(sent_order(1, Side::Buy, 100, 10));
+        s.nap(sent_order(2, Side::Buy, 105, 10)); // giá cao hơn = tốt hơn cho bên mua
+        s.nap(sent_order(3, Side::Sell, 120, 10));
+        s.nap(sent_order(4, Side::Sell, 110, 10)); // giá thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(105));
         assert_eq!(s.best_ask(), Some(110));
         assert_eq!(s.spread(), Some(5));
@@ -537,50 +537,50 @@ mod tests {
     #[test]
     fn non_crossing_order_rests_on_book() {
         let mut s = OrderBook::new();
-        assert!(s.nap(order_sent(1, Side::Buy, 100, 10)).is_empty());
-        assert!(s.nap(order_sent(2, Side::Sell, 110, 10)).is_empty());
+        assert!(s.nap(sent_order(1, Side::Buy, 100, 10)).is_empty());
+        assert!(s.nap(sent_order(2, Side::Sell, 110, 10)).is_empty());
         assert_eq!(s.total_order_book(), 2);
     }
 
     #[test]
     fn time_priority_within_a_price_level() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Buy, 100, 50));  // đến TRƯỚC
-        s.nap(order_sent(2, Side::Buy, 100, 50));  // đến SAU
-        let fill = s.nap(order_sent(3, Side::Sell, 100, 60));
+        s.nap(sent_order(1, Side::Buy, 100, 50));  // đến TRƯỚC
+        s.nap(sent_order(2, Side::Buy, 100, 50));  // đến SAU
+        let fill = s.nap(sent_order(3, Side::Sell, 100, 60));
         assert_eq!(fill.len(), 2);
-        assert_eq!(fill[0].order_passive, 1, "lệnh đến trước phải khớp trước");
+        assert_eq!(fill[0].passive_order, 1, "lệnh đến trước phải khớp trước");
         assert_eq!(fill[0].quantity, 50);
-        assert_eq!(fill[1].order_passive, 2);
+        assert_eq!(fill[1].passive_order, 2);
         assert_eq!(fill[1].quantity, 10);
     }
 
     #[test]
     fn price_priority_beats_time_priority() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Buy, 100, 50));  // đến trước, giá THẤP hơn
-        s.nap(order_sent(2, Side::Buy, 105, 50));  // đến sau, giá CAO hơn
-        let fill = s.nap(order_sent(3, Side::Sell, 100, 10));
-        assert_eq!(fill[0].order_passive, 2, "giá tốt hơn thắng, dù đến sau");
+        s.nap(sent_order(1, Side::Buy, 100, 50));  // đến trước, giá THẤP hơn
+        s.nap(sent_order(2, Side::Buy, 105, 50));  // đến sau, giá CAO hơn
+        let fill = s.nap(sent_order(3, Side::Sell, 100, 10));
+        assert_eq!(fill[0].passive_order, 2, "giá tốt hơn thắng, dù đến sau");
         assert_eq!(fill[0].price, 105);
     }
 
     #[test]
     fn later_arrival_gets_price_improvement() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Sell, 100, 10)); // ai đó chào bán rẻ
+        s.nap(sent_order(1, Side::Sell, 100, 10)); // ai đó chào bán rẻ
         // ta sẵn sàng mua tới 120, nhưng chỉ phải trả 100
-        let fill = s.nap(order_sent(2, Side::Buy, 120, 10));
+        let fill = s.nap(sent_order(2, Side::Buy, 120, 10));
         assert_eq!(fill[0].price, 100, "khớp ở giá của lệnh nằm sẵn trong sổ");
     }
 
     #[test]
     fn large_order_sweeps_multiple_levels() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Sell, 100, 10));
-        s.nap(order_sent(2, Side::Sell, 101, 10));
-        s.nap(order_sent(3, Side::Sell, 102, 10));
-        let fill = s.nap(order_sent(4, Side::Buy, 102, 25));
+        s.nap(sent_order(1, Side::Sell, 100, 10));
+        s.nap(sent_order(2, Side::Sell, 101, 10));
+        s.nap(sent_order(3, Side::Sell, 102, 10));
+        let fill = s.nap(sent_order(4, Side::Buy, 102, 25));
         assert_eq!(fill.len(), 3);
         assert_eq!(fill.iter().map(|k| k.price).collect::<Vec<_>>(), vec![100, 101, 102],
                    "phải ăn từ giá tốt nhất trở đi");
@@ -591,8 +591,8 @@ mod tests {
     #[test]
     fn aggressive_remainder_rests_on_book() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Sell, 100, 10));
-        let fill = s.nap(order_sent(2, Side::Buy, 100, 30));
+        s.nap(sent_order(1, Side::Sell, 100, 10));
+        let fill = s.nap(sent_order(2, Side::Buy, 100, 30));
         assert_eq!(fill.iter().map(|k| k.quantity).sum::<i64>(), 10);
         assert_eq!(s.best_bid(), Some(100), "20 đơn vị còn lại thành lệnh chờ mua");
         assert_eq!(s.qty_at(Side::Buy, 100), 20);
@@ -610,7 +610,7 @@ mod tests {
             let price = 100 + ((i * 7) % 11) as i64 - 5;
             let sl = 10 + (i % 13) as i64;
             da_nap += sl;
-            filled += s.nap(order_sent(i, side, price, sl))
+            filled += s.nap(sent_order(i, side, price, sl))
                         .iter().map(|k| k.quantity).sum::<i64>();
         }
         let con_weight: i64 = [Side::Buy, Side::Sell].iter()
@@ -624,8 +624,8 @@ mod tests {
     #[test]
     fn cancel_removes_order_and_prunes_empty_level() {
         let mut s = OrderBook::new();
-        s.nap(order_sent(1, Side::Buy, 100, 10));
-        s.nap(order_sent(2, Side::Buy, 100, 20));
+        s.nap(sent_order(1, Side::Buy, 100, 10));
+        s.nap(sent_order(2, Side::Buy, 100, 20));
         assert!(s.cancel(1));
         assert_eq!(s.qty_at(Side::Buy, 100), 20);
         assert!(s.cancel(2));
@@ -662,10 +662,10 @@ mod tests {
             Position::from_fill(side, 100 + i % 7, 1 + i % 5)
         }).collect();
         let tuan_tu = fill.iter().fold(Position::RONG, |a, &b| a.compose(b));
-        let theo_block = fill.chunks(7)
+        let chunked = fill.chunks(7)
             .map(|k| k.iter().fold(Position::RONG, |a, &b| a.compose(b)))
             .fold(Position::RONG, |a, b| a.compose(b));
-        assert_eq!(tuan_tu, theo_block);
+        assert_eq!(tuan_tu, chunked);
     }
 
     #[test]
@@ -673,15 +673,15 @@ mod tests {
         let v = Position::from_fill(Side::Buy, 8_000, 100)
             .compose(Position::from_fill(Side::Sell, 8_500, 100));
         assert_eq!(v.quantity, 0, "đã đóng hết vị thế");
-        assert_eq!(v.value_empty(0), 50_000, "(8500-8000) × 100 tick");
+        assert_eq!(v.net_value(0), 50_000, "(8500-8000) × 100 tick");
     }
 
     #[test]
     fn open_position_is_marked_to_market() {
         let v = Position::from_fill(Side::Buy, 8_000, 100);
-        assert_eq!(v.value_empty(8_000), 0, "vừa mua xong thì hòa vốn");
-        assert_eq!(v.value_empty(8_100), 10_000, "giá lên 100 tick → lãi 10 000");
-        assert_eq!(v.value_empty(7_900), -10_000, "giá xuống thì lỗ đối xứng");
+        assert_eq!(v.net_value(8_000), 0, "vừa mua xong thì hòa vốn");
+        assert_eq!(v.net_value(8_100), 10_000, "giá lên 100 tick → lãi 10 000");
+        assert_eq!(v.net_value(7_900), -10_000, "giá xuống thì lỗ đối xứng");
     }
 
     // ---------- Kiểm định ----------
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn strategy_stays_silent_until_warm() {
-        let mut cl = MeanCross { fast: 5, cham: 20, don_pos: 100 };
+        let mut cl = MeanCross { fast: 5, cham: 20, lot_size: 100 };
         let few_candle = gen_data(10, 8_000, 1);
         assert_eq!(cl.decide(&few_candle, &Position::RONG), Signal::Giu,
                    "chưa đủ 20 nến thì KHÔNG được đoán mò");
@@ -712,8 +712,8 @@ mod tests {
     fn backtest_is_fully_reproducible() {
         let data = gen_data(300, 8_000, 42);
         let run = || {
-            let mut cl = MeanCross { fast: 5, cham: 20, don_pos: 100 };
-            run_test(&data, &mut cl, 2, 3)
+            let mut cl = MeanCross { fast: 5, cham: 20, lot_size: 100 };
+            run_backtest(&data, &mut cl, 2, 3)
         };
         assert_eq!(run(), run(), "cùng dữ liệu + cùng chiến lược = cùng kết quả, luôn luôn");
     }
@@ -721,11 +721,11 @@ mod tests {
     #[test]
     fn fees_and_slippage_always_hurt() {
         let data = gen_data(400, 8_000, 2024);
-        let mut cl1 = MeanCross { fast: 5, cham: 20, don_pos: 100 };
-        let ly_tuong = run_test(&data, &mut cl1, 0, 0);
-        let mut cl2 = MeanCross { fast: 5, cham: 20, don_pos: 100 };
-        let actual = run_test(&data, &mut cl2, 2, 3);
-        assert_eq!(ly_tuong.num_trade, actual.num_trade, "cùng số lệnh");
+        let mut cl1 = MeanCross { fast: 5, cham: 20, lot_size: 100 };
+        let ly_tuong = run_backtest(&data, &mut cl1, 0, 0);
+        let mut cl2 = MeanCross { fast: 5, cham: 20, lot_size: 100 };
+        let actual = run_backtest(&data, &mut cl2, 2, 3);
+        assert_eq!(ly_tuong.num_trades, actual.num_trades, "cùng số lệnh");
         assert!(actual.last_value < ly_tuong.last_value,
                 "chi phí giao dịch luôn ăn vào lợi nhuận: {} so với {}",
                 actual.last_value, ly_tuong.last_value);
@@ -735,8 +735,8 @@ mod tests {
     fn max_drawdown_is_never_negative() {
         for hat in [1u64, 7, 42, 2024, 31337] {
             let data = gen_data(200, 8_000, hat);
-            let mut cl = MeanCross { fast: 3, cham: 10, don_pos: 50 };
-            let kq = run_test(&data, &mut cl, 1, 1);
+            let mut cl = MeanCross { fast: 3, cham: 10, lot_size: 50 };
+            let kq = run_backtest(&data, &mut cl, 1, 1);
             assert!(kq.max_drawdown >= 0, "sụt giảm là khoảng cách, không thể âm");
             assert_eq!(kq.equity_curve.len(), data.len());
         }
@@ -750,8 +750,8 @@ mod tests {
             fn decide(&mut self, _: &[Candle], _: &Position) -> Signal { Signal::Giu }
         }
         let data = gen_data(200, 8_000, 5);
-        let kq = run_test(&data, &mut NoOp, 5, 10);
-        assert_eq!(kq.num_trade, 0);
+        let kq = run_backtest(&data, &mut NoOp, 5, 10);
+        assert_eq!(kq.num_trades, 0);
         assert_eq!(kq.last_value, 0, "không vào lệnh thì không thể mất tiền");
         assert_eq!(kq.max_drawdown, 0);
     }
@@ -767,8 +767,8 @@ mod tests {
             fn name(&self) -> &str { "luôn mua" }
             fn decide(&mut self, _: &[Candle], _: &Position) -> Signal { Signal::Buy(1) }
         }
-        let kq = run_test(&data, &mut AlwaysBuy, 0, 0);
-        assert_eq!(kq.num_trade, data.len() - 1,
+        let kq = run_backtest(&data, &mut AlwaysBuy, 0, 0);
+        assert_eq!(kq.num_trades, data.len() - 1,
                    "nến cuối không có nến kế tiếp để khớp — không được bịa ra giao dịch");
     }
 }

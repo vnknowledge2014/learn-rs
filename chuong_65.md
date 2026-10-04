@@ -322,7 +322,7 @@ impl CongestionControl {
 
 /// Cộng bù-1 16-bit rồi lấy bù. Tính chất vàng: checksum của dữ liệu ĐÃ kèm
 /// checksum luôn bằng 0 — máy nhận chỉ cần cộng hết và so với 0.
-pub fn total_check(data: &[u8]) -> u16 {
+pub fn checksum(data: &[u8]) -> u16 {
     let mut tong: u32 = 0;
     let mut i = 0;
     while i + 1 < data.len() {
@@ -338,8 +338,8 @@ pub fn total_check(data: &[u8]) -> u16 {
     !(tong as u16)
 }
 
-pub fn check_hop_le(du_lieu_kem_checksum: &[u8]) -> bool {
-    total_check(du_lieu_kem_checksum) == 0
+pub fn verify_checksum(du_lieu_kem_checksum: &[u8]) -> bool {
+    checksum(du_lieu_kem_checksum) == 0
 }
 
 // ============================================================================
@@ -367,16 +367,16 @@ impl MangCon {
     pub fn mat_na(&self) -> u32 {
         if self.prefix == 0 { 0 } else { !0u32 << (32 - self.prefix) }
     }
-    pub fn address_array(&self) -> u32 { self.address & self.mat_na() }
-    pub fn quang_ba(&self) -> u32 { self.address_array() | !self.mat_na() }
+    pub fn network_address(&self) -> u32 { self.address & self.mat_na() }
+    pub fn quang_ba(&self) -> u32 { self.network_address() | !self.mat_na() }
     /// Số máy chủ gán được = tổng địa chỉ - 2 (địa chỉ mạng + quảng bá).
-    pub fn num_server(&self) -> u64 {
+    pub fn num_servers(&self) -> u64 {
         match self.prefix {
             32 => 1, 31 => 2, // RFC 3021: liên kết điểm-điểm
             t => (1u64 << (32 - t)) - 2,
         }
     }
-    pub fn contains(&self, ip: u32) -> bool { ip & self.mat_na() == self.address_array() }
+    pub fn contains(&self, ip: u32) -> bool { ip & self.mat_na() == self.network_address() }
     pub fn display(ip: u32) -> String {
         let b = ip.to_be_bytes();
         format!("{}.{}.{}.{}", b[0], b[1], b[2], b[3])
@@ -396,21 +396,21 @@ pub fn match_route<'a>(bang: &'a [(MangCon, &'a str)], ip: u32) -> Option<&'a st
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SellRecord { A(String), CNAME(String), NS(String) }
+pub enum DnsRecord { A(String), CNAME(String), NS(String) }
 
 pub struct DnsServer {
-    pub sell_record: Vec<(String, SellRecord)>,
+    pub records: Vec<(String, DnsRecord)>,
 }
 
 impl DnsServer {
     /// Phân giải, đi theo CNAME. Giới hạn số bước để chặn vòng lặp CNAME.
-    pub fn part_solve(&self, name: &str) -> Result<String, String> {
+    pub fn resolve(&self, name: &str) -> Result<String, String> {
         let mut current = name.to_string();
         for _ in 0..8 {
-            match self.sell_record.iter().find(|(n, _)| *n == current) {
-                Some((_, SellRecord::A(ip))) => return Ok(ip.clone()),
-                Some((_, SellRecord::CNAME(dich))) => current = dich.clone(),
-                Some((_, SellRecord::NS(_))) => return Err(format!("cần hỏi máy chủ khác cho {current}")),
+            match self.records.iter().find(|(n, _)| *n == current) {
+                Some((_, DnsRecord::A(ip))) => return Ok(ip.clone()),
+                Some((_, DnsRecord::CNAME(dich))) => current = dich.clone(),
+                Some((_, DnsRecord::NS(_))) => return Err(format!("cần hỏi máy chủ khác cho {current}")),
                 None => return Err(format!("NXDOMAIN: không có bản ghi cho {current}")),
             }
         }
@@ -425,21 +425,21 @@ impl DnsServer {
 #[derive(Debug, PartialEq)]
 pub struct TransferResult {
     pub da_nhan: Vec<u32>,
-    pub count_send: usize,
+    pub send_count: usize,
 }
 
 /// Go-Back-N: gửi tối đa `window` gói chưa được xác nhận. Gói nào mất thì
 /// gửi lại TỪ ĐÓ TRỞ ĐI — đơn giản nhưng lãng phí băng thông.
 pub fn go_back_n(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult {
     let mut da_nhan = Vec::new();
-    let mut count_send = 0;
-    let mut has_num = 0u32;      // gói đầu tiên chưa được ACK
+    let mut send_count = 0;
+    let mut base = 0u32;      // gói đầu tiên chưa được ACK
     let mut da_mat: VecDeque<u32> = mat_tai.iter().copied().collect();
 
-    while has_num < tong_goi {
+    while base < tong_goi {
         let mut lost_in_window = None;
-        for stt in has_num..(has_num + window).min(tong_goi) {
-            count_send += 1;
+        for stt in base..(base + window).min(tong_goi) {
+            send_count += 1;
             if da_mat.front() == Some(&stt) {
                 da_mat.pop_front();          // gói này mất, chỉ mất MỘT LẦN
                 lost_in_window = Some(stt);
@@ -447,12 +447,12 @@ pub fn go_back_n(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult 
             }
             da_nhan.push(stt);
         }
-        has_num = match lost_in_window {
+        base = match lost_in_window {
             Some(stt) => stt,                 // quay lại N — gửi lại từ gói mất
-            None => (has_num + window).min(tong_goi),
+            None => (base + window).min(tong_goi),
         };
     }
-    TransferResult { da_nhan, count_send }
+    TransferResult { da_nhan, send_count }
 }
 
 fn main() {
@@ -486,17 +486,17 @@ fn main() {
 
     println!("\n4. TỔNG KIỂM TRA INTERNET");
     let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
-    let cs = total_check(&than);
+    let cs = checksum(&than);
     let mut kem = than.to_vec();
     kem.extend_from_slice(&cs.to_be_bytes());
-    println!("   checksum = 0x{:04X} | gói kèm checksum hợp lệ: {}", cs, check_hop_le(&kem));
+    println!("   checksum = 0x{:04X} | gói kèm checksum hợp lệ: {}", cs, verify_checksum(&kem));
     kem[0] ^= 0x01; // làm hỏng 1 bit
-    println!("   sau khi lật 1 bit                         : {}", check_hop_le(&kem));
+    println!("   sau khi lật 1 bit                         : {}", verify_checksum(&kem));
 
     println!("\n5. CIDR & ĐỊNH TUYẾN KHỚP TIỀN TỐ DÀI NHẤT");
     let m = MangCon::analyze("192.168.10.130/26").unwrap();
     println!("   192.168.10.130/26 → mạng {} · quảng bá {} · {} máy chủ",
-             MangCon::display(m.address_array()), MangCon::display(m.quang_ba()), m.num_server());
+             MangCon::display(m.network_address()), MangCon::display(m.quang_ba()), m.num_servers());
     let bang = [
         (MangCon::analyze("0.0.0.0/0").unwrap(), "cong-mac-dinh"),
         (MangCon::analyze("10.0.0.0/8").unwrap(), "eth0"),
@@ -509,17 +509,17 @@ fn main() {
     }
 
     println!("\n6. DNS");
-    let dns = DnsServer { sell_record: vec![
-        ("www.vidu.vn".into(), SellRecord::CNAME("may-chu.vidu.vn".into())),
-        ("may-chu.vidu.vn".into(), SellRecord::A("203.0.113.7".into())),
+    let dns = DnsServer { records: vec![
+        ("www.vidu.vn".into(), DnsRecord::CNAME("may-chu.vidu.vn".into())),
+        ("may-chu.vidu.vn".into(), DnsRecord::A("203.0.113.7".into())),
     ]};
-    println!("   www.vidu.vn  → {:?}", dns.part_solve("www.vidu.vn"));
-    println!("   khong-co.vn  → {:?}", dns.part_solve("khong-co.vn"));
+    println!("   www.vidu.vn  → {:?}", dns.resolve("www.vidu.vn"));
+    println!("   khong-co.vn  → {:?}", dns.resolve("khong-co.vn"));
 
     println!("\n7. CỬA SỔ TRƯỢT GO-BACK-N (10 gói, cửa sổ 4, mất gói #2 và #6)");
     let kq = go_back_n(10, 4, &[2, 6]);
     println!("   Đã gửi {} lần cho 10 gói → hiệu suất {}%",
-             kq.count_send, 10 * 100 / kq.count_send);
+             kq.send_count, 10 * 100 / kq.send_count);
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   GIAO THỨC = HỢP ĐỒNG GIỮA HAI MÁY KHÔNG TIN NHAU          ");
@@ -616,20 +616,20 @@ mod tests {
     #[test]
     fn checksum_over_data_plus_checksum_is_zero() {
         let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06];
-        let cs = total_check(&than);
+        let cs = checksum(&than);
         let mut kem = than.to_vec();
         kem.extend_from_slice(&cs.to_be_bytes());
-        assert!(check_hop_le(&kem), "tính chất vàng của tổng bù-1");
+        assert!(verify_checksum(&kem), "tính chất vàng của tổng bù-1");
     }
 
     #[test]
     fn checksum_catches_single_bit_flip() {
         let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
-        let cs = total_check(&than);
+        let cs = checksum(&than);
         let mut hong = than.to_vec();
         hong.extend_from_slice(&cs.to_be_bytes());
         hong[3] ^= 0x08;
-        assert!(!check_hop_le(&hong));
+        assert!(!verify_checksum(&hong));
     }
 
     #[test]
@@ -638,22 +638,22 @@ mod tests {
         // cho ra cùng checksum. Đây là lý do tầng ứng dụng vẫn cần CRC/hash mạnh.
         let a = [0x11u8, 0x22, 0x33, 0x44];
         let b = [0x33u8, 0x44, 0x11, 0x22];
-        assert_eq!(total_check(&a), total_check(&b));
+        assert_eq!(checksum(&a), checksum(&b));
     }
 
     #[test]
     fn cidr_computes_network_and_broadcast() {
         let m = MangCon::analyze("192.168.10.130/26").unwrap();
-        assert_eq!(MangCon::display(m.address_array()), "192.168.10.128");
+        assert_eq!(MangCon::display(m.network_address()), "192.168.10.128");
         assert_eq!(MangCon::display(m.quang_ba()), "192.168.10.191");
-        assert_eq!(m.num_server(), 62); // 2^6 - 2
+        assert_eq!(m.num_servers(), 62); // 2^6 - 2
     }
 
     #[test]
     fn cidr_edge_cases() {
-        assert_eq!(MangCon::analyze("10.0.0.1/32").unwrap().num_server(), 1);
-        assert_eq!(MangCon::analyze("10.0.0.0/31").unwrap().num_server(), 2);
-        assert_eq!(MangCon::analyze("10.0.0.0/24").unwrap().num_server(), 254);
+        assert_eq!(MangCon::analyze("10.0.0.1/32").unwrap().num_servers(), 1);
+        assert_eq!(MangCon::analyze("10.0.0.0/31").unwrap().num_servers(), 2);
+        assert_eq!(MangCon::analyze("10.0.0.0/24").unwrap().num_servers(), 254);
         assert_eq!(MangCon::analyze("0.0.0.0/0").unwrap().mat_na(), 0);
         assert!(MangCon::analyze("10.0.0.0/33").is_none());
     }
@@ -675,27 +675,27 @@ mod tests {
 
     #[test]
     fn dns_follows_cname_chain() {
-        let d = DnsServer { sell_record: vec![
-            ("a.vn".into(), SellRecord::CNAME("b.vn".into())),
-            ("b.vn".into(), SellRecord::CNAME("c.vn".into())),
-            ("c.vn".into(), SellRecord::A("1.2.3.4".into())),
+        let d = DnsServer { records: vec![
+            ("a.vn".into(), DnsRecord::CNAME("b.vn".into())),
+            ("b.vn".into(), DnsRecord::CNAME("c.vn".into())),
+            ("c.vn".into(), DnsRecord::A("1.2.3.4".into())),
         ]};
-        assert_eq!(d.part_solve("a.vn"), Ok("1.2.3.4".into()));
+        assert_eq!(d.resolve("a.vn"), Ok("1.2.3.4".into()));
     }
 
     #[test]
     fn dns_breaks_cname_loops() {
-        let d = DnsServer { sell_record: vec![
-            ("x.vn".into(), SellRecord::CNAME("y.vn".into())),
-            ("y.vn".into(), SellRecord::CNAME("x.vn".into())),
+        let d = DnsServer { records: vec![
+            ("x.vn".into(), DnsRecord::CNAME("y.vn".into())),
+            ("y.vn".into(), DnsRecord::CNAME("x.vn".into())),
         ]};
-        assert!(d.part_solve("x.vn").unwrap_err().contains("vòng lặp"));
+        assert!(d.resolve("x.vn").unwrap_err().contains("vòng lặp"));
     }
 
     #[test]
     fn dns_reports_nxdomain() {
-        let d = DnsServer { sell_record: vec![] };
-        assert!(d.part_solve("khong-ton-tai.vn").unwrap_err().contains("NXDOMAIN"));
+        let d = DnsServer { records: vec![] };
+        assert!(d.resolve("khong-ton-tai.vn").unwrap_err().contains("NXDOMAIN"));
     }
 
     #[test]
@@ -708,8 +708,8 @@ mod tests {
     fn go_back_n_wastes_bandwidth_on_loss() {
         let clean = go_back_n(10, 4, &[]);
         let mat = go_back_n(10, 4, &[2, 6]);
-        assert_eq!(clean.count_send, 10, "kênh sạch: mỗi gói gửi đúng 1 lần");
-        assert!(mat.count_send > clean.count_send,
+        assert_eq!(clean.send_count, 10, "kênh sạch: mỗi gói gửi đúng 1 lần");
+        assert!(mat.send_count > clean.send_count,
                 "Go-Back-N gửi lại cả các gói KHÔNG mất — đó là cái giá của sự đơn giản");
     }
 }
@@ -803,7 +803,7 @@ Lưu ý sự khác biệt quan trọng: đóng bằng `FIN` là **đóng lịch 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Máy nhận cần một **bộ đệm sắp xếp lại**: nó chấp nhận gói ngoài thứ tự và giữ lại, chờ lỗ hổng được lấp. Máy gửi cần theo dõi ACK riêng cho *từng* gói thay vì một mốc `has_num` duy nhất.
+Máy nhận cần một **bộ đệm sắp xếp lại**: nó chấp nhận gói ngoài thứ tự và giữ lại, chờ lỗ hổng được lấp. Máy gửi cần theo dõi ACK riêng cho *từng* gói thay vì một mốc `base` duy nhất.
 
 Đây chính là cách TCP hiện đại hoạt động, thông qua tùy chọn **SACK** (Selective Acknowledgment).
 </details>
@@ -814,14 +814,14 @@ Máy nhận cần một **bộ đệm sắp xếp lại**: nó chấp nhận gó
 ```rust
 pub fn selective_repeat(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult {
     let mut da_nhan_co: Vec<bool> = vec![false; tong_goi as usize];
-    let mut count_send = 0;
+    let mut send_count = 0;
     let mut con_mat: std::collections::VecDeque<u32> = mat_tai.iter().copied().collect();
-    let mut has_num = 0u32;
+    let mut base = 0u32;
 
-    while has_num < tong_goi {
-        for stt in has_num..(has_num + window).min(tong_goi) {
+    while base < tong_goi {
+        for stt in base..(base + window).min(tong_goi) {
             if da_nhan_co[stt as usize] { continue; } // đã nhận rồi, không gửi lại
-            count_send += 1;
+            send_count += 1;
             if con_mat.front() == Some(&stt) {
                 con_mat.pop_front();
                 continue; // CHỈ gói này mất; các gói sau vẫn tới nơi bình thường
@@ -829,11 +829,11 @@ pub fn selective_repeat(tong_goi: u32, window: u32, mat_tai: &[u32]) -> Transfer
             da_nhan_co[stt as usize] = true;
         }
         // cửa sổ chỉ trượt qua phần đầu đã liên tục
-        while has_num < tong_goi && da_nhan_co[has_num as usize] { has_num += 1; }
+        while base < tong_goi && da_nhan_co[base as usize] { base += 1; }
     }
     TransferResult {
         da_nhan: (0..tong_goi).collect(),
-        count_send,
+        send_count,
     }
 }
 ```
@@ -866,7 +866,7 @@ pub fn chia_mang_con(root: MangCon, so_mang: u32) -> Option<Vec<MangCon>> {
     if tien_to_moi > 32 { return None; } // không đủ địa chỉ để chia
 
     let step = if tien_to_moi == 32 { 1u32 } else { 1u32 << (32 - tien_to_moi) };
-    let first = root.address_array();
+    let first = root.network_address();
     Some((0..so_mang)
         .map(|i| MangCon { address: first + i * step, prefix: tien_to_moi as u8 })
         .collect())

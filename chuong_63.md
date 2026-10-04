@@ -59,12 +59,12 @@ Mục tiêu học tập:
 
 ```
         ┌──────────────┐
-        │   OpenImage     │  toàn bộ trạng thái ứng dụng ở MỘT chỗ
+        │   Model     │  toàn bộ trạng thái ứng dụng ở MỘT chỗ
         │  (Model)     │
         └──────┬───────┘
                │ view (hàm thuần túy)
                ▼
-        [Giao diện]  ──sinh ra──►  ThongMessage (Message)
+        [Giao diện]  ──sinh ra──►  Message (Message)
                ▲                          │
                │                          ▼
                │              ┌───────────────────────┐
@@ -74,8 +74,8 @@ Mục tiêu học tập:
 ```
 
 Ba quy tắc:
-1. **Trạng thái tập trung** ở một `OpenImage`.
-2. **Mọi thay đổi là một `ThongMessage`** — liệt kê bằng enum (kiểu tổng, Chương 20). Không có hành động nào ngoài danh sách.
+1. **Trạng thái tập trung** ở một `Model`.
+2. **Mọi thay đổi là một `Message`** — liệt kê bằng enum (kiểu tổng, Chương 20). Không có hành động nào ngoài danh sách.
 3. **Chỉ `update` được sửa trạng thái**, và nó **thuần túy**: `(model, msg) -> model`.
 
 Lợi ích không phải lý thuyết. Vì `update` thuần túy:
@@ -113,7 +113,7 @@ Frontend:  invoke("luu_tep", { ten: "note.txt" })   ──►   Rust: #[tauri::c
 
 ### 4. "Một lõi, nhiều nền tảng" — sức mạnh thực sự
 
-Điểm mạnh chung: **lõi nghiệp vụ Rust viết một lần, chạy mọi nơi**. Cùng một `OpenImage` + `update` có thể phục vụ:
+Điểm mạnh chung: **lõi nghiệp vụ Rust viết một lần, chạy mọi nơi**. Cùng một `Model` + `update` có thể phục vụ:
 - App desktop (Tauri/gpui),
 - App web (WASM, Chương 62),
 - App di động (Tauri 2.0),
@@ -144,14 +144,14 @@ use std::collections::HashMap;
 // mọi thay đổi đi qua MỘT hàm `update` thuần túy. Không sửa trạng thái lung tung.
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OpenImage {
-    pub job: Vec<WorkPort>,
+pub struct Model {
+    pub tasks: Vec<Task>,
     pub filter: Filter,
     pub next_id: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct WorkPort {
+pub struct Task {
     pub id: u64,
     pub title: String,
     pub done: bool,
@@ -163,7 +163,7 @@ pub enum Filter { TatCa, ChuaXong, DaXong }
 /// Mọi thứ CÓ THỂ xảy ra trong ứng dụng, liệt kê bằng enum (kiểu tổng, Chương 20).
 /// Không có hành động nào ngoài danh sách này — trạng thái thay đổi có kiểm soát.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ThongMessage {
+pub enum Message {
     AddTask(String),
     BatTat(u64),
     Remove(u64),
@@ -171,46 +171,46 @@ pub enum ThongMessage {
     ClearCompleted,
 }
 
-impl OpenImage {
+impl Model {
     pub fn new() -> Self {
-        OpenImage { job: Vec::new(), filter: Filter::TatCa, next_id: 1 }
+        Model { tasks: Vec::new(), filter: Filter::TatCa, next_id: 1 }
     }
 
     /// HÀM `update` THUẦN TÚY: (trạng thái cũ, thông điệp) -> trạng thái mới.
     /// Đây là trái tim của kiến trúc: mọi thay đổi phải đi qua đây, nên dễ
     /// suy luận, dễ kiểm thử, dễ ghi lại (undo/redo, ghi nhật ký, phát lại).
-    pub fn update(mut self, td: ThongMessage) -> Self {
+    pub fn update(mut self, td: Message) -> Self {
         match td {
-            ThongMessage::AddTask(title) => {
+            Message::AddTask(title) => {
                 let t = title.trim();
                 if !t.is_empty() {
-                    self.job.push(WorkPort {
+                    self.tasks.push(Task {
                         id: self.next_id, title: t.to_string(), done: false,
                     });
                     self.next_id += 1;
                 }
             }
-            ThongMessage::BatTat(id) => {
-                if let Some(cv) = self.job.iter_mut().find(|c| c.id == id) {
+            Message::BatTat(id) => {
+                if let Some(cv) = self.tasks.iter_mut().find(|c| c.id == id) {
                     cv.done = !cv.done;
                 }
             }
-            ThongMessage::Remove(id) => {
-                self.job.retain(|c| c.id != id);
+            Message::Remove(id) => {
+                self.tasks.retain(|c| c.id != id);
             }
-            ThongMessage::SetFilter(bl) => {
+            Message::SetFilter(bl) => {
                 self.filter = bl;
             }
-            ThongMessage::ClearCompleted => {
-                self.job.retain(|c| !c.done);
+            Message::ClearCompleted => {
+                self.tasks.retain(|c| !c.done);
             }
         }
         self
     }
 
     /// Dẫn xuất: danh sách hiển thị theo bộ lọc hiện tại (view thuần túy).
-    pub fn display(&self) -> Vec<&WorkPort> {
-        self.job.iter().filter(|c| match self.filter {
+    pub fn display(&self) -> Vec<&Task> {
+        self.tasks.iter().filter(|c| match self.filter {
             Filter::TatCa => true,
             Filter::ChuaXong => !c.done,
             Filter::DaXong => c.done,
@@ -218,7 +218,7 @@ impl OpenImage {
     }
 
     pub fn pending_count(&self) -> usize {
-        self.job.iter().filter(|c| !c.done).count()
+        self.tasks.iter().filter(|c| !c.done).count()
     }
 }
 
@@ -229,39 +229,39 @@ impl OpenImage {
 // Ta mô phỏng cầu đó: một bộ điều phối nhận tên lệnh + tham số, trả kết quả JSON.
 
 #[derive(Debug, PartialEq)]
-pub enum ResultOrder {
+pub enum CommandResult {
     Ok(String),
     Failed(String),
 }
 
 pub trait BackendCommand {
     fn name(&self) -> &str;
-    fn run(&self, param: &HashMap<String, String>) -> ResultOrder;
+    fn run(&self, param: &HashMap<String, String>) -> CommandResult;
 }
 
 /// Ví dụ lệnh: đọc thông tin hệ thống (backend làm việc mà webview không làm được).
-pub struct SystemInfoRequest;
-impl BackendCommand for SystemInfoRequest {
+pub struct SystemInfoCommand;
+impl BackendCommand for SystemInfoCommand {
     fn name(&self) -> &str { "thong_tin_he_thong" }
-    fn run(&self, _: &HashMap<String, String>) -> ResultOrder {
-        ResultOrder::Ok("os=cross-platform;kien_truc=x86_64".to_string())
+    fn run(&self, _: &HashMap<String, String>) -> CommandResult {
+        CommandResult::Ok("os=cross-platform;kien_truc=x86_64".to_string())
     }
 }
 
 /// Ví dụ lệnh: lưu tệp (thao tác hệ thống — chỉ backend được phép, vì bảo mật).
-pub struct OrderSaveFile;
-impl BackendCommand for OrderSaveFile {
+pub struct SaveFileCommand;
+impl BackendCommand for SaveFileCommand {
     fn name(&self) -> &str { "luu_tep" }
-    fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
+    fn run(&self, param: &HashMap<String, String>) -> CommandResult {
         let name = match param.get("ten") {
             Some(t) if !t.is_empty() => t,
-            _ => return ResultOrder::Failed("thiếu tên tệp".into()),
+            _ => return CommandResult::Failed("thiếu tên tệp".into()),
         };
         // Chặn path traversal (Chương 57) — webview không được ghi ra ngoài thư mục app!
         if name.contains("..") || name.starts_with('/') {
-            return ResultOrder::Failed("đường dẫn không an toàn".into());
+            return CommandResult::Failed("đường dẫn không an toàn".into());
         }
-        ResultOrder::Ok(format!("đã lưu {}", name))
+        CommandResult::Ok(format!("đã lưu {}", name))
     }
 }
 
@@ -276,10 +276,10 @@ impl IpcBridge {
         self
     }
     /// invoke(ten, param) — y hệt `invoke` của Tauri.
-    pub fn invoke(&self, name: &str, param: HashMap<String, String>) -> ResultOrder {
+    pub fn invoke(&self, name: &str, param: HashMap<String, String>) -> CommandResult {
         match self.order.iter().find(|l| l.name() == name) {
             Some(l) => l.run(&param),
-            None => ResultOrder::Failed(format!("lệnh {:?} không được đăng ký", name)),
+            None => CommandResult::Failed(format!("lệnh {:?} không được đăng ký", name)),
         }
     }
 }
@@ -290,20 +290,20 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════════");
 
     println!("\n1. KIẾN TRÚC TRẠNG THÁI (Elm/Redux) — mọi thay đổi qua `update`");
-    let m = OpenImage::new()
-        .update(ThongMessage::AddTask("Học Tauri".into()))
-        .update(ThongMessage::AddTask("Viết ứng dụng".into()))
-        .update(ThongMessage::AddTask("Đóng gói đa nền tảng".into()))
-        .update(ThongMessage::BatTat(1)); // đánh dấu việc #1 xong
+    let m = Model::new()
+        .update(Message::AddTask("Học Tauri".into()))
+        .update(Message::AddTask("Viết ứng dụng".into()))
+        .update(Message::AddTask("Đóng gói đa nền tảng".into()))
+        .update(Message::BatTat(1)); // đánh dấu việc #1 xong
 
-    println!("   Tổng công việc: {}, chưa xong: {}", m.job.len(), m.pending_count());
-    let m = m.update(ThongMessage::SetFilter(Filter::ChuaXong));
+    println!("   Tổng công việc: {}, chưa xong: {}", m.tasks.len(), m.pending_count());
+    let m = m.update(Message::SetFilter(Filter::ChuaXong));
     println!("   Lọc 'chưa xong': {:?}", m.display().iter().map(|c| &c.title).collect::<Vec<_>>());
 
     println!("\n2. CẦU IPC — frontend (Svelte/JS) gọi backend (Rust)");
     let sentence = IpcBridge::new()
-        .register(Box::new(SystemInfoRequest))
-        .register(Box::new(OrderSaveFile));
+        .register(Box::new(SystemInfoCommand))
+        .register(Box::new(SaveFileCommand));
 
     println!("   invoke('thong_tin_he_thong'): {:?}", sentence.invoke("thong_tin_he_thong", HashMap::new()));
     let mut ts = HashMap::new();
@@ -324,58 +324,58 @@ mod tests {
 
     #[test]
     fn add_task_increments_id() {
-        let m = OpenImage::new()
-            .update(ThongMessage::AddTask("A".into()))
-            .update(ThongMessage::AddTask("B".into()));
-        assert_eq!(m.job.len(), 2);
-        assert_eq!(m.job[0].id, 1);
-        assert_eq!(m.job[1].id, 2);
+        let m = Model::new()
+            .update(Message::AddTask("A".into()))
+            .update(Message::AddTask("B".into()));
+        assert_eq!(m.tasks.len(), 2);
+        assert_eq!(m.tasks[0].id, 1);
+        assert_eq!(m.tasks[1].id, 2);
     }
 
     #[test]
     fn add_work_empty_is_unit_qua() {
-        let m = OpenImage::new()
-            .update(ThongMessage::AddTask("   ".into()))
-            .update(ThongMessage::AddTask("".into()));
-        assert_eq!(m.job.len(), 0);
+        let m = Model::new()
+            .update(Message::AddTask("   ".into()))
+            .update(Message::AddTask("".into()));
+        assert_eq!(m.tasks.len(), 0);
     }
 
     #[test]
     fn toggle_state() {
-        let m = OpenImage::new().update(ThongMessage::AddTask("X".into()));
-        assert!(!m.job[0].done);
-        let m = m.update(ThongMessage::BatTat(1));
-        assert!(m.job[0].done);
-        let m = m.update(ThongMessage::BatTat(1)); // bật lại
-        assert!(!m.job[0].done);
+        let m = Model::new().update(Message::AddTask("X".into()));
+        assert!(!m.tasks[0].done);
+        let m = m.update(Message::BatTat(1));
+        assert!(m.tasks[0].done);
+        let m = m.update(Message::BatTat(1)); // bật lại
+        assert!(!m.tasks[0].done);
     }
 
     #[test]
     fn remove_and_clear_completed() {
-        let m = OpenImage::new()
-            .update(ThongMessage::AddTask("A".into()))
-            .update(ThongMessage::AddTask("B".into()))
-            .update(ThongMessage::AddTask("C".into()))
-            .update(ThongMessage::BatTat(1))
-            .update(ThongMessage::BatTat(3));
+        let m = Model::new()
+            .update(Message::AddTask("A".into()))
+            .update(Message::AddTask("B".into()))
+            .update(Message::AddTask("C".into()))
+            .update(Message::BatTat(1))
+            .update(Message::BatTat(3));
         // Xóa 1 việc cụ thể
-        let m2 = m.clone().update(ThongMessage::Remove(2));
-        assert_eq!(m2.job.len(), 2);
+        let m2 = m.clone().update(Message::Remove(2));
+        assert_eq!(m2.tasks.len(), 2);
         // Xóa mọi việc đã xong (1 và 3)
-        let m3 = m.update(ThongMessage::ClearCompleted);
-        assert_eq!(m3.job.len(), 1);
-        assert_eq!(m3.job[0].title, "B");
+        let m3 = m.update(Message::ClearCompleted);
+        assert_eq!(m3.tasks.len(), 1);
+        assert_eq!(m3.tasks[0].title, "B");
     }
 
     #[test]
     fn filter_shows_correct_items() {
-        let m = OpenImage::new()
-            .update(ThongMessage::AddTask("A".into()))
-            .update(ThongMessage::AddTask("B".into()))
-            .update(ThongMessage::BatTat(1)); // A xong
-        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::TatCa)).display().len(), 2);
-        assert_eq!(m.clone().update(ThongMessage::SetFilter(Filter::DaXong)).display().len(), 1);
-        assert_eq!(m.update(ThongMessage::SetFilter(Filter::ChuaXong)).display().len(), 1);
+        let m = Model::new()
+            .update(Message::AddTask("A".into()))
+            .update(Message::AddTask("B".into()))
+            .update(Message::BatTat(1)); // A xong
+        assert_eq!(m.clone().update(Message::SetFilter(Filter::TatCa)).display().len(), 2);
+        assert_eq!(m.clone().update(Message::SetFilter(Filter::DaXong)).display().len(), 1);
+        assert_eq!(m.update(Message::SetFilter(Filter::ChuaXong)).display().len(), 1);
     }
 
     #[test]
@@ -383,11 +383,11 @@ mod tests {
         // Vì update thuần túy, ta có thể PHÁT LẠI một chuỗi thông điệp để dựng
         // lại đúng trạng thái — nền của undo/redo và event sourcing (Chương 54).
         let history = vec![
-            ThongMessage::AddTask("A".into()),
-            ThongMessage::AddTask("B".into()),
-            ThongMessage::BatTat(1),
+            Message::AddTask("A".into()),
+            Message::AddTask("B".into()),
+            Message::BatTat(1),
         ];
-        let dung = |list: &[ThongMessage]| list.iter().cloned().fold(OpenImage::new(), |m, td| m.update(td));
+        let dung = |list: &[Message]| list.iter().cloned().fold(Model::new(), |m, td| m.update(td));
         // Phát lại hai lần cho CÙNG kết quả (tất định)
         assert_eq!(dung(&history), dung(&history));
     }
@@ -395,23 +395,23 @@ mod tests {
     #[test]
     fn ipc_dispatches_commands() {
         let sentence = IpcBridge::new()
-            .register(Box::new(SystemInfoRequest))
-            .register(Box::new(OrderSaveFile));
-        assert!(matches!(sentence.invoke("thong_tin_he_thong", HashMap::new()), ResultOrder::Ok(_)));
-        assert!(matches!(sentence.invoke("lenh_khong_co", HashMap::new()), ResultOrder::Failed(_)));
+            .register(Box::new(SystemInfoCommand))
+            .register(Box::new(SaveFileCommand));
+        assert!(matches!(sentence.invoke("thong_tin_he_thong", HashMap::new()), CommandResult::Ok(_)));
+        assert!(matches!(sentence.invoke("lenh_khong_co", HashMap::new()), CommandResult::Failed(_)));
     }
 
     #[test]
     fn ipc_blocks_path_traversal() {
-        let sentence = IpcBridge::new().register(Box::new(OrderSaveFile));
+        let sentence = IpcBridge::new().register(Box::new(SaveFileCommand));
         let mut ok = HashMap::new();
         ok.insert("ten".into(), "note.txt".to_string());
-        assert!(matches!(sentence.invoke("luu_tep", ok), ResultOrder::Ok(_)));
+        assert!(matches!(sentence.invoke("luu_tep", ok), CommandResult::Ok(_)));
 
         let mut xau = HashMap::new();
         xau.insert("ten".into(), "../../../etc/passwd".to_string());
         // Cầu IPC chặn — webview KHÔNG được ghi ra ngoài thư mục app (bảo mật)
-        assert!(matches!(sentence.invoke("luu_tep", xau), ResultOrder::Failed(_)));
+        assert!(matches!(sentence.invoke("luu_tep", xau), CommandResult::Failed(_)));
     }
 }
 ```
@@ -430,17 +430,17 @@ use std::sync::Mutex;
 #[tauri::command]
 fn add_task(
     title: String,
-    state: tauri::State<Mutex<OpenImage>>,  // trạng thái chia sẻ (Chương 61)
+    state: tauri::State<Mutex<Model>>,  // trạng thái chia sẻ (Chương 61)
 ) -> Result<usize, String> {
     let mut m = state.lock().unwrap();
-    *m = m.clone().update(ThongMessage::AddTask(title));
+    *m = m.clone().update(Message::AddTask(title));
     Ok(m.pending_count())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]  // Tauri 2.0: chạy cả trên di động!
 pub fn run() {
     tauri::Builder::default()
-        .manage(Mutex::new(OpenImage::new()))
+        .manage(Mutex::new(Model::new()))
         .invoke_handler(tauri::generate_handler![add_task])
         .run(tauri::generate_context!())
         .expect("lỗi khởi chạy ứng dụng Tauri");
@@ -514,17 +514,17 @@ impl Render for Counter {
 1. **Kiến trúc Elm: mọi thay đổi qua một `update` thuần túy.** Trạng thái tập trung, thay đổi là enum thông điệp, chỉ `update` được sửa. Cho undo/redo và phát lại gần như miễn phí.
 2. **Cầu IPC là ranh giới bảo mật.** Webview bị cô lập, chỉ gọi được lệnh đã đăng ký; lõi Rust kiểm duyệt từng lời gọi (chặn path traversal, Chương 57).
 3. **Ba con đường**: Tauri (giao diện web, nhẹ, đa nền tảng cả di động) · gpui (native GPU, nhanh nhất) · wgpu (đồ họa cấp thấp).
-4. **Một lõi Rust, nhiều nền tảng.** Cùng `OpenImage`+`update` phục vụ desktop, web, di động, server — đỉnh cao của "lõi thuần túy, vỏ mệnh lệnh" (Chương 20).
+4. **Một lõi Rust, nhiều nền tảng.** Cùng `Model`+`update` phục vụ desktop, web, di động, server — đỉnh cao của "lõi thuần túy, vỏ mệnh lệnh" (Chương 20).
 
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Undo/Redo)**
-Dùng tính thuần túy của `update`, viết `LichSu` lưu chuỗi `OpenImage` cho phép `hoan_tac()` và `lam_lai()`. Test một chuỗi thao tác rồi hoàn tác.
+Dùng tính thuần túy của `update`, viết `LichSu` lưu chuỗi `Model` cho phép `hoan_tac()` và `lam_lai()`. Test một chuỗi thao tác rồi hoàn tác.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Lưu `Vec<OpenImage>` và một con trỏ vị trí hiện tại. `update` mới thì cắt bỏ phần "tương lai" (redo cũ) và thêm trạng thái mới; `hoan_tac` lùi con trỏ; `lam_lai` tiến con trỏ. Vì mỗi `OpenImage` là một ảnh chụp bất biến, không có gì bị hỏng — đây chính là lợi ích của trạng thái bất biến (Chương 13).
+Lưu `Vec<Model>` và một con trỏ vị trí hiện tại. `update` mới thì cắt bỏ phần "tương lai" (redo cũ) và thêm trạng thái mới; `hoan_tac` lùi con trỏ; `lam_lai` tiến con trỏ. Vì mỗi `Model` là một ảnh chụp bất biến, không có gì bị hỏng — đây chính là lợi ích của trạng thái bất biến (Chương 13).
 </details>
 
 <details>
@@ -532,13 +532,13 @@ Lưu `Vec<OpenImage>` và một con trỏ vị trí hiện tại. `update` mới
 
 ```rust
 pub struct LichSu {
-    state: Vec<OpenImage>,
+    state: Vec<Model>,
     pos_value: usize,
 }
 impl LichSu {
-    pub fn new() -> Self { LichSu { state: vec![OpenImage::new()], pos_value: 0 } }
-    pub fn current(&self) -> &OpenImage { &self.state[self.pos_value] }
-    pub fn apply(&mut self, td: ThongMessage) {
+    pub fn new() -> Self { LichSu { state: vec![Model::new()], pos_value: 0 } }
+    pub fn current(&self) -> &Model { &self.state[self.pos_value] }
+    pub fn apply(&mut self, td: Message) {
         let new = self.current().clone().update(td);
         self.state.truncate(self.pos_value + 1); // bỏ nhánh redo cũ
         self.state.push(new);
@@ -554,13 +554,13 @@ mod bt1 {
     #[test]
     fn undo_redo_hoat_dong() {
         let mut ls = LichSu::new();
-        ls.apply(ThongMessage::AddTask("A".into()));
-        ls.apply(ThongMessage::AddTask("B".into()));
-        assert_eq!(ls.current().job.len(), 2);
+        ls.apply(Message::AddTask("A".into()));
+        ls.apply(Message::AddTask("B".into()));
+        assert_eq!(ls.current().tasks.len(), 2);
         ls.undo();
-        assert_eq!(ls.current().job.len(), 1); // quay về sau khi thêm A
+        assert_eq!(ls.current().tasks.len(), 1); // quay về sau khi thêm A
         ls.lam_lai();
-        assert_eq!(ls.current().job.len(), 2);
+        assert_eq!(ls.current().tasks.len(), 2);
     }
 }
 ```
@@ -576,13 +576,13 @@ Thêm lệnh `doc_tep` chỉ cho đọc tệp trong thư mục app (chặn `..` 
 pub struct ReadFileCmd;
 impl BackendCommand for ReadFileCmd {
     fn name(&self) -> &str { "doc_tep" }
-    fn run(&self, param: &HashMap<String, String>) -> ResultOrder {
+    fn run(&self, param: &HashMap<String, String>) -> CommandResult {
         let name = match param.get("ten") { Some(t) if !t.is_empty() => t,
-            _ => return ResultOrder::Failed("thiếu tên".into()) };
+            _ => return CommandResult::Failed("thiếu tên".into()) };
         if name.contains("..") || name.starts_with('/') || name.contains('\0') {
-            return ResultOrder::Failed("đường dẫn không an toàn".into());
+            return CommandResult::Failed("đường dẫn không an toàn".into());
         }
-        ResultOrder::Ok(format!("nội dung của {}", name))
+        CommandResult::Ok(format!("nội dung của {}", name))
     }
 }
 #[cfg(test)]
@@ -592,9 +592,9 @@ mod bt2 {
     fn read_file_blocks_bad_path() {
         let sentence = IpcBridge::new().register(Box::new(ReadFileCmd));
         let mut ok = HashMap::new(); ok.insert("ten".into(), "config.json".to_string());
-        assert!(matches!(sentence.invoke("doc_tep", ok), ResultOrder::Ok(_)));
+        assert!(matches!(sentence.invoke("doc_tep", ok), CommandResult::Ok(_)));
         let mut xau = HashMap::new(); xau.insert("ten".into(), "/etc/shadow".to_string());
-        assert!(matches!(sentence.invoke("doc_tep", xau), ResultOrder::Failed(_)));
+        assert!(matches!(sentence.invoke("doc_tep", xau), CommandResult::Failed(_)));
     }
 }
 ```

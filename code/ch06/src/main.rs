@@ -10,9 +10,9 @@ fn consume_series(chuoi_nhan_vao: String) {
 }
 
 // 2. Hàm tiếp nhận và trả lại quyền sở hữu cho người gọi
-fn append_suffix(mut series: String) -> String {
-    series.push_str(" (Đã được kiểm định)");
-    series // Trả lại quyền sở hữu chuỗi mới về cho nơi gọi hàm
+fn append_suffix(mut text: String) -> String {
+    text.push_str(" (Đã được kiểm định)");
+    text // Trả lại quyền sở hữu chuỗi mới về cho nơi gọi hàm
 }
 
 // 3. Hàm nhận kiểu Copy trên Stack: Không ảnh hưởng gì đến biến gốc

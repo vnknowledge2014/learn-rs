@@ -14,8 +14,8 @@ fn main() {
 
     // 3. Truyền nhiều giá trị vào cùng một câu thông báo
     let nguoi_hoc = "Lập trình viên tương lai";
-    let level_spend = "Làm chủ bộ nhớ và hệ thống";
-    println!("Học viên [{}] đặt mục tiêu: [{}]", nguoi_hoc, level_spend);
+    let target = "Làm chủ bộ nhớ và hệ thống";
+    println!("Học viên [{}] đặt mục tiêu: [{}]", nguoi_hoc, target);
 
     // 4. Các kỹ thuật định dạng văn bản nâng cao với println!
     // In số với khoảng cách căn lề cố định (rất hữu ích khi in bảng biểu dữ liệu)
@@ -28,12 +28,12 @@ fn main() {
     println!("------------------------------------------------------------");
 
     // 5. In biểu diễn số ở các hệ cơ số khác nhau mà không cần tính toán thủ công
-    let value_mau = 255;
-    println!("Con số {} trong các hệ đếm máy tính:", value_mau);
-    println!("- Hệ thập phân (Decimal)     : {}", value_mau);
-    println!("- Hệ nhị phân (Binary)       : {:08b}", value_mau);
-    println!("- Hệ thập lục phân (Hex)     : 0x{:X}", value_mau);
-    println!("- Hệ bát phân (Octal)        : 0o{:o}", value_mau);
+    let sample_value = 255;
+    println!("Con số {} trong các hệ đếm máy tính:", sample_value);
+    println!("- Hệ thập phân (Decimal)     : {}", sample_value);
+    println!("- Hệ nhị phân (Binary)       : {:08b}", sample_value);
+    println!("- Hệ thập lục phân (Hex)     : 0x{:X}", sample_value);
+    println!("- Hệ bát phân (Octal)        : 0o{:o}", sample_value);
 
     // 6. Thông điệp khích lệ kết thúc chương
     println!("\nChúc mừng! Bạn đã biên dịch và thực thi thành công chương trình thứ hai!");
