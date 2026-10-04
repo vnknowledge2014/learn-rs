@@ -72,12 +72,12 @@ Hệ sinh thái Rust được phân chia trách nhiệm vô cùng rõ ràng:
 
 Khi bạn gõ lệnh tạo dự án mới:
 ```bash
-cargo new du_an_dau_tien
+cargo new first_project
 ```
 Cargo sẽ tự động kiến tạo một không gian làm việc chuẩn mực như sau:
 
 ```
-du_an_dau_tien/
+first_project/
 ├── Cargo.toml          <-- Tệp cấu hình dự án (Metadata & Dependencies)
 ├── Cargo.lock          <-- Tệp ghi chép phiên bản chính xác của các thư viện phụ thuộc
 ├── .gitignore          <-- Tệp quy ước các thư mục không tải lên Git
@@ -89,9 +89,9 @@ du_an_dau_tien/
 - **`Cargo.toml`**: Được viết theo định dạng TOML (*Tom's Obvious, Minimal Language*) — cực kỳ dễ đọc đối với con người:
   ```toml
   [package]
-  name = "du_an_dau_tien"
+  name = "first_project"
   version = "0.1.0"
-  edition = "2021"
+  edition = "2024"
 
   [dependencies]
   # Nơi khai báo các thư viện muốn tải thêm từ Internet
@@ -153,9 +153,12 @@ fn main() {
 
     // 2. Sử dụng dấu ngoặc nhọn {} làm "vị trí giữ chỗ định dạng" (Format slot)
     let course_name = "Rust Masterclass Toàn Diện";
-    let so_chuong = 12;
+    let chapter_count = 12;
     println!("Bạn đang tham gia khóa học: {}", course_name);
-    println!("Giai đoạn nền tảng bao gồm: {} chương chuyên sâu.", so_chuong);
+    println!(
+        "Giai đoạn nền tảng bao gồm: {} chương chuyên sâu.",
+        chapter_count
+    );
 
     // 3. Truyền nhiều giá trị vào cùng một câu thông báo
     let learner = "Lập trình viên tương lai";
@@ -165,11 +168,23 @@ fn main() {
     // 4. Các kỹ thuật định dạng văn bản nâng cao với println!
     // In số với khoảng cách căn lề cố định (rất hữu ích khi in bảng biểu dữ liệu)
     println!("------------------------------------------------------------");
-    println!("| {:<15} | {:<20} | {:>10} |", "MÃ CHƯƠNG", "CHỦ ĐỀ HỌC", "TRẠNG THÁI");
+    println!(
+        "| {:<15} | {:<20} | {:>10} |",
+        "MÃ CHƯƠNG", "CHỦ ĐỀ HỌC", "TRẠNG THÁI"
+    );
     println!("------------------------------------------------------------");
-    println!("| {:<15} | {:<20} | {:>10} |", "Chương 01", "Phần cứng & CPU", "Hoàn thành");
-    println!("| {:<15} | {:<20} | {:>10} |", "Chương 02", "Rust & Cargo", "Đang học");
-    println!("| {:<15} | {:<20} | {:>10} |", "Chương 03", "Biến & Kiểu dữ liệu", "Sắp tới");
+    println!(
+        "| {:<15} | {:<20} | {:>10} |",
+        "Chương 01", "Phần cứng & CPU", "Hoàn thành"
+    );
+    println!(
+        "| {:<15} | {:<20} | {:>10} |",
+        "Chương 02", "Rust & Cargo", "Đang học"
+    );
+    println!(
+        "| {:<15} | {:<20} | {:>10} |",
+        "Chương 03", "Biến & Kiểu dữ liệu", "Sắp tới"
+    );
     println!("------------------------------------------------------------");
 
     // 5. In biểu diễn số ở các hệ cơ số khác nhau mà không cần tính toán thủ công
@@ -210,7 +225,7 @@ Dưới đây là những lỗi phổ biến nhất mà bạn sẽ gặp phải 
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập thực hành 1**: Dùng công cụ dòng lệnh trên máy của bạn, thực hiện tuần tự các bước:
-   - Tạo một dự án mới có tên là `so_yeu_ly_lich` bằng lệnh `cargo new so_yeu_ly_lich`.
+   - Tạo một dự án mới có tên là `my_profile` bằng lệnh `cargo new my_profile`.
    - Di chuyển vào thư mục đó và mở tệp `src/main.rs`.
    - Viết chương trình in ra: Họ tên của bạn, năm sinh, và mục tiêu muốn đạt được sau khi học xong ngôn ngữ Rust.
 2. **Bài tập thực hành 2**: Thử nghiệm chế độ in bảng biểu: Hãy sử dụng cú pháp căn lề `{:<20}` và `{:>10}` của `println!` để in ra một hóa đơn mua sắm gồm 3 món hàng (Tên món, Số lượng, Đơn giá) thật thẳng hàng và đẹp mắt.
@@ -229,7 +244,7 @@ Nội dung `main.rs` mới cần đúng ba dòng `println!`. Điều quan trọn
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
-Sau khi chạy `cargo new so_yeu_ly_lich` và `cd so_yeu_ly_lich`, thay nội dung `src/main.rs` bằng:
+Sau khi chạy `cargo new my_profile` và `cd my_profile`, thay nội dung `src/main.rs` bằng:
 
 ```rust
 fn main() {
@@ -265,10 +280,10 @@ fn main() {
 }
 
 #[test]
-fn can_le_dung_be_rong() {
+fn fixed_column_widths() {
     // Mỗi dòng phải đúng 20+8+12 = 40 ký tự nhờ căn lề cố định.
-    let dong = format!("{:<20}{:>8}{:>12}", "Tai nghe", 3, 1_200_000);
-    assert_eq!(dong.chars().count(), 40);
+    let line = format!("{:<20}{:>8}{:>12}", "Tai nghe", 3, 1_200_000);
+    assert_eq!(line.chars().count(), 40);
 }
 ```
 
@@ -288,8 +303,8 @@ Mấu chốt của bảng đẹp là **mọi dòng có cùng bề rộng cột**
 
 ```text
 fn main() {
-    let ten = "An";
-    println!("Xin chào {} và {}", ten);   // hai {} nhưng chỉ một biến
+    let name = "An";
+    println!("Xin chào {} và {}", name);   // hai {} nhưng chỉ một biến
 }
 ```
 

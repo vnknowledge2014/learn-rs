@@ -4,13 +4,13 @@
 
 Trong hành trình lập trình nói chung, người mới bắt đầu thường mang tâm lý sợ hãi các thông báo lỗi biên dịch. Khi màn hình dòng lệnh hiện lên một tràng chữ đỏ chói lòa, nhiều người cảm thấy nản lòng và cho rằng mình không đủ thông minh để học lập trình. Nhưng trong thế giới của Rust, đặc biệt là khi kết hợp cùng các trợ lý trí tuệ nhân tạo (AI), góc nhìn đó hoàn toàn bị đảo ngược 180 độ!
 
-Trình biên dịch của Rust (`rustc`) không phải là một "kẻ cản đường", mà là một **Vị Trọng tài tối cao (Supreme Arbiter)** công tâm, kiên định và uyên bác nhất trong lịch sử ngành công nghệ phần mềm. Trình biên dịch bảo vệ bạn và hệ thống của bạn khỏi những thảm họa an ninh mạng, những lỗi rò rỉ bộ nhớ, và những sự cố sập máy chủ hàng triệu đô la.
+Trình biên dịch của Rust (`rustc`) không phải là một "kẻ cản đường", mà là một **Vị Trọng tài tối cao (Supreme Arbiter)** công tâm, kiên định và uyên bác nhất trong lịch sử ngành công nghệ phần mềm. Trình biên dịch bảo vệ bạn và hệ thống của bạn khỏi cả một họ lỗi truy cập bộ nhớ (use-after-free, tràn bộ đệm, data race) — nguồn gốc của rất nhiều thảm họa an ninh mạng và sự cố sập máy chủ hàng triệu đô la.
 
 Khi bạn thực hành Vibe Coding, mối quan hệ giữa **Lập trình viên - Trợ lý AI - Trình biên dịch Rust** tạo nên một "Tam giác vàng" vô địch:
 1. Bạn đưa ra tầm nhìn kiến trúc và các ràng buộc nghiệp vụ.
 2. AI thần tốc sinh mã nguồn dự thảo.
 3. Trình biên dịch `rustc` kiểm tra nghiêm ngặt từng quy tắc về quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), và bắt các lỗi phát sinh.
-4. Thông báo lỗi chi tiết của trình biên dịch (compiler diagnostics) được chuyển ngược lại cho AI để AI **tự sửa lỗi (Self-Correction)** và **tái cấu trúc tối ưu (Refactoring)** cho đến khi đạt mức hoàn hảo không tì vết.
+4. Thông báo lỗi chi tiết của trình biên dịch (compiler diagnostics) được chuyển ngược lại cho AI để AI **tự sửa lỗi (Self-Correction)** và **tái cấu trúc tối ưu (Refactoring)** cho đến khi biên dịch sạch và vượt qua bộ test.
 
 Mục tiêu học tập của chương:
 - Thấu hiểu vì sao trình biên dịch Rust là "vị trọng tài" đáng tin cậy nhất để thuần hóa các ảo giác của AI.
@@ -39,7 +39,7 @@ Hãy tưởng tượng một trận chung kết bóng đá World Cup với sự 
   - *"Cầu thủ số 9 (biến `data`), anh đã chuyền quyền sở hữu (ownership) bóng cho cầu thủ số 10 ở phút 15, vậy tại sao anh vẫn cố tình sút bóng ở phút 16?"*
   - Kèm theo lời khuyên cụ thể: *"Anh chỉ nên chuyền quả bóng theo dạng mượn (borrow tham chiếu `&data`), thì anh mới được quyền tiếp tục sử dụng nó!"*.
 
-Nhờ vị trọng tài tối cao này, cầu thủ (AI) buộc phải thi đấu chuẩn xác 100%. Khi trận đấu kết thúc và tiếng còi mãn cuộc vang lên (biên dịch thành công), bạn hoàn toàn an tâm rằng chiếc cúp vô địch đã nằm chắc trong tay mà không một ai có thể khiếu nại!
+Nhờ vị trọng tài này, cầu thủ (AI) không thể phạm những lỗi luật mà VAR nhìn thấy. Nhưng trọng tài chỉ bắt lỗi *luật*, không chấm *chiến thuật*: biên dịch thành công nghĩa là mã an toàn bộ nhớ, chưa chắc đã đúng nghiệp vụ — chiếc cúp chỉ nằm chắc trong tay khi bộ test cũng xanh.
 
 ---
 
@@ -51,22 +51,29 @@ Không giống như nhiều trình biên dịch khác chỉ đưa ra những câ
 Một thông báo chẩn đoán lỗi tiêu chuẩn của `rustc` bao gồm 4 tầng thông tin cực kỳ quý giá:
 
 ```
-error[E0382]: borrow of moved value: `user_name`  <─── [1. Mã lỗi chuẩn & Tóm tắt]
-  --> src/main.rs:18:20
+error[E0382]: borrow of moved value: `user_name`        <─── [1. Mã lỗi chuẩn & Tóm tắt]
+  --> src/main.rs:18:30
    |
 15 |     let user_name = String::from("Alice");
-   |         --------- move occurs because `user_name` has type `String`
+   |         --------- move occurs because `user_name` has type `String`, which does not implement the `Copy` trait
 16 |     register_user(user_name);
-   |                   --------- value moved here  <─── [2. Vị trí nguyên nhân gốc]
+   |                   --------- value moved here        <─── [2. Vị trí nguyên nhân gốc]
 17 |
 18 |     println!("Chào bạn, {}", user_name);
-   |                              ^^^^^^^^^ value borrowed here after move <─── [3. Vị trí phát tác lỗi]
+   |                              ^^^^^^^^^ value borrowed here after move   <─── [3. Vị trí phát tác lỗi]
    |
-help: consider borrowing `user_name` here instead  <─── [4. Đề xuất khắc phục cụ thể]
+note: consider changing this parameter type in function `register_user` to borrow instead if owning the value isn't necessary
+  --> src/main.rs:3:24
    |
-16 |     register_user(&user_name);
-   |                   +
+ 3 | fn register_user(name: String) {
+   |    -------------       ^^^^^^ this parameter takes ownership of the value
+help: consider cloning the value if the performance cost is acceptable   <─── [4. Đề xuất khắc phục cụ thể]
+   |
+16 |     register_user(user_name.clone());
+   |                            ++++++++
 ```
+
+Để ý: phần `help:` máy móc đề xuất `.clone()` (luôn biên dịch được), còn phần `note:` mới chỉ ra cách sửa *đúng kiến trúc* — đổi tham số sang mượn (`&str`). Một AI chỉ "làm theo `help:`" sẽ rắc `.clone()` khắp nơi; Kiến trúc sư phải đọc cả `note:` và tự quyết định.
 
 ### 2. Chu trình AI Self-Correction Loop (Vòng lặp tự sửa lỗi)
 Khi AI sinh ra một đoạn mã bị lỗi, bạn tuyệt đối không cần phải tự mình ngồi sửa từng dòng. Hãy để Trọng tài Rust và AI tự đối thoại với nhau theo quy trình 4 bước:
@@ -75,7 +82,7 @@ Khi AI sinh ra một đoạn mã bị lỗi, bạn tuyệt đối không cần p
 2. **Bước 2 (Trích xuất nguyên văn)**: Sao chép toàn bộ thông báo lỗi của terminal (từ dòng `error[EXXXX]` đến hết phần `help:`).
 3. **Bước 3 (Nạp phản hồi cho AI)**: Gửi lệnh cho AI với cấu trúc:
    > *"Đoạn mã vừa rồi bị trình biên dịch `rustc` từ chối với thông báo lỗi nguyên văn như sau: [Dán lỗi vào]. Hãy phân tích nguyên nhân vi phạm quy tắc sở hữu/mượn và sửa lại đoạn mã sao cho biên dịch thành công mà không làm suy giảm hiệu năng"*.
-4. **Bước 4 (Tái kiểm tra)**: AI sẽ đọc phần `help:` của trình biên dịch, nhận diện chính xác chỗ thiếu dấu `&` hoặc sai kiểu dữ liệu, và sinh ra bản sửa đổi tối thiểu hoàn hảo.
+4. **Bước 4 (Tái kiểm tra)**: AI đọc phần `note:`/`help:` của trình biên dịch, nhận diện chỗ thiếu dấu `&` hoặc sai kiểu dữ liệu, và sinh ra bản sửa đổi. Bạn chạy lại `cargo check`/`cargo test` và **soát bản sửa** — đừng để AI "chữa cháy" bằng `.clone()` hay `unwrap()` chỉ để im lỗi.
 
 ### 3. Tái cấu trúc mã nguồn cùng AI (Idiomatic Refactoring)
 Một khi mã nguồn đã biên dịch thành công, công việc của Kiến trúc sư hệ thống vẫn chưa kết thúc. Bạn có thể tận dụng AI để nâng tầm chất lượng mã nguồn đạt chuẩn mực công nghiệp thông qua 3 kỹ thuật tái cấu trúc:
@@ -94,7 +101,7 @@ Dưới đây là một chương trình Rust hoàn chỉnh, minh họa sự đ�
 
 ```rust
 // ============================================================================
-// CHƯƠNG 42: MINH HỌA TRÌNH BIÊN DỊCH LÀ TRỌNG TÀI TỐI CAO & TÁI CẤU TRÚC MÃ
+// CHƯƠNG 46: MINH HỌA TRÌNH BIÊN DỊCH LÀ TRỌNG TÀI TỐI CAO & TÁI CẤU TRÚC MÃ
 // Tác giả: Kỹ Sư Hệ Thống Rust
 // ============================================================================
 
@@ -121,7 +128,10 @@ impl MetricRecord {
 // ----------------------------------------------------------------------------
 // PHẦN 2: PHONG CÁCH CŨ (TRƯỚC KHI TÁI CẤU TRÚC)
 // Vấn đề: Cấp phát bộ nhớ thừa thãi qua `.clone()`, dùng chỉ số mảng dễ lỗi
+// (Hai lint dưới đây được tắt CÓ CHỦ ĐÍCH: hàm này là mẫu "trước khi tái cấu trúc";
+// chính `cargo clippy` sẽ chỉ ra `&Vec` -> `&[_]` và vòng lặp chỉ số -> iterator.)
 // ----------------------------------------------------------------------------
+#[allow(clippy::ptr_arg, clippy::needless_range_loop)]
 pub fn filter_slow_services_old(records: &Vec<MetricRecord>, threshold_ms: u32) -> Vec<String> {
     let mut slow_services: Vec<String> = Vec::new();
 
@@ -144,7 +154,9 @@ pub fn filter_slow_services_old(records: &Vec<MetricRecord>, threshold_ms: u32) 
 // Ưu điểm:
 // 1. Nhận lát cắt `&[MetricRecord]` thay vì tham chiếu cụ thể `&Vec<MetricRecord>`
 // 2. Tận dụng đường ống Iterator: filter, map
-// 3. Mượn tham chiếu chuỗi `&str` thay vì nhân bản vô tội vạ, tiết kiệm 100% chi phí cấp phát
+// 3. Mượn tham chiếu chuỗi `&str` thay vì nhân bản: không cấp phát String nào
+//    (chỉ còn một lần cấp phát cho Vec kết quả)
+// 4. Khử trùng lặp bằng sort + dedup: O(n log n) thay vì `contains` O(n²)
 // ----------------------------------------------------------------------------
 pub fn filter_slow_services_idiomatic<'a>(
     records: &'a [MetricRecord],
@@ -186,11 +198,8 @@ impl<'a> MetricsAnalyzer<'a> {
                 (acc_time + r.response_time_ms as u64, acc_count + 1)
             });
 
-        if count == 0 {
-            None
-        } else {
-            Some((total_time / count) as u32)
-        }
+        // checked_div trả None khi count == 0 (không có yêu cầu thành công nào)
+        total_time.checked_div(count).map(|avg| avg as u32)
     }
 }
 
@@ -198,7 +207,7 @@ impl<'a> MetricsAnalyzer<'a> {
 // PHẦN 5: HÀM MAIN KIỂM CHỨNG KẾT QUẢ ĐỐI CHIẾU
 // ----------------------------------------------------------------------------
 fn main() {
-    println!("=== CHƯƠNG 42: KIỂM CHỨNG TÁI CẤU TRÚC MÃ & TRỌNG TÀI BIÊN DỊCH RUST ===");
+    println!("=== CHƯƠNG 46: KIỂM CHỨNG TÁI CẤU TRÚC MÃ & TRỌNG TÀI BIÊN DỊCH RUST ===");
 
     // Tạo tập dữ liệu đo kiểm giả lập
     let metrics = vec![
@@ -210,7 +219,10 @@ fn main() {
         MetricRecord::new("AnalyticsService", 990, false), // Chậm nhưng thất bại -> bỏ qua
     ];
 
-    println!("Tập dữ liệu đầu vào gồm {} bản ghi đo lường.", metrics.len());
+    println!(
+        "Tập dữ liệu đầu vào gồm {} bản ghi đo lường.",
+        metrics.len()
+    );
 
     // 1. Chạy phương pháp cũ
     let slow_old = filter_slow_services_old(&metrics, 300);
@@ -218,7 +230,10 @@ fn main() {
 
     // 2. Chạy phương pháp mới sau tái cấu trúc (Zero-copy)
     let slow_idiomatic = filter_slow_services_idiomatic(&metrics, 300);
-    println!("[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}", slow_idiomatic);
+    println!(
+        "[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}",
+        slow_idiomatic
+    );
 
     // Xác nhận hai phương pháp cho cùng kết quả nghiệp vụ chính xác
     assert_eq!(slow_old.len(), slow_idiomatic.len());
@@ -229,10 +244,54 @@ fn main() {
     // 3. Phân tích thống kê với MetricsAnalyzer
     let analyzer = MetricsAnalyzer::new(&metrics);
     if let Some(avg) = analyzer.calculate_average_success_time() {
-        println!("\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms", avg);
+        println!(
+            "\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms",
+            avg
+        );
     }
 
-    println!("\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!");
+    println!(
+        "\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_and_idiomatic_agree_as_sets() {
+        let metrics = vec![
+            MetricRecord::new("B", 500, true),
+            MetricRecord::new("A", 400, true),
+            MetricRecord::new("B", 600, true),
+            MetricRecord::new("C", 900, false),
+        ];
+        let mut old = filter_slow_services_old(&metrics, 300);
+        old.sort();
+        assert_eq!(old, vec!["A", "B"]);
+        assert_eq!(
+            filter_slow_services_idiomatic(&metrics, 300),
+            vec!["A", "B"]
+        );
+    }
+
+    #[test]
+    fn average_none_when_no_success() {
+        let metrics = vec![MetricRecord::new("X", 100, false)];
+        assert_eq!(
+            MetricsAnalyzer::new(&metrics).calculate_average_success_time(),
+            None
+        );
+        let metrics = vec![
+            MetricRecord::new("X", 100, true),
+            MetricRecord::new("Y", 201, true),
+        ];
+        assert_eq!(
+            MetricsAnalyzer::new(&metrics).calculate_average_success_time(),
+            Some(150)
+        );
+    }
 }
 ```
 
@@ -255,7 +314,7 @@ Dưới đây là các lỗi biên dịch điển hình nhất về quyền sở
 
 ### 4 Điểm cốt lõi cần ghi nhớ
 1. **Trình biên dịch là Trọng tài Tối cao**: Không bao giờ coi lỗi biên dịch của `rustc` là sự thất bại; hãy coi đó là bản hướng dẫn sửa lỗi chi tiết nhất mà ngành phần mềm từng sáng tạo ra.
-2. **Vòng lặp tự sửa lỗi (Self-Correction Loop)**: Dán nguyên văn thông báo lỗi của terminal vào khung chat AI; AI sẽ tự động đọc phần `help:` để đưa ra đoạn mã sửa lỗi chính xác.
+2. **Vòng lặp tự sửa lỗi (Self-Correction Loop)**: Dán nguyên văn thông báo lỗi của terminal vào khung chat AI; AI đọc phần `note:`/`help:` để đề xuất bản sửa — còn bạn soát xem bản sửa có đúng ý đồ kiến trúc hay chỉ là `.clone()` cho im lỗi.
 3. **Tư duy Zero-Copy trong tái cấu trúc**: Tránh xa việc gọi `.clone()` bừa bãi chỉ để xoa dịu Borrow Checker. Thay vào đó, hãy ưu tiên dùng tham chiếu mượn (borrow) lát cắt `&str` và `&[T]`.
 4. **Sức mạnh của Iterator**: Chuyển đổi các vòng lặp lồng nhau phức tạp thành đường ống hàm (`filter`, `map`, `fold`) giúp mã nguồn trong sáng, ngắn gọn và được tối ưu hóa tối đa bởi LLVM.
 
@@ -286,7 +345,7 @@ Hãy tái cấu trúc hàm trên thành `count_long_words_idiomatic`:
 - Sử dụng toàn bộ đường ống `iter().filter(...).count()` mà không dùng biến đếm trung gian `mut count`.
 
 **Bài tập 3 (Sửa lỗi Lifetime của AI)**:
-Đoạn mã sau do AI viết bị lỗi biên dịch `E0106` vì thiếu chỉ định thời gian sống:
+Một trợ lý AI khẳng định đoạn mã sau sẽ bị lỗi biên dịch `E0106` vì thiếu chỉ định thời gian sống:
 ```rust
 fn pick_first_word(sentence: &str) -> &str {
     let parts: Vec<&str> = sentence.split_whitespace().collect();
@@ -297,7 +356,7 @@ fn pick_first_word(sentence: &str) -> &str {
     }
 }
 ```
-Hãy giải thích vì sao hàm trên thực tế vẫn có thể biên dịch được nếu tận dụng quy tắc Lifetime Elision, hoặc chỉ ra trường hợp nào khiến hàm trả về tham chiếu trỏ vào vùng nhớ tạm bị hủy bỏ.
+Hãy kiểm chứng lời khẳng định đó: giải thích vì sao hàm trên thực tế vẫn biên dịch được nếu tận dụng quy tắc Lifetime Elision, hoặc chỉ ra trường hợp nào khiến hàm trả về tham chiếu trỏ vào vùng nhớ tạm bị hủy bỏ.
 
 ---
 
@@ -337,19 +396,20 @@ Quy tắc gói gọn trong một câu: **"nhiều người đọc, HOẶC một 
 // Nhận &[String] (lát cắt) thay vì &Vec<String> -> linh hoạt hơn, nhận được cả mảng.
 fn count_long_words_idiomatic(words: &[String]) -> usize {
     words.iter()                    // duyệt từng từ
-         .filter(|w| w.len() > 5)   // giữ lại từ dài hơn 5 ký tự
+         .filter(|w| w.len() > 5)   // giữ lại từ dài hơn 5 byte (= ký tự với ASCII;
+                                    // chữ có dấu thì dùng w.chars().count())
          .count()                   // đếm số còn lại
 }
 
 #[test]
-fn dem_tu_dai() {
-    let ds = vec![
+fn counts_long_words() {
+    let words = vec![
         String::from("Rust"),        // 4 -> loại
         String::from("Programming"), // 11 -> giữ
         String::from("code"),        // 4 -> loại
         String::from("compiler"),    // 8 -> giữ
     ];
-    assert_eq!(count_long_words_idiomatic(&ds), 2);
+    assert_eq!(count_long_words_idiomatic(&words), 2);
     // Nhận cả mảng cố định nhờ nhận &[String]:
     assert_eq!(count_long_words_idiomatic(&[]), 0);
 }
@@ -376,7 +436,7 @@ So sánh bản cũ và bản này cho thấy vì sao phong cách iterator đư�
 <details>
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
-**Điều bất ngờ: hàm này KHÔNG lỗi — nó biên dịch được.** Đề đánh lừa; hãy giải thích cho đúng.
+**Điều bất ngờ: hàm này KHÔNG lỗi — nó biên dịch được.** Lời khẳng định của AI là một ảo giác; chính trình biên dịch là trọng tài phân xử.
 
 ```rust
 fn pick_first_word(sentence: &str) -> &str {

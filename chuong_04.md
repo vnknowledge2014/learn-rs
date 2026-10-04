@@ -51,7 +51,7 @@ Hãy hình dung một vận động viên chạy vòng quanh sân vận động:
 
 ### 3. Chiếc ấm đun nước siêu tốc tự ngắt (`while`)
 Bạn cắm chiếc ấm siêu tốc vào ổ điện và nhấn nút:
-- Ấm sẽ tiếp tục đun nóng dây may-so **CHỪNG NÀO** nhiệt độ nước còn thấp hơn 100°C (`while nuoc_chua_soi`).
+- Ấm sẽ tiếp tục đun nóng dây may-so **CHỪNG NÀO** nhiệt độ nước còn thấp hơn 100°C (`while !water_boiling`).
 - Ngay khi nhiệt độ đạt 100°C, hơi nước bốc lên làm giãn nở thanh kim loại nhiệt, rơ-le nảy "tách" một cái và tự ngắt nguồn điện dừng lại.
 
 ### 4. Bác bưu tá phát báo đầu ngõ (`for .. in`)
@@ -79,10 +79,10 @@ Bác bưu tá không cần phải đếm xem mình đã bước bao nhiêu bư�
 Vì `if` là một biểu thức, bạn có thể gán trực tiếp kết quả của khối `if` vào một biến thông qua từ khóa `let`:
 ```rust
 let condition = true;
-let con_so = if condition { 5 } else { 10 };
+let number = if condition { 5 } else { 10 };
 ```
 
-> **Quy tắc sắt đá của Trình biên dịch**: Vì Rust là ngôn ngữ định kiểu tĩnh, kiểu dữ liệu của biến `con_so` phải được xác định duy nhất ngay tại thời điểm biên dịch. Do đó, **tất cả các nhánh `if` và `else` bắt buộc phải trả về cùng một kiểu dữ liệu**! Bạn không thể để nhánh `if` trả về số `5` còn nhánh `else` lại trả về chữ `"Mười"`.
+> **Quy tắc sắt đá của Trình biên dịch**: Vì Rust là ngôn ngữ định kiểu tĩnh, kiểu dữ liệu của biến `number` phải được xác định duy nhất ngay tại thời điểm biên dịch. Do đó, **tất cả các nhánh `if` và `else` bắt buộc phải trả về cùng một kiểu dữ liệu**! Bạn không thể để nhánh `if` trả về số `5` còn nhánh `else` lại trả về chữ `"Mười"`.
 
 ### 3. Nghiêm cấm "Ép kiểu chân lý ngầm" (Không có Truthy/Falsy)
 
@@ -99,10 +99,10 @@ Nhưng trong Rust, điều này **bị cấm tuyệt đối**! Trình biên dị
 Trong Rust, `loop` đại diện cho một vòng lặp vô tận. Điểm đặc biệt là bạn có thể đặt một giá trị ngay sau từ khóa `break`:
 ```rust
 let mut count = 0;
-let ket_qua = loop {
+let result = loop {
     count += 1;
     if count == 10 {
-        break count * 2; // Thoát vòng lặp và mang giá trị 20 về gán cho ket_qua!
+        break count * 2; // Thoát vòng lặp và mang giá trị 20 về gán cho result!
     }
 };
 ```
@@ -112,9 +112,9 @@ Nhờ cơ chế này, bạn có thể thực hiện các phép thử nghiệm (v
 
 Khi bạn viết một vòng lặp bên trong một vòng lặp khác, lệnh `break` thông thường chỉ giúp bạn thoát khỏi vòng lặp con gần nhất. Nếu muốn thoát văng hẳn ra khỏi vòng lặp cha bên ngoài, Rust cung cấp cú pháp **Nhãn vòng lặp** bắt đầu bằng dấu nháy đơn:
 ```rust
-'vong_lap_ngoai: loop {
+'outer: loop {
     loop {
-        break 'vong_lap_ngoai; // Thoát ngay lập tức ra khỏi cả 2 vòng lặp!
+        break 'outer; // Thoát ngay lập tức ra khỏi cả 2 vòng lặp!
     }
 }
 ```
@@ -153,7 +153,7 @@ fn main() {
     let mut current_pressure = 80;
     println!("\nBắt đầu kích áp buồng đốt nhiên liệu...");
 
-    let threshold_pressure = loop {
+    let final_pressure = loop {
         current_pressure += 5;
         println!("- Áp suất đang tăng: {} PSI", current_pressure);
 
@@ -162,7 +162,10 @@ fn main() {
             break current_pressure;
         }
     };
-    println!("==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI", threshold_pressure);
+    println!(
+        "==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI",
+        final_pressure
+    );
 
     // 3. Sử dụng vòng lặp 'while' để nạp năng lượng bình ắc-quy phụ
     let mut battery_capacity = 85;
@@ -175,23 +178,25 @@ fn main() {
 
     // 4. Sử dụng vòng lặp lồng nhau với Nhãn (Loop Labels) để quét cảm biến
     println!("\nBắt đầu diễn tập kịch bản ngắt khẩn cấp trên 3 tầng tên lửa:");
-    let mut has_emitted = false;
+    let mut fault_detected = false;
 
-    'kiem_tra_tang_ten_lua: for tang in 1..=3 {
-        println!("* Đang quét tầng tên lửa số {}", tang);
-        for cam_bien in 1..=4 {
-            if tang == 2 && cam_bien == 3 {
-                has_emitted = true; // Kích hoạt sự cố mô phỏng!
-                println!("  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!", 
-                         tang, cam_bien);
+    'stage_scan: for stage in 1..=3 {
+        println!("* Đang quét tầng tên lửa số {}", stage);
+        for sensor in 1..=4 {
+            if stage == 2 && sensor == 3 {
+                fault_detected = true; // Kích hoạt sự cố mô phỏng!
+                println!(
+                    "  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!",
+                    stage, sensor
+                );
                 // Thoát thẳng ra ngoài cả hai vòng lặp nhờ nhãn:
-                break 'kiem_tra_tang_ten_lua;
+                break 'stage_scan;
             }
-            println!("  - Cảm biến {}.{} hoạt động bình thường", tang, cam_bien);
+            println!("  - Cảm biến {}.{} hoạt động bình thường", stage, sensor);
         }
     }
 
-    if has_emitted {
+    if fault_detected {
         println!("==> Cơ chế ngắt khẩn cấp bằng nhãn đã dừng kiểm tra an toàn!");
         println!("==> Đội kỹ thuật đã khắc phục xong sự cố cảm biến 2.3.");
     }
@@ -199,8 +204,8 @@ fn main() {
     // 5. Vòng lặp 'for' an toàn đếm ngược thời gian phóng tên lửa
     // (1..=5).rev() tạo ra dãy số: 5, 4, 3, 2, 1
     println!("\nTẤT CẢ HỆ THỐNG SẴN SÀNG! ĐẾM NGƯỢC ĐỂ PHÓNG:");
-    for giay in (1..=5).rev() {
-        println!("T-minus {} giây...", giay);
+    for second in (1..=5).rev() {
+        println!("T-minus {} giây...", second);
     }
 
     println!("\n🚀 KHAI HỎA ĐỘNG CƠ CHÍNH! TÊN LỬA ĐÃ RỜI BỆ PHÓNG THÀNH CÔNG! 🚀");
@@ -215,7 +220,7 @@ Khi viết các cấu trúc điều khiển dòng chảy trong Rust, bạn sẽ 
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0308** | `error[E0308]: mismatched types: expected integer, found '&str'` | Các nhánh của biểu thức `if / else` trả về kiểu dữ liệu khác nhau (ví dụ: nhánh `if` trả về số `10`, nhánh `else` trả về chữ `"Lỗi"`). | Đảm bảo tất cả các nhánh `if` và `else` đều trả về cùng một kiểu dữ liệu thống nhất. |
+| **E0308** | `error[E0308]: 'if' and 'else' have incompatible types` (kèm `expected integer, found '&str'`) | Các nhánh của biểu thức `if / else` trả về kiểu dữ liệu khác nhau (ví dụ: nhánh `if` trả về số `10`, nhánh `else` trả về chữ `"Lỗi"`). | Đảm bảo tất cả các nhánh `if` và `else` đều trả về cùng một kiểu dữ liệu thống nhất. |
 | **E0308** | `error[E0308]: mismatched types: expected 'bool', found integer` | Truyền một con số vào điều kiện `if` (ví dụ: viết `if quantity { ... }` thay vì so sánh rõ ràng). | Viết biểu thức so sánh rõ ràng trả về `bool` (ví dụ: `if quantity > 0 { ... }`). |
 | **Thiếu nhánh else** | `error[E0317]: 'if' may be missing an 'else' clause` | Bạn dùng `let x = if ...` nhưng lại không viết phần `else`. Trình biên dịch không biết nếu điều kiện sai thì biến `x` sẽ nhận giá trị gì. | Luôn bổ sung nhánh `else` đầy đủ khi sử dụng `if` dưới dạng biểu thức gán giá trị cho biến. |
 | **Cảnh báo unreachable**| `warning: unreachable statement` | Đặt các dòng lệnh ở phía sau từ khóa `break` hoặc `return`. Do vòng lặp đã thoát trước đó, những dòng lệnh này sẽ không bao giờ được chạm tới. | Xóa bỏ hoặc di chuyển các dòng lệnh bị cảnh báo lên phía trước lệnh `break`. |
@@ -228,7 +233,7 @@ Khi viết các cấu trúc điều khiển dòng chảy trong Rust, bạn sẽ 
 1. **Biểu thức `if` trả về giá trị**: Trong Rust, `if` có thể tạo ra giá trị để gán trực tiếp cho biến; yêu cầu tất cả các nhánh phải trả về cùng một kiểu dữ liệu.
 2. **Kiểu điều kiện khắt khe**: Biểu thức kiểm tra trong `if` và `while` bắt buộc phải là kiểu `bool` (`true`/`false`), Rust không chấp nhận số nguyên đại diện cho chân lý.
 3. **Sức mạnh của `loop`**: Vòng lặp vô hạn `loop` có thể đưa dữ liệu ra ngoài phạm vi vòng lặp thông qua cú pháp `break value;`.
-4. **Vòng lặp `for` an toàn**: Cú pháp `for phan_tu in list` giúp duyệt dữ liệu tiện lợi, loại bỏ triệt để lỗi chỉ mục vượt giới hạn mảng (Index Out of Bounds).
+4. **Vòng lặp `for` an toàn**: Cú pháp `for item in list` giúp duyệt dữ liệu tiện lợi, loại bỏ triệt để lỗi chỉ mục vượt giới hạn mảng (Index Out of Bounds).
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập thực hành 1**: Viết chương trình xếp loại học lực học sinh dựa vào điểm trung bình (thang điểm 10):
@@ -236,7 +241,7 @@ Khi viết các cấu trúc điều khiển dòng chảy trong Rust, bạn sẽ 
    - Từ 8.0 đến dưới 9.0: Xếp loại "Giỏi".
    - Từ 6.5 đến dưới 8.0: Xếp loại "Khá".
    - Dưới 6.5: Xếp loại "Cần nỗ lực hơn".
-   - *Yêu cầu*: Sử dụng `if / else` như một biểu thức để gán danh hiệu trực tiếp vào biến `danh_hieu`.
+   - *Yêu cầu*: Sử dụng `if / else` như một biểu thức để gán danh hiệu trực tiếp vào biến `grade`.
 2. **Bài tập thực hành 2**: Sử dụng vòng lặp `for` và khoảng số `1..=100` để tính tổng tất cả các số chẵn từ 1 đến 100. In kết quả cuối cùng ra màn hình (gợi ý: dùng toán tử chia lấy dư `% 2 == 0`).
 3. **Bài tập tư duy 3**: Trong tình huống nào bạn nên dùng vòng lặp `while`, và trong tình huống nào bạn bắt buộc phải dùng `loop` kết hợp với `break`? Hãy giải thích qua ví dụ thực tế về việc người dùng nhập mật khẩu đăng nhập.
 
@@ -247,21 +252,21 @@ Khi viết các cấu trúc điều khiển dòng chảy trong Rust, bạn sẽ 
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Dùng `if/else if/else` như một **biểu thức**: cả chuỗi trả về một giá trị, gán thẳng vào `danh_hieu`. Không cần `mut`.
+Dùng `if/else if/else` như một **biểu thức**: cả chuỗi trả về một giá trị, gán thẳng vào `grade`. Không cần `mut`.
 </details>
 
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
 ```rust
-fn xep_loai(diem: f64) -> &'static str {
+fn classify(score: f64) -> &'static str {
     // if/else là BIỂU THỨC: cả khối trả về một giá trị -> gán thẳng, không cần mut.
     // Xét từ mốc cao xuống thấp: nhánh đầu khớp là dừng.
-    if diem >= 9.0 {
+    if score >= 9.0 {
         "Xuất sắc"
-    } else if diem >= 8.0 {
+    } else if score >= 8.0 {
         "Giỏi"
-    } else if diem >= 6.5 {
+    } else if score >= 6.5 {
         "Khá"
     } else {
         "Cần nỗ lực hơn"
@@ -269,23 +274,23 @@ fn xep_loai(diem: f64) -> &'static str {
 }
 
 fn main() {
-    let diem = 8.5;
-    let danh_hieu = xep_loai(diem);   // gán trực tiếp kết quả biểu thức if
-    println!("Điểm {diem} -> {danh_hieu}");
+    let score = 8.5;
+    let grade = classify(score);   // gán trực tiếp kết quả biểu thức if
+    println!("Điểm {score} -> {grade}");
 }
 
 #[test]
-fn xep_loai_dung_cac_moc() {
-    assert_eq!(xep_loai(9.0), "Xuất sắc");   // đúng mốc 9.0 -> tính là Xuất sắc
-    assert_eq!(xep_loai(8.9), "Giỏi");        // sát dưới 9.0
-    assert_eq!(xep_loai(6.5), "Khá");         // đúng mốc 6.5
-    assert_eq!(xep_loai(6.4), "Cần nỗ lực hơn");
+fn classify_boundaries() {
+    assert_eq!(classify(9.0), "Xuất sắc");   // đúng mốc 9.0 -> tính là Xuất sắc
+    assert_eq!(classify(8.9), "Giỏi");        // sát dưới 9.0
+    assert_eq!(classify(6.5), "Khá");         // đúng mốc 6.5
+    assert_eq!(classify(6.4), "Cần nỗ lực hơn");
 }
 ```
 
 Hai điều đáng học:
 1. **Thứ tự xét phải từ cao xuống thấp.** Vì mỗi nhánh chỉ kiểm `>=` một mốc, nhánh đầu tiên khớp sẽ thắng. Đảo ngược (xét 6.5 trước) thì điểm 9.0 cũng rơi vào "Khá" — sai.
-2. **`if` là biểu thức, không phải câu lệnh.** Trong nhiều ngôn ngữ bạn phải khai báo `danh_hieu` rỗng rồi gán trong từng nhánh. Ở Rust cả khối `if/else` *là* một giá trị, nên gán một phát — sạch hơn và không có nguy cơ quên gán một nhánh.
+2. **`if` là biểu thức, không phải câu lệnh.** Trong nhiều ngôn ngữ bạn phải khai báo `grade` rỗng rồi gán trong từng nhánh. Ở Rust cả khối `if/else` *là* một giá trị, nên gán một phát — sạch hơn và không có nguy cơ quên gán một nhánh.
 </details>
 
 <details>
@@ -298,29 +303,29 @@ Hai điều đáng học:
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-fn tong_so_chan() -> u32 {
-    let mut tong = 0;
+fn sum_of_evens() -> u32 {
+    let mut total = 0;
     // 1..=100 BAO GỒM cả 100 (khác 1..100 là dừng ở 99).
     for i in 1..=100 {
         if i % 2 == 0 {   // chia 2 dư 0 -> số chẵn
-            tong += i;
+            total += i;
         }
     }
-    tong
+    total
 }
 
 fn main() {
-    println!("Tổng số chẵn 1..=100 = {}", tong_so_chan());
+    println!("Tổng số chẵn 1..=100 = {}", sum_of_evens());
 
     // Cách gọn hơn bằng iterator — cùng kết quả:
-    let tong: u32 = (1..=100).filter(|n| n % 2 == 0).sum();
-    println!("Kiểm tra lại = {tong}");
+    let total: u32 = (1..=100).filter(|n| n % 2 == 0).sum();
+    println!("Kiểm tra lại = {total}");
 }
 
 #[test]
-fn tong_dung_bang_2550() {
+fn sum_is_2550() {
     // 2+4+...+100 = 2·(1+2+...+50) = 2·1275 = 2550
-    assert_eq!(tong_so_chan(), 2550);
+    assert_eq!(sum_of_evens(), 2550);
     assert_eq!((1..=100).filter(|n| n % 2 == 0).sum::<u32>(), 2550);
 }
 ```
@@ -342,8 +347,8 @@ Phân biệt qua chính ví dụ nhập mật khẩu:
 **Dùng `loop` + `break`** khi bạn **phải làm ít nhất một lần** rồi mới kiểm được điều kiện dừng. Nhập mật khẩu đúng kiểu này: bạn *bắt buộc* phải hỏi người dùng một lần trước, rồi mới biết họ gõ đúng hay sai.
 ```text
 loop {
-    let nhap = doc_mat_khau();       // luôn chạy ít nhất một lần
-    if nhap == mat_khau_dung {
+    let input = read_password();       // luôn chạy ít nhất một lần
+    if input == correct_password {
         break;                        // đúng -> thoát
     }
     println!("Sai rồi, thử lại.");
@@ -352,10 +357,10 @@ loop {
 
 **Dùng `while`** khi điều kiện dừng **kiểm được ngay từ đầu**, và có khả năng thân vòng lặp *không chạy lần nào*. Ví dụ: "trừ dần số lần thử còn lại cho tới khi hết lượt".
 ```text
-let mut so_lan_con_lai = 3;
-while so_lan_con_lai > 0 {   // nếu vào vòng đã là 0 thì bỏ qua luôn
-    thu_dang_nhap();
-    so_lan_con_lai -= 1;
+let mut attempts_left = 3;
+while attempts_left > 0 {   // nếu vào vòng đã là 0 thì bỏ qua luôn
+    try_login();
+    attempts_left -= 1;
 }
 ```
 

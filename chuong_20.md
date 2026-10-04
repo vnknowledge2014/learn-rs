@@ -53,7 +53,7 @@ Mục tiêu học tập của chương này:
 │           ▼                            │      │ ← chỉ cửa AN NINH nhận thẻ này   │
 │   ┌────────────────────┐               │      ▼                                  │
 │   │  PHÒNG CÔNG CHỨNG  │               │  [Đã qua an ninh]                       │
-│   │  Email::analyze  │               │      │ ← chỉ CỬA RA MÁY BAY nhận        │
+│   │  Email::parse      │               │      │ ← chỉ CỬA RA MÁY BAY nhận        │
 │   │  - có @ không?     │               │      ▼                                  │
 │   │  - có tên miền?    │               │  [Đã lên máy bay]                       │
 │   └─────────┬──────────┘               │                                         │
@@ -61,8 +61,8 @@ Mục tiêu học tập của chương này:
 │      ▼              ▼                  │  thẳng vào cửa ra máy bay được —        │
 │  [TỪ CHỐI]   ┌──────────────┐          │  vì tờ giấy trên tay SAI LOẠI.          │
 │   Err(...)   │ Email  ĐÃ    │          │                                         │
-│              │ ĐÓNG DẤU ĐỎ  │          │  Trong Rust: Order<Nhap> và           │
-│              └──────────────┘          │  Order<Paid> là HAI KIỂU       │
+│              │ ĐÓNG DẤU ĐỎ  │          │  Trong Rust: Order<Draft> và            │
+│              └──────────────┘          │  Order<Paid> là HAI KIỂU                │
 │                                        │  KHÁC NHAU. Trình biên dịch chính là    │
 │  Từ đây trở đi, MỌI phòng ban trong    │  nhân viên soát vé — và anh ta KHÔNG    │
 │  công ty tin tưởng tuyệt đối tờ giấy   │  BAO GIỜ ngủ gật.                       │
@@ -85,7 +85,7 @@ Bạn cầm một mẩu giấy viết tay đến phòng công chứng. Nhân vi�
 
 Bạn không thể cầm mã đặt chỗ mà đi thẳng ra cửa máy bay — không phải vì có ai chặn bạn lại, mà vì **tờ giấy trên tay bạn sai loại**.
 
-Đó chính xác là Typestate: `Order<Nhap>` và `Order<Paid>` là **hai kiểu khác nhau**, nên hàm `delivery_queue` chỉ nhận loại thứ hai. Việc "quên thanh toán" không còn là một lỗi lúc chạy — nó là **lỗi biên dịch**.
+Đó chính xác là Typestate: `Order<Draft>` và `Order<Paid>` là **hai kiểu khác nhau**, nên phương thức `ship` chỉ có trên loại thứ hai. Việc "quên thanh toán" không còn là một lỗi lúc chạy — nó là **lỗi biên dịch**.
 
 ---
 
@@ -128,8 +128,8 @@ struct MalformedOrder {
 
 // ✅ Kiểu TỔNG: 1 + n = KHÔNG CÒN tổ hợp vô nghĩa nào
 enum PaymentState {
-    ChuaTra,
-    DaTra { transaction_id: String },
+    Unpaid,
+    Paid { transaction_id: String },
 }
 // Trình biên dịch bảo đảm: có mã giao dịch ⟺ đã trả tiền. Không cần `if` phòng thủ nào cả.
 ```
@@ -139,15 +139,15 @@ enum PaymentState {
 Ba thành phần bắt buộc, thiếu một là hỏng cả:
 
 ```rust
-mod mien {
+mod domain {
     // (1) Kiểu bọc với trường RIÊNG TƯ — không có `pub` trước `String`
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Email(String);
 
     impl Email {
         // (2) Cửa duy nhất để tạo ra giá trị: hàm khởi tạo có kiểm chứng
-        pub fn analyze(tho: &str) -> Result<Self, String> {
-            let s = tho.trim().to_lowercase();
+        pub fn parse(raw: &str) -> Result<Self, String> {
+            let s = raw.trim().to_lowercase();
             if !s.contains('@') {
                 return Err(format!("Email {:?} thiếu ký tự @", s));
             }
@@ -171,7 +171,7 @@ Ba điểm cần khắc ghi:
 
 | | Xác thực (Validate) | Phân tích (Parse) |
 |---|---|---|
-| Chữ ký | `fn check(s: &str) -> bool` | `fn analyze(s: &str) -> Result<Email, Loi>` |
+| Chữ ký | `fn check(s: &str) -> bool` | `fn parse(s: &str) -> Result<Email, Error>` |
 | Sau khi gọi, bạn có gì? | Một `bool` **rồi vứt đi** | Một **giá trị mang bằng chứng** |
 | Ở tầng sau | Vẫn cầm `String` → **phải kiểm tra lại** | Cầm `Email` → khỏi kiểm tra |
 | Nguy cơ | Quên gọi hàm kiểm tra ở một nhánh nào đó | Không thể quên — không có `Email` thì không gọi được hàm |
@@ -190,9 +190,9 @@ Cách thông thường là dùng một `enum` trạng thái rồi kiểm tra lú
 
 ```rust
 // Cách thường: kiểm tra LÚC CHẠY
-fn delivery_queue(don: &mut Order) -> Result<(), Failed> {
-    if don.state != State::Paid {
-        return Err(Failed::ChuaThanhToan);  // ← lỗi này chỉ lộ ra khi chạy tới
+fn ship(order: &mut Order) -> Result<(), ShipError> {
+    if order.state != State::Paid {
+        return Err(ShipError::NotPaid);  // ← lỗi này chỉ lộ ra khi chạy tới
     }
     Ok(())
 }
@@ -204,29 +204,30 @@ Typestate đẩy phép kiểm tra đó lên **lúc biên dịch**, bằng cách 
 use std::marker::PhantomData;
 
 pub struct Draft;          // Các kiểu "thẻ đánh dấu" — không chứa dữ liệu,
-pub struct Authenticated;     // chiếm 0 byte bộ nhớ, chỉ tồn tại lúc biên dịch.
+pub struct Validated;      // chiếm 0 byte bộ nhớ, chỉ tồn tại lúc biên dịch.
 pub struct Paid;
+pub struct Delivered;
 
 pub struct Order<TT> {
     id: String,
-    dong: Vec<OrderLine>,
+    lines: Vec<OrderLine>,
     _state: PhantomData<TT>,   // "tôi mang thẻ TT" — 0 byte
 }
 
 impl Order<Draft> {
-    pub fn auth(self) -> Result<Order<Authenticated>, DomainError> { /* ... */ }
+    pub fn validate(self) -> Result<Order<Validated>, DomainError> { /* ... */ }
 }
 impl Order<Paid> {
-    pub fn delivery_queue(self) -> PhieuGiaoHang { /* ... */ }   // ← chỉ tồn tại cho trạng thái này!
+    pub fn ship(self, tracking_code: &str) -> Order<Delivered> { /* ... */ }   // ← chỉ tồn tại cho trạng thái này!
 }
 ```
 
 Bây giờ đoạn mã sau **không biên dịch được**:
 
 ```rust
-let don = Order::new(/* ... */);   // Order<Nhap>
-don.delivery_queue();
-// LỖI E0599: no method named `delivery_queue` found for struct `Order<Nhap>`
+let order = Order::new(/* ... */);   // Order<Draft>
+order.ship("VN-EXP-1");
+// LỖI E0599: no method named `ship` found for struct `Order<Draft>` in the current scope
 ```
 
 Ba điều đáng chú ý:
@@ -245,7 +246,7 @@ Có một cám dỗ rất lớn: dùng luôn kiểu miền để nhận dữ li�
 | Mục đích | Nhận **mọi thứ** người ta gửi tới | Chỉ chứa dữ liệu **đã hợp lệ** |
 | Cấu trúc | Phẳng, toàn `String` và `Option` | Lồng nhau, dùng kiểu bọc |
 | Thái độ | Khoan dung | Nghiêm ngặt |
-| Ví dụ | `struct OrderDto { email: String }` | `struct Order { khach: Email }` |
+| Ví dụ | `struct OrderDto { email: String }` | `struct Order { customer: Email }` |
 
 Cầu nối giữa hai thế giới chính là trait **`TryFrom`**:
 
@@ -299,47 +300,47 @@ use std::marker::PhantomData;
 // PHẦN 1: MÔ-ĐUN MIỀN NGHIỆP VỤ
 // Đặt trong `mod` để tính RIÊNG TƯ của các trường thực sự có hiệu lực.
 // ============================================================================
-pub mod mien {
+pub mod domain {
     use std::fmt;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum DomainError {
-        EmailSai(String),
-        TenSanPhamSai(String),
-        BadQuantity(String),
-        DonRong,
-        OrderTooLarge { so_dong: usize, toi_da: usize },
+        InvalidEmail(String),
+        InvalidProductName(String),
+        InvalidQuantity(String),
+        EmptyOrder,
+        OrderTooLarge { line_count: usize, max: usize },
     }
 
     impl fmt::Display for DomainError {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                DomainError::EmailSai(s) => write!(f, "Email không hợp lệ: {}", s),
-                DomainError::TenSanPhamSai(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
-                DomainError::BadQuantity(s) => write!(f, "Số lượng không hợp lệ: {}", s),
-                DomainError::DonRong => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
-                DomainError::OrderTooLarge { so_dong, toi_da } => {
-                    write!(f, "Đơn có {} dòng, vượt giới hạn {} dòng", so_dong, toi_da)
+                DomainError::InvalidEmail(s) => write!(f, "Email không hợp lệ: {}", s),
+                DomainError::InvalidProductName(s) => write!(f, "Tên sản phẩm không hợp lệ: {}", s),
+                DomainError::InvalidQuantity(s) => write!(f, "Số lượng không hợp lệ: {}", s),
+                DomainError::EmptyOrder => write!(f, "Đơn hàng phải có ít nhất 1 dòng hàng"),
+                DomainError::OrderTooLarge { line_count, max } => {
+                    write!(f, "Đơn có {} dòng, vượt giới hạn {} dòng", line_count, max)
                 }
             }
         }
     }
 
     // ---------------------------------------------------------------------
-    // KIỂU BỌC 1: Email — trường riêng tư, chỉ tạo được qua `analyze`
+    // KIỂU BỌC 1: Email — trường riêng tư, chỉ tạo được qua `parse`
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Email(String); // KHÔNG có `pub` trước String → đây là con dấu
 
     impl Email {
-        pub fn analyze(tho: &str) -> Result<Self, DomainError> {
-            let s = tho.trim().to_lowercase();
+        pub fn parse(raw: &str) -> Result<Self, DomainError> {
+            let s = raw.trim().to_lowercase();
             if s.is_empty() {
-                return Err(DomainError::EmailSai("chuỗi rỗng".to_string()));
+                return Err(DomainError::InvalidEmail("chuỗi rỗng".to_string()));
             }
-            let part: Vec<&str> = s.split('@').collect();
-            if part.len() != 2 || part[0].is_empty() || !part[1].contains('.') {
-                return Err(DomainError::EmailSai(s));
+            let parts: Vec<&str> = s.split('@').collect();
+            if parts.len() != 2 || parts[0].is_empty() || !parts[1].contains('.') {
+                return Err(DomainError::InvalidEmail(s));
             }
             Ok(Email(s))
         }
@@ -355,27 +356,27 @@ pub mod mien {
     }
 
     // ---------------------------------------------------------------------
-    // KIỂU BỌC 2: TenSanPham — chuỗi có giới hạn độ dài
+    // KIỂU BỌC 2: ProductName — chuỗi có giới hạn độ dài
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct TenSanPham(String);
+    pub struct ProductName(String);
 
-    impl TenSanPham {
-        pub const TOI_DA: usize = 50;
+    impl ProductName {
+        pub const MAX: usize = 50;
 
-        pub fn analyze(tho: &str) -> Result<Self, DomainError> {
-            let s = tho.trim();
-            let num_ky_from = s.chars().count(); // đếm CHỮ CÁI, không đếm byte (Chương 05)
-            if num_ky_from == 0 {
-                Err(DomainError::TenSanPhamSai("chuỗi rỗng".to_string()))
-            } else if num_ky_from > Self::TOI_DA {
-                Err(DomainError::TenSanPhamSai(format!(
+        pub fn parse(raw: &str) -> Result<Self, DomainError> {
+            let s = raw.trim();
+            let char_count = s.chars().count(); // đếm CHỮ CÁI, không đếm byte (Chương 05)
+            if char_count == 0 {
+                Err(DomainError::InvalidProductName("chuỗi rỗng".to_string()))
+            } else if char_count > Self::MAX {
+                Err(DomainError::InvalidProductName(format!(
                     "dài {} ký tự, tối đa {}",
-                    num_ky_from,
-                    Self::TOI_DA
+                    char_count,
+                    Self::MAX
                 )))
             } else {
-                Ok(TenSanPham(s.to_string()))
+                Ok(ProductName(s.to_string()))
             }
         }
         pub fn as_str(&self) -> &str {
@@ -390,13 +391,17 @@ pub mod mien {
     pub struct Quantity(u32);
 
     impl Quantity {
-        pub const TOI_DA: u32 = 1000;
+        pub const MAX: u32 = 1000;
 
-        pub fn analyze(n: u32) -> Result<Self, DomainError> {
+        pub fn parse(n: u32) -> Result<Self, DomainError> {
             if n == 0 {
-                Err(DomainError::BadQuantity("phải lớn hơn 0".to_string()))
-            } else if n > Self::TOI_DA {
-                Err(DomainError::BadQuantity(format!("{} vượt quá {}", n, Self::TOI_DA)))
+                Err(DomainError::InvalidQuantity("phải lớn hơn 0".to_string()))
+            } else if n > Self::MAX {
+                Err(DomainError::InvalidQuantity(format!(
+                    "{} vượt quá {}",
+                    n,
+                    Self::MAX
+                )))
             } else {
                 Ok(Quantity(n))
             }
@@ -414,20 +419,20 @@ pub mod mien {
     pub struct Money(u64);
 
     impl Money {
-        pub fn dong(n: u64) -> Self {
+        pub fn vnd(n: u64) -> Self {
             Money(n)
         }
         pub fn value(&self) -> u64 {
             self.0
         }
-        pub fn gate(self, other: Money) -> Money {
+        pub fn plus(self, other: Money) -> Money {
             Money(self.0 + other.0) // đây là một VỊ NHÓM (Chương 18)!
         }
         pub fn subtract(self, other: Money) -> Money {
             Money(self.0.saturating_sub(other.0))
         }
-        pub fn nhan(self, he_so: u32) -> Money {
-            Money(self.0 * he_so as u64)
+        pub fn times(self, factor: u32) -> Money {
+            Money(self.0 * factor as u64)
         }
     }
 
@@ -442,9 +447,9 @@ pub mod mien {
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum PaymentMethod {
-        TienMat,
+        Cash,
         Transfer { transaction_id: String },
-        The { last_four: String },
+        Card { last_four: String },
     }
 
     // ---------------------------------------------------------------------
@@ -452,19 +457,19 @@ pub mod mien {
     // ---------------------------------------------------------------------
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct OrderLine {
-        pub name: TenSanPham,
+        pub name: ProductName,
         pub quantity: Quantity,
         pub unit_price: Money,
     }
 
     impl OrderLine {
         pub fn line_total(&self) -> Money {
-            self.unit_price.nhan(self.quantity.value())
+            self.unit_price.times(self.quantity.value())
         }
     }
 }
 
-use mien::*;
+use domain::*;
 
 // ============================================================================
 // PHẦN 2: TYPESTATE — MÁY TRẠNG THÁI ĐƯỢC MÃ HÓA VÀO KIỂU
@@ -474,7 +479,7 @@ use mien::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Draft;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Authenticated;
+pub struct Validated;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Paid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -484,7 +489,7 @@ pub struct Delivered;
 pub struct Order<TT> {
     id: String,
     customer: Email,
-    dong: Vec<OrderLine>,
+    lines: Vec<OrderLine>,
     payment: Option<PaymentMethod>,
     _state: PhantomData<TT>,
 }
@@ -497,46 +502,46 @@ impl<TT> Order<TT> {
     pub fn customer(&self) -> &Email {
         &self.customer
     }
-    pub fn so_dong(&self) -> usize {
-        self.dong.len()
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
     }
     /// Tổng tiền = gộp các thành tiền bằng phép cộng của vị nhóm Money.
-    pub fn tong_tien(&self) -> Money {
-        self.dong
+    pub fn total(&self) -> Money {
+        self.lines
             .iter()
             .map(|d| d.line_total())
-            .fold(Money::dong(0), |a, b| a.gate(b))
+            .fold(Money::vnd(0), |a, b| a.plus(b))
     }
 }
 
-pub const SO_DONG_TOI_DA: usize = 20;
+pub const MAX_LINES: usize = 20;
 
 /// Trạng thái NHẬP: chỉ có đúng một hành động hợp lệ — xác thực.
 impl Order<Draft> {
-    pub fn new(id: &str, customer: Email, dong: Vec<OrderLine>) -> Self {
+    pub fn new(id: &str, customer: Email, lines: Vec<OrderLine>) -> Self {
         Order {
             id: id.to_string(),
             customer,
-            dong,
+            lines,
             payment: None,
             _state: PhantomData,
         }
     }
 
-    pub fn auth(self) -> Result<Order<Authenticated>, DomainError> {
-        if self.dong.is_empty() {
-            return Err(DomainError::DonRong);
+    pub fn validate(self) -> Result<Order<Validated>, DomainError> {
+        if self.lines.is_empty() {
+            return Err(DomainError::EmptyOrder);
         }
-        if self.dong.len() > SO_DONG_TOI_DA {
+        if self.lines.len() > MAX_LINES {
             return Err(DomainError::OrderTooLarge {
-                so_dong: self.dong.len(),
-                toi_da: SO_DONG_TOI_DA,
+                line_count: self.lines.len(),
+                max: MAX_LINES,
             });
         }
         Ok(Order {
             id: self.id,
             customer: self.customer,
-            dong: self.dong,
+            lines: self.lines,
             payment: None,
             _state: PhantomData,
         })
@@ -544,13 +549,13 @@ impl Order<Draft> {
 }
 
 /// Trạng thái ĐÃ XÁC THỰC: chỉ có thể thanh toán.
-impl Order<Authenticated> {
-    pub fn payment(self, cach: PaymentMethod) -> Order<Paid> {
+impl Order<Validated> {
+    pub fn pay(self, method: PaymentMethod) -> Order<Paid> {
         Order {
             id: self.id,
             customer: self.customer,
-            dong: self.dong,
-            payment: Some(cach),
+            lines: self.lines,
+            payment: Some(method),
             _state: PhantomData,
         }
     }
@@ -562,18 +567,18 @@ impl Order<Paid> {
         // An toàn tuyệt đối: chỉ trạng thái này mới tồn tại, và nó LUÔN có thanh toán.
         self.payment
             .as_ref()
-            .expect("bất biến của DonHang<DaThanhToan>: luôn có thông tin thanh toán")
+            .expect("bất biến của Order<Paid>: luôn có thông tin thanh toán")
     }
 
-    pub fn delivery_queue(self, ma_van_don: &str) -> Order<Delivered> {
+    pub fn ship(self, tracking_code: &str) -> Order<Delivered> {
         println!(
             "   [VỎ MỆNH LỆNH] Gửi email tới {} về vận đơn {}",
-            self.customer, ma_van_don
+            self.customer, tracking_code
         );
         Order {
             id: self.id,
             customer: self.customer,
-            dong: self.dong,
+            lines: self.lines,
             payment: self.payment,
             _state: PhantomData,
         }
@@ -589,7 +594,7 @@ impl Order<Paid> {
 pub struct OrderDto {
     pub id: String,
     pub email: String,
-    pub dong: Vec<OrderLineDto>,
+    pub lines: Vec<OrderLineDto>,
 }
 
 #[derive(Debug, Clone)]
@@ -604,40 +609,40 @@ impl TryFrom<OrderDto> for Order<Draft> {
     type Error = Vec<DomainError>;
 
     fn try_from(dto: OrderDto) -> Result<Self, Self::Error> {
-        let mut error: Vec<DomainError> = Vec::new();
+        let mut errors: Vec<DomainError> = Vec::new();
 
-        let customer = match Email::analyze(&dto.email) {
+        let customer = match Email::parse(&dto.email) {
             Ok(e) => Some(e),
             Err(e) => {
-                error.push(e);
+                errors.push(e);
                 None
             }
         };
 
-        let mut dong: Vec<OrderLine> = Vec::new();
-        for d in &dto.dong {
-            let name = TenSanPham::analyze(&d.name);
-            let sl = Quantity::analyze(d.quantity);
-            match (name, sl) {
-                (Ok(t), Ok(s)) => dong.push(OrderLine {
+        let mut lines: Vec<OrderLine> = Vec::new();
+        for d in &dto.lines {
+            let name = ProductName::parse(&d.name);
+            let qty = Quantity::parse(d.quantity);
+            match (name, qty) {
+                (Ok(t), Ok(s)) => lines.push(OrderLine {
                     name: t,
                     quantity: s,
-                    unit_price: Money::dong(d.unit_price),
+                    unit_price: Money::vnd(d.unit_price),
                 }),
                 (t, s) => {
                     if let Err(e) = t {
-                        error.push(e);
+                        errors.push(e);
                     }
                     if let Err(e) = s {
-                        error.push(e);
+                        errors.push(e);
                     }
                 }
             }
         }
 
         match customer {
-            Some(k) if error.is_empty() => Ok(Order::new(&dto.id, k, dong)),
-            _ => Err(error),
+            Some(customer) if errors.is_empty() => Ok(Order::new(&dto.id, customer, lines)),
+            _ => Err(errors),
         }
     }
 }
@@ -647,45 +652,45 @@ impl TryFrom<OrderDto> for Order<Draft> {
 // ============================================================================
 
 /// Tính phí vận chuyển theo tổng tiền. Hàm thuần túy 100%: dễ kiểm thử tuyệt đối.
-pub fn shipping_fee(tong: Money) -> Money {
-    if tong.value() >= 500_000 {
-        Money::dong(0) // miễn phí cho đơn từ 500k
+pub fn shipping_fee(total: Money) -> Money {
+    if total.value() >= 500_000 {
+        Money::vnd(0) // miễn phí cho đơn từ 500k
     } else {
-        Money::dong(30_000)
+        Money::vnd(30_000)
     }
 }
 
 /// Tính chiết khấu theo số dòng hàng. Cũng thuần túy 100%.
-pub fn apply_discount(tong: Money, so_dong: usize) -> Money {
-    let percent = if so_dong >= 10 {
+pub fn discount_for(total: Money, line_count: usize) -> Money {
+    let percent = if line_count >= 10 {
         10
-    } else if so_dong >= 5 {
+    } else if line_count >= 5 {
         5
     } else {
         0
     };
-    Money::dong(tong.value() * percent / 100)
+    Money::vnd(total.value() * percent / 100)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invoice {
     pub subtotal: Money,
     pub discount: Money,
-    pub phi_van_transfer: Money,
+    pub shipping: Money,
     pub total_payable: Money,
 }
 
 /// Toàn bộ phép tính hóa đơn — vẫn hoàn toàn thuần túy.
-pub fn invoice_loop(don: &Order<Authenticated>) -> Invoice {
-    let subtotal = don.tong_tien();
-    let discount = apply_discount(subtotal, don.so_dong());
+pub fn build_invoice(order: &Order<Validated>) -> Invoice {
+    let subtotal = order.total();
+    let discount = discount_for(subtotal, order.line_count());
     let after_discount = subtotal.subtract(discount);
-    let phi = shipping_fee(after_discount);
+    let fee = shipping_fee(after_discount);
     Invoice {
         subtotal,
         discount,
-        phi_van_transfer: phi,
-        total_payable: after_discount.gate(phi),
+        shipping: fee,
+        total_payable: after_discount.plus(fee),
     }
 }
 
@@ -702,10 +707,15 @@ fn main() {
     // 1. HÀM KHỞI TẠO CÓ KIỂM CHỨNG — PHÒNG CÔNG CHỨNG
     // ------------------------------------------------------------------
     println!("\n1. PHÒNG CÔNG CHỨNG (Smart Constructor)");
-    for tho in ["  An.Nguyen@Example.COM ", "khong-co-a-cong", "@thieu-ten.vn", ""] {
-        match Email::analyze(tho) {
-            Ok(e) => println!("   {:>28} -> ✓ đóng dấu: {}", format!("{:?}", tho), e),
-            Err(l) => println!("   {:>28} -> ✗ từ chối: {}", format!("{:?}", tho), l),
+    for raw in [
+        "  An.Nguyen@Example.COM ",
+        "khong-co-a-cong",
+        "@thieu-ten.vn",
+        "",
+    ] {
+        match Email::parse(raw) {
+            Ok(e) => println!("   {:>28} -> ✓ đóng dấu: {}", format!("{:?}", raw), e),
+            Err(err) => println!("   {:>28} -> ✗ từ chối: {}", format!("{:?}", raw), err),
         }
     }
     println!("   → Không có cách nào tạo ra một `Email` sai. Trường bên trong là riêng tư.");
@@ -715,29 +725,37 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n2. ĐẠI SỐ CỦA KIỂU");
     println!("   struct (bool, bool)        -> kiểu TÍCH: 2 × 2 = 4 trạng thái");
-    println!("   enum {{ TienMat, CK, The }}  -> kiểu TỔNG: 1 + 1 + 1 = 3 trạng thái");
-    println!("   Cách SAI : struct {{ da_tra: bool, ma_gd: Option<String> }}");
+    println!("   enum {{ Cash, Transfer, Card }} -> kiểu TỔNG: 1 + 1 + 1 = 3 trạng thái");
+    println!("   Cách SAI : struct {{ is_paid: bool, transaction_id: Option<String> }}");
     println!("              -> có 2 tổ hợp VÔ NGHĨA (đã trả mà không mã / chưa trả mà có mã)");
-    println!("   Cách ĐÚNG: enum {{ ChuaTra, DaTra {{ ma_gd }} }} -> 0 tổ hợp vô nghĩa ✓");
+    println!("   Cách ĐÚNG: enum {{ Unpaid, Paid {{ transaction_id }} }} -> 0 tổ hợp vô nghĩa ✓");
 
     // ------------------------------------------------------------------
     // 3. CỔNG BIÊN HỆ THỐNG: DTO -> KIỂU MIỀN, GOM HẾT LỖI
     // ------------------------------------------------------------------
     println!("\n3. CỔNG BIÊN HỆ THỐNG (DTO -> Miền), gom TẤT CẢ lỗi");
-    let dto_hong = OrderDto {
+    let bad_dto = OrderDto {
         id: "ORD-0001".to_string(),
         email: "sai-email".to_string(),
-        dong: vec![
-            OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 100 },
-            OrderLineDto { name: "Bàn phím cơ".to_string(), quantity: 2, unit_price: 1_200_000 },
+        lines: vec![
+            OrderLineDto {
+                name: "".to_string(),
+                quantity: 0,
+                unit_price: 100,
+            },
+            OrderLineDto {
+                name: "Bàn phím cơ".to_string(),
+                quantity: 2,
+                unit_price: 1_200_000,
+            },
         ],
     };
-    match Order::try_from(dto_hong) {
+    match Order::try_from(bad_dto) {
         Ok(_) => println!("   (không tới đây)"),
-        Err(error) => {
-            println!("   Từ chối đơn hàng với {} lỗi:", error.len());
-            for (i, l) in error.iter().enumerate() {
-                println!("     {}. {}", i + 1, l);
+        Err(errors) => {
+            println!("   Từ chối đơn hàng với {} lỗi:", errors.len());
+            for (i, err) in errors.iter().enumerate() {
+                println!("     {}. {}", i + 1, err);
             }
         }
     }
@@ -746,63 +764,83 @@ fn main() {
     // 4. ĐƠN HỢP LỆ ĐI QUA TOÀN BỘ MÁY TRẠNG THÁI
     // ------------------------------------------------------------------
     println!("\n4. TYPESTATE — QUY TRÌNH ĐƠN HÀNG");
-    let dto_tot = OrderDto {
+    let good_dto = OrderDto {
         id: "ORD-0002".to_string(),
         email: "  Khach.Hang@Shop.VN  ".to_string(),
-        dong: vec![
-            OrderLineDto { name: "Bàn phím cơ không dây".to_string(), quantity: 2, unit_price: 1_200_000 },
-            OrderLineDto { name: "Chuột công thái học".to_string(), quantity: 1, unit_price: 750_000 },
-            OrderLineDto { name: "Lót chuột cỡ lớn".to_string(), quantity: 3, unit_price: 150_000 },
+        lines: vec![
+            OrderLineDto {
+                name: "Bàn phím cơ không dây".to_string(),
+                quantity: 2,
+                unit_price: 1_200_000,
+            },
+            OrderLineDto {
+                name: "Chuột công thái học".to_string(),
+                quantity: 1,
+                unit_price: 750_000,
+            },
+            OrderLineDto {
+                name: "Lót chuột cỡ lớn".to_string(),
+                quantity: 3,
+                unit_price: 150_000,
+            },
         ],
     };
 
-    let draft_order: Order<Draft> = Order::try_from(dto_tot).expect("đơn này phải hợp lệ");
+    let draft_order: Order<Draft> = Order::try_from(good_dto).expect("đơn này phải hợp lệ");
     println!(
         "   [Nhập]          mã={} khách={} số dòng={}",
         draft_order.id(),
         draft_order.customer(),
-        draft_order.so_dong()
+        draft_order.line_count()
     );
 
-    let don_auth: Order<Authenticated> = draft_order.auth().expect("đơn có 3 dòng, hợp lệ");
-    println!("   [Đã xác thực]   tổng hàng = {}", don_auth.tong_tien());
+    let validated_order: Order<Validated> = draft_order.validate().expect("đơn có 3 dòng, hợp lệ");
+    println!("   [Đã xác thực]   tổng hàng = {}", validated_order.total());
 
     // ---- LÕI THUẦN TÚY: lập hóa đơn (không I/O, kiểm thử được ngay) ----
-    let invoice = invoice_loop(&don_auth);
+    let invoice = build_invoice(&validated_order);
     println!("   ┌─ HÓA ĐƠN (tính bởi LÕI THUẦN TÚY) ─────────────");
     println!("   │ Tạm tính        : {}", invoice.subtotal);
     println!("   │ Chiết khấu      : {}", invoice.discount);
-    println!("   │ Phí vận chuyển  : {}", invoice.phi_van_transfer);
+    println!("   │ Phí vận chuyển  : {}", invoice.shipping);
     println!("   │ TỔNG THANH TOÁN : {}", invoice.total_payable);
     println!("   └────────────────────────────────────────────────");
 
-    let don_da_tra: Order<Paid> = don_auth.payment(PaymentMethod::Transfer {
+    let paid_order: Order<Paid> = validated_order.pay(PaymentMethod::Transfer {
         transaction_id: "VCB-99881234".to_string(),
     });
-    println!("   [Đã thanh toán] cách trả = {:?}", don_da_tra.payment_method());
+    println!(
+        "   [Đã thanh toán] cách trả = {:?}",
+        paid_order.payment_method()
+    );
 
-    let _delivered_order: Order<Delivered> = don_da_tra.delivery_queue("VN-EXP-77213");
+    let _delivered_order: Order<Delivered> = paid_order.ship("VN-EXP-77213");
     println!("   [Đã giao]       hoàn tất quy trình ✓");
 
     // ------------------------------------------------------------------
     // 5. NHỮNG GÌ TRÌNH BIÊN DỊCH TỪ CHỐI
     // ------------------------------------------------------------------
     println!("\n5. TRÌNH BIÊN DỊCH LÀ NHÂN VIÊN SOÁT VÉ KHÔNG BAO GIỜ NGỦ GẬT");
+    // Bỏ chú thích từng dòng dưới đây để tận mắt thấy lỗi biên dịch:
+    // let draft = Order::new("X", Email::parse("a@b.vn").unwrap(), vec![]);
+    // draft.ship("VD-1");                 // E0599: Order<Draft> không có `ship`
+    // let fake = domain::Email("rác".into()); // E0603: hàm dựng của Email là riêng tư
+    // validated_order.total();            // E0382: validated_order đã bị `pay` tiêu thụ
     println!("   Các dòng sau KHÔNG BIÊN DỊCH ĐƯỢC (đã đóng chú thích trong mã nguồn):");
-    println!("     · don_nhap.giao_hang(...)  -> E0599: DonHang<Nhap> không có `giao_hang`");
-    println!("     · mien::Email(\"rác\".into()) -> E0603: trường riêng tư, không dựng được");
-    println!("     · don_xac_thuc.tong_tien() -> E0382: đơn đã bị `thanh_toan` tiêu thụ");
+    println!("     · draft.ship(...)           -> E0599: Order<Draft> không có `ship`");
+    println!("     · domain::Email(\"rác\".into()) -> E0603: hàm dựng riêng tư, không dựng được");
+    println!("     · validated_order.total()   -> E0382: đơn đã bị `pay` tiêu thụ");
     println!("   → Ba lớp lỗi nghiệp vụ bị xóa sổ TRƯỚC khi chương trình kịp chạy.");
 
     // ------------------------------------------------------------------
     // 6. ĐƠN VI PHẠM QUY TẮC NGHIỆP VỤ
     // ------------------------------------------------------------------
     println!("\n6. XÁC THỰC QUY TẮC NGHIỆP VỤ");
-    let email = Email::analyze("test@shop.vn").unwrap();
-    let don_rong: Order<Draft> = Order::new("ORD-0003", email, vec![]);
-    match don_rong.auth() {
+    let email = Email::parse("test@shop.vn").unwrap();
+    let empty_order: Order<Draft> = Order::new("ORD-0003", email, vec![]);
+    match empty_order.validate() {
         Ok(_) => println!("   (không tới đây)"),
-        Err(l) => println!("   Đơn rỗng bị chặn: {}", l),
+        Err(err) => println!("   Đơn rỗng bị chặn: {}", err),
     }
 
     println!("\n============================================================");
@@ -818,57 +856,64 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn don_mau() -> Order<Authenticated> {
-        let email = Email::analyze("khach@shop.vn").unwrap();
-        let dong = vec![
+    fn sample_order() -> Order<Validated> {
+        let email = Email::parse("khach@shop.vn").unwrap();
+        let lines = vec![
             OrderLine {
-                name: TenSanPham::analyze("Bàn phím").unwrap(),
-                quantity: Quantity::analyze(2).unwrap(),
-                unit_price: Money::dong(100_000),
+                name: ProductName::parse("Bàn phím").unwrap(),
+                quantity: Quantity::parse(2).unwrap(),
+                unit_price: Money::vnd(100_000),
             },
             OrderLine {
-                name: TenSanPham::analyze("Chuột").unwrap(),
-                quantity: Quantity::analyze(1).unwrap(),
-                unit_price: Money::dong(50_000),
+                name: ProductName::parse("Chuột").unwrap(),
+                quantity: Quantity::parse(1).unwrap(),
+                unit_price: Money::vnd(50_000),
             },
         ];
-        Order::new("ORD-TEST", email, dong).auth().unwrap()
+        Order::new("ORD-TEST", email, lines).validate().unwrap()
     }
 
     #[test]
     fn email_accepts_valid_address() {
-        let e = Email::analyze("  An.Nguyen@Example.COM ").unwrap();
+        let e = Email::parse("  An.Nguyen@Example.COM ").unwrap();
         assert_eq!(e.as_str(), "an.nguyen@example.com"); // đã chuẩn hóa
     }
 
     #[test]
     fn email_rejects_invalid_address() {
-        for xau in ["", "   ", "khong-co-a-cong", "@thieu-ten.vn", "a@b@c.vn", "a@khongcocham"] {
-            assert!(Email::analyze(xau).is_err(), "phải từ chối {:?}", xau);
+        for bad in [
+            "",
+            "   ",
+            "khong-co-a-cong",
+            "@thieu-ten.vn",
+            "a@b@c.vn",
+            "a@khongcocham",
+        ] {
+            assert!(Email::parse(bad).is_err(), "phải từ chối {:?}", bad);
         }
     }
 
     #[test]
     fn quantity_must_be_positive_and_bounded() {
-        assert!(Quantity::analyze(0).is_err());
-        assert!(Quantity::analyze(1001).is_err());
-        assert_eq!(Quantity::analyze(5).unwrap().value(), 5);
+        assert!(Quantity::parse(0).is_err());
+        assert!(Quantity::parse(1001).is_err());
+        assert_eq!(Quantity::parse(5).unwrap().value(), 5);
     }
 
     #[test]
     fn product_name_counts_chars_not_bytes() {
         // 50 chữ cái tiếng Việt có dấu = nhiều hơn 50 BYTE, nhưng vẫn hợp lệ.
-        let name_long: String = "ế".repeat(50);
-        assert!(TenSanPham::analyze(&name_long).is_ok());
-        let qua_long: String = "ế".repeat(51);
-        assert!(TenSanPham::analyze(&qua_long).is_err());
+        let name_50: String = "ế".repeat(50);
+        assert!(ProductName::parse(&name_50).is_ok());
+        let name_51: String = "ế".repeat(51);
+        assert!(ProductName::parse(&name_51).is_err());
     }
 
     #[test]
     fn empty_order_is_rejected() {
-        let email = Email::analyze("a@b.vn").unwrap();
-        let don = Order::new("X", email, vec![]);
-        assert_eq!(don.auth().unwrap_err(), DomainError::DonRong);
+        let email = Email::parse("a@b.vn").unwrap();
+        let order = Order::new("X", email, vec![]);
+        assert_eq!(order.validate().unwrap_err(), DomainError::EmptyOrder);
     }
 
     #[test]
@@ -876,58 +921,62 @@ mod tests {
         let dto = OrderDto {
             id: "X".to_string(),
             email: "sai".to_string(),
-            dong: vec![OrderLineDto { name: "".to_string(), quantity: 0, unit_price: 1 }],
+            lines: vec![OrderLineDto {
+                name: "".to_string(),
+                quantity: 0,
+                unit_price: 1,
+            }],
         };
-        let error = Order::try_from(dto).unwrap_err();
-        assert_eq!(error.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", error);
+        let errors = Order::try_from(dto).unwrap_err();
+        assert_eq!(errors.len(), 3, "phải gom đủ 3 lỗi, nhận được {:?}", errors);
     }
 
     // ---- Kiểm thử LÕI THUẦN TÚY: không cần CSDL, không cần mạng ----
 
     #[test]
     fn total_sums_line_amounts() {
-        let don = don_mau();
+        let order = sample_order();
         // 2 × 100.000 + 1 × 50.000 = 250.000
-        assert_eq!(don.tong_tien(), Money::dong(250_000));
+        assert_eq!(order.total(), Money::vnd(250_000));
     }
 
     #[test]
     fn shipping_is_free_above_threshold() {
-        assert_eq!(shipping_fee(Money::dong(499_999)), Money::dong(30_000));
-        assert_eq!(shipping_fee(Money::dong(500_000)), Money::dong(0));
+        assert_eq!(shipping_fee(Money::vnd(499_999)), Money::vnd(30_000));
+        assert_eq!(shipping_fee(Money::vnd(500_000)), Money::vnd(0));
     }
 
     #[test]
     fn discount_tiers_by_line_count() {
-        let tong = Money::dong(1_000_000);
-        assert_eq!(apply_discount(tong, 3), Money::dong(0));
-        assert_eq!(apply_discount(tong, 5), Money::dong(50_000));
-        assert_eq!(apply_discount(tong, 12), Money::dong(100_000));
+        let total = Money::vnd(1_000_000);
+        assert_eq!(discount_for(total, 3), Money::vnd(0));
+        assert_eq!(discount_for(total, 5), Money::vnd(50_000));
+        assert_eq!(discount_for(total, 12), Money::vnd(100_000));
     }
 
     #[test]
     fn invoice_totals_are_correct() {
-        let don = don_mau(); // tạm tính 250.000, 2 dòng -> không chiết khấu
-        let hd = invoice_loop(&don);
-        assert_eq!(hd.subtotal, Money::dong(250_000));
-        assert_eq!(hd.discount, Money::dong(0));
-        assert_eq!(hd.phi_van_transfer, Money::dong(30_000));
-        assert_eq!(hd.total_payable, Money::dong(280_000));
+        let order = sample_order(); // tạm tính 250.000, 2 dòng -> không chiết khấu
+        let invoice = build_invoice(&order);
+        assert_eq!(invoice.subtotal, Money::vnd(250_000));
+        assert_eq!(invoice.discount, Money::vnd(0));
+        assert_eq!(invoice.shipping, Money::vnd(30_000));
+        assert_eq!(invoice.total_payable, Money::vnd(280_000));
     }
 
     #[test]
     fn typestate_flow_runs_all_four_steps() {
-        let don = don_mau();
-        let da_tra = don.payment(PaymentMethod::TienMat);
-        assert_eq!(da_tra.payment_method(), &PaymentMethod::TienMat);
-        let delivered = da_tra.delivery_queue("VD-001");
+        let order = sample_order();
+        let paid = order.pay(PaymentMethod::Cash);
+        assert_eq!(paid.payment_method(), &PaymentMethod::Cash);
+        let delivered = paid.ship("VD-001");
         assert_eq!(delivered.id(), "ORD-TEST");
     }
 
     #[test]
     fn typestate_is_zero_cost_at_runtime() {
         use std::mem::size_of;
-        // PhantomData chiếm 0 byte: Order<Nhap> và Order<Delivered> có cùng kích thước.
+        // PhantomData chiếm 0 byte: Order<Draft> và Order<Delivered> có cùng kích thước.
         assert_eq!(size_of::<Order<Draft>>(), size_of::<Order<Delivered>>());
         assert_eq!(size_of::<Draft>(), 0);
         assert_eq!(size_of::<PhantomData<Delivered>>(), 0);
@@ -941,24 +990,24 @@ mod tests {
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0603** | `tuple struct constructor 'Email' is private` | **Đây là lỗi TỐT!** Nó chứng minh kiểu bọc đang bảo vệ bạn: ai đó cố tạo `Email` mà không đi qua phòng công chứng. | Gọi `Email::analyze(...)` thay vì `Email(...)`. Đừng bao giờ "sửa" bằng cách thêm `pub` vào trường. |
-| **E0599** | `no method named 'delivery_queue' found for struct 'Order<Nhap>'` | **Cũng là lỗi TỐT!** Typestate đang chặn một bước nhảy cóc trong quy trình. | Đi đúng thứ tự: `.auth()?` rồi `.payment(...)` rồi mới `.delivery_queue(...)`. |
-| **E0382** | `use of moved value: 'don'` | Mỗi phép chuyển trạng thái **tiêu thụ** `self`, nên đơn hàng ở trạng thái cũ không còn tồn tại. | Đó là chủ ý thiết kế. Dùng biến mới cho mỗi trạng thái, hoặc `#[derive(Clone)]` nếu thật sự cần bản sao. |
-| **E0392** | `parameter 'TT' is never used` | Bạn khai báo `struct Order<TT>` mà không dùng `TT` trong bất kỳ trường nào. | Thêm trường `_state: PhantomData<TT>` — đây chính là lý do `PhantomData` tồn tại. |
-| **E0277** | `the trait bound 'Order<Nhap>: Debug' is not satisfied` | `#[derive(Debug)]` trên kiểu generic sinh ra ràng buộc `TT: Debug`. | Thêm `#[derive(Debug)]` cho các kiểu thẻ đánh dấu (`Nhap`, `Delivered`…), hoặc tự viết `impl Debug`. |
+| **E0603** | `tuple struct constructor 'Email' is private` | **Đây là lỗi TỐT!** Nó chứng minh kiểu bọc đang bảo vệ bạn: ai đó cố tạo `Email` mà không đi qua phòng công chứng. | Gọi `Email::parse(...)` thay vì `Email(...)`. Đừng bao giờ "sửa" bằng cách thêm `pub` vào trường. |
+| **E0599** | `no method named 'ship' found for struct 'Order<Draft>'` | **Cũng là lỗi TỐT!** Typestate đang chặn một bước nhảy cóc trong quy trình. | Đi đúng thứ tự: `.validate()?` rồi `.pay(...)` rồi mới `.ship(...)`. |
+| **E0382** | `borrow of moved value: 'validated_order'` (hoặc `use of moved value`) | Mỗi phép chuyển trạng thái **tiêu thụ** `self`, nên đơn hàng ở trạng thái cũ không còn tồn tại. | Đó là chủ ý thiết kế. Dùng biến mới cho mỗi trạng thái, hoặc `#[derive(Clone)]` nếu thật sự cần bản sao. |
+| **E0392** | `type parameter 'TT' is never used` | Bạn khai báo `struct Order<TT>` mà không dùng `TT` trong bất kỳ trường nào. | Thêm trường `_state: PhantomData<TT>` — đây chính là lý do `PhantomData` tồn tại. |
+| **E0277** | `` `Draft` doesn't implement `Debug` `` | `#[derive(Debug)]` trên kiểu generic sinh ra ràng buộc `TT: Debug`, nên in `Order<Draft>` bằng `{:?}` đòi `Draft: Debug`. | Thêm `#[derive(Debug)]` cho các kiểu thẻ đánh dấu (`Draft`, `Delivered`…), hoặc tự viết `impl Debug`. |
 
 ### Phân tích lỗi thực tế `E0603` — khi lỗi biên dịch là dấu hiệu thành công:
 
 ```rust
 // ❌ Đoạn mã lỗi (đã đóng chú thích để tệp vẫn biên dịch được):
-// let e = mien::Email("đây không phải email".to_string());
+// let e = domain::Email("đây không phải email".to_string());
 // LỖI E0603: tuple struct constructor `Email` is private
 //
 // Đây KHÔNG phải sự cố cần khắc phục — đây là bằng chứng thiết kế đang hoạt động!
 // Nếu đoạn mã trên biên dịch được, mọi bảo đảm của kiểu `Email` đều vô nghĩa.
 
 // ✅ Cách duy nhất được phép:
-// let e = mien::Email::analyze("kh@shop.vn").expect("địa chỉ hợp lệ");
+// let e = domain::Email::parse("kh@shop.vn").expect("địa chỉ hợp lệ");
 ```
 
 > **Nguyên tắc vàng khi gặp E0603 với kiểu bọc**: đừng bao giờ thêm `pub` vào trường để "cho nhanh". Cái `pub` đó xóa sổ toàn bộ lợi ích của chương này.
@@ -975,8 +1024,8 @@ mod tests {
 
 ### Bài tập rèn luyện tự giải:
 
-**Bài tập 1 (Kiểu bọc `SoDienThoaiVN`)**
-Viết kiểu bọc `SoDienThoaiVN` với hàm khởi tạo có kiểm chứng: chấp nhận chuỗi chỉ gồm chữ số (cho phép có khoảng trắng và dấu chấm ở giữa), độ dài sau khi làm sạch là 10 chữ số và bắt đầu bằng `0`. Chuẩn hóa kết quả về dạng không dấu cách. Viết ít nhất 4 bài kiểm thử.
+**Bài tập 1 (Kiểu bọc `VnPhone`)**
+Viết kiểu bọc `VnPhone` (số điện thoại Việt Nam) với hàm khởi tạo có kiểm chứng: chấp nhận chuỗi chỉ gồm chữ số (cho phép có khoảng trắng và dấu chấm ở giữa), độ dài sau khi làm sạch là 10 chữ số và bắt đầu bằng `0`. Chuẩn hóa kết quả về dạng không dấu cách. Viết ít nhất 4 bài kiểm thử.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -988,13 +1037,13 @@ Dùng `chars().filter(|c| c.is_ascii_digit()).collect::<String>()` để làm s�
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub mod lien_lac {
+pub mod contact {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct VnPhone(String);
 
     impl VnPhone {
-        pub fn analyze(tho: &str) -> Result<Self, String> {
-            let clean: String = tho.chars().filter(|c| c.is_ascii_digit()).collect();
+        pub fn parse(raw: &str) -> Result<Self, String> {
+            let clean: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
             if clean.len() != 10 {
                 return Err(format!("Cần đúng 10 chữ số, nhận được {}", clean.len()));
             }
@@ -1009,16 +1058,16 @@ pub mod lien_lac {
 
 #[cfg(test)]
 mod t {
-    use super::lien_lac::VnPhone as SDT;
+    use super::contact::VnPhone;
 
-    #[test] fn chap_nhan_so_hop_le() {
-        assert_eq!(SDT::analyze("0912 345 678").unwrap().as_str(), "0912345678");
+    #[test] fn accepts_valid_number() {
+        assert_eq!(VnPhone::parse("0912 345 678").unwrap().as_str(), "0912345678");
     }
     #[test] fn accepts_dotted_format() {
-        assert_eq!(SDT::analyze("098.765.4321").unwrap().as_str(), "0987654321");
+        assert_eq!(VnPhone::parse("098.765.4321").unwrap().as_str(), "0987654321");
     }
-    #[test] fn rejects_too_few_digits() { assert!(SDT::analyze("0912345").is_err()); }
-    #[test] fn rejects_missing_leading_zero() { assert!(SDT::analyze("1912345678").is_err()); }
+    #[test] fn rejects_too_few_digits() { assert!(VnPhone::parse("0912345").is_err()); }
+    #[test] fn rejects_missing_leading_zero() { assert!(VnPhone::parse("1912345678").is_err()); }
 }
 ```
 </details>
@@ -1044,31 +1093,31 @@ Liệt kê các trạng thái nghiệp vụ *thật sự* tồn tại của mộ
 <summary><b>Lời giải</b></summary>
 
 **Đếm trạng thái**: `2 × (1 + n) × (1 + m)` — với `n`, `m` là số chuỗi có thể. Ngay cả khi rút gọn `Option` thành "có/không", ta đã có `2 × 2 × 2 = 8` tổ hợp, trong khi nghiệp vụ chỉ có **3** trạng thái thật. Năm tổ hợp vô nghĩa, ví dụ:
-- `da_kich_hoat = true` nhưng `ngay_kich_hoat = None` → hoạt động mà không rõ từ bao giờ?
-- `da_kich_hoat = true` và `ly_do_khoa = Some(...)` → vừa hoạt động vừa bị khóa?
-- `da_kich_hoat = false`, `ngay_kich_hoat = Some(...)` → đã kích hoạt rồi mà lại chưa kích hoạt?
+- `activated = true` nhưng `activated_on = None` → hoạt động mà không rõ từ bao giờ?
+- `activated = true` và `lock_reason = Some(...)` → vừa hoạt động vừa bị khóa?
+- `activated = false`, `activated_on = Some(...)` → đã kích hoạt rồi mà lại chưa kích hoạt?
 
 **Thiết kế lại**:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Account {
-    ChoKichHoat,
-    DangHoatDong { activated_on: String },
-    BiKhoa { activated_on: String, ly_do: String },
+    PendingActivation,
+    Active { activated_on: String },
+    Locked { activated_on: String, reason: String },
 }
 
 impl Account {
-    pub fn activate(self, ngay: String) -> Result<Self, &'static str> {
+    pub fn activate(self, date: String) -> Result<Self, &'static str> {
         match self {
-            Account::ChoKichHoat => Ok(Account::DangHoatDong { activated_on: ngay }),
+            Account::PendingActivation => Ok(Account::Active { activated_on: date }),
             _ => Err("Tài khoản đã được kích hoạt trước đó"),
         }
     }
-    pub fn key(self, ly_do: String) -> Result<Self, &'static str> {
+    pub fn lock(self, reason: String) -> Result<Self, &'static str> {
         match self {
-            Account::DangHoatDong { activated_on } =>
-                Ok(Account::BiKhoa { activated_on, ly_do }),
+            Account::Active { activated_on } =>
+                Ok(Account::Locked { activated_on, reason }),
             _ => Err("Chỉ khóa được tài khoản đang hoạt động"),
         }
     }
@@ -1079,15 +1128,15 @@ impl Account {
 </details>
 
 **Bài tập 3 (Typestate cho kết nối cơ sở dữ liệu)**
-Thiết kế typestate cho một kết nối cơ sở dữ liệu với ba trạng thái: `ChuaKetNoi` → `DaKetNoi` → `TrongGiaoDich`. Yêu cầu:
-- Chỉ `DaKetNoi` mới có phương thức `start_trade()`.
-- Chỉ `TrongGiaoDich` mới có `truy_van()`, `commit()` và `rollback()`.
-- `commit()` và `rollback()` đưa kết nối trở về trạng thái `DaKetNoi`.
+Thiết kế typestate cho một kết nối cơ sở dữ liệu với ba trạng thái: `Disconnected` (chưa kết nối) → `Connected` (đã kết nối) → `InTransaction` (trong giao dịch). Yêu cầu:
+- Chỉ `Connected` mới có phương thức `begin_transaction()`.
+- Chỉ `InTransaction` mới có `query()`, `commit()` và `rollback()`.
+- `commit()` và `rollback()` đưa kết nối trở về trạng thái `Connected`.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Mẫu giống hệt `Order<TT>`. Điểm mới: `commit` và `rollback` đi **ngược** về `KetNoi<DaKetNoi>` — điều đó hoàn toàn hợp lệ, vì typestate không bắt buộc phải là đường một chiều.
+Mẫu giống hệt `Order<TT>`. Điểm mới: `commit` và `rollback` đi **ngược** về `Connection<Connected>` — điều đó hoàn toàn hợp lệ, vì typestate không bắt buộc phải là đường một chiều.
 </details>
 
 <details>
@@ -1102,56 +1151,56 @@ pub struct InTransaction;
 
 pub struct Connection<TT> {
     connection_string: String,
-    order_log: Vec<String>,
+    statement_log: Vec<String>,
     _tt: PhantomData<TT>,
 }
 
 impl Connection<Disconnected> {
-    pub fn new(series: &str) -> Self {
-        Connection { connection_string: series.to_string(), order_log: Vec::new(), _tt: PhantomData }
+    pub fn new(conn_str: &str) -> Self {
+        Connection { connection_string: conn_str.to_string(), statement_log: Vec::new(), _tt: PhantomData }
     }
     pub fn connect(self) -> Result<Connection<Connected>, String> {
         if self.connection_string.is_empty() {
             return Err("Chuỗi kết nối rỗng".to_string());
         }
-        Ok(Connection { connection_string: self.connection_string, order_log: self.order_log, _tt: PhantomData })
+        Ok(Connection { connection_string: self.connection_string, statement_log: self.statement_log, _tt: PhantomData })
     }
 }
 
 impl Connection<Connected> {
-    pub fn start_trade(self) -> Connection<InTransaction> {
-        Connection { connection_string: self.connection_string, order_log: self.order_log, _tt: PhantomData }
+    pub fn begin_transaction(self) -> Connection<InTransaction> {
+        Connection { connection_string: self.connection_string, statement_log: self.statement_log, _tt: PhantomData }
     }
 }
 
 impl Connection<InTransaction> {
     pub fn query(mut self, sql: &str) -> Self {
-        self.order_log.push(sql.to_string());
+        self.statement_log.push(sql.to_string());
         self
     }
     pub fn commit(self) -> Connection<Connected> {
-        println!("COMMIT {} câu lệnh", self.order_log.len());
-        Connection { connection_string: self.connection_string, order_log: Vec::new(), _tt: PhantomData }
+        println!("COMMIT {} câu lệnh", self.statement_log.len());
+        Connection { connection_string: self.connection_string, statement_log: Vec::new(), _tt: PhantomData }
     }
     pub fn rollback(self) -> Connection<Connected> {
-        println!("ROLLBACK, hủy {} câu lệnh", self.order_log.len());
-        Connection { connection_string: self.connection_string, order_log: Vec::new(), _tt: PhantomData }
+        println!("ROLLBACK, hủy {} câu lệnh", self.statement_log.len());
+        Connection { connection_string: self.connection_string, statement_log: Vec::new(), _tt: PhantomData }
     }
 }
 
 fn main() {
-    let kn = Connection::new("postgres://localhost/shop").connect().unwrap();
-    let kn = kn.start_trade()
-        .query("UPDATE kho SET so_luong = so_luong - 1 WHERE id = 7")
-        .query("INSERT INTO don_hang VALUES (7, 1)")
+    let conn = Connection::new("postgres://localhost/shop").connect().unwrap();
+    let conn = conn.begin_transaction()
+        .query("UPDATE inventory SET quantity = quantity - 1 WHERE id = 7")
+        .query("INSERT INTO orders VALUES (7, 1)")
         .commit();
-    let _ = kn.start_trade().query("DELETE FROM tam").rollback();
+    let _ = conn.begin_transaction().query("DELETE FROM temp").rollback();
 
     // Các dòng sau KHÔNG biên dịch được — và đó chính là mục đích:
-    // Connection::moi("...").query("SELECT 1");  // chưa kết nối
-    // kn.commit();                              // không ở trong giao dịch
+    // Connection::new("...").query("SELECT 1");  // E0599: chưa kết nối
+    // conn.commit();                            // E0599: không ở trong giao dịch
 }
 ```
 
-Lưu ý điểm tinh tế: `truy_van` nhận `mut self` và trả về `Self`, cho phép xâu chuỗi phương thức mà vẫn giữ nguyên tắc "mỗi thao tác tiêu thụ giá trị cũ". Đây là mẫu *builder* kết hợp typestate — rất phổ biến trong các thư viện Rust chất lượng cao.
+Lưu ý điểm tinh tế: `query` nhận `mut self` và trả về `Self`, cho phép xâu chuỗi phương thức mà vẫn giữ nguyên tắc "mỗi thao tác tiêu thụ giá trị cũ". Đây là mẫu *builder* kết hợp typestate — rất phổ biến trong các thư viện Rust chất lượng cao.
 </details>

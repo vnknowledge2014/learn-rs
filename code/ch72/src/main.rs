@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Chương 72 — Hợp đồng thông minh bằng Rust: mô hình CosmWasm và mô hình Solana.
 //!
 //! Hai hệ sinh thái lớn nhất viết hợp đồng bằng Rust, và chúng chọn hai triết lý
@@ -24,7 +23,7 @@ pub struct Env {
 }
 
 #[derive(Debug, Clone)]
-pub struct ThongTinGoi {
+pub struct MessageInfo {
     pub sender: Address,
     pub attached_funds: Money,
 }
@@ -33,26 +32,26 @@ pub struct ThongTinGoi {
 /// Đây chính là điểm khác biệt lớn nhất so với Solana.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Store {
-    pub o: BTreeMap<Vec<u8>, Vec<u8>>,
+    pub kv: BTreeMap<Vec<u8>, Vec<u8>>,
 }
 
 impl Store {
-    pub fn set<T: AsRef<[u8]>>(&mut self, key: T, gt: &[u8]) {
-        self.o.insert(key.as_ref().to_vec(), gt.to_vec());
+    pub fn set<T: AsRef<[u8]>>(&mut self, key: T, value: &[u8]) {
+        self.kv.insert(key.as_ref().to_vec(), value.to_vec());
     }
-    pub fn lay<T: AsRef<[u8]>>(&self, key: T) -> Option<&Vec<u8>> {
-        self.o.get(key.as_ref())
+    pub fn get<T: AsRef<[u8]>>(&self, key: T) -> Option<&Vec<u8>> {
+        self.kv.get(key.as_ref())
     }
     pub fn remove<T: AsRef<[u8]>>(&mut self, key: T) {
-        self.o.remove(key.as_ref());
+        self.kv.remove(key.as_ref());
     }
 
     // Trợ giúp cho số dư: khoá "balance:<địa chỉ>" → u128 dạng big-endian
-    pub fn set_balance(&mut self, ai: &str, v: Money) {
-        self.set(format!("so_du:{ai}"), &v.to_be_bytes());
+    pub fn set_balance(&mut self, addr: &str, v: Money) {
+        self.set(format!("balance:{addr}"), &v.to_be_bytes());
     }
-    pub fn balance(&self, ai: &str) -> Money {
-        self.lay(format!("so_du:{ai}"))
+    pub fn balance(&self, addr: &str) -> Money {
+        self.get(format!("balance:{addr}"))
             .map(|b| u128::from_be_bytes(b[..16].try_into().unwrap()))
             .unwrap_or(0)
     }
@@ -60,47 +59,47 @@ impl Store {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContractError {
-    InsufficientFunds { can: Money, co: Money },
-    Forbidden { ai: Address },
+    InsufficientFunds { needed: Money, available: Money },
+    Forbidden { addr: Address },
     BeforeDeadline { remaining: u64 },
     AlreadySettled,
     ZeroAmount,
-    TranSo,
+    Overflow,
 }
 
 /// Sự kiện phát ra — cách hợp đồng "kể lại" việc mình đã làm cho thế giới bên ngoài.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     pub kind: String,
-    pub attribute: Vec<(String, String)>,
+    pub attributes: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Response {
-    pub event: Vec<Event>,
+    pub events: Vec<Event>,
     /// Thông điệp gửi tiếp cho hợp đồng/mô-đun khác. CosmWasm KHÔNG cho gọi
     /// đồng bộ sang hợp đồng khác — bạn trả về thông điệp và để chuỗi thực thi
     /// SAU KHI hàm của bạn kết thúc. Nhờ vậy tấn công tái nhập (reentrancy)
     /// bị chặn ở tầng KIẾN TRÚC, không phải bằng cờ khoá như Solidity.
-    pub thong_message_cont: Vec<String>,
+    pub messages: Vec<String>,
 }
 
 impl Response {
     pub fn new() -> Self {
         Response::default()
     }
-    pub fn event(mut self, kind: &str, tt: &[(&str, &str)]) -> Self {
-        self.event.push(Event {
+    pub fn event(mut self, kind: &str, attrs: &[(&str, &str)]) -> Self {
+        self.events.push(Event {
             kind: kind.into(),
-            attribute: tt
+            attributes: attrs
                 .iter()
                 .map(|(a, b)| (a.to_string(), b.to_string()))
                 .collect(),
         });
         self
     }
-    pub fn send_cont(mut self, td: &str) -> Self {
-        self.thong_message_cont.push(td.into());
+    pub fn add_message(mut self, msg: &str) -> Self {
+        self.messages.push(msg.into());
         self
     }
 }
@@ -112,10 +111,10 @@ impl Response {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenMsg {
     Transfer {
-        den: Address,
+        recipient: Address,
         quantity: Money,
     },
-    Dot {
+    Burn {
         quantity: Money,
     },
     Approve {
@@ -123,8 +122,8 @@ pub enum TokenMsg {
         quantity: Money,
     },
     TransferFrom {
-        tu: Address,
-        den: Address,
+        owner: Address,
+        recipient: Address,
         quantity: Money,
     },
 }
@@ -134,24 +133,24 @@ pub struct TokenCw20;
 impl TokenCw20 {
     pub fn create(store: &mut Store, owner: &str, total_supply: Money) -> Response {
         store.set_balance(owner, total_supply);
-        store.set(b"tong_cung", &total_supply.to_be_bytes());
-        Response::new().event("khoi_tao", &[("owner", owner)])
+        store.set(b"total_supply", &total_supply.to_be_bytes());
+        Response::new().event("instantiate", &[("owner", owner)])
     }
 
     pub fn total_supply(store: &Store) -> Money {
         store
-            .lay(b"tong_cung")
+            .get(b"total_supply")
             .map(|b| u128::from_be_bytes(b[..16].try_into().unwrap()))
             .unwrap_or(0)
     }
 
-    fn key_allowance(owner: &str, can: &str) -> String {
-        format!("uy_quyen:{owner}:{can}")
+    fn key_allowance(owner: &str, spender: &str) -> String {
+        format!("allowance:{owner}:{spender}")
     }
 
-    pub fn allowance(store: &Store, owner: &str, can: &str) -> Money {
+    pub fn allowance(store: &Store, owner: &str, spender: &str) -> Money {
         store
-            .lay(Self::key_allowance(owner, can))
+            .get(Self::key_allowance(owner, spender))
             .map(|b| u128::from_be_bytes(b[..16].try_into().unwrap()))
             .unwrap_or(0)
     }
@@ -159,73 +158,85 @@ impl TokenCw20 {
     pub fn execute(
         store: &mut Store,
         _env: &Env,
-        info: &ThongTinGoi,
-        order: TokenMsg,
+        info: &MessageInfo,
+        msg: TokenMsg,
     ) -> Result<Response, ContractError> {
-        match order {
-            TokenMsg::Transfer { den, quantity } => {
-                Self::subtract(store, &info.sender, quantity)?;
-                Self::gate(store, &den, quantity)?;
+        match msg {
+            TokenMsg::Transfer {
+                recipient,
+                quantity,
+            } => {
+                Self::sub_balance(store, &info.sender, quantity)?;
+                Self::add_balance(store, &recipient, quantity)?;
                 Ok(Response::new().event(
-                    "chuyen_khoan",
+                    "transfer",
                     &[
-                        ("tu", &info.sender),
-                        ("den", &den),
-                        ("so_luong", &quantity.to_string()),
+                        ("from", &info.sender),
+                        ("to", &recipient),
+                        ("amount", &quantity.to_string()),
                     ],
                 ))
             }
-            TokenMsg::Dot { quantity } => {
-                Self::subtract(store, &info.sender, quantity)?;
+            TokenMsg::Burn { quantity } => {
+                Self::sub_balance(store, &info.sender, quantity)?;
                 let new = Self::total_supply(store) - quantity;
-                store.set(b"tong_cung", &new.to_be_bytes());
-                Ok(Response::new().event("dot", &[("so_luong", &quantity.to_string())]))
+                store.set(b"total_supply", &new.to_be_bytes());
+                Ok(Response::new().event("burn", &[("amount", &quantity.to_string())]))
             }
             TokenMsg::Approve { spender, quantity } => {
                 store.set(
                     Self::key_allowance(&info.sender, &spender),
                     &quantity.to_be_bytes(),
                 );
-                Ok(Response::new().event("cho_phep", &[("cho", &spender)]))
+                Ok(Response::new().event("approve", &[("spender", &spender)]))
             }
-            TokenMsg::TransferFrom { tu, den, quantity } => {
-                let limit = Self::allowance(store, &tu, &info.sender);
+            TokenMsg::TransferFrom {
+                owner,
+                recipient,
+                quantity,
+            } => {
+                let limit = Self::allowance(store, &owner, &info.sender);
                 if limit < quantity {
                     return Err(ContractError::InsufficientFunds {
-                        can: quantity,
-                        co: limit,
+                        needed: quantity,
+                        available: limit,
                     });
                 }
-                Self::subtract(store, &tu, quantity)?;
-                Self::gate(store, &den, quantity)?;
+                Self::sub_balance(store, &owner, quantity)?;
+                Self::add_balance(store, &recipient, quantity)?;
                 // Trừ hạn mức SAU KHI chuyển thành công — nếu trừ trước rồi
-                // chuyển lỗi, hạn mức bị mất oan.
+                // chuyển lỗi, hạn mức bị mất oan. (CosmWasm thật hoàn tác MỌI
+                // thay đổi khi `execute` trả lỗi; kho mô phỏng ở đây thì không,
+                // nên thứ tự "kiểm hết rồi mới ghi" càng quan trọng.)
                 store.set(
-                    Self::key_allowance(&tu, &info.sender),
+                    Self::key_allowance(&owner, &info.sender),
                     &(limit - quantity).to_be_bytes(),
                 );
-                Ok(Response::new().event("chuyen_uy_quyen", &[("tu", &tu), ("den", &den)]))
+                Ok(Response::new().event("transfer_from", &[("from", &owner), ("to", &recipient)]))
             }
         }
     }
 
-    fn subtract(store: &mut Store, ai: &str, v: Money) -> Result<(), ContractError> {
+    fn sub_balance(store: &mut Store, addr: &str, v: Money) -> Result<(), ContractError> {
         if v == 0 {
             return Err(ContractError::ZeroAmount);
         }
-        let co = store.balance(ai);
-        if co < v {
-            return Err(ContractError::InsufficientFunds { can: v, co });
+        let available = store.balance(addr);
+        if available < v {
+            return Err(ContractError::InsufficientFunds {
+                needed: v,
+                available,
+            });
         }
-        store.set_balance(ai, co - v);
+        store.set_balance(addr, available - v);
         Ok(())
     }
-    fn gate(store: &mut Store, ai: &str, v: Money) -> Result<(), ContractError> {
+    fn add_balance(store: &mut Store, addr: &str, v: Money) -> Result<(), ContractError> {
         let new = store
-            .balance(ai)
+            .balance(addr)
             .checked_add(v)
-            .ok_or(ContractError::TranSo)?;
-        store.set_balance(ai, new);
+            .ok_or(ContractError::Overflow)?;
+        store.set_balance(addr, new);
         Ok(())
     }
 }
@@ -236,9 +247,9 @@ impl TokenCw20 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EscrowState {
-    DangGiu,
-    DaGiaiNgan,
-    DaHoanTien,
+    Holding,
+    Released,
+    Refunded,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,14 +257,14 @@ pub struct Escrow {
     pub buyer: Address,
     pub seller: Address,
     pub arbiter: Address,
-    pub so_tien: Money,
+    pub amount: Money,
     pub deadline: u64,
     pub state: EscrowState,
 }
 
 impl Escrow {
     pub fn create(
-        info: &ThongTinGoi,
+        info: &MessageInfo,
         seller: &str,
         arbiter: &str,
         deadline: u64,
@@ -265,38 +276,38 @@ impl Escrow {
             buyer: info.sender.clone(),
             seller: seller.into(),
             arbiter: arbiter.into(),
-            so_tien: info.attached_funds,
+            amount: info.attached_funds,
             deadline,
-            state: EscrowState::DangGiu,
+            state: EscrowState::Holding,
         })
     }
 
     /// Người mua hoặc trọng tài có quyền giải ngân cho người bán.
-    pub fn release(&mut self, info: &ThongTinGoi) -> Result<Response, ContractError> {
-        if self.state != EscrowState::DangGiu {
+    pub fn release(&mut self, info: &MessageInfo) -> Result<Response, ContractError> {
+        if self.state != EscrowState::Holding {
             return Err(ContractError::AlreadySettled);
         }
         if info.sender != self.buyer && info.sender != self.arbiter {
             return Err(ContractError::Forbidden {
-                ai: info.sender.clone(),
+                addr: info.sender.clone(),
             });
         }
-        self.state = EscrowState::DaGiaiNgan;
+        self.state = EscrowState::Released;
         Ok(Response::new()
-            .event("giai_ngan", &[("cho", &self.seller)])
-            .send_cont(&format!("gui {} toi {}", self.so_tien, self.seller)))
+            .event("release", &[("to", &self.seller)])
+            .add_message(&format!("send {} to {}", self.amount, self.seller)))
     }
 
     /// Hoàn tiền chỉ được phép SAU hạn chót — hoặc do trọng tài quyết định.
-    pub fn refund(&mut self, env: &Env, info: &ThongTinGoi) -> Result<Response, ContractError> {
-        if self.state != EscrowState::DangGiu {
+    pub fn refund(&mut self, env: &Env, info: &MessageInfo) -> Result<Response, ContractError> {
+        if self.state != EscrowState::Holding {
             return Err(ContractError::AlreadySettled);
         }
-        let is_in_tai = info.sender == self.arbiter;
-        if !is_in_tai {
+        let is_arbiter = info.sender == self.arbiter;
+        if !is_arbiter {
             if info.sender != self.buyer {
                 return Err(ContractError::Forbidden {
-                    ai: info.sender.clone(),
+                    addr: info.sender.clone(),
                 });
             }
             if env.timestamp < self.deadline {
@@ -305,10 +316,10 @@ impl Escrow {
                 });
             }
         }
-        self.state = EscrowState::DaHoanTien;
+        self.state = EscrowState::Refunded;
         Ok(Response::new()
-            .event("hoan_tien", &[("cho", &self.buyer)])
-            .send_cont(&format!("gui {} toi {}", self.so_tien, self.buyer)))
+            .event("refund", &[("to", &self.buyer)])
+            .add_message(&format!("send {} to {}", self.amount, self.buyer)))
     }
 }
 
@@ -346,8 +357,8 @@ pub enum SolanaError {
         actual: Address,
     },
     InsufficientLamports {
-        can: u64,
-        co: u64,
+        needed: u64,
+        available: u64,
     },
     MissingAccount(usize),
 }
@@ -355,9 +366,9 @@ pub enum SolanaError {
 /// Địa chỉ dẫn xuất từ chương trình (PDA). Không có khoá riêng — nên KHÔNG AI
 /// ký được cho nó, kể cả kẻ tấn công. Chỉ chương trình dẫn xuất ra nó mới
 /// "ký" thay được, qua cơ chế `invoke_signed`.
-pub fn derive_pda(hat_giong: &[&[u8]], ma_chuong_trinh: &str) -> Address {
+pub fn derive_pda(seeds: &[&[u8]], program_id: &str) -> Address {
     let mut h: u64 = 0xcbf29ce484222325;
-    for part in hat_giong {
+    for part in seeds {
         for &b in *part {
             h ^= b as u64;
             h = h.wrapping_mul(0x100000001b3);
@@ -365,7 +376,7 @@ pub fn derive_pda(hat_giong: &[&[u8]], ma_chuong_trinh: &str) -> Address {
         h ^= 0xFF; // dấu phân cách giữa các hạt giống
         h = h.wrapping_mul(0x100000001b3);
     }
-    for &b in ma_chuong_trinh.as_bytes() {
+    for &b in program_id.as_bytes() {
         h ^= b as u64;
         h = h.wrapping_mul(0x100000001b3);
     }
@@ -377,25 +388,25 @@ pub fn derive_pda(hat_giong: &[&[u8]], ma_chuong_trinh: &str) -> Address {
 pub struct CheckAccount;
 
 impl CheckAccount {
-    pub fn must_ky(account: &Account) -> Result<(), SolanaError> {
+    pub fn must_be_signer(account: &Account) -> Result<(), SolanaError> {
         if account.is_signer {
             Ok(())
         } else {
             Err(SolanaError::MissingSignature(account.address.clone()))
         }
     }
-    pub fn must_owned_own(account: &Account, ct: &str) -> Result<(), SolanaError> {
-        if account.owner == ct {
+    pub fn must_be_owned_by(account: &Account, program_id: &str) -> Result<(), SolanaError> {
+        if account.owner == program_id {
             Ok(())
         } else {
             Err(SolanaError::WrongOwner {
                 account: account.address.clone(),
-                expected: ct.into(),
+                expected: program_id.into(),
                 actual: account.owner.clone(),
             })
         }
     }
-    pub fn must_record_can(account: &Account) -> Result<(), SolanaError> {
+    pub fn must_be_writable(account: &Account) -> Result<(), SolanaError> {
         if account.is_writable {
             Ok(())
         } else {
@@ -404,10 +415,10 @@ impl CheckAccount {
     }
     pub fn must_be_valid_pda(
         account: &Account,
-        hat_giong: &[&[u8]],
-        ct: &str,
+        seeds: &[&[u8]],
+        program_id: &str,
     ) -> Result<(), SolanaError> {
-        let expected = derive_pda(hat_giong, ct);
+        let expected = derive_pda(seeds, program_id);
         if account.address == expected {
             Ok(())
         } else {
@@ -421,16 +432,16 @@ impl CheckAccount {
 
 /// Chương trình đếm — ví dụ nhỏ nhất thể hiện đủ mô hình tài khoản Solana.
 pub struct CounterProgram;
-pub const MA_CHUONG_TRINH: &str = "Dem111111111111111111111111111111";
+pub const COUNTER_PROGRAM_ID: &str = "Counter1111111111111111111111111";
 
 impl CounterProgram {
     /// Tài khoản đếm là một PDA dẫn xuất từ địa chỉ chủ sở hữu — nên mỗi người
     /// dùng có đúng một bộ đếm, và địa chỉ của nó tính ra được mà không cần tra sổ.
     pub fn counter_address(owner: &str) -> Address {
-        derive_pda(&[b"bo_dem", owner.as_bytes()], MA_CHUONG_TRINH)
+        derive_pda(&[b"counter", owner.as_bytes()], COUNTER_PROGRAM_ID)
     }
 
-    pub fn tang(account: &mut [Account]) -> Result<u64, SolanaError> {
+    pub fn increment(account: &mut [Account]) -> Result<u64, SolanaError> {
         // Thứ tự tài khoản là MỘT PHẦN CỦA GIAO DIỆN. Sai thứ tự = sai hợp đồng.
         let owner = account
             .first()
@@ -438,15 +449,15 @@ impl CounterProgram {
             .clone();
         let counter = account.get_mut(1).ok_or(SolanaError::MissingAccount(1))?;
 
-        CheckAccount::must_ky(&owner)?;
-        CheckAccount::must_record_can(counter)?;
-        CheckAccount::must_owned_own(counter, MA_CHUONG_TRINH)?;
+        CheckAccount::must_be_signer(&owner)?;
+        CheckAccount::must_be_writable(counter)?;
+        CheckAccount::must_be_owned_by(counter, COUNTER_PROGRAM_ID)?;
         // KIỂM TRA SỐNG CÒN: bộ đếm này có đúng là của người ký không?
         // Thiếu dòng này, ai cũng tăng được bộ đếm của người khác.
         CheckAccount::must_be_valid_pda(
             counter,
-            &[b"bo_dem", owner.address.as_bytes()],
-            MA_CHUONG_TRINH,
+            &[b"counter", owner.address.as_bytes()],
+            COUNTER_PROGRAM_ID,
         )?;
 
         let current = u64::from_le_bytes(counter.data[..8].try_into().unwrap());
@@ -457,20 +468,20 @@ impl CounterProgram {
 
     /// Gọi chéo chương trình (CPI): chuyển lamports qua "chương trình hệ thống".
     pub fn transfer_lamports(
-        tu: &mut Account,
-        den: &mut Account,
+        owner: &mut Account,
+        recipient: &mut Account,
         v: u64,
     ) -> Result<(), SolanaError> {
-        CheckAccount::must_record_can(tu)?;
-        CheckAccount::must_record_can(den)?;
-        if tu.lamports < v {
+        CheckAccount::must_be_writable(owner)?;
+        CheckAccount::must_be_writable(recipient)?;
+        if owner.lamports < v {
             return Err(SolanaError::InsufficientLamports {
-                can: v,
-                co: tu.lamports,
+                needed: v,
+                available: owner.lamports,
             });
         }
-        tu.lamports -= v;
-        den.lamports += v;
+        owner.lamports -= v;
+        recipient.lamports += v;
         Ok(())
     }
 }
@@ -482,39 +493,42 @@ impl CounterProgram {
 #[derive(Debug, PartialEq)]
 pub struct ParallelAnalysis {
     pub num_transactions: usize,
-    pub so_lo_song_song: usize,
-    pub lo: Vec<Vec<usize>>,
+    pub batch_count: usize,
+    pub batches: Vec<Vec<usize>>,
 }
 
 /// Vì Solana bắt khai báo trước tài khoản sẽ ghi, ta xếp lịch được các giao
 /// dịch KHÔNG đụng nhau vào cùng một lô chạy song song. CosmWasm/EVM không
 /// biết trước nên phải chạy tuần tự tuyệt đối.
+///
+/// Rút gọn: mỗi giao dịch chỉ liệt kê tài khoản nó GHI. (Bộ lập lịch thật còn
+/// cho các giao dịch cùng ĐỌC một tài khoản chạy chung lô.)
 pub fn schedule_parallel(transactions: &[Vec<Address>]) -> ParallelAnalysis {
-    let mut lo: Vec<Vec<usize>> = Vec::new();
-    let mut da_arrange = vec![false; transactions.len()];
+    let mut batches: Vec<Vec<usize>> = Vec::new();
+    let mut scheduled = vec![false; transactions.len()];
     let mut remaining = transactions.len();
 
     while remaining > 0 {
-        let mut lo_nay = Vec::new();
-        let mut da_dung: Vec<&Address> = Vec::new();
+        let mut batch = Vec::new();
+        let mut touched: Vec<&Address> = Vec::new();
         for (i, account) in transactions.iter().enumerate() {
-            if da_arrange[i] {
+            if scheduled[i] {
                 continue;
             }
-            if account.iter().any(|a| da_dung.contains(&a)) {
+            if account.iter().any(|a| touched.contains(&a)) {
                 continue;
             } // xung đột
-            lo_nay.push(i);
-            da_dung.extend(account.iter());
-            da_arrange[i] = true;
+            batch.push(i);
+            touched.extend(account.iter());
+            scheduled[i] = true;
             remaining -= 1;
         }
-        lo.push(lo_nay);
+        batches.push(batch);
     }
     ParallelAnalysis {
         num_transactions: transactions.len(),
-        so_lo_song_song: lo.len(),
-        lo,
+        batch_count: batches.len(),
+        batches,
     }
 }
 
@@ -538,7 +552,7 @@ fn main() {
         store.balance("An")
     );
 
-    let info_an = ThongTinGoi {
+    let info_an = MessageInfo {
         sender: "An".into(),
         attached_funds: 0,
     };
@@ -547,12 +561,12 @@ fn main() {
         &env,
         &info_an,
         TokenMsg::Transfer {
-            den: "Binh".into(),
+            recipient: "Binh".into(),
             quantity: 250_000,
         },
     )
     .unwrap();
-    println!("   Chuyển 250k cho Bình → sự kiện {:?}", r.event[0].kind);
+    println!("   Chuyển 250k cho Bình → sự kiện {:?}", r.events[0].kind);
     println!(
         "   An = {} · Bình = {}",
         store.balance("An"),
@@ -564,7 +578,7 @@ fn main() {
         &env,
         &info_an,
         TokenMsg::Transfer {
-            den: "Cuong".into(),
+            recipient: "Cuong".into(),
             quantity: 9_999_999,
         },
     )
@@ -582,7 +596,7 @@ fn main() {
         },
     )
     .unwrap();
-    let info_san = ThongTinGoi {
+    let info_san = MessageInfo {
         sender: "San".into(),
         attached_funds: 0,
     };
@@ -591,8 +605,8 @@ fn main() {
         &env,
         &info_san,
         TokenMsg::TransferFrom {
-            tu: "An".into(),
-            den: "Dung".into(),
+            owner: "An".into(),
+            recipient: "Dung".into(),
             quantity: 60_000,
         },
     )
@@ -603,35 +617,35 @@ fn main() {
     );
 
     println!("\n3. KÝ QUỸ — máy trạng thái + kiểm soát quyền");
-    let info_mua = ThongTinGoi {
-        sender: "NguoiMua".into(),
+    let info_buyer = MessageInfo {
+        sender: "Buyer".into(),
         attached_funds: 500,
     };
-    let mut kq = Escrow::create(&info_mua, "NguoiBan", "TrongTai", 2000).unwrap();
-    let som = Env {
+    let mut escrow = Escrow::create(&info_buyer, "Seller", "Arbiter", 2000).unwrap();
+    let early = Env {
         timestamp: 1500,
         ..env.clone()
     };
     println!(
         "   Người mua đòi hoàn tiền trước hạn → {:?}",
-        kq.clone().refund(&som, &info_mua).unwrap_err()
+        escrow.clone().refund(&early, &info_buyer).unwrap_err()
     );
-    let ke_is = ThongTinGoi {
-        sender: "NguoiLa".into(),
+    let stranger = MessageInfo {
+        sender: "Stranger".into(),
         attached_funds: 0,
     };
     println!(
         "   Người lạ đòi giải ngân            → {:?}",
-        kq.clone().release(&ke_is).unwrap_err()
+        escrow.clone().release(&stranger).unwrap_err()
     );
-    let r = kq.release(&info_mua).unwrap();
+    let r = escrow.release(&info_buyer).unwrap();
     println!(
         "   Người mua giải ngân → {:?} · thông điệp tiếp: {:?}",
-        kq.state, r.thong_message_cont
+        escrow.state, r.messages
     );
     println!(
         "   Giải ngân lần hai                 → {:?}",
-        kq.release(&info_mua).unwrap_err()
+        escrow.release(&info_buyer).unwrap_err()
     );
 
     println!("\n4. MÔ HÌNH SOLANA — PDA và kiểm tra tài khoản");
@@ -650,7 +664,7 @@ fn main() {
     let mut account = vec![
         Account {
             address: owner.into(),
-            owner: "he_thong".into(),
+            owner: "system".into(),
             lamports: 10_000,
             data: vec![],
             is_signer: true,
@@ -659,7 +673,7 @@ fn main() {
         },
         Account {
             address: pda.clone(),
-            owner: MA_CHUONG_TRINH.into(),
+            owner: COUNTER_PROGRAM_ID.into(),
             lamports: 1_000,
             data: vec![0u8; 8],
             is_signer: false,
@@ -668,7 +682,7 @@ fn main() {
         },
     ];
     for _ in 0..3 {
-        CounterProgram::tang(&mut account).unwrap();
+        CounterProgram::increment(&mut account).unwrap();
     }
     println!(
         "   Tăng 3 lần → bộ đếm = {}",
@@ -676,33 +690,33 @@ fn main() {
     );
 
     // Kẻ tấn công đưa PDA của người khác vào
-    let mut xau = account.clone();
-    xau[1].address = CounterProgram::counter_address("Binh2222222222222222222222222222");
+    let mut forged = account.clone();
+    forged[1].address = CounterProgram::counter_address("Binh2222222222222222222222222222");
     println!(
         "   Dùng bộ đếm của người khác → {:?}",
-        CounterProgram::tang(&mut xau).unwrap_err()
+        CounterProgram::increment(&mut forged).unwrap_err()
     );
-    let mut no_ky = account.clone();
-    no_ky[0].is_signer = false;
+    let mut unsigned = account.clone();
+    unsigned[0].is_signer = false;
     println!(
         "   Không ký                   → {:?}",
-        CounterProgram::tang(&mut no_ky).unwrap_err()
+        CounterProgram::increment(&mut unsigned).unwrap_err()
     );
 
     println!("\n5. VÌ SAO SOLANA CHẠY SONG SONG ĐƯỢC");
-    let gd: Vec<Vec<Address>> = vec![
+    let txs: Vec<Vec<Address>> = vec![
         vec!["A".into(), "B".into()],
-        vec!["C".into(), "D".into()], // không đụng gd 0 → song song được
+        vec!["C".into(), "D".into()], // không đụng txs 0 → song song được
         vec!["B".into(), "E".into()], // đụng "B" → phải chờ
         vec!["F".into(), "G".into()],
         vec!["A".into(), "F".into()], // đụng cả A lẫn F
     ];
-    let pt = schedule_parallel(&gd);
+    let plan = schedule_parallel(&txs);
     println!(
         "   {} giao dịch → {} lô: {:?}",
-        pt.num_transactions, pt.so_lo_song_song, pt.lo
+        plan.num_transactions, plan.batch_count, plan.batches
     );
-    println!("   CosmWasm/EVM sẽ cần {} bước tuần tự.", gd.len());
+    println!("   CosmWasm/EVM sẽ cần {} bước tuần tự.", txs.len());
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   COSMWASM: TRẠNG THÁI THUỘC HỢP ĐỒNG                      ");
@@ -721,33 +735,33 @@ mod tests {
             contract_address: "hd".into(),
         }
     }
-    fn goi(ai: &str) -> ThongTinGoi {
-        ThongTinGoi {
-            sender: ai.into(),
+    fn sender(addr: &str) -> MessageInfo {
+        MessageInfo {
+            sender: addr.into(),
             attached_funds: 0,
         }
     }
-    fn token_mau() -> Store {
-        let mut k = Store::default();
-        TokenCw20::create(&mut k, "An", 1_000);
-        k
+    fn sample_token() -> Store {
+        let mut store = Store::default();
+        TokenCw20::create(&mut store, "An", 1_000);
+        store
     }
 
     // ---------- Kho ----------
     #[test]
     fn store_read_write_delete_are_correct() {
-        let mut k = Store::default();
-        k.set(b"a", b"1");
-        assert_eq!(k.lay(b"a"), Some(&b"1".to_vec()));
-        k.remove(b"a");
-        assert_eq!(k.lay(b"a"), None);
+        let mut store = Store::default();
+        store.set(b"a", b"1");
+        assert_eq!(store.get(b"a"), Some(&b"1".to_vec()));
+        store.remove(b"a");
+        assert_eq!(store.get(b"a"), None);
     }
 
     #[test]
     fn unset_balance_is_zero_not_an_error() {
-        let k = Store::default();
+        let store = Store::default();
         assert_eq!(
-            k.balance("chua-ton-tai"),
+            store.balance("nobody"),
             0,
             "mặc định 0 giúp không cần khởi tạo trước"
         );
@@ -756,33 +770,39 @@ mod tests {
     // ---------- Token CW20 ----------
     #[test]
     fn transfer_conserves_total_supply() {
-        let mut k = token_mau();
-        let prev: Money = ["An", "Binh", "Cuong"].iter().map(|a| k.balance(a)).sum();
+        let mut store = sample_token();
+        let prev: Money = ["An", "Binh", "Cuong"]
+            .iter()
+            .map(|a| store.balance(a))
+            .sum();
         TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("An"),
+            &sender("An"),
             TokenMsg::Transfer {
-                den: "Binh".into(),
+                recipient: "Binh".into(),
                 quantity: 300,
             },
         )
         .unwrap();
-        let next: Money = ["An", "Binh", "Cuong"].iter().map(|a| k.balance(a)).sum();
+        let next: Money = ["An", "Binh", "Cuong"]
+            .iter()
+            .map(|a| store.balance(a))
+            .sum();
         assert_eq!(prev, next, "chuyển khoản không được sinh hay huỷ token");
-        assert_eq!(k.balance("An"), 700);
-        assert_eq!(k.balance("Binh"), 300);
+        assert_eq!(store.balance("An"), 700);
+        assert_eq!(store.balance("Binh"), 300);
     }
 
     #[test]
     fn cannot_transfer_beyond_balance() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         let e = TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("An"),
+            &sender("An"),
             TokenMsg::Transfer {
-                den: "Binh".into(),
+                recipient: "Binh".into(),
                 quantity: 1_001,
             },
         )
@@ -790,28 +810,28 @@ mod tests {
         assert_eq!(
             e,
             ContractError::InsufficientFunds {
-                can: 1_001,
-                co: 1_000
+                needed: 1_001,
+                available: 1_000
             }
         );
         assert_eq!(
-            k.balance("An"),
+            store.balance("An"),
             1_000,
             "thất bại phải KHÔNG để lại thay đổi nào"
         );
-        assert_eq!(k.balance("Binh"), 0);
+        assert_eq!(store.balance("Binh"), 0);
     }
 
     #[test]
     fn cannot_transfer_from_empty_account() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         assert!(
             TokenCw20::execute(
-                &mut k,
+                &mut store,
                 &sample_env(),
-                &goi("KeLa"),
+                &sender("Stranger"),
                 TokenMsg::Transfer {
-                    den: "KeLa2".into(),
+                    recipient: "Stranger2".into(),
                     quantity: 1
                 }
             )
@@ -821,14 +841,14 @@ mod tests {
 
     #[test]
     fn zero_amount_transfer_is_rejected() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         assert_eq!(
             TokenCw20::execute(
-                &mut k,
+                &mut store,
                 &sample_env(),
-                &goi("An"),
+                &sender("An"),
                 TokenMsg::Transfer {
-                    den: "Binh".into(),
+                    recipient: "Binh".into(),
                     quantity: 0
                 }
             )
@@ -839,17 +859,17 @@ mod tests {
 
     #[test]
     fn burning_reduces_both_balance_and_total_supply() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("An"),
-            TokenMsg::Dot { quantity: 400 },
+            &sender("An"),
+            TokenMsg::Burn { quantity: 400 },
         )
         .unwrap();
-        assert_eq!(k.balance("An"), 600);
+        assert_eq!(store.balance("An"), 600);
         assert_eq!(
-            TokenCw20::total_supply(&k),
+            TokenCw20::total_supply(&store),
             600,
             "đốt phải giảm tổng cung, không chỉ số dư"
         );
@@ -857,11 +877,11 @@ mod tests {
 
     #[test]
     fn allowance_caps_at_its_limit() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("An"),
+            &sender("An"),
             TokenMsg::Approve {
                 spender: "San".into(),
                 quantity: 500,
@@ -869,61 +889,64 @@ mod tests {
         )
         .unwrap();
         TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("San"),
+            &sender("San"),
             TokenMsg::TransferFrom {
-                tu: "An".into(),
-                den: "Binh".into(),
+                owner: "An".into(),
+                recipient: "Binh".into(),
                 quantity: 300,
             },
         )
         .unwrap();
-        assert_eq!(TokenCw20::allowance(&k, "An", "San"), 200);
+        assert_eq!(TokenCw20::allowance(&store, "An", "San"), 200);
         let e = TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("San"),
+            &sender("San"),
             TokenMsg::TransferFrom {
-                tu: "An".into(),
-                den: "Binh".into(),
+                owner: "An".into(),
+                recipient: "Binh".into(),
                 quantity: 300,
             },
         )
         .unwrap_err();
         assert_eq!(
             e,
-            ContractError::InsufficientFunds { can: 300, co: 200 },
+            ContractError::InsufficientFunds {
+                needed: 300,
+                available: 200
+            },
             "vượt hạn mức phải bị chặn"
         );
     }
 
     #[test]
     fn no_allowance_means_no_transfer_from() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         assert!(
             TokenCw20::execute(
-                &mut k,
+                &mut store,
                 &sample_env(),
-                &goi("KeGian"),
+                &sender("Thief"),
                 TokenMsg::TransferFrom {
-                    tu: "An".into(),
-                    den: "KeGian".into(),
+                    owner: "An".into(),
+                    recipient: "Thief".into(),
                     quantity: 1
                 }
             )
             .is_err()
         );
-        assert_eq!(k.balance("An"), 1_000);
+        assert_eq!(store.balance("An"), 1_000);
     }
 
     #[test]
     fn failed_transfer_does_not_consume_allowance() {
-        let mut k = token_mau();
+        let mut store = sample_token();
         TokenCw20::execute(
-            &mut k,
+            &mut store,
             &sample_env(),
-            &goi("An"),
+            &sender("An"),
             TokenMsg::Approve {
                 spender: "San".into(),
                 quantity: 5_000,
@@ -933,19 +956,19 @@ mod tests {
         // hạn mức 5000 nhưng An chỉ có 1000 → chuyển hỏng
         assert!(
             TokenCw20::execute(
-                &mut k,
+                &mut store,
                 &sample_env(),
-                &goi("San"),
+                &sender("San"),
                 TokenMsg::TransferFrom {
-                    tu: "An".into(),
-                    den: "B".into(),
+                    owner: "An".into(),
+                    recipient: "B".into(),
                     quantity: 2_000
                 }
             )
             .is_err()
         );
         assert_eq!(
-            TokenCw20::allowance(&k, "An", "San"),
+            TokenCw20::allowance(&store, "An", "San"),
             5_000,
             "hỏng thì hạn mức phải nguyên vẹn, không mất oan"
         );
@@ -954,7 +977,7 @@ mod tests {
     // ---------- Ký quỹ ----------
     #[test]
     fn escrow_rejects_zero_deposit() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 0,
         };
@@ -966,106 +989,108 @@ mod tests {
 
     #[test]
     fn buyer_can_release() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
-        let r = kq.release(&goi("M")).unwrap();
-        assert_eq!(kq.state, EscrowState::DaGiaiNgan);
-        assert_eq!(
-            r.thong_message_cont.len(),
-            1,
-            "phải phát thông điệp chuyển tiền"
-        );
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
+        let r = escrow.release(&sender("M")).unwrap();
+        assert_eq!(escrow.state, EscrowState::Released);
+        assert_eq!(r.messages.len(), 1, "phải phát thông điệp chuyển tiền");
     }
 
     #[test]
     fn arbiter_can_release() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
-        assert!(kq.release(&goi("T")).is_ok());
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
+        assert!(escrow.release(&sender("T")).is_ok());
     }
 
     #[test]
     fn stranger_can_do_nothing() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
         assert_eq!(
-            kq.release(&goi("KeLa")).unwrap_err(),
-            ContractError::Forbidden { ai: "KeLa".into() }
+            escrow.release(&sender("Stranger")).unwrap_err(),
+            ContractError::Forbidden {
+                addr: "Stranger".into()
+            }
         );
-        assert_eq!(kq.state, EscrowState::DangGiu, "trạng thái không được đổi");
+        assert_eq!(
+            escrow.state,
+            EscrowState::Holding,
+            "trạng thái không được đổi"
+        );
     }
 
     #[test]
     fn seller_cannot_release_to_itself() {
         // Lỗi thiết kế kinh điển: quên loại người bán ra khỏi danh sách được phép.
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
         assert!(
-            kq.release(&goi("B")).is_err(),
+            escrow.release(&sender("B")).is_err(),
             "người bán KHÔNG được tự lấy tiền"
         );
     }
 
     #[test]
     fn refund_blocked_before_deadline_allowed_after() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
-        let som = Env {
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
+        let early = Env {
             timestamp: 1500,
             ..sample_env()
         };
         assert_eq!(
-            kq.refund(&som, &goi("M")).unwrap_err(),
+            escrow.refund(&early, &sender("M")).unwrap_err(),
             ContractError::BeforeDeadline { remaining: 500 }
         );
-        let borrow = Env {
+        let late = Env {
             timestamp: 2500,
             ..sample_env()
         };
-        assert!(kq.refund(&borrow, &goi("M")).is_ok());
-        assert_eq!(kq.state, EscrowState::DaHoanTien);
+        assert!(escrow.refund(&late, &sender("M")).is_ok());
+        assert_eq!(escrow.state, EscrowState::Refunded);
     }
 
     #[test]
     fn arbiter_can_refund_regardless_of_deadline() {
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 9_999_999).unwrap();
-        assert!(kq.refund(&sample_env(), &goi("T")).is_ok());
+        let mut escrow = Escrow::create(&i, "B", "T", 9_999_999).unwrap();
+        assert!(escrow.refund(&sample_env(), &sender("T")).is_ok());
     }
 
     #[test]
     fn cannot_release_twice() {
         // Đây là biến thể "rút hai lần" — lỗi tốn tiền phổ biến nhất.
-        let i = ThongTinGoi {
+        let i = MessageInfo {
             sender: "M".into(),
             attached_funds: 100,
         };
-        let mut kq = Escrow::create(&i, "B", "T", 2000).unwrap();
-        assert!(kq.release(&goi("M")).is_ok());
+        let mut escrow = Escrow::create(&i, "B", "T", 2000).unwrap();
+        assert!(escrow.release(&sender("M")).is_ok());
         assert_eq!(
-            kq.release(&goi("M")).unwrap_err(),
+            escrow.release(&sender("M")).unwrap_err(),
             ContractError::AlreadySettled
         );
         assert_eq!(
-            kq.refund(&sample_env(), &goi("T")).unwrap_err(),
+            escrow.refund(&sample_env(), &sender("T")).unwrap_err(),
             ContractError::AlreadySettled,
             "đã giải ngân thì cũng không hoàn tiền được nữa"
         );
@@ -1074,15 +1099,15 @@ mod tests {
     // ---------- Solana ----------
     #[test]
     fn pda_is_deterministic_and_seed_specific() {
-        let a = derive_pda(&[b"bo_dem", b"An"], MA_CHUONG_TRINH);
+        let a = derive_pda(&[b"counter", b"An"], COUNTER_PROGRAM_ID);
         assert_eq!(
             a,
-            derive_pda(&[b"bo_dem", b"An"], MA_CHUONG_TRINH),
+            derive_pda(&[b"counter", b"An"], COUNTER_PROGRAM_ID),
             "phải tất định"
         );
-        assert_ne!(a, derive_pda(&[b"bo_dem", b"Binh"], MA_CHUONG_TRINH));
-        assert_ne!(a, derive_pda(&[b"kho", b"An"], MA_CHUONG_TRINH));
-        assert_ne!(a, derive_pda(&[b"bo_dem", b"An"], "ChuongTrinhKhac"));
+        assert_ne!(a, derive_pda(&[b"counter", b"Binh"], COUNTER_PROGRAM_ID));
+        assert_ne!(a, derive_pda(&[b"vault", b"An"], COUNTER_PROGRAM_ID));
+        assert_ne!(a, derive_pda(&[b"counter", b"An"], "OtherProgram"));
     }
 
     #[test]
@@ -1090,8 +1115,8 @@ mod tests {
         // Không có dấu phân cách, ["ab","c"] và ["a","bc"] sẽ ra cùng địa chỉ —
         // lỗ hổng thật, cho phép kẻ tấn công tạo PDA trùng của người khác.
         assert_ne!(
-            derive_pda(&[b"ab", b"c"], MA_CHUONG_TRINH),
-            derive_pda(&[b"a", b"bc"], MA_CHUONG_TRINH)
+            derive_pda(&[b"ab", b"c"], COUNTER_PROGRAM_ID),
+            derive_pda(&[b"a", b"bc"], COUNTER_PROGRAM_ID)
         );
     }
 
@@ -1099,7 +1124,7 @@ mod tests {
         vec![
             Account {
                 address: owner.into(),
-                owner: "he_thong".into(),
+                owner: "system".into(),
                 lamports: 100,
                 data: vec![],
                 is_signer: true,
@@ -1108,7 +1133,7 @@ mod tests {
             },
             Account {
                 address: CounterProgram::counter_address(owner),
-                owner: MA_CHUONG_TRINH.into(),
+                owner: COUNTER_PROGRAM_ID.into(),
                 lamports: 100,
                 data: vec![0u8; 8],
                 is_signer: false,
@@ -1121,8 +1146,8 @@ mod tests {
     #[test]
     fn increment_succeeds_when_all_checks_pass() {
         let mut account = account_set("An");
-        assert_eq!(CounterProgram::tang(&mut account), Ok(1));
-        assert_eq!(CounterProgram::tang(&mut account), Ok(2));
+        assert_eq!(CounterProgram::increment(&mut account), Ok(1));
+        assert_eq!(CounterProgram::increment(&mut account), Ok(2));
         assert_eq!(
             u64::from_le_bytes(account[1].data[..8].try_into().unwrap()),
             2
@@ -1134,7 +1159,7 @@ mod tests {
         let mut account = account_set("An");
         account[0].is_signer = false;
         assert_eq!(
-            CounterProgram::tang(&mut account).unwrap_err(),
+            CounterProgram::increment(&mut account).unwrap_err(),
             SolanaError::MissingSignature("An".into())
         );
     }
@@ -1144,7 +1169,7 @@ mod tests {
         let mut account = account_set("An");
         account[1].is_writable = false;
         assert!(matches!(
-            CounterProgram::tang(&mut account).unwrap_err(),
+            CounterProgram::increment(&mut account).unwrap_err(),
             SolanaError::ReadOnlyAccount(_)
         ));
     }
@@ -1152,9 +1177,9 @@ mod tests {
     #[test]
     fn rejects_account_owned_by_another_program() {
         let mut account = account_set("An");
-        account[1].owner = "ChuongTrinhGia".into();
+        account[1].owner = "FakeProgram".into();
         assert!(matches!(
-            CounterProgram::tang(&mut account).unwrap_err(),
+            CounterProgram::increment(&mut account).unwrap_err(),
             SolanaError::WrongOwner { .. }
         ));
     }
@@ -1167,7 +1192,7 @@ mod tests {
         let mut account = account_set("An");
         account[1].address = CounterProgram::counter_address("Binh");
         assert!(matches!(
-            CounterProgram::tang(&mut account).unwrap_err(),
+            CounterProgram::increment(&mut account).unwrap_err(),
             SolanaError::WrongPda { .. }
         ));
     }
@@ -1177,12 +1202,12 @@ mod tests {
         let mut account = account_set("An");
         account.pop();
         assert_eq!(
-            CounterProgram::tang(&mut account).unwrap_err(),
+            CounterProgram::increment(&mut account).unwrap_err(),
             SolanaError::MissingAccount(1)
         );
-        let mut rong: Vec<Account> = vec![];
+        let mut empty: Vec<Account> = vec![];
         assert_eq!(
-            CounterProgram::tang(&mut rong).unwrap_err(),
+            CounterProgram::increment(&mut empty).unwrap_err(),
             SolanaError::MissingAccount(0)
         );
     }
@@ -1205,7 +1230,10 @@ mod tests {
         let (a, b) = account.split_at_mut(1);
         assert_eq!(
             CounterProgram::transfer_lamports(&mut a[0], &mut b[0], 999).unwrap_err(),
-            SolanaError::InsufficientLamports { can: 999, co: 100 }
+            SolanaError::InsufficientLamports {
+                needed: 999,
+                available: 100
+            }
         );
         assert_eq!(account[0].lamports, 100, "thất bại không được đổi số dư");
     }
@@ -1213,63 +1241,60 @@ mod tests {
     // ---------- Song song hoá ----------
     #[test]
     fn disjoint_txs_run_in_the_same_batch() {
-        let gd: Vec<Vec<Address>> = vec![
+        let txs: Vec<Vec<Address>> = vec![
             vec!["A".into(), "B".into()],
             vec!["C".into(), "D".into()],
             vec!["E".into(), "F".into()],
         ];
-        let pt = schedule_parallel(&gd);
+        let plan = schedule_parallel(&txs);
         assert_eq!(
-            pt.so_lo_song_song, 1,
+            plan.batch_count, 1,
             "hoàn toàn rời nhau → chạy hết trong 1 lô"
         );
     }
 
     #[test]
     fn conflicting_txs_go_to_separate_batches() {
-        let gd: Vec<Vec<Address>> = vec![vec!["A".into()], vec!["A".into()], vec!["A".into()]];
-        let pt = schedule_parallel(&gd);
-        assert_eq!(
-            pt.so_lo_song_song, 3,
-            "cùng chạm A → buộc tuần tự hoàn toàn"
-        );
+        let txs: Vec<Vec<Address>> = vec![vec!["A".into()], vec!["A".into()], vec!["A".into()]];
+        let plan = schedule_parallel(&txs);
+        assert_eq!(plan.batch_count, 3, "cùng chạm A → buộc tuần tự hoàn toàn");
     }
 
     #[test]
     fn every_tx_is_scheduled_exactly_once() {
-        let gd: Vec<Vec<Address>> = vec![
+        let txs: Vec<Vec<Address>> = vec![
             vec!["A".into(), "B".into()],
             vec!["C".into(), "D".into()],
             vec!["B".into(), "E".into()],
             vec!["F".into(), "G".into()],
             vec!["A".into(), "F".into()],
         ];
-        let pt = schedule_parallel(&gd);
-        let mut all: Vec<usize> = pt.lo.iter().flatten().copied().collect();
+        let plan = schedule_parallel(&txs);
+        let mut all: Vec<usize> = plan.batches.iter().flatten().copied().collect();
         all.sort_unstable();
         assert_eq!(
             all,
-            (0..gd.len()).collect::<Vec<_>>(),
+            (0..txs.len()).collect::<Vec<_>>(),
             "không bỏ sót, không xếp trùng"
         );
         assert!(
-            pt.so_lo_song_song < gd.len(),
+            plan.batch_count < txs.len(),
             "phải tiết kiệm được so với tuần tự"
         );
     }
 
     #[test]
     fn no_two_txs_in_a_batch_conflict() {
-        let gd: Vec<Vec<Address>> = (0..20)
+        let txs: Vec<Vec<Address>> = (0..20)
             .map(|i| vec![format!("tk{}", i % 7), format!("tk{}", (i * 3) % 11)])
             .collect();
-        let pt = schedule_parallel(&gd);
-        for lo in &pt.lo {
-            for (x, &i) in lo.iter().enumerate() {
-                for &j in &lo[x + 1..] {
+        let plan = schedule_parallel(&txs);
+        for batches in &plan.batches {
+            for (x, &i) in batches.iter().enumerate() {
+                for &j in &batches[x + 1..] {
                     assert!(
-                        gd[i].iter().all(|a| !gd[j].contains(a)),
-                        "gd {} và {} cùng lô mà lại đụng tài khoản",
+                        txs[i].iter().all(|a| !txs[j].contains(a)),
+                        "txs {} và {} cùng lô mà lại đụng tài khoản",
                         i,
                         j
                     );

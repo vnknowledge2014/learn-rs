@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Crate macro thủ tục do chính chương này viết (proc-macro = true)
+ch24_macros = { path = "../ch24_macros" }

@@ -4,14 +4,14 @@
 
 Trong lịch sử lập trình song song và đa luồng, có một nghịch lý cay đắng: Khi các kỹ sư cố gắng tăng tốc hệ thống bằng cách chia sẻ bộ nhớ dùng chung (`Shared Memory`) và bảo vệ nó bằng các ổ khóa như `Mutex` (Mutual Exclusion) hay `RwLock` (Read-Write Lock), họ thường tạo ra một "bãi mìn" lỗi tiềm tàng: **Tranh chấp khóa dữ dội (Lock Contention), Đảo ngược độ ưu tiên (Priority Inversion), và nghiêm trọng nhất là Bế tắc khóa vĩnh viễn (Deadlock)**.
 
-Để thoát khỏi vũng lầy này, ngành khoa học máy tính đã tìm ra một hướng đi thanh lịch: **Triết lý truyền thông điệp (Message Passing Concurrency)**, với châm ngôn bất hủ: *"Đừng giao tiếp bằng cách chia sẻ bộ nhớ; hãy chia sẻ bộ nhớ bằng cách giao tiếp"* (*Do not communicate by sharing memory; instead, share memory by communicating*). Đỉnh cao của triết lý này chính là **Mô hình Actor (Actor Model)** — mô hình đã giúp hãng viễn thông Ericsson vận hành hệ thống tổng đài Erlang với độ sẵn sàng huyền thoại $99.9999999\%$ (chỉ ngừng hoạt động vài phần nghìn giây mỗi năm).
+Để thoát khỏi vũng lầy này, ngành khoa học máy tính đã tìm ra một hướng đi thanh lịch: **Triết lý truyền thông điệp (Message Passing Concurrency)**, với châm ngôn bất hủ: *"Đừng giao tiếp bằng cách chia sẻ bộ nhớ; hãy chia sẻ bộ nhớ bằng cách giao tiếp"* (*Do not communicate by sharing memory; instead, share memory by communicating*). Đỉnh cao của triết lý này chính là **Mô hình Actor (Actor Model)** — mô hình đã giúp hãng viễn thông Ericsson vận hành hệ thống tổng đài Erlang với độ sẵn sàng huyền thoại thường được trích dẫn là $99.9999999\%$ ("chín số 9" — tương đương chỉ khoảng 30 mili-giây ngừng hoạt động mỗi năm).
 
 Trong chương này, chúng ta sẽ làm chủ:
 - Hạn chế cố hữu của cơ chế khóa chia sẻ bộ nhớ truyền thống và nguồn gốc của bế tắc Deadlock.
 - Ba nguyên lý bất biến của Mô hình Actor: Trạng thái đóng kín (Isolated Private State), Hộp thư đến (Mailbox), và Xử lý thông điệp tuần tự (Sequential Message Processing).
 - Phân loại các kênh truyền tin (Channels) trong Rust: Kênh nhiều người gửi - một người nhận (`mpsc`), và kênh phản hồi một lần (`oneshot`).
 - Kỹ thuật kiến trúc mẫu Yêu cầu - Phản hồi (Request-Response Pattern) giữa các Actor bằng cách đính kèm "Phong bì hồi âm" (`return_envelope`).
-- Tự tay lập trình một Actor hoàn chỉnh quản lý tài khoản ngân hàng và kiểm soát giao dịch song song 100% không bao giờ gặp Deadlock.
+- Tự tay lập trình một Actor hoàn chỉnh quản lý tài khoản ngân hàng và kiểm soát giao dịch song song không cần `Mutex` — và thấy rõ Actor vẫn có thể deadlock ở đâu.
 
 ---
 
@@ -45,7 +45,8 @@ Hãy cùng đối chiếu hai bức tranh đời thường để thấy rõ tạ
 │ │ 3. Bác kế toán ngồi nhâm nhi trà, đọc từng bức thư theo thứ tự,      │         │
 │ │    cập nhật sổ cái, nhét biên lai vào phong bì trả ra ngoài!         │         │
 │ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> TUYỆT ĐỐI KHÔNG CÓ TRANH CHẤP, KHÔNG BAO GIỜ BỊ DEADLOCK!                 │
+│   ===> KHÔNG TRANH CHẤP SỔ CÁI, KHÔNG CẦN KHÓA (nhưng vẫn có thể deadlock nếu    │
+│        các actor chặn chờ hồi âm của nhau theo vòng tròn — xem mục 5)!            │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +58,7 @@ Hãy cùng đối chiếu hai bức tranh đời thường để thấy rõ tạ
 - **Actor (Bác kế toán)**: Là người duy nhất trên thế giới có quyền nhìn thấy và chạm vào cuốn sổ cái (Private State). Không một ai bên ngoài được phép thò tay vào phòng.
 - **Hòm thư (Mailbox / Channel `mpsc`)**: Người bên ngoài chỉ cần ném thông điệp qua khe cửa. Dù 100 nhân viên cùng ném thư tới tấp, các bức thư chỉ tự động xếp hàng ngăn nắp trong hòm thư của bác kế toán.
 - **Phong bì hồi âm (Kênh `oneshot`)**: Khi bạn hỏi *"Số dư tài khoản của tôi còn bao nhiêu?"*, bạn không thể đứng chờ bác trả lời ngay. Bạn để lại chiếc phong bì có ghi sẵn địa chỉ bàn làm việc của bạn. Bác kế toán ghi số tiền, bỏ vào phong bì gửi ngược lại cho bạn.
-- Nhờ cách ly hoàn toàn, bác kế toán xử lý mọi thứ tuần tự từ trên xuống dưới, không một hạt bụi nào bị xáo trộn, dữ liệu luôn nhất quán 100%!
+- Nhờ cách ly hoàn toàn, bác kế toán xử lý mọi thứ tuần tự từ trên xuống dưới, không một hạt bụi nào bị xáo trộn, sổ cái của bác luôn nhất quán!
 
 ---
 
@@ -66,9 +67,9 @@ Hãy cùng đối chiếu hai bức tranh đời thường để thấy rõ tạ
 ### 1. Khuyết tật Cốt lõi của Cơ chế Khóa Truyền thống (Mutex / RwLock)
 
 Trong các hệ thống phân tán và dịch vụ tải cao:
-1. **Tranh chấp khóa (Lock Contention)**: Khi số lượng lõi CPU tăng lên (ví dụ 64 cores), nếu 64 luồng cùng tranh chấp một `Mutex`, thời gian CPU tiêu tốn cho việc chờ đợi và chuyển ngữ cảnh (Context Switching) có thể chiếm tới 80% tổng thời gian tính toán.
+1. **Tranh chấp khóa (Lock Contention)**: Khi số lượng lõi CPU tăng lên (ví dụ 64 cores), nếu 64 luồng cùng tranh chấp một `Mutex`, thời gian CPU tiêu tốn cho việc chờ đợi và chuyển ngữ cảnh (Context Switching) có thể chiếm phần lớn tổng thời gian tính toán.
 2. **Nguy cơ Deadlock**: Xảy ra khi có sự phụ thuộc vòng tròn giữa các khóa.
-3. **Mất an toàn ngoại lệ (Lock Poisoning)**: Trong Rust, nếu một luồng đang giữ khóa `Mutex` mà bị `panic!`, ổ khóa đó sẽ bị "nhiễm độc" (`PoisonError`), khiến tất cả các luồng khác sau đó khi gọi `.lock()` đều bị lỗi theo.
+3. **Mất an toàn ngoại lệ (Lock Poisoning)**: Trong Rust, nếu một luồng đang giữ khóa `Mutex` mà bị `panic!`, ổ khóa đó sẽ bị "nhiễm độc" (`PoisonError`), khiến tất cả các luồng khác sau đó khi gọi `.lock()` đều nhận `Err` (vẫn có thể cố ý lấy lại dữ liệu bằng `PoisonError::into_inner` nếu chắc nó còn hợp lệ).
 
 ### 2. Ba Trụ cột Kiến trúc của Mô hình Actor
 
@@ -90,31 +91,42 @@ Một Actor chuẩn mực bao gồm 3 yếu tố:
 └──────────────────────────────────────┴──────────────────────────────────────────────────────────┘
 ```
 
+Lưu ý nguồn gốc: thư viện chuẩn chỉ có `std::sync::mpsc` (`channel` không giới hạn và `sync_channel(n)` có giới hạn). `oneshot`, `broadcast`, `watch` (và `mpsc` bất đồng bộ) nằm trong `tokio::sync`. Mã minh họa dưới đây chỉ dùng std, nên "phong bì hồi âm oneshot" được làm bằng một `mpsc::channel` chỉ gửi đúng một lần.
+
 ### 4. Mẫu Thiết kế Request-Response qua Hồi âm Oneshot
 
 Làm thế nào client có thể nhận được kết quả trả về từ Actor khi kênh `mpsc` vốn dĩ là đường truyền một chiều?
 - **Giải pháp**: Định nghĩa Enum thông điệp có chứa một trường kênh hồi âm:
 ```rust
+use std::sync::mpsc::Sender; // với Tokio: tokio::sync::oneshot::Sender<u64>
+
 pub enum AccountMessage {
     Deposit { amount: u64 },
-    GetBalance { respond_to: oneshot::Sender<u64> }, // Phong bì hồi âm!
+    GetBalance { respond_to: Sender<u64> }, // Phong bì hồi âm!
 }
 ```
 - Khi client gửi `GetBalance`:
-  1. Client tạo một cặp kênh `let (resp_tx, resp_rx) = oneshot::channel();`.
+  1. Client tạo một cặp kênh `let (resp_tx, resp_rx) = channel();` (Tokio: `oneshot::channel()`).
   2. Client gửi `AccountMessage::GetBalance { respond_to: resp_tx }` vào hòm thư Actor.
   3. Client chờ nhận kết quả trên đầu nhận `resp_rx`.
   4. Actor xử lý xong, lấy `respond_to.send(self.balance)`. Client lập tức nhận được số dư an toàn!
+
+### 5. Actor KHÔNG miễn nhiễm Deadlock
+
+Mô hình Actor xóa bỏ deadlock *do khóa*, nhưng không xóa bỏ deadlock *do chờ đợi*. Bước 3 ở trên — client **chặn** chờ hồi âm — chính là một "ổ khóa" trá hình. Nếu actor X, để xử lý một thông điệp, gửi yêu cầu sang actor Y rồi chặn chờ trả lời, trong khi Y (để trả lời) lại gửi yêu cầu sang X và chặn chờ — X không bao giờ đọc hòm thư nữa, Y cũng vậy: **deadlock vòng tròn**, y hệt khóa A–B. Hòm thư có giới hạn (`sync_channel(n)`) còn thêm một kiểu nữa: hai actor cùng gửi vào hòm thư đầy của nhau.
+
+Cách phòng: không chặn chờ bên trong actor (chuyển tiếp yêu cầu kèm phong bì hồi âm của người hỏi gốc), thiết kế luồng gọi giữa các actor thành đồ thị không vòng, và đặt timeout (`recv_timeout`) cho mọi yêu cầu liên actor. Hàm `circular_request_deadlocks` trong mã dưới đây tái hiện đúng tình huống này.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn hoàn chỉnh của một **Hệ thống Ngân hàng Đa luồng hướng Actor (Thread-Safe Bank Account Actor)** được lập trình bằng Safe Rust chuẩn mực, sử dụng các kênh truyền tin đa luồng và mô hình Request-Response bằng phong bì hồi âm, hoàn toàn không sử dụng khóa chia sẻ bộ nhớ phức tạp:
+Dưới đây là mã nguồn hoàn chỉnh của một **Hệ thống Ngân hàng Đa luồng hướng Actor (Thread-Safe Bank Account Actor)** được lập trình bằng Safe Rust chuẩn mực, sử dụng các kênh truyền tin đa luồng và mô hình Request-Response bằng phong bì hồi âm, không dùng `Mutex` nào trong mã nghiệp vụ (bản thân `mpsc` bên trong vẫn dùng các thao tác nguyên tử để đồng bộ), kèm phần minh họa deadlock vòng tròn giữa hai actor:
 
 ```rust
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
+use std::time::Duration;
 
 /// Các loại mệnh lệnh thông điệp có thể gửi tới Actor
 #[derive(Debug)]
@@ -127,9 +139,7 @@ pub enum AccountMessage {
         respond_to: Sender<Result<u64, &'static str>>,
     },
     /// Vấn tin số dư: Kèm theo kênh hồi âm trả về số dư hiện tại
-    GetBalance {
-        respond_to: Sender<u64>,
-    },
+    GetBalance { respond_to: Sender<u64> },
 }
 
 /// Thực thể Actor quản lý tài khoản ngân hàng (Sở hữu trạng thái riêng biệt)
@@ -172,11 +182,15 @@ impl BankAccountActor {
                             "    [Actor] Từ chối rút {}đ: Số dư không đủ (Hiện có {}đ)!",
                             amount, self.balance
                         );
-                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
+                        let _ =
+                            respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
                     }
                 }
                 AccountMessage::GetBalance { respond_to } => {
-                    println!("    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...", self.balance);
+                    println!(
+                        "    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...",
+                        self.balance
+                    );
                     let _ = respond_to.send(self.balance);
                 }
             }
@@ -224,9 +238,56 @@ impl BankAccountHandle {
     }
 }
 
+// ----------------------------------------------------------------------------
+// MINH HỌA: ACTOR VẪN CÓ THỂ DEADLOCK
+// Mỗi actor, để trả lời `Ask`, lại gửi `Ask` sang actor kia rồi CHẶN chờ trả lời.
+// X đang chặn chờ Y nên không đọc hòm thư; Y gửi `Ask` cho X rồi chặn chờ X ->
+// vòng chờ khép kín, y hệt deadlock khóa A-B, chỉ là "khóa" ở đây là `recv()`.
+// ----------------------------------------------------------------------------
+pub enum PeerMessage {
+    SetPeer(Sender<PeerMessage>),
+    Ask { reply: Sender<u32> },
+}
+
+fn peer_actor(inbox: Receiver<PeerMessage>) {
+    let mut peer: Option<Sender<PeerMessage>> = None;
+    while let Ok(msg) = inbox.recv() {
+        match msg {
+            PeerMessage::SetPeer(p) => peer = Some(p),
+            PeerMessage::Ask { reply } => {
+                let (tx, rx) = channel();
+                if let Some(p) = &peer {
+                    let _ = p.send(PeerMessage::Ask { reply: tx });
+                }
+                // CHẶN chờ actor kia — mầm mống deadlock
+                if let Ok(v) = rx.recv() {
+                    let _ = reply.send(v + 1);
+                }
+            }
+        }
+    }
+}
+
+/// Trả về `true` nếu yêu cầu không được trả lời trong `timeout` (tức là đã deadlock).
+/// Hai luồng actor bị kẹt vĩnh viễn; trong mã thật, cách chữa là không chặn chờ
+/// bên trong actor (gửi tiếp kèm phong bì hồi âm của người hỏi gốc), hoặc dùng
+/// timeout cho mọi yêu cầu liên actor.
+pub fn circular_request_deadlocks(timeout: Duration) -> bool {
+    let (tx_x, rx_x) = channel();
+    let (tx_y, rx_y) = channel();
+    thread::spawn(move || peer_actor(rx_x));
+    thread::spawn(move || peer_actor(rx_y));
+    let _ = tx_x.send(PeerMessage::SetPeer(tx_y.clone()));
+    let _ = tx_y.send(PeerMessage::SetPeer(tx_x.clone()));
+
+    let (reply_tx, reply_rx) = channel();
+    let _ = tx_x.send(PeerMessage::Ask { reply: reply_tx });
+    reply_rx.recv_timeout(timeout).is_err()
+}
+
 fn main() {
     println!("==================================================================");
-    println!("   MO HINH ACTOR & GIAO TIEP KENH DONG THOI AN TOAN TRONG RUST    ");
+    println!("   MÔ HÌNH ACTOR & GIAO TIẾP KÊNH ĐỒNG THỜI AN TOÀN TRONG RUST    ");
     println!("==================================================================");
 
     // 1. Tạo kênh truyền tin chính nối tới hòm thư của Actor
@@ -241,26 +302,32 @@ fn main() {
     // 3. Tạo tay cầm Handle để các client sử dụng
     let handle = BankAccountHandle::new(mailbox_tx);
 
-    println!("\n[1] Thuc hien cac giao dich nap tien ban dau:");
+    println!("\n[1] Thực hiện các giao dịch nạp tiền ban đầu:");
     handle.deposit(100_000);
     handle.deposit(250_000);
 
     // Kiểm tra số dư qua Request-Response
     let current_bal = handle.get_balance();
-    println!("    [Client Main] So du kiem tra duoc: {}d", current_bal);
+    println!("    [Client Main] Số dư kiểm tra được: {}đ", current_bal);
     assert_eq!(current_bal, 350_000);
 
-    println!("\n[2] Mo phong 3 luong khach hang dong thoi rut tien (Concurrent Clients):");
+    println!("\n[2] Mô phỏng 3 luồng khách hàng đồng thời rút tiền (Concurrent Clients):");
     let mut client_threads = Vec::new();
 
     for client_id in 1..=3 {
         let client_handle = handle.clone();
         let t = thread::spawn(move || {
             let withdraw_amount = 150_000;
-            println!("    - Khach hang #{} bat dau gui lenh rut {}d...", client_id, withdraw_amount);
+            println!(
+                "    - Khách hàng #{} bắt đầu gửi lệnh rút {}đ...",
+                client_id, withdraw_amount
+            );
             match client_handle.withdraw(withdraw_amount) {
-                Ok(remaining) => println!("      + Khach hang #{} rut THANH CONG! So du con: {}d", client_id, remaining),
-                Err(err) => println!("      + Khach hang #{} rut THAT BAI: {}", client_id, err),
+                Ok(remaining) => println!(
+                    "      + Khách hàng #{} rút THÀNH CÔNG! Số dư còn: {}đ",
+                    client_id, remaining
+                ),
+                Err(err) => println!("      + Khách hàng #{} rút THẤT BẠI: {}", client_id, err),
             }
         });
         client_threads.push(t);
@@ -272,16 +339,60 @@ fn main() {
 
     // Kiểm tra số dư cuối cùng
     let final_balance = handle.get_balance();
-    println!("\n[3] So du cuoi cung trong so cai Actor: {}d", final_balance);
+    println!(
+        "\n[3] Số dư cuối cùng trong sổ cái Actor: {}đ",
+        final_balance
+    );
     assert_eq!(final_balance, 50_000);
 
     // Tiêu hủy handle để đóng mailbox, luồng Actor sẽ kết thúc êm ái
     drop(handle);
     let _ = actor_thread.join();
 
+    // 4. Actor KHÔNG miễn nhiễm deadlock: yêu cầu-phản hồi đồng bộ vòng tròn
+    println!("\n[4] Hai actor hỏi nhau đồng bộ theo vòng tròn (X -> Y -> X):");
+    if circular_request_deadlocks(Duration::from_millis(300)) {
+        println!("    [!] Không có phản hồi sau 300ms: X chờ Y, Y chờ X -> DEADLOCK!");
+    }
+
     println!("\n==================================================================");
-    println!("   XAC NHAN: TOAN BO GIAO DICH DA DONG BO HOAN HAO - ZERO LOCK!  ");
+    println!("   XÁC NHẬN: GIAO DỊCH NHẤT QUÁN, KHÔNG CẦN MUTEX TRONG MÃ NGHIỆP VỤ ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spawn_account() -> BankAccountHandle {
+        let (tx, rx) = channel();
+        thread::spawn(move || BankAccountActor::new(rx).run());
+        BankAccountHandle::new(tx)
+    }
+
+    #[test]
+    fn concurrent_withdrawals_never_overdraw() {
+        let handle = spawn_account();
+        handle.deposit(1_000);
+        let threads: Vec<_> = (0..20)
+            .map(|_| {
+                let h = handle.clone();
+                thread::spawn(move || h.withdraw(100).is_ok())
+            })
+            .collect();
+        let ok = threads
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .filter(|&ok| ok)
+            .count();
+        assert_eq!(ok, 10);
+        assert_eq!(handle.get_balance(), 0);
+    }
+
+    #[test]
+    fn circular_synchronous_requests_deadlock() {
+        assert!(circular_request_deadlocks(Duration::from_millis(200)));
+    }
 }
 ```
 
@@ -293,10 +404,10 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0382** | `use of moved value: 'mailbox_tx'` | Bạn truyền `mailbox_tx` vào luồng hoặc hàm khiến quyền sở hữu (ownership) bị di chuyển, sau đó lại cố gắng dùng lại nó. | Nhân bản đối tượng người gửi trước khi di chuyển: `let tx_clone = mailbox_tx.clone();`. |
-| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Đặt một kiểu dữ liệu không hỗ trợ đa luồng vào bên trong cấu trúc thông điệp gửi qua kênh `channel`. | Đảm bảo mọi kiểu dữ liệu truyền qua Channel đều phải thỏa mãn ràng buộc `Send`. |
-| **E0507** | `cannot move out of a shared reference` | Cố gắng lấy quyền sở hữu của một trường bên trong thông điệp khi chỉ có tham chiếu mượn (borrow). | Triển khai phương thức nhận `self` theo giá trị thay vì tham chiếu `&self` khi chuyển quyền sở hữu thông điệp. |
-| **E0599** | `no method named 'recv' found for struct 'Sender'` | Gọi nhầm phương thức `.recv()` trên đầu gửi `Sender` thay vì đầu nhận `Receiver`. | Kiểm tra lại biến: `Sender` chỉ có `.send()`, còn `Receiver` mới có `.recv()`. |
+| **E0382** | `` borrow of moved value: `mailbox_tx` `` | Bạn truyền `mailbox_tx` vào luồng hoặc hàm khiến quyền sở hữu (ownership) bị di chuyển, sau đó lại cố gắng dùng lại nó. | Nhân bản đối tượng người gửi trước khi di chuyển: `let tx_clone = mailbox_tx.clone();`. |
+| **E0277** | `` `Rc<String>` cannot be sent between threads safely `` | Đặt một kiểu dữ liệu không hỗ trợ đa luồng vào bên trong cấu trúc thông điệp gửi qua kênh `channel`. | Đảm bảo mọi kiểu dữ liệu truyền qua Channel đều phải thỏa mãn ràng buộc `Send`. |
+| **E0507** | `` cannot move out of `m.body` which is behind a shared reference `` | Cố gắng lấy quyền sở hữu của một trường bên trong thông điệp khi chỉ có tham chiếu mượn (borrow). | Triển khai phương thức nhận `self` theo giá trị thay vì tham chiếu `&self` khi chuyển quyền sở hữu thông điệp. |
+| **E0599** | `` no method named `recv` found for struct `std::sync::mpsc::Sender<T>` `` | Gọi nhầm phương thức `.recv()` trên đầu gửi `Sender` thay vì đầu nhận `Receiver`. | Kiểm tra lại biến: `Sender` chỉ có `.send()`, còn `Receiver` mới có `.recv()`. |
 
 ### Ví dụ phân tích lỗi `E0382` khi gửi thông điệp không nhân bản Sender:
 
@@ -313,7 +424,7 @@ fn e0382_broken() {
 }
 
 // Cách sửa chữa đúng chuẩn: Clone tx cho mỗi luồng
-fn vi_du_dung_e0382() {
+fn e0382_fixed() {
     let (tx, _rx) = channel::<i32>();
     
     let tx1 = tx.clone();
@@ -329,7 +440,7 @@ fn vi_du_dung_e0382() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Triết lý Actor**: Đóng gói trạng thái riêng tư và chỉ giao tiếp qua thông điệp, triệt tiêu hoàn toàn nguy cơ Deadlock và tranh chấp khóa Mutex.
+1. **Triết lý Actor**: Đóng gói trạng thái riêng tư và chỉ giao tiếp qua thông điệp, loại bỏ tranh chấp khóa và deadlock do khóa. Nhưng yêu cầu–phản hồi đồng bộ theo vòng tròn giữa các actor vẫn deadlock được — đừng chặn chờ bên trong actor.
 2. **Kênh mpsc và oneshot**: `mpsc` dùng làm hòm thư đến nhiều người gửi, trong khi `oneshot` đóng vai trò là phong bì hồi âm kết quả cho mẫu thiết kế Request-Response.
 3. **Xử lý tuần tự (Sequential Execution)**: Mỗi Actor xử lý lần lượt từng thông điệp, biến các bài toán cập nhật đồng thời phức tạp thành logic tuần tự đơn giản.
 4. **An toàn Bộ nhớ Đa luồng**: Sự kết hợp giữa quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) bảo đảm thông điệp di chuyển an toàn giữa các luồng mà không bao giờ bị rò rỉ hay hỏng ô nhớ.
@@ -398,7 +509,7 @@ impl AccountActor {
 }
 
 #[test]
-fn chuyen_khoan_lien_actor() {
+fn transfer_between_actors() {
     use std::thread;
     let (tx_a, rx_a) = channel();
     let (tx_b, rx_b) = channel();
@@ -435,7 +546,7 @@ Triết lý 'Let It Crash' của Erlang: đừng cố bắt mọi lỗi trong ac
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::channel;
 use std::thread;
 
 /// Actor có thể sập (panic) khi gặp lệnh xấu — ta CỐ Ý không bắt lỗi bên trong nó.
@@ -449,27 +560,26 @@ fn account_actor(inbox: std::sync::mpsc::Receiver<i64>) {
 }
 
 /// Supervisor: sinh actor, theo dõi, và KHỞI TẠO LẠI nếu nó sập.
+/// Mỗi "ca" ta gửi cho actor một lệnh xấu để ép nó sập; Supervisor phát hiện
+/// qua `join()` và dựng actor MỚI (trạng thái sạch) cho ca sau.
 /// Trả về số lần đã phải khởi động lại (để test quan sát được).
-pub fn supervise(so_lenh_xau_toi_da: u32) -> u32 {
-    let mut so_lan_restart = 0;
-    for _ in 0..so_lenh_xau_toi_da {
-        let (_tx, rx): (Sender<i64>, _) = channel();
-        // Gửi một lệnh làm số dư âm để ép actor sập.
-        let (tx2, rx2) = channel::<i64>();
-        let handle = thread::spawn(move || account_actor(rx2));
-        tx2.send(-999).unwrap();       // lệnh xấu -> actor sập
-        drop(tx2);                      // đóng hòm thư
-        drop(rx);
+pub fn supervise(crash_rounds: u32) -> u32 {
+    let mut restarts = 0;
+    for _ in 0..crash_rounds {
+        let (tx, rx) = channel::<i64>();
+        let handle = thread::spawn(move || account_actor(rx));
+        tx.send(-999).unwrap(); // lệnh xấu -> actor sập
+        drop(tx);               // đóng hòm thư (nếu actor không sập, nó sẽ tự kết thúc)
         // join() trả Err khi luồng con HOẢNG LOẠN -> Supervisor phát hiện tại đây.
         if handle.join().is_err() {
-            so_lan_restart += 1;        // "phát hiện sập -> khởi tạo lại actor mới"
+            restarts += 1; // "phát hiện sập -> khởi tạo lại actor mới" ở vòng lặp kế
         }
     }
-    so_lan_restart
+    restarts
 }
 
 #[test]
-fn supervisor_phat_hien_va_khoi_dong_lai() {
+fn supervisor_detects_and_restarts() {
     // 3 lần actor sập -> Supervisor khởi động lại đúng 3 lần.
     assert_eq!(supervise(3), 3);
 }

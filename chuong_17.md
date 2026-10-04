@@ -78,13 +78,13 @@ Trong Rust, có sự khác biệt tinh tế giữa con trỏ hàm thuần túy v
 fn doubled(x: i32) -> i32 { x * 2 }
 
 // Hàm bậc cao nhận con trỏ hàm fn thuần túy
-fn ap_dung_fn(pointer: fn(i32) -> i32, value: i32) -> i32 {
+fn apply_fn(pointer: fn(i32) -> i32, value: i32) -> i32 {
     pointer(value)
 }
 
 // Hàm bậc cao nhận Trait Bound tổng quát (chấp nhận CẢ fn VÀ closure)
-fn ap_dung_generic<F: Fn(i32) -> i32>(hanh_dong: F, value: i32) -> i32 {
-    hanh_dong(value)
+fn apply_generic<F: Fn(i32) -> i32>(action: F, value: i32) -> i32 {
+    action(value)
 }
 ```
 
@@ -98,8 +98,8 @@ fn ap_dung_generic<F: Fn(i32) -> i32>(hanh_dong: F, value: i32) -> i32 {
 Nếu hàm của bạn chỉ trả về một loại closure duy nhất:
 ```rust
 // Trả về một closure cụ thể, rustc tự xác định kiểu và kích thước trên Stack
-fn tao_bo_nhan(he_so: i32) -> impl Fn(i32) -> i32 {
-    move |x| x * he_so // Bắt buộc dùng move để đóng gói he_so vào closure
+fn make_multiplier(factor: i32) -> impl Fn(i32) -> i32 {
+    move |x| x * factor // Bắt buộc dùng move để đóng gói factor vào closure
 }
 ```
 
@@ -107,8 +107,8 @@ fn tao_bo_nhan(he_so: i32) -> impl Fn(i32) -> i32 {
 Khi hàm của bạn có thể trả về **hai closure khác nhau** tùy theo điều kiện `if/else`:
 Vì mỗi closure trong Rust có một kiểu ẩn danh duy nhất không trùng lặp, bạn không thể dùng `impl Fn` trong hai nhánh `if/else` khác nhau. Lúc này, ta phải đóng gói chúng vào con trỏ thông minh (smart pointer) `Box` trên vùng nhớ Heap:
 ```rust
-fn make_converter(la_viet_hoa: bool) -> Box<dyn Fn(&str) -> String> {
-    if la_viet_hoa {
+fn make_converter(uppercase: bool) -> Box<dyn Fn(&str) -> String> {
+    if uppercase {
         Box::new(|s| s.to_uppercase())
     } else {
         Box::new(|s| s.to_lowercase())
@@ -122,12 +122,12 @@ Hãy quan sát đoạn mã xử lý dữ liệu người dùng khi viết bằng
 
 ```rust
 // ❌ CÁCH VIẾT CỒNG KỀNH (Pyramid of Doom):
-fn parse_age_imperative(series: Option<&str>) -> Option<u32> {
-    match series {
+fn parse_age_imperative(input: Option<&str>) -> Option<u32> {
+    match input {
         Some(s) => {
-            let trim_whitespace = s.trim();
-            if !trim_whitespace.is_empty() {
-                match trim_whitespace.parse::<u32>() {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                match trimmed.parse::<u32>() {
                     Ok(age) => {
                         if age >= 18 { Some(age) } else { None }
                     },
@@ -147,8 +147,8 @@ Giờ hãy chiêm ngưỡng vẻ đẹp của **Bộ kết hợp Combinators** t
 
 ```rust
 // ✅ CÁCH VIẾT PHẲNG PHIU THEO PHONG CÁCH ĐƯỜNG ỐNG (FP Combinators):
-fn parse_age_idiomatic(series: Option<&str>) -> Option<u32> {
-    series
+fn parse_age_idiomatic(input: Option<&str>) -> Option<u32> {
+    input
         .map(|s| s.trim())                      // 1. Cắt tỉa khoảng trắng
         .filter(|s| !s.is_empty())              // 2. Lọc chuỗi không rỗng
         .and_then(|s| s.parse::<u32>().ok())   // 3. Phân tích chuỗi thành số (bỏ qua lỗi)
@@ -201,7 +201,7 @@ Vấn đề thực tế: các hàm bạn có trong tay **không cùng một hìn
 |---|---|---|---|
 | **Hàm ghi tàu** (switch) | `A -> Result<B, E>` | `validate_email` | **`.and_then(f)`** — nối thẳng, đây là dạng chuẩn |
 | **Hàm một ray** (one-track) | `A -> B` | `s.to_uppercase()` | **`.map(f)`** — nâng lên ray thành công |
-| **Hàm cụt** (dead-end) | `&A -> ()` | `ghi_nhat_ky(&don)` | **`.inspect(f)`** — chạy tác dụng phụ rồi trả nguyên giá trị |
+| **Hàm cụt** (dead-end) | `&A -> ()` | `log_order(&order)` | **`.inspect(f)`** — chạy tác dụng phụ rồi trả nguyên giá trị |
 | **Hàm có thể panic** | `A -> B` (nhưng sập được) | thư viện C qua FFI | `std::panic::catch_unwind` rồi `.map_err(...)` |
 
 Và hai công cụ nữa để làm việc với **ray thất bại**:
@@ -211,12 +211,25 @@ Và hai công cụ nữa để làm việc với **ray thất bại**:
 Ví dụ hoàn chỉnh — một đường ray đọc và xử lý cấu hình:
 
 ```rust
-fn handle(tho: &str) -> Result<u16, LoiCauHinh> {
-    read_value(tho)                                    // A -> Result<B,E>  : and_then dạng gốc
+// Các hàm phụ trợ (rút gọn) để ví dụ biên dịch được:
+#[derive(Debug)]
+enum ConfigError { Read(String) }
+impl ConfigError {
+    fn from_read_error(e: String) -> Self { ConfigError::Read(e) }
+}
+fn read_value(raw: &str) -> Result<String, String> {
+    raw.strip_prefix("port=").map(String::from).ok_or_else(|| "thiếu khoá port".to_string())
+}
+fn parse_port(s: &str) -> Result<u16, String> {
+    s.parse::<u16>().map_err(|e| e.to_string())
+}
+
+fn handle(raw: &str) -> Result<u16, ConfigError> {
+    read_value(raw)                                    // A -> Result<B,E>  : and_then dạng gốc
         .map(|s| s.trim().to_string())                  // hàm MỘT RAY       : map
-        .and_then(|s| phan_tich_cong(&s))               // hàm GHI TÀU       : and_then
-        .inspect(|gate| println!("Cổng hợp lệ: {}", gate)) // hàm CỤT        : inspect
-        .map_err(LoiCauHinh::tu_loi_doc)                // đổi kiểu lỗi      : map_err
+        .and_then(|s| parse_port(&s))                   // hàm GHI TÀU       : and_then
+        .inspect(|port| println!("Cổng hợp lệ: {}", port)) // hàm CỤT        : inspect
+        .map_err(ConfigError::from_read_error)          // đổi kiểu lỗi      : map_err
         .or_else(|_| Ok(8080))                          // phương án dự phòng: or_else
 }
 ```
@@ -248,7 +261,7 @@ use std::time::Instant;
 pub struct RawProfile {
     pub username: Option<String>,
     pub email: Option<String>,
-    pub age_series: Option<String>,
+    pub age_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -270,19 +283,22 @@ pub struct ValidProfile {
 /// khác nhau. Đó là chủ ý: đo lường và ghi nhật ký là tác dụng phụ chính đáng,
 /// nhưng chúng phải nằm ở TẦNG VỎ, bao bên ngoài phần lõi thuần túy.
 /// Đây chính là kiến trúc "lõi thuần túy - vỏ mệnh lệnh" sẽ học kỹ ở Chương 20.
-pub fn measure_exec_time<F, T>(ten_tac_vu: &str, hanh_dong: F) -> T
+pub fn measure_exec_time<F, T>(task_name: &str, action: F) -> T
 where
     F: FnOnce() -> T,
 {
-    println!(">>> [KIỂM TOÁN] Bắt đầu thực thi: {}", ten_tac_vu);
-    let timestamp_start = Instant::now();
-    
+    println!(">>> [KIỂM TOÁN] Bắt đầu thực thi: {}", task_name);
+    let start = Instant::now();
+
     // Gọi hàm/closure được truyền vào
-    let ket_qua = hanh_dong();
-    
-    let range_time_time = timestamp_start.elapsed();
-    println!(">>> [KIỂM TOÁN] Hoàn thành '{}' trong: {:?}", ten_tac_vu, range_time_time);
-    ket_qua
+    let result = action();
+
+    let elapsed = start.elapsed();
+    println!(
+        ">>> [KIỂM TOÁN] Hoàn thành '{}' trong: {:?}",
+        task_name, elapsed
+    );
+    result
 }
 
 // ============================================================================
@@ -291,18 +307,18 @@ where
 
 /// Tạo ra một closure kiểm tra xem một chuỗi có chứa từ cấm hay không
 /// Sử dụng `move` để đóng gói danh sách từ cấm vào struct vô danh của closure
-pub fn make_ban_filter(danh_sach_tu_cam: Vec<&'static str>) -> impl Fn(&str) -> bool {
-    move |van_ban: &str| {
-        let lowercase = van_ban.to_lowercase();
+pub fn make_banned_word_filter(banned_words: Vec<&'static str>) -> impl Fn(&str) -> bool {
+    move |text: &str| {
+        let lowercase = text.to_lowercase();
         // Trả về true nếu KHÔNG chứa bất kỳ từ cấm nào
-        !danh_sach_tu_cam.iter().any(|&tu| lowercase.contains(tu))
+        !banned_words.iter().any(|&word| lowercase.contains(word))
     }
 }
 
 /// Tạo ra một closure kiểm tra độ dài tối thiểu và tối đa của chuỗi
-pub fn make_unit_check_do_long(min: usize, max: usize) -> impl Fn(&str) -> bool {
-    move |van_ban: &str| {
-        let length = van_ban.trim().chars().count();
+pub fn make_length_checker(min: usize, max: usize) -> impl Fn(&str) -> bool {
+    move |text: &str| {
+        let length = text.trim().chars().count();
         length >= min && length <= max
     }
 }
@@ -311,44 +327,44 @@ pub fn make_unit_check_do_long(min: usize, max: usize) -> impl Fn(&str) -> bool 
 // 3. ĐƯỜNG ỐNG XÁC THỰC BẰNG BỘ KẾT HỢP COMBINATORS (PIPELINE PATTERN)
 // ============================================================================
 
-pub fn auth_proxy_num(
+pub fn validate_profile(
     profile: &RawProfile,
     check_name: &impl Fn(&str) -> bool,
     check_banned_words: &impl Fn(&str) -> bool,
 ) -> Result<ValidProfile, &'static str> {
     // 1. Xác thực và chuẩn hóa Tên đăng nhập bằng chuỗi combinators
-    let name_hop_le = profile
+    let valid_name = profile
         .username
-        .as_deref()                                   // Option<String> -> Option<&str>
-        .map(|s| s.trim())                            // Cắt khoảng trắng
-        .filter(|s| check_name(s))                  // Kiểm tra độ dài hợp lệ
-        .filter(|s| check_banned_words(s))              // Kiểm tra từ cấm
+        .as_deref() // Option<String> -> Option<&str>
+        .map(|s| s.trim()) // Cắt khoảng trắng
+        .filter(|s| check_name(s)) // Kiểm tra độ dài hợp lệ
+        .filter(|s| check_banned_words(s)) // Kiểm tra từ cấm
         .map(|s| s.to_string())
         .ok_or("Tên đăng nhập không hợp lệ hoặc chứa từ cấm!")?; // Lan truyền lỗi phẳng phiu
 
     // 2. Xác thực và chuẩn hóa Email
-    let email_hop_le = profile
+    let valid_email = profile
         .email
         .as_deref()
         .map(|s| s.trim())
         .filter(|s| s.contains('@') && s.contains('.')) // Điều kiện email cơ bản
-        .map(|s| s.to_lowercase())                      // Viết thường toàn bộ email
+        .map(|s| s.to_lowercase()) // Viết thường toàn bộ email
         .ok_or("Địa chỉ Email sai định dạng!")?;
 
     // 3. Xác thực và chuẩn hóa Tuổi
-    let age_hop_le = profile
-        .age_series
+    let valid_age = profile
+        .age_text
         .as_deref()
         .map(|s| s.trim())
-        .and_then(|s| s.parse::<u32>().ok())           // Phân tích chuỗi sang u32
-        .filter(|&age| (16..=100).contains(&age))    // Giới hạn độ tuổi từ 16 đến 100
+        .and_then(|s| s.parse::<u32>().ok()) // Phân tích chuỗi sang u32
+        .filter(|&age| (16..=100).contains(&age)) // Giới hạn độ tuổi từ 16 đến 100
         .ok_or("Độ tuổi phải là số nguyên từ 16 đến 100!")?;
 
     // Trả về cấu trúc hồ sơ đã được tinh chế sạch sẽ
     Ok(ValidProfile {
-        username: name_hop_le,
-        email: email_hop_le,
-        age: age_hop_le,
+        username: valid_name,
+        email: valid_email,
+        age: valid_age,
     })
 }
 
@@ -362,30 +378,30 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo các cỗ máy kiểm tra từ xưởng Factory
-    let check_do_long_name = make_unit_check_do_long(4, 15);
-    let check_banned_words = make_ban_filter(vec!["admin", "root", "lua_dao"]);
+    let check_name_length = make_length_checker(4, 15);
+    let check_banned_words = make_banned_word_filter(vec!["admin", "root", "lua_dao"]);
 
     // Dữ liệu mẫu 1: Hồ sơ chuẩn mực hoàn hảo
-    let proxy_num_standard = RawProfile {
+    let raw_good = RawProfile {
         username: Some(String::from("  nguyen_an  ")),
         email: Some(String::from("An.Nguyen@EXAMPLE.COM  ")),
-        age_series: Some(String::from("  22  ")),
+        age_text: Some(String::from("  22  ")),
     };
 
     // Dữ liệu mẫu 2: Hồ sơ lỗi chứa từ cấm và email hỏng
-    let proxy_num_error = RawProfile {
+    let raw_bad = RawProfile {
         username: Some(String::from("super_admin")), // Chứa từ cấm 'admin'
         email: Some(String::from("email_khong_hop_le")),
-        age_series: Some(String::from("12")),             // Dưới 16 tuổi
+        age_text: Some(String::from("12")), // Dưới 16 tuổi
     };
 
     // 1. Kiểm tra hồ sơ chuẩn với hàm bậc cao đo thời gian
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ NHẤT ---");
-    let ket_qua_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
-        auth_proxy_num(&proxy_num_standard, &check_do_long_name, &check_banned_words)
+    let result_1 = measure_exec_time("Xử lý Hồ sơ Hợp lệ", || {
+        validate_profile(&raw_good, &check_name_length, &check_banned_words)
     });
 
-    match ket_qua_1 {
+    match result_1 {
         Ok(profile) => {
             println!("[THÀNH CÔNG] Dữ liệu sau khi làm sạch:");
             println!("  - Tên đăng nhập: {}", profile.username);
@@ -397,18 +413,66 @@ fn main() {
 
     // 2. Kiểm tra hồ sơ lỗi
     println!("\n--- TIẾN HÀNH XỬ LÝ HỒ SƠ THỨ HAI (CÓ LỖI) ---");
-    let ket_qua_2 = measure_exec_time("Xử lý Hồ sơ Vi phạm", || {
-        auth_proxy_num(&proxy_num_error, &check_do_long_name, &check_banned_words)
+    let result_2 = measure_exec_time("Xử lý Hồ sơ Vi phạm", || {
+        validate_profile(&raw_bad, &check_name_length, &check_banned_words)
     });
 
-    match ket_qua_2 {
+    match result_2 {
         Ok(_) => println!("[LỖI KHÔNG MONG MUỐN] Hồ sơ vi phạm lại lọt qua!"),
-        Err(ly_do) => println!("[CHẶN THÀNH CÔNG] Hệ thống từ chối vì: '{}'", ly_do),
+        Err(reason) => println!("[CHẶN THÀNH CÔNG] Hệ thống từ chối vì: '{}'", reason),
     }
 
     println!("\n============================================================");
     println!("     XÂY DỰNG PIPELINE HÀM BẬC CAO HOÀN THÀNH XUẤT SẮC      ");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn raw(name: &str, email: &str, age: &str) -> RawProfile {
+        RawProfile {
+            username: Some(name.to_string()),
+            email: Some(email.to_string()),
+            age_text: Some(age.to_string()),
+        }
+    }
+
+    #[test]
+    fn valid_profile_is_normalized() {
+        let check_name = make_length_checker(4, 15);
+        let check_words = make_banned_word_filter(vec!["admin"]);
+        let profile = validate_profile(
+            &raw("  nguyen_an ", "A@B.COM ", " 22 "),
+            &check_name,
+            &check_words,
+        );
+        assert_eq!(
+            profile,
+            Ok(ValidProfile {
+                username: "nguyen_an".to_string(),
+                email: "a@b.com".to_string(),
+                age: 22,
+            })
+        );
+    }
+
+    #[test]
+    fn first_failing_step_short_circuits() {
+        let check_name = make_length_checker(4, 15);
+        let check_words = make_banned_word_filter(vec!["admin"]);
+        // Tên chứa từ cấm -> dừng ngay ở bước 1, dù email và tuổi cũng hỏng
+        let result = validate_profile(&raw("super_admin", "sai", "12"), &check_name, &check_words);
+        assert_eq!(result, Err("Tên đăng nhập không hợp lệ hoặc chứa từ cấm!"));
+        // Tên ổn, tuổi ngoài khoảng 16..=100
+        let result = validate_profile(&raw("binh", "b@c.vn", "12"), &check_name, &check_words);
+        assert_eq!(result, Err("Độ tuổi phải là số nguyên từ 16 đến 100!"));
+    }
 }
 ```
 
@@ -420,34 +484,36 @@ Khi thiết kế các hàm bậc cao và chuỗi combinators trong Rust, lập t
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0308** | `mismatched types: expected closure, found a different closure` | Trong Rust, mỗi closure có một kiểu vô danh độc nhất vô nhị. Dù hai closure có cùng chữ ký `|x| x + 1`, chúng vẫn là 2 kiểu khác nhau. Bạn không thể gán chúng cho cùng một biến mà không dùng Box. | Sử dụng con trỏ thông minh (smart pointer) `Box<dyn Fn(...)>` nếu cần chứa các closure khác nhau vào cùng một tập hợp hoặc nhánh rẽ `if/else`. |
-| **E0277** | `the size for values of type 'dyn Fn()' cannot be known at compilation time` | Bạn cố gắng trả về `dyn Fn()` trực tiếp hoặc lưu nó trên Stack. Kiểu Trait Object không có kích thước cố định lúc biên dịch. | Bọc Trait Object vào con trỏ thông minh: `Box<dyn Fn()>` hoặc dùng tham chiếu `&dyn Fn()`. |
-| **E0562** | `'impl Trait' is not allowed in this position` | Bạn cố tình dùng cú pháp `impl Fn(...)` làm trường dữ liệu (field) của một `struct` hoặc bí danh kiểu (`type`). `impl Trait` chỉ được hỗ trợ ở vị trí tham số hàm và kiểu trả về của hàm. | Chuyển sang sử dụng tham số Generic trên struct (`struct MyStruct<F: Fn()> { f: F }`) hoặc dùng `Box<dyn Fn()>`. |
-| **E0599** | `no method named 'and_then' found for type 'Option<...>'` | Bạn gọi `.and_then(...)` nhưng closure bên trong lại trả về một giá trị trần `T` thay vì bọc trong `Option<T>` (hoặc ngược lại với `.map()`). | Nếu closure trả về giá trị trần, dùng `.map()`. Nếu closure trả về một `Option` mới, dùng `.and_then()`. |
+| **E0308** | `` `if` and `else` have incompatible types `` (kèm ghi chú `no two closures, even if identical, have the same type`) | Trong Rust, mỗi closure có một kiểu vô danh độc nhất vô nhị. Dù hai closure có cùng chữ ký `\|x\| x + step`, chúng vẫn là 2 kiểu khác nhau. Bạn không thể gán chúng cho cùng một biến mà không dùng Box. (Ngoại lệ: closure **không bắt giữ** biến nào được tự ép về con trỏ hàm `fn(i32) -> i32`, nên lỗi chỉ xuất hiện khi closure có bắt giữ môi trường.) | Sử dụng con trỏ thông minh (smart pointer) `Box<dyn Fn(...)>` nếu cần chứa các closure khác nhau vào cùng một tập hợp hoặc nhánh rẽ `if/else`. |
+| **E0746** | `return type cannot be a trait object without pointer indirection` | Bạn cố gắng trả về `dyn Fn()` trực tiếp từ hàm. Kiểu Trait Object không có kích thước cố định lúc biên dịch. (Nếu thay vào đó bạn khai báo biến cục bộ kiểu `dyn Fn()`, lỗi sẽ là **E0277** `the size for values of type 'dyn Fn()' cannot be known at compilation time`.) | Trả về `impl Fn()` nếu chỉ có một closure, hoặc bọc Trait Object vào con trỏ thông minh: `Box<dyn Fn()>`. |
+| **E0562** | `'impl Trait' is not allowed in field types` | Bạn cố tình dùng cú pháp `impl Fn(...)` làm trường dữ liệu (field) của một `struct` (hoặc làm kiểu của biến `let`). Trên Rust ổn định, `impl Trait` chỉ được hỗ trợ ở vị trí tham số và kiểu trả về của hàm/phương thức — kể cả phương thức trong trait (RPITIT, ổn định từ Rust 1.75). Riêng trường hợp viết trong bí danh kiểu `type F = impl Fn();` thì mã lỗi là **E0658** (`'impl Trait' in type aliases is unstable`). | Chuyển sang sử dụng tham số Generic trên struct (`struct MyStruct<F: Fn()> { f: F }`) hoặc dùng `Box<dyn Fn()>`. |
+| **E0308** | `mismatched types` (kèm `expected enum 'Option<_>'`) | Bạn gọi `.and_then(...)` nhưng closure bên trong lại trả về một giá trị trần `T` thay vì bọc trong `Option<T>`. (Ngược lại, dùng `.map()` với closure trả `Option` thì không có lỗi biên dịch — bạn chỉ nhận về `Option<Option<T>>`.) | Nếu closure trả về giá trị trần, dùng `.map()`. Nếu closure trả về một `Option` mới, dùng `.and_then()`. |
 
 ### Phân tích lỗi thực tế `E0308` (Bất đồng kiểu giữa hai Closure):
 
 ```rust
 // Đoạn mã lỗi minh họa:
-fn broken_closure(condition: bool) {
+fn broken_closure(condition: bool, step: i32) {
     // LỖI E0308: Hai nhánh if và else trả về hai kiểu closure ẩn danh khác nhau!
+    // (Hai closure đều BẮT GIỮ `step`; nếu không bắt giữ gì, rustc sẽ lặng lẽ
+    //  ép cả hai về con trỏ hàm `fn(i32) -> i32` và không báo lỗi.)
     /*
-    let bo_xu_ly = if condition {
-        |x: i32| x + 1
+    let handler = if condition {
+        move |x: i32| x + step
     } else {
-        |x: i32| x * 2
+        move |x: i32| x * step
     };
     */
 }
 
 // Cách sửa chữa đúng chuẩn: Bọc qua Box<dyn Fn>
-fn correct_closure(condition: bool) {
-    let bo_xu_ly: Box<dyn Fn(i32) -> i32> = if condition {
-        Box::new(|x: i32| x + 1)
+fn correct_closure(condition: bool, step: i32) {
+    let handler: Box<dyn Fn(i32) -> i32> = if condition {
+        Box::new(move |x: i32| x + step)
     } else {
-        Box::new(|x: i32| x * 2)
+        Box::new(move |x: i32| x * step)
     };
-    println!("Kết quả: {}", bo_xu_ly(10));
+    println!("Kết quả: {}", handler(10));
 }
 ```
 
@@ -465,7 +531,7 @@ fn correct_closure(condition: bool) {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Hàm bậc cao lọc mảng)**:  
-   Viết một hàm bậc cao `dem_thoa_man<T, F>(list: &[T], dieu_kien: F) -> usize` với `F: Fn(&T) -> bool`. Dùng hàm này để đếm xem trong một danh sách chuỗi ký tự có bao nhiêu từ có độ dài lớn hơn 5 ký tự.
+   Viết một hàm bậc cao `count_matching<T, F>(list: &[T], condition: F) -> usize` với `F: Fn(&T) -> bool`. Dùng hàm này để đếm xem trong một danh sách chuỗi ký tự có bao nhiêu từ có độ dài lớn hơn 5 ký tự.
 
    <details>
    <summary><b>Gợi ý</b></summary>
@@ -485,15 +551,15 @@ fn correct_closure(condition: bool) {
    }
 
    fn main() {
-       let tu = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
+       let words = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
 
        // Đếm theo SỐ CHỮ CÁI, không phải số byte
-       let long = count_matching(&tu, |s: &&str| s.chars().count() > 5);
+       let long = count_matching(&words, |s: &&str| s.chars().count() > 5);
        assert_eq!(long, 3); // "an toàn", "đồng thời", "bộ nhớ"
 
        // Cùng một hàm, đổi closure là đổi hẳn câu hỏi:
-       let so_nguyen = [3, 8, 12, 5, 20];
-       assert_eq!(count_matching(&so_nguyen, |&n| n > 6), 3);
+       let integers = [3, 8, 12, 5, 20];
+       assert_eq!(count_matching(&integers, |&n| n > 6), 3);
 
        println!("Từ dài hơn 5 ký tự: {}", long);
    }

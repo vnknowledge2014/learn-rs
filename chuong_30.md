@@ -4,7 +4,7 @@
 
 Chào mừng bạn đến với chương kết thúc của **Chủ đề 5: Cấu trúc dữ liệu & Giải thuật trong Rust**! Đến thời điểm này, bạn đã nắm vững từ các cấu trúc tuyến tính (Mảng, Vector, Danh sách liên kết (Linked list), Ngăn xếp, Hàng đợi) đến các cấu trúc phân cấp cây nhị phân. Trong chương này, chúng ta sẽ làm chủ hai cấu trúc dữ liệu và giải thuật tối thượng của ngành khoa học máy tính: **Bảng băm (Hash Table)** và **Đồ thị (Graph)**, cùng hai thuật toán kinh điển đi kèm là **Tìm kiếm theo chiều rộng (BFS)** và **Sắp xếp nhanh (Quicksort)**.
 
-Nếu như Mảng cho phép truy cập $O(1)$ nhưng phải thông qua số thứ tự, thì Bảng băm (`HashMap`) mang lại phép màu: **Tra cứu dữ liệu bất kỳ bằng từ khóa (Key) bằng chữ trong thời gian tức thì $O(1)$**! Bảng băm là trái tim của mọi hệ thống bộ nhớ đệm (buffer cache), hệ thống từ điển, và cơ sở dữ liệu khóa-giá trị (Key-Value Store).
+Nếu như Mảng cho phép truy cập $O(1)$ nhưng phải thông qua số thứ tự, thì Bảng băm (`HashMap`) mang lại phép màu: **Tra cứu dữ liệu bất kỳ bằng từ khóa (Key) bằng chữ trong thời gian tức thì $O(1)$**! Bảng băm là trái tim của mọi hệ thống bộ nhớ đệm (cache), hệ thống từ điển, và cơ sở dữ liệu khóa-giá trị (Key-Value Store).
 
 Trong khi đó, Đồ thị (Graph) là mô hình mạnh mẽ nhất để biểu diễn các mối quan hệ đa chiều trong thế giới thực: Mạng xã hội kết nối bạn bè, bản đồ giao thông đường bộ, mạng lưới các máy chủ Internet, hay chuỗi phụ thuộc giữa các gói thư viện (crate dependencies) trong Cargo. Chúng ta sẽ khám phá cách biểu diễn đồ thị cực kỳ thanh lịch và an toàn bằng Rust mà không sợ vướng vào "cuộc chiến" với trình kiểm tra mượn (Borrow Checker).
 
@@ -75,14 +75,14 @@ Hãy quan sát hai hình ảnh vô cùng sinh động trong đời sống thực
 ### 1. Bản chất của Bảng băm (`HashMap`) trong Rust
 
 Trong Rust, `HashMap<K, V>` được xây dựng dựa trên thuật toán **SwissTable** (nằm trong thư viện nổi tiếng `hashbrown` được tích hợp thẳng vào thư viện chuẩn `std::collections`):
-1. **Hàm băm (Hash Function)**: Mặc định Rust sử dụng thuật toán `SipHash 1-3`, một hàm băm mật mã học được thiết kế đặc biệt để ngăn chặn các cuộc tấn công từ chối dịch vụ **HashDoS** (khi kẻ tấn công cố tình tạo ra hàng triệu khóa có cùng giá trị băm để làm bảng băm suy biến về danh sách liên kết $O(N)$).
-2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ trong 1 chu kỳ CPU, mang lại tốc độ tra cứu khủng khiếp.
+1. **Hàm băm (Hash Function)**: Mặc định Rust sử dụng thuật toán `SipHash 1-3`, một hàm băm mật mã học được thiết kế đặc biệt để ngăn chặn các cuộc tấn công từ chối dịch vụ **HashDoS** (khi kẻ tấn công cố tình tạo ra hàng triệu khóa có cùng giá trị băm để mọi phép tra cứu suy biến về dò tuần tự $O(N)$).
+2. **Kiểm soát nhóm xô (Group of Buckets & SIMD Control Bytes)**: SwissTable sử dụng các byte điều khiển và các lệnh vi xử lý song song SIMD để kiểm tra cùng lúc 16 xô ô nhớ chỉ bằng vài lệnh máy, mang lại tốc độ tra cứu khủng khiếp.
 3. **Tuyệt chiêu Entry API**: Thay vì kiểm tra xem khóa có tồn tại rồi mới chèn (tốn 2 lần băm dữ liệu), Rust cung cấp cú pháp `entry(key)`:
    ```rust
    let mut word_count = std::collections::HashMap::new();
-   let tu = "rust";
+   let word = "rust";
    // Đếm số lần xuất hiện của từ chỉ với 1 lần tính băm duy nhất!
-   *word_count.entry(tu).or_insert(0) += 1;
+   *word_count.entry(word).or_insert(0) += 1;
    ```
 
 ### 2. Giải mã bí mật: Biểu diễn Đồ thị không sợ Borrow Checker
@@ -112,8 +112,8 @@ Quicksort là một trong những thuật toán sắp xếp thực chiến hiệ
 > Nếu bạn luôn chọn phần tử cuối làm chốt và đưa vào một mảng **đã được sắp xếp sẵn**, mỗi lần phân vùng chỉ tách ra được 1 phần tử —
 > cây đệ quy suy biến thành một chuỗi thẳng đúng như hiện tượng *Cây suy biến* ở Chương 29, và độ phức tạp tụt xuống **$O(N^2)$**.
 > Cách hóa giải trong thực chiến: chọn chốt ngẫu nhiên, hoặc dùng kỹ thuật "trung vị của ba" (median-of-three).
-> Đây cũng là lý do `slice::sort()` của thư viện chuẩn Rust dùng thuật toán lai **Timsort** (ổn định, $O(N \log N)$ ở mọi trường hợp),
-> còn `slice::sort_unstable()` dùng **pattern-defeating quicksort** — một biến thể tự động phát hiện và thoát khỏi trường hợp xấu nhất.
+> Đây cũng là lý do thư viện chuẩn Rust không dùng quicksort ngây thơ. Từ Rust 1.81, `slice::sort()` dùng **driftsort** (lai giữa merge sort và sắp xếp theo các đoạn đã có thứ tự, ổn định, $O(N \log N)$ ở mọi trường hợp — trước đó là một biến thể Timsort),
+> còn `slice::sort_unstable()` dùng **ipnsort** — hậu duệ của *pattern-defeating quicksort*, tự động phát hiện trường hợp xấu và chuyển sang heapsort để vẫn giữ $O(N \log N)$.
 
 ---
 
@@ -128,16 +128,16 @@ Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, min
 use std::collections::{HashMap, VecDeque};
 
 /// PHẦN 1: THỐNG KÊ TẦN SUẤT TỪ VỚI BẢNG BĂM HASHMAP
-pub fn thong_ke_from_region(van_ban: &str) -> HashMap<String, usize> {
-    let mut table_count = HashMap::new();
-    for tu in van_ban.split_whitespace() {
+pub fn word_frequencies(text: &str) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for word in text.split_whitespace() {
         // Chuẩn hóa từ về chữ thường
-        let from_standard = tu.to_lowercase();
+        let normalized = word.to_lowercase();
         // Entry API: Tra cứu một lần, nếu chưa có thì khởi tạo giá trị 0, sau đó tăng 1
-        let count = table_count.entry(from_standard).or_insert(0);
+        let count = counts.entry(normalized).or_insert(0);
         *count += 1;
     }
-    table_count
+    counts
 }
 
 /// PHẦN 2: CẤU TRÚC ĐỒ THỊ AN TOÀN VÀ THUẬT TOÁN BFS
@@ -156,10 +156,10 @@ impl Graph {
 
     /// Thêm một đỉnh mới vào đồ thị và trả về chỉ số của đỉnh đó
     pub fn add_vertex(&mut self, name: &str) -> usize {
-        let chi_so = self.vertex_names.len();
+        let index = self.vertex_names.len();
         self.vertex_names.push(name.to_string());
         self.adjacency_list.push(Vec::new());
-        chi_so
+        index
     }
 
     /// Thêm một cạnh nối hai chiều giữa hai đỉnh u và v
@@ -171,8 +171,8 @@ impl Graph {
     }
 
     /// Thuật toán BFS tìm đường đi ngắn nhất (Số chặng) giữa hai đỉnh
-    pub fn bfs_shortest_distance(&self, diem_dau: usize, diem_dich: usize) -> Option<usize> {
-        if diem_dau >= self.adjacency_list.len() || diem_dich >= self.adjacency_list.len() {
+    pub fn bfs_shortest_distance(&self, start: usize, target: usize) -> Option<usize> {
+        if start >= self.adjacency_list.len() || target >= self.adjacency_list.len() {
             return None;
         }
 
@@ -181,18 +181,18 @@ impl Graph {
         // Hàng đợi lưu cặp (chỉ_số_đỉnh, khoảng_cách)
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
 
-        visited[diem_dau] = true;
-        queue.push_back((diem_dau, 0));
+        visited[start] = true;
+        queue.push_back((start, 0));
 
         while let Some((current, distance)) = queue.pop_front() {
-            if current == diem_dich {
+            if current == target {
                 return Some(distance); // Tìm thấy đích đến!
             }
 
-            for &ke in &self.adjacency_list[current] {
-                if !visited[ke] {
-                    visited[ke] = true;
-                    queue.push_back((ke, distance + 1));
+            for &neighbor in &self.adjacency_list[current] {
+                if !visited[neighbor] {
+                    visited[neighbor] = true;
+                    queue.push_back((neighbor, distance + 1));
                 }
             }
         }
@@ -200,8 +200,8 @@ impl Graph {
         None // Không có đường đi kết nối giữa hai đỉnh này
     }
 
-    pub fn lay_ten(&self, chi_so: usize) -> &str {
-        &self.vertex_names[chi_so]
+    pub fn vertex_name(&self, index: usize) -> &str {
+        &self.vertex_names[index]
     }
 }
 
@@ -216,13 +216,13 @@ pub fn quicksort<T: Ord>(data: &mut [T]) {
     if data.len() <= 1 {
         return;
     }
-    let pivot_pos = part_region(data);
+    let pivot_pos = partition(data);
     // Chia đôi mảng và đệ quy sắp xếp hai nửa
     quicksort(&mut data[0..pivot_pos]);
     quicksort(&mut data[pivot_pos + 1..]);
 }
 
-fn part_region<T: Ord>(data: &mut [T]) -> usize {
+fn partition<T: Ord>(data: &mut [T]) -> usize {
     let length = data.len();
     let pivot_index = length - 1;
     let mut i = 0;
@@ -244,57 +244,71 @@ fn main() {
 
     // 1. Kiểm thử Bảng băm đếm tần suất từ
     println!("[1] Thống kê tần suất từ vựng bằng HashMap Entry API:");
-    let van_ban = "học rust thật vui học lập trình rust thật tuyệt vời";
-    let result_count = thong_ke_from_region(van_ban);
-    for (tu, so_lan) in &result_count {
-        println!("    - Từ '{:8}': xuất hiện {} lần", tu, so_lan);
+    let text = "học rust thật vui học lập trình rust thật tuyệt vời";
+    let frequencies = word_frequencies(text);
+    for (word, count) in &frequencies {
+        println!("    - Từ '{:8}': xuất hiện {} lần", word, count);
     }
-    assert_eq!(result_count.get("rust"), Some(&2));
-    assert_eq!(result_count.get("học"), Some(&2));
-    assert_eq!(result_count.get("vui"), Some(&1));
+    assert_eq!(frequencies.get("rust"), Some(&2));
+    assert_eq!(frequencies.get("học"), Some(&2));
+    assert_eq!(frequencies.get("vui"), Some(&1));
 
     // 2. Kiểm thử Mạng lưới Đồ thị và Thuật toán BFS
     println!("\n[2] Mô phỏng mạng xã hội kết nối bạn bè bằng Đồ thị & BFS:");
-    let mut array_remote_hoi = Graph::new();
-    let an = array_remote_hoi.add_vertex("An");       // Đỉnh 0
-    let binh = array_remote_hoi.add_vertex("Bình");   // Đỉnh 1
-    let chi = array_remote_hoi.add_vertex("Chi");     // Đỉnh 2
-    let dung = array_remote_hoi.add_vertex("Dũng");   // Đỉnh 3
-    let uppercase = array_remote_hoi.add_vertex("Hoa");     // Đỉnh 4 (ở xa)
+    let mut social_network = Graph::new();
+    let an = social_network.add_vertex("An"); // Đỉnh 0
+    let binh = social_network.add_vertex("Bình"); // Đỉnh 1
+    let chi = social_network.add_vertex("Chi"); // Đỉnh 2
+    let dung = social_network.add_vertex("Dũng"); // Đỉnh 3
+    let hoa = social_network.add_vertex("Hoa"); // Đỉnh 4 (ở xa)
 
     // Thiết lập các mối quan hệ bạn bè (Cạnh)
     // An quen Bình, Bình quen Chi, Chi quen Dũng, An quen Dũng (lối tắt)
-    array_remote_hoi.add_edge(an, binh);
-    array_remote_hoi.add_edge(binh, chi);
-    array_remote_hoi.add_edge(chi, dung);
-    array_remote_hoi.add_edge(an, dung); // Lối tắt trực tiếp từ An đến Dũng!
+    social_network.add_edge(an, binh);
+    social_network.add_edge(binh, chi);
+    social_network.add_edge(chi, dung);
+    social_network.add_edge(an, dung); // Lối tắt trực tiếp từ An đến Dũng!
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", array_remote_hoi.lay_ten(an), array_remote_hoi.lay_ten(chi));
-    let distance_hidden_only = array_remote_hoi.bfs_shortest_distance(an, chi);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng", distance_hidden_only);
-    assert_eq!(distance_hidden_only, Some(2)); // An -> Bình -> Chi hoặc An -> Dũng -> Chi
+    println!(
+        "    - Tìm khoảng cách kết nối giữa '{}' và '{}':",
+        social_network.vertex_name(an),
+        social_network.vertex_name(chi)
+    );
+    let dist_an_chi = social_network.bfs_shortest_distance(an, chi);
+    println!("      => Khoảng cách ngắn nhất: {:?} chặng", dist_an_chi);
+    assert_eq!(dist_an_chi, Some(2)); // An -> Bình -> Chi hoặc An -> Dũng -> Chi
 
-    println!("    - Tìm khoảng cách kết nối giữa '{}' và '{}':", array_remote_hoi.lay_ten(an), array_remote_hoi.lay_ten(dung));
-    let distance_hidden_use = array_remote_hoi.bfs_shortest_distance(an, dung);
-    println!("      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)", distance_hidden_use);
-    assert_eq!(distance_hidden_use, Some(1));
+    println!(
+        "    - Tìm khoảng cách kết nối giữa '{}' và '{}':",
+        social_network.vertex_name(an),
+        social_network.vertex_name(dung)
+    );
+    let dist_an_dung = social_network.bfs_shortest_distance(an, dung);
+    println!(
+        "      => Khoảng cách ngắn nhất: {:?} chặng (nhờ lối tắt trực tiếp!)",
+        dist_an_dung
+    );
+    assert_eq!(dist_an_dung, Some(1));
 
-    println!("    - Tìm khoảng cách đến '{}' (Chưa có kết nối):", array_remote_hoi.lay_ten(uppercase));
-    let distance_to_c = array_remote_hoi.bfs_shortest_distance(an, uppercase);
-    println!("      => Kết quả: {:?} (Không có đường đi)", distance_to_c);
-    assert_eq!(distance_to_c, None);
+    println!(
+        "    - Tìm khoảng cách đến '{}' (Chưa có kết nối):",
+        social_network.vertex_name(hoa)
+    );
+    let dist_an_hoa = social_network.bfs_shortest_distance(an, hoa);
+    println!("      => Kết quả: {:?} (Không có đường đi)", dist_an_hoa);
+    assert_eq!(dist_an_hoa, None);
 
     // 3. Kiểm thử Thuật toán Sắp xếp nhanh Quicksort
     println!("\n[3] Kiểm thử Thuật toán Sắp xếp nhanh Quicksort tại chỗ:");
-    let mut mang_so = [42, 12, 88, 5, 63, 19, 77, 3];
-    println!("    - Mảng trước khi sắp xếp: {:?}", mang_so);
-    quicksort(&mut mang_so);
-    println!("    - Mảng sau khi sắp xếp   : {:?}", mang_so);
-    assert_eq!(mang_so, [3, 5, 12, 19, 42, 63, 77, 88]);
+    let mut numbers = [42, 12, 88, 5, 63, 19, 77, 3];
+    println!("    - Mảng trước khi sắp xếp: {:?}", numbers);
+    quicksort(&mut numbers);
+    println!("    - Mảng sau khi sắp xếp   : {:?}", numbers);
+    assert_eq!(numbers, [3, 5, 12, 19, 42, 63, 77, 88]);
     println!("    => Quicksort O(N log N) hoàn tất thành công!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 26               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 30               ");
     println!("============================================================");
 }
 ```
@@ -307,10 +321,10 @@ Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình 
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait bound 'K: Hash' is not satisfied` | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
+| **E0277** | `the trait bound 'UserBroken: Hash' is not satisfied` (kèm `...: Eq`) | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
 | **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang lặp qua danh sách láng giềng mượn bất biến `&graph.adjacency_list[u]` nhưng bên trong thân vòng lặp lại gọi `graph.add_edge()` làm thay đổi đồ thị. | Thu thập các chỉ số cần biến đổi vào một vector tạm trước khi thực hiện ghi đè. |
-| **E0382** | `use of moved value: 'tu'` | Bạn gọi `table_count.insert(tu, 1)` khiến chuỗi `tu` bị di chuyển quyền sở hữu (ownership), sau đó lại dùng lại `tu` ở dòng lệnh tiếp theo. | Dùng phương thức `.clone()` tạo bản sao độc lập, hoặc lưu tham chiếu mượn chuỗi `&str` nếu chuỗi có thời gian sống (lifetime) dài hơn bảng băm. |
-| **E0308** | `mismatched types: expected '&str', found 'String'` | Bạn truyền một giá trị sở hữu `String` vào phương thức tra cứu `.get()` của HashMap vốn chỉ đòi hỏi một lát cắt tham chiếu `&str`. | Thêm dấu `&` phía trước biến chuỗi: `table_count.get(&tu)`. |
+| **E0382** | `use of moved value: 'word'` | Bạn gọi `counts.insert(word, 1)` khiến chuỗi `word` bị di chuyển quyền sở hữu (ownership), sau đó lại dùng lại `word` ở dòng lệnh tiếp theo. | Dùng phương thức `.clone()` tạo bản sao độc lập, hoặc lưu tham chiếu mượn chuỗi `&str` nếu chuỗi có thời gian sống (lifetime) dài hơn bảng băm. |
+| **E0308** | `mismatched types: expected '&_', found 'String'` | Bạn truyền một giá trị sở hữu `String` vào phương thức tra cứu `.get()` của HashMap vốn đòi hỏi một tham chiếu (`&String` hoặc `&str`). | Thêm dấu `&` phía trước biến chuỗi: `counts.get(&word)`. |
 
 ### Ví dụ phân tích lỗi `E0277` khi dùng struct làm khóa cho `HashMap`:
 
@@ -321,8 +335,11 @@ struct UserBroken {
 }
 
 fn broken_hash() {
-    let mut bang_hash = std::collections::HashMap::new();
-    // bang_hash.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0277!
+    // Tạo map rỗng thì được (HashMap::new không đòi Hash/Eq)...
+    let mut map: std::collections::HashMap<UserBroken, &str> = std::collections::HashMap::new();
+    // ...nhưng insert/get đòi K: Hash + Eq:
+    // map.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0277!
+    map.clear();
 }
 
 // Cách sửa chữa đúng chuẩn: Derive đầy đủ PartialEq, Eq, Hash
@@ -332,9 +349,9 @@ struct UserIdiomatic {
 }
 
 fn correct_hash() {
-    let mut bang_hash = std::collections::HashMap::new();
-    bang_hash.insert(UserIdiomatic { id: 1 }, "Admin");
-    println!("Tra cứu khóa người dùng thành công: {:?}", bang_hash.get(&UserIdiomatic { id: 1 }));
+    let mut map = std::collections::HashMap::new();
+    map.insert(UserIdiomatic { id: 1 }, "Admin");
+    println!("Tra cứu khóa người dùng thành công: {:?}", map.get(&UserIdiomatic { id: 1 }));
 }
 ```
 
@@ -355,10 +372,10 @@ mod tests {
 
     #[test]
     fn word_frequency_count() {
-        let bang = thong_ke_from_region("rust rust an toan rust");
-        assert_eq!(bang.get("rust"), Some(&3));
-        assert_eq!(bang.get("an"), Some(&1));
-        assert_eq!(bang.get("khong-co"), None);
+        let freq = word_frequencies("rust rust an toàn rust");
+        assert_eq!(freq.get("rust"), Some(&3));
+        assert_eq!(freq.get("an"), Some(&1));
+        assert_eq!(freq.get("không-có"), None);
     }
 
     #[test]
@@ -372,18 +389,18 @@ mod tests {
 
     #[test]
     fn quicksort_edge_cases() {
-        let mut rong: Vec<i32> = vec![];
-        quicksort(&mut rong);
-        assert!(rong.is_empty());
+        let mut empty: Vec<i32> = vec![];
+        quicksort(&mut empty);
+        assert!(empty.is_empty());
 
-        let mut mot = vec![42];
-        quicksort(&mut mot);
-        assert_eq!(mot, vec![42]);
+        let mut single = vec![42];
+        quicksort(&mut single);
+        assert_eq!(single, vec![42]);
 
         // Trường hợp XẤU NHẤT O(N^2): mảng đã sắp xếp sẵn — vẫn phải đúng
-        let mut da_sap: Vec<i32> = (1..=100).collect();
-        quicksort(&mut da_sap);
-        assert_eq!(da_sap, (1..=100).collect::<Vec<i32>>());
+        let mut sorted: Vec<i32> = (1..=100).collect();
+        quicksort(&mut sorted);
+        assert_eq!(sorted, (1..=100).collect::<Vec<i32>>());
     }
 
     #[test]
@@ -447,17 +464,17 @@ use std::collections::HashMap;
 pub fn most_common(list: &[i32]) -> Option<i32> {
     if list.is_empty() { return None; }
 
-    let mut dem: HashMap<i32, usize> = HashMap::new();
+    let mut counts: HashMap<i32, usize> = HashMap::new();
     for &x in list {
-        *dem.entry(x).or_insert(0) += 1;     // O(1) khấu hao mỗi phần tử
+        *counts.entry(x).or_insert(0) += 1;     // O(1) khấu hao mỗi phần tử
     }
     // max_by_key trả phần tử CUỐI khi hoà; thêm khoá vào tiêu chí
     // so sánh để kết quả TẤT ĐỊNH thay vì phụ thuộc thứ tự duyệt HashMap.
-    dem.into_iter().max_by_key(|&(gt, n)| (n, gt)).map(|(gt, _)| gt)
+    counts.into_iter().max_by_key(|&(value, n)| (n, value)).map(|(value, _)| value)
 }
 
 #[test]
-fn tim_dung_phan_tu_pho_bien() {
+fn finds_most_common() {
     assert_eq!(most_common(&[1, 3, 3, 2, 3, 1]), Some(3));
     assert_eq!(most_common(&[]), None);
     assert_eq!(most_common(&[7]), Some(7));
@@ -468,7 +485,7 @@ fn tim_dung_phan_tu_pho_bien() {
 }
 ```
 
-Chi tiết dễ bỏ qua: `max_by_key(|&(gt, n)| (n, gt))` chứ không phải `(n)`. Thứ tự duyệt `HashMap` **không xác định**, nên khi hai giá trị hoà tần suất, chỉ so `n` sẽ cho kết quả khác nhau giữa các lần chạy. Thêm khoá vào tiêu chí khiến kết quả tất định — đúng nguyên tắc mà Chương 76 phải trả giá mới học được.
+Chi tiết dễ bỏ qua: `max_by_key(|&(value, n)| (n, value))` chứ không phải `(n)`. Thứ tự duyệt `HashMap` **không xác định**, nên khi hai giá trị hoà tần suất, chỉ so `n` sẽ cho kết quả khác nhau giữa các lần chạy. Thêm khoá vào tiêu chí khiến kết quả tất định — đúng nguyên tắc mà Chương 76 phải trả giá mới học được.
 </details>
 
 <details>
@@ -486,14 +503,14 @@ impl Graph {
     /// là đủ để kết luận — vì mọi cạnh đều được ghi ở cả hai đầu.
     pub fn isolated_vertices(&self) -> Vec<usize> {
         self.adjacency_list.iter().enumerate()
-            .filter(|(_, ke)| ke.is_empty())
+            .filter(|(_, neighbor)| neighbor.is_empty())
             .map(|(i, _)| i)
             .collect()
     }
 }
 
 #[test]
-fn tim_dung_dinh_co_lap() {
+fn finds_isolated_vertices() {
     let mut g = Graph::new();
     let a = g.add_vertex("A");
     let b = g.add_vertex("B");
@@ -514,7 +531,7 @@ fn tim_dung_dinh_co_lap() {
 <details>
 <summary><b>Bài tập 3 — Gợi ý</b></summary>
 
-DFS đệ quy cần một tập `da_tham` để không lặp vô tận khi đồ thị có chu trình. Đây chính là chỗ hầu hết mọi người quên.
+DFS đệ quy cần một tập `visited` để không lặp vô tận khi đồ thị có chu trình. Đây chính là chỗ hầu hết mọi người quên.
 </details>
 
 <details>
@@ -529,21 +546,21 @@ impl Graph {
         if u >= self.adjacency_list.len() || v >= self.adjacency_list.len() {
             return false;
         }
-        let mut da_tham = HashSet::new();
-        self.dfs(u, v, &mut da_tham)
+        let mut visited = HashSet::new();
+        self.dfs(u, v, &mut visited)
     }
 
-    fn dfs(&self, hien_tai: usize, dich: usize, da_tham: &mut HashSet<usize>) -> bool {
-        if hien_tai == dich { return true; }
+    fn dfs(&self, current: usize, target: usize, visited: &mut HashSet<usize>) -> bool {
+        if current == target { return true; }
         // `insert` trả false nếu đã có -> chặn lặp vô tận khi có chu trình.
-        if !da_tham.insert(hien_tai) { return false; }
-        self.adjacency_list[hien_tai].iter()
-            .any(|&ke| self.dfs(ke, dich, da_tham))
+        if !visited.insert(current) { return false; }
+        self.adjacency_list[current].iter()
+            .any(|&neighbor| self.dfs(neighbor, target, visited))
     }
 }
 
 #[test]
-fn dfs_tim_duoc_duong_va_bao_dung_khi_khong_co() {
+fn dfs_finds_path_and_reports_none() {
     let mut g = Graph::new();
     let (a, b, c, d) = (g.add_vertex("A"), g.add_vertex("B"),
                         g.add_vertex("C"), g.add_vertex("D"));
@@ -563,7 +580,7 @@ fn dfs_tim_duoc_duong_va_bao_dung_khi_khong_co() {
 }
 ```
 
-`da_tham.insert(x)` trả `false` nếu `x` đã có — dùng luôn giá trị trả về làm điều kiện dừng, gọn hơn `if da_tham.contains(&x) { return ... }` rồi mới `insert`.
+`visited.insert(x)` trả `false` nếu `x` đã có — dùng luôn giá trị trả về làm điều kiện dừng, gọn hơn `if visited.contains(&x) { return ... }` rồi mới `insert`.
 
 **DFS khác BFS ở đâu:** DFS trả lời "có đường không?" và tiết kiệm bộ nhớ hơn (chỉ giữ một nhánh trong ngăn xếp), nhưng đường nó tìm ra **không nhất thiết ngắn nhất**. Cần ngắn nhất thì phải dùng BFS, như `bfs_shortest_distance` ở phần trên chương.
 </details>

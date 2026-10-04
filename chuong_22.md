@@ -7,7 +7,7 @@
 - *Làm sao để tạo các ma trận đa chiều 2D, 3D bằng các mẫu lặp lồng nhau?*
 - *Điều gì sẽ xảy ra nếu bên trong macro bạn khai báo một biến tạm mang tên `let x = 10;`, và người lập trình bên ngoài cũng đang có một biến `let x = 999;`? Liệu biến của macro có vô tình "đè bẹp" hoặc làm sai lệch giá trị của biến bên ngoài hay không?*
 
-Trong các ngôn ngữ như C hay C++, các tiền xử lý macro (`#define`) khét tiếng vì sự nguy hiểm: Chúng hoạt động như công cụ thay thế chuỗi mù quáng, thường xuyên gây ra lỗi xung đột tên biến ngầm và lỗ hổng bảo mật rò rỉ bộ nhớ đệm (buffer overflow). Nhưng trong Rust, các kỹ sư thiết kế ngôn ngữ đã trang bị một cơ chế bảo vệ tối tân mang tên: **Tính vệ sinh trong Macro (Macro Hygiene)**. Nhờ tính vệ sinh, các biến bên trong macro được cách ly hoàn toàn với thế giới bên ngoài.
+Trong các ngôn ngữ như C hay C++, các tiền xử lý macro (`#define`) khét tiếng vì sự nguy hiểm: Chúng hoạt động như công cụ thay thế chuỗi mù quáng, thường xuyên gây ra lỗi xung đột tên biến ngầm, lỗi thứ tự ưu tiên toán tử và lỗi tính lặp đối số. Nhưng trong Rust, các kỹ sư thiết kế ngôn ngữ đã trang bị một cơ chế bảo vệ tối tân mang tên: **Tính vệ sinh trong Macro (Macro Hygiene)**. Nhờ tính vệ sinh, các biến bên trong macro được cách ly hoàn toàn với thế giới bên ngoài.
 
 Mục tiêu học tập của chương này:
 - Hiểu sâu sắc khái niệm **Tính vệ sinh (Macro Hygiene)** và cơ chế gán nhãn ngữ cảnh cú pháp (Syntax Context) của trình biên dịch `rustc`.
@@ -46,9 +46,9 @@ Hãy cùng giải mã Tính vệ sinh và Mẫu lặp lại qua hai hình tượ
 
 ### 1. Phòng thí nghiệm y tế vô trùng (Tính vệ sinh - Macro Hygiene)
 - Hãy quan sát phòng cách ly vô trùng (Cleanroom) của một bệnh viện:
-  - Bác sĩ phẫu thuật bên trong phòng có một chiếc khay nhôm đựng dao mổ dán nhãn `khay_tam`.
-  - Ở ngoài quầy lễ tân bệnh viện, cô y tá tiếp đón cũng có một chiếc khay đựng hồ sơ bệnh án dán nhãn `khay_tam`.
-  - Mặc dù hai chiếc khay có cùng tên gọi là `khay_tam`, nhưng chúng nằm ở hai không gian tách biệt hoàn toàn bởi lớp cửa kính cách ly. Bác sĩ dùng chiếc khay trong phòng mổ không bao giờ làm đổ hay xáo trộn tài liệu trên chiếc khay ngoài quầy lễ tân!
+  - Bác sĩ phẫu thuật bên trong phòng có một chiếc khay nhôm đựng dao mổ dán nhãn "khay tạm".
+  - Ở ngoài quầy lễ tân bệnh viện, cô y tá tiếp đón cũng có một chiếc khay đựng hồ sơ bệnh án dán nhãn "khay tạm".
+  - Mặc dù hai chiếc khay có cùng tên gọi là "khay tạm", nhưng chúng nằm ở hai không gian tách biệt hoàn toàn bởi lớp cửa kính cách ly. Bác sĩ dùng chiếc khay trong phòng mổ không bao giờ làm đổ hay xáo trộn tài liệu trên chiếc khay ngoài quầy lễ tân!
 - Đây chính là **Tính vệ sinh trong Rust**: Trình biên dịch tự động "nhuộm màu" (Syntax Context) các biến bên trong macro. Một biến `x` do macro sinh ra và một biến `x` của bạn ngoài hàm `main` là hai thực thể hoàn toàn độc lập, không thể xung đột!
 
 ### 2. Chiếc đàn xếp Accordion (Mẫu lặp lại - Repetitions)
@@ -68,25 +68,25 @@ Khi trình biên dịch mở rộng một macro, nó không đơn thuần ghép 
 
 ```rust
 // Mã người dùng viết:
-let ket_qua = 100;
+let result = 100;
 
-macro_rules! tinh_toan {
+macro_rules! compute {
     () => {
-        let ket_qua = 999; // Biến này mang SyntaxContext của Macro!
-        println!("Trong macro: {}", ket_qua);
+        let result = 999; // Biến này mang SyntaxContext của Macro!
+        println!("Trong macro: {}", result);
     };
 }
 
-tinh_toan!();
-println!("Ngoài hàm main: {}", ket_qua);
+compute!();
+println!("Ngoài macro: {}", result);
 ```
 
 Khi chạy chương trình:
 - Dòng in trong macro xuất hiện: `Trong macro: 999`
-- Dòng in ngoài hàm main xuất hiện: `Ngoài hàm main: 100`
-Biến `ket_qua` bên ngoài hàm `main` vẫn giữ nguyên giá trị `100` trọn vẹn! Trình biên dịch xem chúng là `ket_qua#Context1` và `ket_qua#Context2`.
+- Dòng in ngoài macro xuất hiện: `Ngoài macro: 100`
+Biến `result` của người gọi vẫn giữ nguyên giá trị `100` trọn vẹn! Trình biên dịch xem chúng là `result#Context1` và `result#Context2`.
 
-*Lưu ý về giới hạn của tính vệ sinh*: Tính vệ sinh trong `macro_rules!` bảo vệ biến cục bộ, nhưng **không tự động bảo vệ đường dẫn mô-đun hoặc tên kiểu dữ liệu**. Vì vậy, khi viết thư viện, luôn dùng từ khóa `$crate::` để tham chiếu đến các mục bên trong chính crate của bạn (ví dụ: `$crate::collections::HashMap` thay vì viết trần `HashMap`), phòng trường hợp người dùng quên `use std::collections::HashMap;`.
+*Lưu ý về giới hạn của tính vệ sinh*: Tính vệ sinh trong `macro_rules!` bảo vệ biến cục bộ, nhưng **không tự động bảo vệ đường dẫn mô-đun hoặc tên kiểu dữ liệu**. Vì vậy, khi viết thư viện, luôn dùng từ khóa `$crate::` để tham chiếu đến các mục bên trong chính crate định nghĩa macro (ví dụ: `$crate::helpers::build_map()`), và dùng đường dẫn tuyệt đối `::std::collections::HashMap` thay vì viết trần `HashMap` — phòng trường hợp người dùng quên `use std::collections::HashMap;` hoặc có một kiểu khác trùng tên `HashMap`.
 
 ### 2. Cú pháp Lặp lại Toàn diện: `*`, `+`, và `?`
 
@@ -116,7 +116,7 @@ Cú pháp lặp trong `macro_rules!` có dạng chuẩn:
 Khi bạn muốn biểu diễn các cấu trúc đa chiều như ma trận hàng và cột (2D Grid) hoặc danh sách các bảng dữ liệu:
 
 ```rust
-macro_rules! tao_ma_tran {
+macro_rules! matrix {
     ( $( [ $( $value:expr ),* $(,)? ] ),* $(,)? ) => {
         vec![
             $(
@@ -137,12 +137,12 @@ macro_rules! tao_ma_tran {
 - Nhánh đệ quy (Recursive step): Nhặt lấy một thẻ bài ở đầu hàng (`head`), xử lý nó, sau đó gọi lại chính macro đó với phần còn lại ở đuôi (`tail`).
 
 ```rust
-macro_rules! dem_phan_tu {
+macro_rules! count_tts {
     // Nhánh cơ sở: Hết phần tử -> trả về 0
     () => { 0usize };
-    // Nhánh đệ quy: Nhặt 1 phần tử $dau, gọi đệ quy cho phần $duoi
-    ( $first:tt $( $below:tt )* ) => {
-        1usize + dem_phan_tu!( $( $below )* )
+    // Nhánh đệ quy: Nhặt 1 phần tử $first, gọi đệ quy cho phần $rest
+    ( $first:tt $( $rest:tt )* ) => {
+        1usize + count_tts!( $( $rest )* )
     };
 }
 ```
@@ -153,8 +153,8 @@ macro_rules! dem_phan_tu {
 
 Dưới đây là một chương trình hoàn chỉnh minh họa toàn diện:
 1. Chứng minh **Tính vệ sinh (Macro Hygiene)** bảo vệ biến an toàn tuyệt đối.
-2. Macro xây dựng **Ma trận dữ liệu 2D (`tao_ma_tran!`)** với mẫu lặp lồng nhau và xử lý dấu phẩy cuối.
-3. Macro đệ quy **TT Muncher (`tinh_bieu_thuc_chuoi!`)** tính toán chuỗi phép toán từ trái sang phải.
+2. Macro xây dựng **Ma trận dữ liệu 2D (`matrix!`)** với mẫu lặp lồng nhau và xử lý dấu phẩy cuối.
+3. Macro đệ quy **TT Muncher (`eval_chain!`)** tính toán chuỗi phép toán từ trái sang phải.
 
 ```rust
 // Tệp: src/main.rs
@@ -164,23 +164,21 @@ Dưới đây là một chương trình hoàn chỉnh minh họa toàn diện:
 // 1. MACRO CHỨNG MINH TÍNH VỆ SINH (MACRO HYGIENE)
 // ============================================================================
 
-macro_rules! phep_tinh_noi_bo {
-    ( $input:expr ) => {
-        {
-            // Khai báo biến tạm mang tên 'temp_value' bên trong macro
-            let temp_value = $input * 2;
-            println!("  [Trong Macro] gia_tri_tam = {}", temp_value);
-            temp_value + 5
-        }
-    };
+macro_rules! internal_calc {
+    ( $input:expr ) => {{
+        // Khai báo biến tạm mang tên 'temp_value' bên trong macro
+        let temp_value = $input * 2;
+        println!("  [Trong Macro] temp_value = {}", temp_value);
+        temp_value + 5
+    }};
 }
 
 // ============================================================================
-// 2. MACRO MA TRẬN 2D VỚI CÚ PHÁP LẶP LỒNG NHAU: tao_ma_tran!
+// 2. MACRO MA TRẬN 2D VỚI CÚ PHÁP LẶP LỒNG NHAU: matrix!
 // ============================================================================
 
 /// Macro tạo Vector lồng nhau (Ma trận 2 chiều) hỗ trợ dấu phẩy tùy chọn ở mọi cấp
-macro_rules! tao_ma_tran {
+macro_rules! matrix {
     (
         $(
             [ $( $item:expr ),* $(,)? ]
@@ -196,29 +194,29 @@ macro_rules! tao_ma_tran {
 }
 
 // ============================================================================
-// 3. MACRO ĐỆ QUY TT MUNCHER: tinh_bieu_thuc_chuoi!
+// 3. MACRO ĐỆ QUY TT MUNCHER: eval_chain!
 // ============================================================================
 
 /// Macro đệ quy phân tích chuỗi phép toán từ trái sang phải
-macro_rules! tinh_bieu_thuc_chuoi {
+macro_rules! eval_chain {
     // Nhánh dừng cơ sở: Chỉ còn lại duy nhất một giá trị
     ( $value:expr ) => {
         $value
     };
 
-    // Nhánh đệ quy phép cộng: (x + y + rest...) -> tinh_bieu_thuc_chuoi!((x + y) + rest...)
-    ( $x:expr, +, $y:expr $(, $below:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x + $y) $(, $below )* )
+    // Nhánh đệ quy phép cộng: (x, +, y, rest...) -> eval_chain!((x + y), rest...)
+    ( $x:expr, +, $y:expr $(, $rest:tt )* ) => {
+        eval_chain!( ($x + $y) $(, $rest )* )
     };
 
     // Nhánh đệ quy phép nhân: (x * y * rest...)
-    ( $x:expr, *, $y:expr $(, $below:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x * $y) $(, $below )* )
+    ( $x:expr, *, $y:expr $(, $rest:tt )* ) => {
+        eval_chain!( ($x * $y) $(, $rest )* )
     };
 
     // Nhánh đệ quy phép trừ: (x - y - rest...)
-    ( $x:expr, -, $y:expr $(, $below:tt )* ) => {
-        tinh_bieu_thuc_chuoi!( ($x - $y) $(, $below )* )
+    ( $x:expr, -, $y:expr $(, $rest:tt )* ) => {
+        eval_chain!( ($x - $y) $(, $rest )* )
     };
 }
 
@@ -236,13 +234,13 @@ fn main() {
     // ------------------------------------------------------------------------
     println!("\n1. Kiểm chứng Tính vệ sinh của Macro (Macro Hygiene):");
     let temp_value = 7777; // Biến trùng tên ở phạm vi hàm main
-    println!("Trước khi gọi macro: gia_tri_tam = {}", temp_value);
+    println!("Trước khi gọi macro: temp_value = {}", temp_value);
 
-    let ket_qua_macro = phep_tinh_noi_bo!(10);
-    println!("Kết quả trả về từ macro: {}", ket_qua_macro);
+    let macro_result = internal_calc!(10);
+    println!("Kết quả trả về từ macro: {}", macro_result);
 
     // Xác nhận biến temp_value ngoài hàm main KHÔNG HỀ BỊ THAY ĐỔI!
-    println!("Sau khi gọi macro: gia_tri_tam = {}", temp_value);
+    println!("Sau khi gọi macro: temp_value = {}", temp_value);
     assert_eq!(temp_value, 7777);
     println!("-> KẾT LUẬN: Biến trong macro được cách ly vô trùng tuyệt đối!");
 
@@ -250,29 +248,60 @@ fn main() {
     // TÌNH HUỐNG 2: Xây dựng Ma trận dữ liệu 2D với Mẫu lặp lồng nhau
     // ------------------------------------------------------------------------
     println!("\n2. Khởi tạo Bảng dữ liệu ma trận 2D qua macro lồng nhau:");
-    let ma_tran_diem = tao_ma_tran![
+    let score_matrix = matrix![
         [10, 20, 30,], // Dấu phẩy ở cuối hàng hợp lệ
         [40, 50, 60],
-        [70, 80, 90],  // Dấu phẩy ở cuối khối ma trận hợp lệ
+        [70, 80, 90], // Dấu phẩy ở cuối khối ma trận hợp lệ
     ];
 
-    for (row_index, queue) in ma_tran_diem.iter().enumerate() {
-        println!("  Hàng #{}: {:?}", row_index + 1, queue);
+    for (row_index, row) in score_matrix.iter().enumerate() {
+        println!("  Hàng #{}: {:?}", row_index + 1, row);
     }
-    assert_eq!(ma_tran_diem[1][1], 50);
+    assert_eq!(score_matrix[1][1], 50);
 
     // ------------------------------------------------------------------------
     // TÌNH HUỐNG 3: Vận hành TT Muncher phân tích chuỗi phép tính đệ quy
     // ------------------------------------------------------------------------
     println!("\n3. Vận hành Bộ nhai thẻ bài TT Muncher đệ quy:");
     // Tính toán: (((10 + 5) * 2) - 6) = 15 * 2 - 6 = 30 - 6 = 24
-    let computed_result = tinh_bieu_thuc_chuoi!(10, +, 5, *, 2, -, 6);
-    println!("Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}", computed_result);
+    let computed_result = eval_chain!(10, +, 5, *, 2, -, 6);
+    println!(
+        "Kết quả phân tích đệ quy (10 + 5) * 2 - 6 = {}",
+        computed_result
+    );
     assert_eq!(computed_result, 24);
 
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MẪU MACRO NÂNG CAO HOÀN THÀNH THÀNH CÔNG  ");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hygiene_keeps_outer_variable() {
+        let temp_value = 1;
+        let r = internal_calc!(10); // trong macro: temp_value = 20
+        assert_eq!(r, 25);
+        assert_eq!(temp_value, 1);
+    }
+
+    #[test]
+    fn matrix_accepts_trailing_commas() {
+        let m = matrix![[1, 2,], [3, 4],];
+        assert_eq!(m, vec![vec![1, 2], vec![3, 4]]);
+    }
+
+    #[test]
+    fn eval_chain_is_left_to_right() {
+        // Trái sang phải, KHÔNG theo thứ tự ưu tiên: (2 + 3) * 4 = 20, không phải 14
+        assert_eq!(eval_chain!(2, +, 3, *, 4), 20);
+        assert_eq!(eval_chain!(7), 7);
+    }
 }
 ```
 
@@ -284,16 +313,16 @@ Các lỗi biên dịch thường gặp khi làm việc với mẫu lặp và đ
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **Giới hạn đệ quy** | `recursion limit reached while expanding the macro` | Macro đệ quy (như TT Muncher) gọi lồng nhau vượt quá giới hạn mặc định của Rust (thường là 128 tầng đệ quy). | Kiểm tra nhánh dừng cơ sở xem có bị thiếu không. Nếu logic đệ quy thực sự cần xử lý tập dữ liệu lớn, thêm thuộc tính `#![recursion_limit = "256"]` ở đầu tệp gốc crate (`main.rs` hoặc `lib.rs`). |
-| **Lỗi lặp** | `variable '...' is still repeating at this depth` | Bạn khai báo một biến nằm trong khối lặp `$( $x:expr ),*`, nhưng khi bung mã ở vế phải bạn lại không đặt nó bên trong khối `$( ... )*` tương ứng. | Đảm bảo mọi biến bắt giữ trong khối lặp đều được mở rộng bên trong khối lặp ở thân macro. |
-| **Lỗi cú pháp** | `unexpected end of macro invocation` | Macro đòi hỏi ít nhất một phần tử (`+`) hoặc một ký tự kết thúc, nhưng người gọi lại đóng ngoặc quá sớm. | Kiểm tra lại các điều kiện dừng hoặc chuyển từ toán tử `+` sang `*` nếu cho phép trường hợp rỗng. |
-| **E0408** | `variable '...' from pattern #1 is not bound in pattern #2` | Khi viết macro có nhiều nhánh so khớp rẽ nhánh, một nhánh không gán giá trị cho định danh được yêu cầu. | Đảm bảo tính nhất quán của các định danh ở tất cả các nhánh tương đương. |
+| **Giới hạn đệ quy** (không có mã) | ``recursion limit reached while expanding `...` `` | Macro đệ quy (như TT Muncher) gọi lồng nhau vượt quá giới hạn mặc định của Rust (thường là 128 tầng đệ quy). | Kiểm tra nhánh dừng cơ sở xem có bị thiếu không. Nếu logic đệ quy thực sự cần xử lý tập dữ liệu lớn, thêm thuộc tính `#![recursion_limit = "256"]` ở đầu tệp gốc crate (`main.rs` hoặc `lib.rs`). |
+| **Lỗi lặp** (không có mã) | `variable 'item' is still repeating at this depth` | Bạn khai báo một biến nằm trong khối lặp `$( $x:expr ),*`, nhưng khi bung mã ở vế phải bạn lại không đặt nó bên trong khối `$( ... )*` tương ứng. | Đảm bảo mọi biến bắt giữ trong khối lặp đều được mở rộng bên trong khối lặp ở thân macro. |
+| **Lỗi cú pháp** (không có mã) | `unexpected end of macro invocation` | Macro đòi hỏi ít nhất một phần tử (`+`) hoặc một ký tự kết thúc, nhưng người gọi lại đóng ngoặc quá sớm. | Kiểm tra lại các điều kiện dừng hoặc chuyển từ toán tử `+` sang `*` nếu cho phép trường hợp rỗng. |
+| **Lỗi cú pháp** (không có mã) | `expected expression, found '$'` | Mỗi nhánh của `macro_rules!` có bộ biến macro **riêng**. Nếu thân của một nhánh dùng `$x` mà vế trái của chính nhánh đó không bắt `$x` (dù nhánh khác có), `$x` bị chép nguyên văn ra mã sinh và gây lỗi cú pháp ở chỗ gọi. (Lưu ý: mã **E0408** — "variable is not bound in all patterns" — là lỗi của mẫu `\|` trong `match`, không phải của các nhánh macro.) | Khai báo `$x` ở vế trái của đúng nhánh đang dùng nó, hoặc tách phần dùng chung thành một nhánh phụ. |
 
 ### Phân tích lỗi thực tế: Quên khối lặp ở thân mở rộng
 
 ```rust
 // Đoạn mã lỗi minh họa:
-macro_rules! in_sai_lap {
+macro_rules! print_wrong {
     ( $( $item:expr ),* ) => {
         // LỖI: variable 'item' is still repeating at this depth!
         // println!("{}", $item); 
@@ -301,7 +330,7 @@ macro_rules! in_sai_lap {
 }
 
 // Cách sửa chữa đúng: Đặt $item vào bên trong khối $( ... )*
-macro_rules! in_dung_lap {
+macro_rules! print_right {
     ( $( $item:expr ),* ) => {
         $(
             println!("Phần tử: {}", $item);
@@ -330,7 +359,7 @@ macro_rules! in_dung_lap {
    - `sum_all!(5, 10, 15,)` (trả về 30).
 
 2. **Bài tập 2 (Macro Đếm Số lượng Đối số)**:  
-   Sử dụng cú pháp lặp `$(...)*` để tạo một macro `count_args!( $( $item:expr ),* )` trả về số lượng các tham số được truyền vào dưới dạng `usize` mà không cần duyệt mảng lúc chạy. *(Gợi ý: Mở rộng thành một mảng các số 1 `[ $( { let _ = &$item; 1usize } ),* ].len()`)*.
+   Sử dụng cú pháp lặp `$(...)*` để tạo một macro `count_args!( $( $item:expr ),* )` trả về số lượng các tham số được truyền vào dưới dạng `usize` mà không cần duyệt mảng lúc chạy. *(Gợi ý: Mở rộng mỗi tham số thành một số `1usize` rồi lấy `.len()` của mảng)*.
 
 3. **Bài tập 3 (Xử lý Giới hạn Đệ quy)**:  
    Viết một macro TT Muncher in ra từng ký tự của một chuỗi thẻ bài. Điều gì xảy ra nếu bạn truyền vào một dãy 200 phần tử? Hãy thực hành thêm `#![recursion_limit = "256"]` để quan sát cách trình biên dịch mở rộng ngưỡng chịu tải.
@@ -386,8 +415,9 @@ Không được duyệt mảng lúc chạy. Ý tưởng: mở rộng mỗi tham 
 macro_rules! count_args {
     ( $( $item:expr ),* $(,)? ) => {
         // Mỗi tham số biến thành một phần tử `1usize`.
-        // `let _ = &$item;` giữ cho biểu thức được kiểm kiểu mà KHÔNG tính nó.
-        <[usize]>::len(&[ $( { let _ = &$item; 1usize } ),* ])
+        // Bọc `$item` trong một closure KHÔNG BAO GIỜ được gọi: biểu thức
+        // vẫn được kiểm kiểu, nhưng không bị tính lúc chạy.
+        <[usize]>::len(&[ $( { let _ = || { let _ = $item; }; 1usize } ),* ])
     };
 }
 
@@ -397,16 +427,18 @@ fn main() {
     assert_eq!(count_args!("a", "b", "c", "d"), 4);
 
     // Biểu thức KHÔNG bị tính — chỉ bị kiểm kiểu.
-    let mut goi = 0;
-    let mut f = || { goi += 1; 0 };
+    let mut calls = 0;
+    let mut f = || { calls += 1; 0 };
     let n = count_args!(f(), f(), f());
     assert_eq!(n, 3);
+    drop(f);
+    assert_eq!(calls, 0); // f() chưa từng được gọi
 
     println!("số tham số: {}", count_args!(10, 20, 30, 40, 50));
 }
 ```
 
-Vì độ dài mảng là hằng số lúc biên dịch, `len()` bị tối ưu thành một số nguyên trực tiếp — không có vòng lặp nào chạy. Đây là kỹ thuật mà `vec![x; n]` và nhiều macro trong thư viện chuẩn dùng.
+Vì độ dài mảng là hằng số lúc biên dịch, `len()` bị tối ưu thành một số nguyên trực tiếp — không có vòng lặp nào chạy. Đây là kỹ thuật đếm phần tử kinh điển trong cuốn *The Little Book of Rust Macros*, hay được dùng để cấp phát trước đúng dung lượng (`Vec::with_capacity(count_args!(...))`) trước khi đẩy từng phần tử vào.
 </details>
 
 <details>
@@ -419,16 +451,16 @@ TT Muncher đệ quy một lần cho mỗi thẻ bài, nên 200 phần tử là 
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
-macro_rules! in_tung_the {
+macro_rules! print_each {
     () => {};
-    ($dau:tt $($con_lai:tt)*) => {
-        print!("[{}] ", stringify!($dau));
-        in_tung_the!($($con_lai)*);   // "gặm" một thẻ rồi gọi lại chính mình
+    ($head:tt $($rest:tt)*) => {
+        print!("[{}] ", stringify!($head));
+        print_each!($($rest)*);   // "gặm" một thẻ rồi gọi lại chính mình
     };
 }
 
 fn main() {
-    in_tung_the!(a b c 1 2 3);
+    print_each!(a b c 1 2 3);
     println!();
 }
 ```
@@ -436,12 +468,12 @@ fn main() {
 **Điều xảy ra với 200 phần tử:**
 
 ```
-error: recursion limit reached while expanding `in_tung_the!`
+error: recursion limit reached while expanding `stringify!`
   = help: consider increasing the recursion limit by adding a
-          `#![recursion_limit = "256"]` attribute to your crate
+          `#![recursion_limit = "256"]` attribute to your crate (`my_crate`)
 ```
 
-Ngưỡng mặc định là **128**, và nó tính theo *số tầng mở rộng*, không phải số phần tử — nên một macro gọi hai lần mỗi tầng sẽ chạm ngưỡng sớm hơn nhiều.
+(Tên macro trong thông báo là lời gọi đang mở rộng đúng lúc chạm ngưỡng — ở đây là `stringify!` lồng bên trong `print_each!` tầng thứ 128.) Ngưỡng mặc định là **128**, và nó tính theo *số tầng mở rộng*, không phải số phần tử — nên một macro gọi hai lần mỗi tầng sẽ chạm ngưỡng sớm hơn nhiều.
 
 Thêm `#![recursion_limit = "256"]` ở **đầu tệp crate** (`main.rs` hoặc `lib.rs`, không phải giữa tệp) sẽ nới ngưỡng. Nhưng nới ngưỡng là chữa triệu chứng: mỗi tầng đệ quy làm trình biên dịch chậm đi, và với vài nghìn phần tử thì thời gian biên dịch tăng theo bậc hai. Cách chữa gốc là **gặm nhiều thẻ mỗi tầng** (`$a:tt $b:tt $c:tt $($r:tt)*`) hoặc chuyển sang macro thủ tục, nơi bạn dùng vòng lặp thật thay vì đệ quy.
 </details>

@@ -37,7 +37,7 @@ Trong chương cuối cùng của Chủ đề 7, chúng ta sẽ trang bị:
 │ Ngày xưa thợ mỏ mang chim hoàng yến xuống hầm than. Khi có khí độc rò rỉ,        │
 │ chim ngất trước để báo động. Stack Canary là con số bí mật đặt trước RIP:       │
 │ Nếu kẻ tấn công cố tình tràn bộ nhớ, nó buộc phải đè chết con chim này trước!    │
-│ Hệ điều hành thấy chim bị đổi số ──► Lập tức cắt điện tắt máy bảo vệ hệ thống!   │
+│ Mã kiểm tra do trình biên dịch chèn thấy chim bị đổi số ──► Tắt máy ngay!       │
 │                                                                                  │
 │ [LỚP 4: CỬA HẦM CHỐNG BOM & QUYỀN TỐI THIỂU (LEAST PRIVILEGE)]                   │
 │ Ngay cả khi tên trộm lẻn được vào quầy giao dịch, cửa hầm chứa tiền vẫn khóa chặt.│
@@ -54,7 +54,7 @@ Trong chương cuối cùng của Chủ đề 7, chúng ta sẽ trang bị:
 ### 2. Chim hoàng yến trong hầm than (Stack Canary)
 - Khi đào than dưới lòng đất, hiểm họa vô hình lớn nhất là khí độc methane không mùi không màu. Thợ mỏ luôn treo một chiếc lồng có chú chim hoàng yến bên cạnh. Cơ thể chim rất nhạy cảm; nếu có khí độc, chim sẽ lảo đảo ngất xỉu trước khi con người kịp nhận ra nguy hiểm.
 - Trong ngăn xếp máy tính, **Stack Canary** là một giá trị số ngẫu nhiên được trình biên dịch tự động đặt vào ngay phía trước con trỏ địa chỉ trả về `Saved RIP`.
-- Kẻ tấn công muốn tràn bộ đệm đè lên `RIP` thì bắt buộc phải đè qua giá trị Canary này. Trước khi hàm kết thúc, CPU liếc nhìn lại giá trị con chim: Nếu thấy giá trị bị biến dạng, CPU lập tức kích hoạt lệnh hủy khẩn cấp (`__stack_chk_fail`), dập tắt hoàn toàn âm mưu của kẻ tấn công!
+- Kẻ tấn công muốn tràn bộ đệm đè lên `RIP` thì bắt buộc phải đè qua giá trị Canary này. Trước lệnh `ret`, **đoạn mã kiểm tra mà trình biên dịch chèn vào cuối hàm** (không phải CPU tự làm) so giá trị con chim với bản gốc: Nếu thấy bị biến dạng, nó gọi hàm hủy khẩn cấp `__stack_chk_fail`, tiến trình bị kết thúc trước khi kịp nhảy tới địa chỉ do kẻ tấn công sắp đặt!
 
 ---
 
@@ -95,7 +95,7 @@ lto = true               # Link-Time Optimization: Loại bỏ toàn bộ mã ch
 codegen-units = 1        # Gom mã thành 1 đơn vị duy nhất để tối ưu LTO toàn diện
 panic = "abort"          # Khi gặp lỗi nghiêm trọng, lập tức tắt ngay (không để lại Landing Pad)
 overflow-checks = true   # Bắt buộc kiểm tra tràn số nguyên ngay cả trong bản Release!
-strip = true             # Gọt bỏ toàn bộ bảng biểu tượng Symbol Table để chống dịch ngược
+strip = true             # Gọt bỏ bảng biểu tượng (Symbol Table): gây khó cho dịch ngược, KHÔNG ngăn được nó
 ```
 
 ### 4. Tấn công Kênh Kề Dựa Trên Thời Gian (Timing Attack) & Giải Pháp
@@ -108,20 +108,27 @@ if user_token == SECRET_TOKEN { ... }
 - Toán tử `==` so sánh từng byte từ trái qua phải. Nếu byte đầu tiên sai, nó dừng lại ngay lập tức và trả về `false` trong 1 nano-giây.
 - Nếu người dùng đoán đúng 5 byte đầu, máy tính mất 5 nano-giây mới trả về `false`.
 - Kẻ tấn công OSCP sử dụng đồng hồ đo thời gian siêu chính xác để đoán từng ký tự một!
-- **Giải pháp**: Phải sử dụng **So sánh thời gian bất biến (Constant-Time Comparison)**: Luôn luôn so sánh đủ 100% các byte bất kể đúng hay sai, khiến thời gian phản hồi luôn luôn bằng nhau, triệt tiêu hoàn toàn khả năng do thám của kẻ tấn công.
+- **Giải pháp**: Phải sử dụng **So sánh thời gian bất biến (Constant-Time Comparison)**: Luôn luôn so sánh đủ 100% các byte bất kể đúng hay sai, để thời gian phản hồi không phụ thuộc vào vị trí byte sai.
+- **Cảnh báo quan trọng**: viết vòng lặp "không thoát sớm" bằng Rust thường là chưa đủ. Rust và LLVM **không hứa** giữ nguyên tính hằng thời gian của mã nguồn trong mã máy — trình tối ưu có quyền biến vòng lặp XOR thành phép so sánh thoát sớm. `std::hint::black_box` chỉ là gợi ý "nỗ lực tốt nhất", không phải bảo đảm. Mã thật phải dùng crate đã được kiểm định như **`subtle`** (`ConstantTimeEq`, `Choice`) hoặc hàm so sánh của thư viện mật mã (`ring::constant_time`), và tốt nhất kiểm tra bằng công cụ đo rò rỉ thời gian như `dudect`.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là chương trình Rust hoàn chỉnh hiện thực hóa một động cơ kiểm tra bảo mật cấp doanh nghiệp: Tích hợp cơ chế so sánh thời gian bất biến (Constant-time token validation) chống tấn công Timing Attack, cùng bộ lọc làm sạch đầu vào theo chuẩn mô hình STRIDE:
+Dưới đây là chương trình Rust hoàn chỉnh hiện thực hóa một động cơ kiểm tra bảo mật cấp doanh nghiệp: Tích hợp cơ chế so sánh thời gian bất biến (Constant-time token validation) chống tấn công Timing Attack — bản minh hoạ nguyên lý, mã thật hãy dùng crate `subtle` — cùng bộ lọc làm sạch đầu vào theo chuẩn mô hình STRIDE:
 
 ```rust
 use std::hint::black_box;
 
-/// Hàm so sánh mảng byte với thời gian bất biến (Constant-Time Comparison)
-/// Tuyệt đối không kết thúc sớm khi gặp byte sai, ngăn chặn Timing Attack 100%!
+/// Hàm so sánh mảng byte theo kiểu thời gian bất biến (Constant-Time Comparison)
+/// Không kết thúc sớm khi gặp byte sai, nên thời gian chạy không phụ thuộc VỊ TRÍ byte sai.
+///
+/// GIỚI HẠN QUAN TRỌNG: đây là mã minh hoạ. Rust/LLVM KHÔNG hứa sinh mã máy hằng thời gian
+/// (`black_box` chỉ là gợi ý "đừng tối ưu", không phải bảo đảm). Mã thật hãy dùng crate
+/// chuyên dụng như `subtle` (`ConstantTimeEq`), được viết và kiểm định cho đúng mục đích này.
 pub fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
+    // Độ dài khác nhau thì trả về ngay: điều này tiết lộ ĐỘ DÀI bí mật (thường chấp nhận
+    // được vì độ dài token là công khai), nhưng không tiết lộ nội dung.
     if a.len() != b.len() {
         return false;
     }
@@ -134,7 +141,8 @@ pub fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
         difference_accumulator |= byte_a ^ byte_b;
     }
 
-    // Đảm bảo trình biên dịch không tối ưu hóa làm biến mất vòng lặp
+    // Gợi ý trình biên dịch đừng "thông minh" biến vòng lặp thành so sánh thoát sớm
+    // (chỉ là nỗ lực tốt nhất — xem giới hạn ở chú thích đầu hàm)
     black_box(difference_accumulator) == 0
 }
 
@@ -163,20 +171,23 @@ impl SecurityGateEngine {
     /// Ngăn chặn Tampering và Injection
     pub fn sanitize_command_input(&self, raw_input: &str) -> Result<String, &'static str> {
         if raw_input.is_empty() {
-            return Err("Dau vao trong: Tu choi xu ly!");
+            return Err("Đầu vào trống: Từ chối xử lý!");
         }
 
         if raw_input.len() > 64 {
-            return Err("Dau vao qua dai: Nguy co tran bo dem hoac DoS bi chan dung!");
+            return Err("Đầu vào quá dài: Nguy cơ DoS bị chặn đứng!");
         }
 
-        // Nguyên tắc Whitelist: Chỉ cho phép chữ cái, chữ số, gạch dưới và khoảng trắng
+        // Nguyên tắc Whitelist: Chỉ cho phép chữ cái/chữ số ASCII, gạch dưới, gạch ngang
+        // và khoảng trắng. Dùng is_ascii_alphanumeric (KHÔNG phải is_alphanumeric):
+        // danh sách trắng phải hẹp và rõ ràng — is_alphanumeric chấp nhận hàng chục
+        // nghìn ký tự Unicode, gồm cả các ký tự trông giống hệt chữ Latinh.
         let is_safe = raw_input
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ');
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ');
 
         if !is_safe {
-            return Err("Phat hien ky tu nguy hiem (SQL/Shell Injection blocked)!");
+            return Err("Phát hiện ký tự nguy hiểm (đã chặn SQL/Shell Injection)!");
         }
 
         Ok(raw_input.trim().to_string())
@@ -196,14 +207,14 @@ impl SecurityGateEngine {
         if current_role >= required_role {
             Ok(())
         } else {
-            Err("Tu choi truy cap: Low du dac quyen (Elevation of Privilege blocked)!")
+            Err("Từ chối truy cập: Không đủ đặc quyền (đã chặn Elevation of Privilege)!")
         }
     }
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   GIA CO HE THONG RUST & MO HINH HOA MOI DE DOA STRIDE / OSCP    ");
+    println!("   GIA CỐ HỆ THỐNG RUST & MÔ HÌNH HÓA MỐI ĐE DỌA STRIDE / OSCP    ");
     println!("==================================================================");
 
     // Khởi tạo động cơ an ninh với Master Token bí mật 16 bytes
@@ -213,68 +224,71 @@ fn main() {
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM CHỐNG TẤN CÔNG TIMING ATTACK QUA CONSTANT-TIME
     // -------------------------------------------------------------
-    println!("\n[1] Kiem chung so sanh thoi gian bat bien (Constant-Time):");
+    println!("\n[1] Kiểm chứng so sánh thời gian bất biến (Constant-Time):");
     let valid_attempt = b"OSCP_RUST_KEY_99";
     let wrong_first_byte = b"XSCP_RUST_KEY_99";
     let wrong_last_byte = b"OSCP_RUST_KEY_00";
 
     println!(
-        "    - Thu token hop le      : {}",
+        "    - Thử token hợp lệ      : {}",
         security_gate.authenticate_token(valid_attempt)
     );
     println!(
-        "    - Thu token sai byte dau : {}",
+        "    - Thử token sai byte đầu : {}",
         security_gate.authenticate_token(wrong_first_byte)
     );
     println!(
-        "    - Thu token sai byte cuoi: {}",
+        "    - Thử token sai byte cuối: {}",
         security_gate.authenticate_token(wrong_last_byte)
     );
-    println!("    => Moi phep so sanh deu duyet 100% mang byte voi thoi gian dong nhat!");
+    println!("    => Mọi phép so sánh đều duyệt hết mảng byte, bất kể byte sai nằm ở đâu!");
 
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM LÀM SẠCH ĐẦU VÀO CHỐNG INJECTION & BUFFER FLOOD
     // -------------------------------------------------------------
-    println!("\n[2] Kiem thu lam sach du lieu dau vao (Input Sanitization):");
+    println!("\n[2] Kiểm thử làm sạch dữ liệu đầu vào (Input Sanitization):");
 
     let safe_input = "get_system_status";
     match security_gate.sanitize_command_input(safe_input) {
-        Ok(clean) => println!("    - Lenh an toan duoc chap nhan: '{}'", clean),
-        Err(err) => println!("    [!] Tu choi: {}", err),
+        Ok(clean) => println!("    - Lệnh an toàn được chấp nhận: '{}'", clean),
+        Err(err) => println!("    [!] Từ chối: {}", err),
     }
 
     let malicious_injection = "get_status; rm -rf /; --";
-    println!("    - Thu gui payload doc hai: '{}'", malicious_injection);
+    println!("    - Thử gửi payload độc hại: '{}'", malicious_injection);
     match security_gate.sanitize_command_input(malicious_injection) {
-        Ok(_) => println!("    [!] [CANH BAO] Lenh doc hai da lot qua!"),
-        Err(err) => println!("    [+] [CHAN DUNG AN TOAN] {}", err),
+        Ok(_) => println!("    [!] [CẢNH BÁO] Lệnh độc hại đã lọt qua!"),
+        Err(err) => println!("    [+] [CHẶN ĐỨNG AN TOÀN] {}", err),
     }
 
     let overflow_dos_attempt = "A".repeat(128);
-    println!("    - Thu gui chuoi tan cong DoS dai {} bytes...", overflow_dos_attempt.len());
+    println!(
+        "    - Thử gửi chuỗi tấn công DoS dài {} bytes...",
+        overflow_dos_attempt.len()
+    );
     match security_gate.sanitize_command_input(&overflow_dos_attempt) {
-        Ok(_) => println!("    [!] [CANH BAO] Payload DoS da duoc chap nhan!"),
-        Err(err) => println!("    [+] [CHAN DUNG AN TOAN] {}", err),
+        Ok(_) => println!("    [!] [CẢNH BÁO] Payload DoS đã được chấp nhận!"),
+        Err(err) => println!("    [+] [CHẶN ĐỨNG AN TOÀN] {}", err),
     }
 
     // -------------------------------------------------------------
     // 3. THỬ NGHIỆM KIỂM SOÁT PHÂN QUYỀN TỐI THIỂU (LEAST PRIVILEGE)
     // -------------------------------------------------------------
-    println!("\n[3] Kiem tra kiem soat phan quyen truy cap (RBAC):");
+    println!("\n[3] Kiểm tra kiểm soát phân quyền truy cập (RBAC):");
     let user_role = UserRole::Member;
-    println!("    - Nguoi dung dang co vai tro: {:?}", user_role);
+    println!("    - Người dùng đang có vai trò: {:?}", user_role);
 
     let audit_access = security_gate.verify_permission(user_role, UserRole::Auditor);
-    println!("    - Yeu sentence truy cap region Auditor: {:?}", audit_access);
+    println!("    - Yêu cầu truy cập vùng Auditor: {:?}", audit_access);
     assert!(audit_access.is_err());
 
     let member_access = security_gate.verify_permission(user_role, UserRole::Member);
-    println!("    - Yeu sentence truy cap region Member : {:?}", member_access);
+    println!("    - Yêu cầu truy cập vùng Member : {:?}", member_access);
     assert!(member_access.is_ok());
-    println!("    => Ngăn chan triet de nguy co Leo thang dac quyen (Elevation of Privilege)!");
+    println!("    => Ngăn chặn triệt để nguy cơ Leo thang đặc quyền (Elevation of Privilege)!");
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: HE THONG PHONG THU CHIEU SAU SAN SANG HOAT DONG!    ");
+    println!("   XÁC NHẬN: HỆ THỐNG PHÒNG THỦ CHIỀU SÂU SẴN SÀNG HOẠT ĐỘNG!    ");
     println!("==================================================================");
 }
 ```
@@ -288,39 +302,84 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0308** | `mismatched types: expected '&[u8]', found '&str'` | Nhầm lẫn giữa chuỗi ký tự UTF-8 văn bản (`&str`) và lát cắt mảng byte thô (`&[u8]`) khi so sánh mã hóa. | Gọi phương thức `.as_bytes()` trên chuỗi ký tự, hoặc sử dụng tiền tố byte literal `b"..."`. |
-| **E0596** | `cannot borrow 'security_gate' as mutable` | Cố gắng gọi một phương thức thay đổi trạng thái nội bộ mà đối tượng không được khai báo với từ khóa `mut`. | Thêm từ khóa `mut` vào biến khi khởi tạo: `let mut security_gate = ...`. |
+| **E0596** | `cannot borrow 'security_gate' as mutable, as it is not declared as mutable` | Cố gắng gọi một phương thức thay đổi trạng thái nội bộ mà đối tượng không được khai báo với từ khóa `mut`. | Thêm từ khóa `mut` vào biến khi khởi tạo: `let mut security_gate = ...`. |
 | **E0425** | `cannot find value 'SECRET_KEY' in this scope` | Truy cập một biến toàn cục hoặc cấu hình bí mật chưa được định nghĩa hoặc nằm ngoài tầm vực module. | Đảm bảo biến được khai báo với `const` hoặc `static`, và đưa vào tầm vực thông qua `use`. |
-| **E0277** | `the trait 'Ord' is not implemented for 'UserRole'` | Cố gắng so sánh thứ tự lớn hơn nhỏ hơn (`current_role >= required_role`) trên một `enum` chưa triển khai trait `PartialOrd` và `Ord`. | Thêm macro derive tự động: `#[derive(PartialEq, Eq, PartialOrd, Ord)]` lên trên định nghĩa `enum`. |
+| **E0369** | `binary operation '>=' cannot be applied to type 'UserRole'` | Cố gắng so sánh thứ tự lớn hơn nhỏ hơn (`current_role >= required_role`) trên một `enum` chưa triển khai trait `PartialOrd`. (Nếu kiểu được dùng ở chỗ *đòi* trait, ví dụ `BTreeMap<UserRole, _>` hay `.max()`, lỗi sẽ là **E0277** `the trait bound 'UserRole: Ord' is not satisfied`.) | Thêm macro derive tự động: `#[derive(PartialEq, Eq, PartialOrd, Ord)]` lên trên định nghĩa `enum`. |
 
-### Ví dụ phân tích lỗi `E0277` khi so sánh phân quyền Enum:
+### Ví dụ phân tích lỗi `E0369` khi so sánh phân quyền Enum:
 
 ```rust
-// Đoạn mã lỗi minh họa E0277:
+// Đoạn mã lỗi minh họa E0369:
 #[derive(Debug, PartialEq)] // Quên thêm PartialOrd
-enum ErrorLevel {
-    NhanVien,
-    GiamDoc,
+enum RankBroken {
+    Staff,
+    Director,
 }
 
-fn authz_broken(cap: ErrorLevel) {
-    // if cap >= ErrorLevel::GiamDoc { ... } // LỖI E0277: Không thể dùng toán tử >= trên ErrorLevel!
+fn authz_broken(cap: RankBroken) {
+    // if cap >= RankBroken::Director { ... } // LỖI E0369: Không thể dùng toán tử >= trên RankBroken!
 }
 
 // Cách sửa chữa đúng chuẩn: Triển khai đầy đủ PartialOrd và Ord
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum CapBacDung {
-    NhanVien = 1,
-    GiamDoc = 2,
+enum Rank {
+    Staff = 1,
+    Director = 2,
 }
 
-fn authz_correct(cap: CapBacDung) {
-    if cap >= CapBacDung::GiamDoc {
+fn authz_correct(cap: Rank) {
+    if cap >= Rank::Director {
         println!("Chào mừng Giám đốc điều hành!");
     }
 }
 ```
 
 ---
+
+## Kiểm thử tự động (Automated Tests)
+
+Mã bảo mật cần test cho cả hai chiều: thứ *phải* được chấp nhận và thứ *phải* bị từ chối. Test thứ hai dưới đây đáng chú ý: một chữ `а` Kirin trông y hệt chữ `a` Latinh — nếu danh sách trắng dùng `is_alphanumeric` (chấp nhận mọi chữ cái Unicode) thì tên lệnh giả mạo sẽ lọt qua. Lưu ý test **không** đo thời gian: tính hằng thời gian không kiểm được bằng unit test, chỉ bằng phân tích mã máy hoặc công cụ chuyên dụng (như `dudect`).
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_time_compare_is_correct() {
+        assert!(constant_time_compare(b"abc", b"abc"));
+        assert!(!constant_time_compare(b"abc", b"abd"));
+        assert!(!constant_time_compare(b"abc", b"xbc"));
+        assert!(!constant_time_compare(b"abc", b"abcd"));
+        assert!(constant_time_compare(b"", b""));
+    }
+
+    #[test]
+    fn whitelist_is_ascii_only() {
+        let gate = SecurityGateEngine::new(b"k");
+        assert!(gate.sanitize_command_input("get_status-2 now").is_ok());
+        assert!(gate.sanitize_command_input("rm -rf /").is_err());
+        // Chữ 'а' Kirin (U+0430) trông giống hệt 'a' Latinh: is_alphanumeric chấp nhận nó,
+        // danh sách trắng ASCII thì không.
+        assert!(gate.sanitize_command_input("\u{0430}dmin").is_err());
+        assert!(gate.sanitize_command_input("").is_err());
+        assert!(gate.sanitize_command_input(&"A".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn least_privilege_ordering() {
+        let gate = SecurityGateEngine::new(b"k");
+        assert!(
+            gate.verify_permission(UserRole::Administrator, UserRole::Auditor)
+                .is_ok()
+        );
+        assert!(
+            gate.verify_permission(UserRole::Guest, UserRole::Member)
+                .is_err()
+        );
+    }
+}
+```
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
@@ -334,7 +393,7 @@ fn authz_correct(cap: CapBacDung) {
 1. **Bài tập 1 (Bộ hạn chế tần suất thử mật khẩu - Rate Limiter)**:  
    Viết một cấu trúc `LoginRateLimiter` theo dõi số lần đăng nhập thất bại của một địa chỉ IP. Nếu một IP thử sai mật khẩu quá 5 lần trong vòng 60 giây, khóa tạm thời IP đó trong 5 phút để triệt tiêu các cuộc tấn công Brute-Force mật mã.
 2. **Bài tập 2 (Bộ tạo Token ngẫu nhiên an toàn mật mã)**:  
-   Viết hàm sinh một chuỗi khóa bí mật 32 bytes ngẫu nhiên chuẩn an toàn mật mã (Cryptographically Secure Pseudo-Random Number) mà không sử dụng thuật toán giả ngẫu nhiên yếu như `rand::random()`. Giải thích vì sao việc dùng hàm ngẫu nhiên yếu lại là lỗ hổng nghiêm trọng trong các bài thi OSCP.
+   Viết hàm sinh một chuỗi khóa bí mật 32 bytes ngẫu nhiên chuẩn an toàn mật mã (Cryptographically Secure Pseudo-Random Number) mà không sử dụng bộ sinh giả ngẫu nhiên không-mật-mã (như `rand()` của C, `Math.random()` của JavaScript, hay một PRNG nhanh được seed bằng thời gian). Giải thích vì sao việc dùng hàm ngẫu nhiên yếu lại là lỗ hổng nghiêm trọng trong các bài thi OSCP.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao `panic = "abort"` lại tăng tính bảo mật?)**:  
    Khi một chương trình Rust gặp lỗi `panic!`, mặc định nó sẽ thực hiện quy trình "Cuộn ngược ngăn xếp (Stack Unwinding)" để dọn dẹp các biến. Tại sao việc chuyển sang `panic = "abort"` (tắt tiến trình ngay lập tức) lại giúp thu nhỏ kích thước nhị phân và loại bỏ các đoạn mã máy thừa thãi (gadgets) mà kẻ tấn công có thể lợi dụng để xây dựng chuỗi ROP (Return-Oriented Programming)?
 
@@ -357,60 +416,60 @@ use std::time::{Duration, Instant};
 
 pub struct LoginRateLimiter {
     // Mỗi IP: (số lần sai trong cửa sổ, thời điểm bắt đầu cửa sổ, thời điểm hết khóa nếu có)
-    theo_doi: HashMap<String, (u32, Instant, Option<Instant>)>,
+    tracked: HashMap<String, (u32, Instant, Option<Instant>)>,
 }
 
 impl LoginRateLimiter {
     pub fn new() -> Self {
-        Self { theo_doi: HashMap::new() }
+        Self { tracked: HashMap::new() }
     }
 
     /// Gọi khi có lần thử SAI. Trả về true nếu IP hiện đang bị khóa.
-    pub fn ghi_nhan_that_bai(&mut self, ip: &str, bay_gio: Instant) -> bool {
-        let e = self.theo_doi.entry(ip.to_string())
-            .or_insert((0, bay_gio, None));
+    pub fn record_failure(&mut self, ip: &str, now: Instant) -> bool {
+        let e = self.tracked.entry(ip.to_string())
+            .or_insert((0, now, None));
 
         // Đang trong thời gian khóa? -> vẫn khóa.
-        if let Some(het_khoa) = e.2 {
-            if bay_gio < het_khoa { return true; }
-            *e = (0, bay_gio, None); // hết hạn khóa -> làm mới
+        if let Some(locked_until) = e.2 {
+            if now < locked_until { return true; }
+            *e = (0, now, None); // hết hạn khóa -> làm mới
         }
 
         // Cửa sổ 60s trôi qua -> đếm lại từ đầu.
-        if bay_gio.duration_since(e.1) > Duration::from_secs(60) {
-            *e = (1, bay_gio, None);
+        if now.duration_since(e.1) > Duration::from_secs(60) {
+            *e = (1, now, None);
             return false;
         }
 
         e.0 += 1;
         if e.0 > 5 {
             // Quá 5 lần sai trong 60s -> khóa 5 phút.
-            e.2 = Some(bay_gio + Duration::from_secs(5 * 60));
+            e.2 = Some(now + Duration::from_secs(5 * 60));
             return true;
         }
         false
     }
 
-    pub fn dang_bi_khoa(&self, ip: &str, bay_gio: Instant) -> bool {
-        matches!(self.theo_doi.get(ip), Some((_, _, Some(het))) if bay_gio < *het)
+    pub fn is_locked(&self, ip: &str, now: Instant) -> bool {
+        matches!(self.tracked.get(ip), Some((_, _, Some(until))) if now < *until)
     }
 }
 
 #[test]
-fn khoa_sau_qua_5_lan_sai() {
+fn locks_after_more_than_5_failures() {
     let mut rl = LoginRateLimiter::new();
     let t0 = Instant::now();
     // 5 lần sai đầu: chưa khóa.
-    for _ in 0..5 { assert!(!rl.ghi_nhan_that_bai("1.2.3.4", t0)); }
+    for _ in 0..5 { assert!(!rl.record_failure("1.2.3.4", t0)); }
     // Lần thứ 6 trong cửa sổ 60s -> khóa.
-    assert!(rl.ghi_nhan_that_bai("1.2.3.4", t0));
-    assert!(rl.dang_bi_khoa("1.2.3.4", t0));
+    assert!(rl.record_failure("1.2.3.4", t0));
+    assert!(rl.is_locked("1.2.3.4", t0));
     // IP khác không bị ảnh hưởng.
-    assert!(!rl.dang_bi_khoa("9.9.9.9", t0));
+    assert!(!rl.is_locked("9.9.9.9", t0));
 }
 ```
 
-Vì sao thiết kế này chặn brute-force: tấn công dò mật khẩu dựa vào **thử thật nhiều lần thật nhanh**. Giới hạn 5 lần/60 giây rồi khóa 5 phút biến một cuộc dò hàng triệu mật khẩu/giây thành vài lần mỗi 5 phút — chậm tới mức vô dụng. Chi tiết đúng đắn: dùng `Instant` (đồng hồ *đơn điệu*, không bao giờ chạy lùi) chứ không dùng `SystemTime` (giờ hệ thống có thể bị chỉnh, kẻ tấn công lợi dụng để lách khóa). Truyền `bay_gio` vào làm tham số giúp *kiểm thử được* — không phụ thuộc đồng hồ thật.
+Vì sao thiết kế này chặn brute-force: tấn công dò mật khẩu dựa vào **thử thật nhiều lần thật nhanh**. Giới hạn 5 lần/60 giây rồi khóa 5 phút biến một cuộc dò hàng triệu mật khẩu/giây thành vài lần mỗi 5 phút — chậm tới mức vô dụng. Chi tiết đúng đắn: dùng `Instant` (đồng hồ *đơn điệu*, không bao giờ chạy lùi) chứ không dùng `SystemTime` (giờ hệ thống có thể bị chỉnh, kẻ tấn công lợi dụng để lách khóa). Truyền `now` vào làm tham số giúp *kiểm thử được* — không phụ thuộc đồng hồ thật.
 </details>
 
 <details>
@@ -427,8 +486,8 @@ use std::fs::File;
 use std::io::Read;
 
 /// Sinh 32 byte ngẫu nhiên AN TOÀN MẬT MÃ, lấy từ nguồn entropy của HĐH.
-/// KHÔNG dùng thuật toán giả ngẫu nhiên (rand::random) — xem giải thích bên dưới.
-fn sinh_token_bi_mat() -> std::io::Result<[u8; 32]> {
+/// KHÔNG dùng PRNG không-mật-mã seed bằng thời gian — xem giải thích bên dưới.
+fn generate_secret_token() -> std::io::Result<[u8; 32]> {
     let mut token = [0u8; 32];
     // /dev/urandom là nguồn ngẫu nhiên mật mã do nhân HĐH nuôi bằng entropy
     // phần cứng (nhiễu nhiệt, thời điểm ngắt...). Không thể đoán trước.
@@ -438,9 +497,9 @@ fn sinh_token_bi_mat() -> std::io::Result<[u8; 32]> {
 }
 
 #[test]
-fn token_dung_32_byte_va_khac_nhau() {
-    let a = sinh_token_bi_mat().unwrap();
-    let b = sinh_token_bi_mat().unwrap();
+fn token_is_32_bytes_and_unique() {
+    let a = generate_secret_token().unwrap();
+    let b = generate_secret_token().unwrap();
     assert_eq!(a.len(), 32);
     // Hai lần sinh gần như chắc chắn khác nhau (xác suất trùng ~ 1/2^256).
     assert_ne!(a, b);
@@ -451,13 +510,15 @@ fn token_dung_32_byte_va_khac_nhau() {
 
 **Vì sao dùng ngẫu nhiên yếu là lỗ hổng nghiêm trọng (bối cảnh OSCP):**
 
-Một bộ sinh giả ngẫu nhiên thường (như `rand::random` cấu hình mặc định, hay `rand()` của C) là **thuật toán tất định**: từ một "hạt giống" (seed), nó sinh ra một chuỗi số *hoàn toàn xác định*. Nếu kẻ tấn công đoán được seed, chúng tái tạo được **toàn bộ** chuỗi token.
+Một bộ sinh giả ngẫu nhiên thường (như `rand()` của C, `java.util.Random`, hay `SmallRng`/`StdRng::seed_from_u64(...)` của crate `rand` khi bạn tự seed bằng thời gian) là **thuật toán tất định**: từ một "hạt giống" (seed), nó sinh ra một chuỗi số *hoàn toàn xác định*. Nếu kẻ tấn công đoán được seed, chúng tái tạo được **toàn bộ** chuỗi token.
 
 Điều chết người là seed thường lấy từ những nguồn **đoán được**:
 - Thời gian hệ thống (giây kể từ 1970) — không gian tìm kiếm rất nhỏ.
 - ID tiến trình — vài chục nghìn khả năng.
 
 Trong một bài OSCP, nếu máy chủ sinh token phiên (session token) hay token đặt-lại-mật-khẩu bằng bộ giả ngẫu nhiên seed theo thời gian, kẻ tấn công chỉ cần **dò seed quanh thời điểm đăng nhập** để tái tạo token phiên của quản trị viên — chiếm phiên mà *không cần biết mật khẩu*. Đây là một lớp lỗ hổng có thật, được xếp hạng CWE-338 (dùng PRNG yếu về mật mã).
+
+(Công bằng mà nói: `rand::random()` của crate `rand` hiện nay dùng `ThreadRng` — một CSPRNG được seed từ hệ điều hành — nên không thuộc nhóm yếu này; cái bẫy nằm ở PRNG "nhanh" và ở việc tự seed bằng giá trị đoán được.)
 
 Nguồn mật mã (`/dev/urandom`) khác về bản chất: nhân HĐH nuôi nó bằng **entropy phần cứng** (nhiễu nhiệt, thời điểm các ngắt) mà không ai đoán hay tái tạo được — kể cả khi biết mọi token đã sinh trước đó, cũng không suy ra được token tiếp theo. Quy tắc sắt: **bất cứ thứ gì làm bí mật — khóa, token, salt, IV — phải sinh từ nguồn mật mã, không bao giờ từ PRNG thường.**
 </details>

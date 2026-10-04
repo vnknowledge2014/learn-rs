@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -14,6 +13,12 @@ pub struct ProductEntity {
 /// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
 pub struct SharedAppState {
     pub catalog: Mutex<HashMap<u64, ProductEntity>>,
+}
+
+impl Default for SharedAppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SharedAppState {
@@ -43,86 +48,130 @@ impl SharedAppState {
     }
 }
 
-/// Mô phỏng Bộ mã hóa nhị phân Protocol Buffers chuẩn gRPC (gRPC Binary Wire Encoding)
+/// Lỗi giải mã gói tin nhị phân
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodeError {
+    Truncated,     // gói bị cắt cụt giữa chừng
+    VarintTooLong, // varint dài quá 10 byte
+    UnsupportedWireType(u8),
+    InvalidUtf8,
+}
+
+/// Bộ mã hóa nhị phân theo ĐÚNG định dạng dây (wire format) của Protocol Buffers
+/// cho thông điệp:
+///   message Product { uint64 id = 1; uint64 price_cents = 2; bool in_stock = 3; string name = 4; }
+/// Mỗi trường là cặp (khóa, giá trị); khóa = (số_trường << 3) | kiểu_dây, cũng mã bằng varint.
 pub struct ProtobufWireCodec;
 
 impl ProtobufWireCodec {
-    /// Mã hóa sản phẩm thành chuỗi byte nhị phân siêu nén
-    /// Tag 1: ID (8B) | Tag 2: Price (8B) | Tag 3: InStock (1B) | Tag 4: Name (Length + Bytes)
+    const WIRE_VARINT: u8 = 0;
+    const WIRE_LEN: u8 = 2;
+
+    /// Varint: mỗi byte chứa 7 bit dữ liệu, bit cao = "còn byte nữa".
+    /// Số nhỏ tốn ít byte: 101 -> 1 byte, 550_000 -> 3 byte (thay vì 8 byte cố định).
+    fn put_varint(mut n: u64, out: &mut Vec<u8>) {
+        while n >= 0x80 {
+            out.push((n as u8) | 0x80);
+            n >>= 7;
+        }
+        out.push(n as u8);
+    }
+
+    fn get_varint(bytes: &[u8], pos: &mut usize) -> Result<u64, DecodeError> {
+        let mut result = 0u64;
+        for shift in (0..70).step_by(7) {
+            let byte = *bytes.get(*pos).ok_or(DecodeError::Truncated)?;
+            *pos += 1;
+            result |= u64::from(byte & 0x7F) << shift;
+            if byte & 0x80 == 0 {
+                return Ok(result);
+            }
+        }
+        Err(DecodeError::VarintTooLong)
+    }
+
+    fn put_key(field: u64, wire_type: u8, out: &mut Vec<u8>) {
+        Self::put_varint((field << 3) | u64::from(wire_type), out);
+    }
+
+    /// Mã hóa sản phẩm thành chuỗi byte nhị phân
     pub fn encode_product(product: &ProductEntity) -> Vec<u8> {
         let mut bytes = Vec::new();
 
-        // Field 1: ID
-        bytes.push(0x08); // Tag 1, Type: Varint
-        bytes.extend_from_slice(&product.id.to_le_bytes());
+        Self::put_key(1, Self::WIRE_VARINT, &mut bytes); // 0x08
+        Self::put_varint(product.id, &mut bytes);
 
-        // Field 2: Price Cents
-        bytes.push(0x10); // Tag 2, Type: Varint
-        bytes.extend_from_slice(&product.price_cents.to_le_bytes());
+        Self::put_key(2, Self::WIRE_VARINT, &mut bytes); // 0x10
+        Self::put_varint(product.price_cents, &mut bytes);
 
-        // Field 3: In Stock
-        bytes.push(0x18); // Tag 3, Type: Varint
-        bytes.push(if product.in_stock { 1 } else { 0 });
+        Self::put_key(3, Self::WIRE_VARINT, &mut bytes); // 0x18
+        Self::put_varint(u64::from(product.in_stock), &mut bytes);
 
-        // Field 4: Name String
-        bytes.push(0x22); // Tag 4, Type: Length-delimited
-        let name_bytes = product.name.as_bytes();
-        bytes.push(name_bytes.len() as u8);
-        bytes.extend_from_slice(name_bytes);
+        // Chuỗi: kiểu "length-delimited" = độ dài (varint, không giới hạn 255) + các byte
+        Self::put_key(4, Self::WIRE_LEN, &mut bytes); // 0x22
+        Self::put_varint(product.name.len() as u64, &mut bytes);
+        bytes.extend_from_slice(product.name.as_bytes());
 
         bytes
     }
 
-    /// Giải mã nhị phân không sao chép từ chuỗi byte gRPC
-    pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, &'static str> {
-        if bytes.len() < 20 {
-            return Err("Kich thuoc byte protobuf qua ngan!");
-        }
+    /// Giải mã gói tin. Mọi chỗ đọc đều kiểm biên: gói hỏng/cắt cụt trả `Err`,
+    /// KHÔNG bao giờ panic (dữ liệu từ mạng là dữ liệu không tin được).
+    /// Trường lạ được bỏ qua — đúng tinh thần tương thích xuôi/ngược của Protobuf.
+    pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, DecodeError> {
+        let mut product = ProductEntity {
+            id: 0,
+            name: String::new(),
+            price_cents: 0,
+            in_stock: false,
+        };
 
-        let mut id = 0u64;
-        let mut price = 0u64;
-        let mut in_stock = false;
-        let mut name = String::new();
-
-        let mut idx = 0;
-        while idx < bytes.len() {
-            let tag = bytes[idx];
-            idx += 1;
-
-            match tag {
-                0x08 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    id = u64::from_le_bytes(b);
-                    idx += 8;
+        let mut pos = 0;
+        while pos < bytes.len() {
+            let key = Self::get_varint(bytes, &mut pos)?;
+            let (field, wire_type) = (key >> 3, (key & 0x7) as u8);
+            match wire_type {
+                Self::WIRE_VARINT => {
+                    let value = Self::get_varint(bytes, &mut pos)?;
+                    match field {
+                        1 => product.id = value,
+                        2 => product.price_cents = value,
+                        3 => product.in_stock = value != 0,
+                        _ => {} // trường lạ: bỏ qua
+                    }
                 }
-                0x10 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    price = u64::from_le_bytes(b);
-                    idx += 8;
+                Self::WIRE_LEN => {
+                    let len = Self::get_varint(bytes, &mut pos)? as usize;
+                    let end = pos.checked_add(len).ok_or(DecodeError::Truncated)?;
+                    let payload = bytes.get(pos..end).ok_or(DecodeError::Truncated)?;
+                    pos = end;
+                    if field == 4 {
+                        product.name = std::str::from_utf8(payload)
+                            .map_err(|_| DecodeError::InvalidUtf8)?
+                            .to_string();
+                    }
                 }
-                0x18 => {
-                    in_stock = bytes[idx] == 1;
-                    idx += 1;
-                }
-                0x22 => {
-                    let len = bytes[idx] as usize;
-                    idx += 1;
-                    name = String::from_utf8_lossy(&bytes[idx..idx + len]).to_string();
-                    idx += len;
-                }
-                _ => break,
+                other => return Err(DecodeError::UnsupportedWireType(other)),
             }
         }
 
-        Ok(ProductEntity {
-            id,
-            name,
-            price_cents: price,
-            in_stock,
-        })
+        Ok(product)
     }
+}
+
+/// Thoát ký tự đặc biệt khi nhúng chuỗi vào JSON (nếu không, tên chứa `"` sẽ phá JSON)
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Trình điều phối dịch vụ mô phỏng cách Axum Router định tuyến Type-Safe
@@ -139,17 +188,20 @@ impl TypeSafeServiceRouter {
     pub fn handle_rest_get_product(&self, product_id: u64) -> Result<String, &'static str> {
         let catalog = self.state.catalog.lock().unwrap();
         if let Some(prod) = catalog.get(&product_id) {
-            // Giả lập trả về chuỗi định dạng JSON
+            // Giả lập trả về chuỗi định dạng JSON (thực tế: serde_json)
             Ok(format!(
                 r#"{{"id":{},"name":"{}","price_cents":{},"in_stock":{}}}"#,
-                prod.id, prod.name, prod.price_cents, prod.in_stock
+                prod.id,
+                json_escape(&prod.name),
+                prod.price_cents,
+                prod.in_stock
             ))
         } else {
-            Err("404 Not Found: Low tim thay san pham")
+            Err("404 Not Found: Không tìm thấy sản phẩm")
         }
     }
 
-    /// Xử lý yêu cầu dạng gRPC nhị phân siêu tốc
+    /// Xử lý yêu cầu dạng gRPC nhị phân
     pub fn handle_grpc_get_product(&self, product_id: u64) -> Result<Vec<u8>, &'static str> {
         let catalog = self.state.catalog.lock().unwrap();
         if let Some(prod) = catalog.get(&product_id) {
@@ -163,7 +215,7 @@ impl TypeSafeServiceRouter {
 
 fn main() {
     println!("==================================================================");
-    println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
+    println!("   DỊCH VỤ THÔNG LƯỢNG CAO: AXUM REST & TONIC GRPC TỐI ƯU RUST    ");
     println!("==================================================================");
 
     // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
@@ -171,23 +223,23 @@ fn main() {
     let router = TypeSafeServiceRouter::new(shared_state);
 
     // 2. Thử nghiệm gọi cổng REST API (JSON Payload)
-    println!("\n[1] Xu ly qua cong REST API (JSON Text Format):");
+    println!("\n[1] Xử lý qua cổng REST API (JSON Text Format):");
     let rest_response = router.handle_rest_get_product(101).unwrap();
-    println!("    - Payload REST JSON nhan duoc: {}", rest_response);
+    println!("    - Payload REST JSON nhận được: {}", rest_response);
     println!(
-        "    - Dung luong payload JSON    : {} bytes",
+        "    - Dung lượng payload JSON    : {} bytes",
         rest_response.len()
     );
 
     // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
-    println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
+    println!("\n[2] Xử lý qua cổng gRPC nội bộ (Protobuf Binary Format):");
     let grpc_binary = router.handle_grpc_get_product(101).unwrap();
     println!(
-        "    - Payload gRPC Binary nhan duoc (Hex): {:02X?}",
+        "    - Payload gRPC Binary nhận được (Hex): {:02X?}",
         grpc_binary
     );
     println!(
-        "    - Dung luong payload gRPC             : {} bytes",
+        "    - Dung lượng payload gRPC             : {} bytes",
         grpc_binary.len()
     );
 
@@ -196,20 +248,89 @@ fn main() {
         / rest_response.len() as f64)
         * 100.0;
     println!(
-        "    ==> gRPC Protobuf tiet kiem duoc: {:.1}% bang thong mang!",
+        "    ==> Protobuf nhỏ hơn JSON {:.1}% với bản ghi này (tên trường không đi theo gói tin)",
         savings
     );
 
-    // 4. Giải mã ngược gói tin gRPC (Zero-Copy Validation)
-    println!("\n[3] Phuc hoi thuc the tu goi tin nhi phan gRPC:");
+    // 4. Giải mã ngược gói tin gRPC
+    println!("\n[3] Phục hồi thực thể từ gói tin nhị phân gRPC:");
     let decoded = ProtobufWireCodec::decode_product(&grpc_binary).unwrap();
-    println!("    - ID San pham : {}", decoded.id);
-    println!("    - Ten San pham: {}", decoded.name);
-    println!("    - Gia tien    : {}d", decoded.price_cents);
-    println!("    - Con hang    : {}", decoded.in_stock);
+    println!("    - ID sản phẩm : {}", decoded.id);
+    println!("    - Tên sản phẩm: {}", decoded.name);
+    println!("    - Giá tiền    : {}đ", decoded.price_cents);
+    println!("    - Còn hàng    : {}", decoded.in_stock);
     assert_eq!(decoded.id, 101);
 
+    // 5. Gói tin hỏng không làm sập dịch vụ
+    let truncated = &grpc_binary[..grpc_binary.len() - 3];
+    println!(
+        "\n[4] Gói tin bị cắt cụt -> {:?}",
+        ProtobufWireCodec::decode_product(truncated)
+    );
+
     println!("\n==================================================================");
-    println!("   XAC NHAN: MO HINH HYBRID AXUM & TONIC SAN SANG VAN HANH!     ");
+    println!("   XÁC NHẬN: MÔ HÌNH HYBRID AXUM & TONIC SẴN SÀNG VẬN HÀNH!     ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(name: &str) -> ProductEntity {
+        ProductEntity {
+            id: 150,
+            name: name.to_string(),
+            price_cents: 550_000,
+            in_stock: true,
+        }
+    }
+
+    #[test]
+    fn matches_official_protobuf_bytes() {
+        // Ví dụ kinh điển trong tài liệu Protobuf: trường 1 = 150 -> 08 96 01
+        let bytes = ProtobufWireCodec::encode_product(&sample("ab"));
+        assert_eq!(&bytes[..3], &[0x08, 0x96, 0x01]);
+        assert_eq!(&bytes[bytes.len() - 4..], &[0x22, 0x02, b'a', b'b']);
+    }
+
+    #[test]
+    fn roundtrip_including_long_names() {
+        // Tên > 255 byte: bản cũ ghi độ dài bằng 1 byte `len as u8` nên hỏng gói tin
+        for name in ["Bàn phím cơ", &"x".repeat(300)] {
+            let p = sample(name);
+            let bytes = ProtobufWireCodec::encode_product(&p);
+            assert_eq!(ProtobufWireCodec::decode_product(&bytes), Ok(p));
+        }
+    }
+
+    #[test]
+    fn corrupted_input_is_an_error_not_a_panic() {
+        let bytes = ProtobufWireCodec::encode_product(&sample("hello"));
+        for cut in 0..bytes.len() {
+            // Mọi tiền tố đều không được panic
+            let _ = ProtobufWireCodec::decode_product(&bytes[..cut]);
+        }
+        assert_eq!(
+            ProtobufWireCodec::decode_product(&bytes[..bytes.len() - 1]),
+            Err(DecodeError::Truncated)
+        );
+        assert_eq!(
+            ProtobufWireCodec::decode_product(&[0x0D]), // kiểu dây 5 (fixed32)
+            Err(DecodeError::UnsupportedWireType(5))
+        );
+    }
+
+    #[test]
+    fn json_name_is_escaped() {
+        let state = Arc::new(SharedAppState::new());
+        state
+            .catalog
+            .lock()
+            .unwrap()
+            .insert(7, sample(r#"Sách "Rust""#));
+        let router = TypeSafeServiceRouter::new(state);
+        let json = router.handle_rest_get_product(7).unwrap();
+        assert!(json.contains(r#""name":"Sách \"Rust\"""#));
+    }
 }

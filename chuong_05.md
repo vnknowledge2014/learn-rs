@@ -65,11 +65,11 @@ Bộ nhớ Heap giống như một bãi đỗ xe rộng mênh mông ngoài trờ
 
 Trong Rust, hàm được khai báo bằng từ khóa `fn`:
 ```rust
-fn sum_all(so_a: i32, so_b: i32) -> i32 {
-    so_a + so_b // Không có dấu chấm phẩy: Đây là biểu thức trả về giá trị!
+fn sum_all(a: i32, b: i32) -> i32 {
+    a + b // Không có dấu chấm phẩy: Đây là biểu thức trả về giá trị!
 }
 ```
-- **Bắt buộc chú thích kiểu tham số**: Rust yêu cầu bạn phải ghi rõ kiểu dữ liệu của từng tham số (`so_a: i32`). Điều này giúp trình biên dịch kiểm tra tính đúng đắn trên toàn bộ dự án mà không cần phải chạy thử.
+- **Bắt buộc chú thích kiểu tham số**: Rust yêu cầu bạn phải ghi rõ kiểu dữ liệu của từng tham số (`a: i32`). Điều này giúp trình biên dịch kiểm tra tính đúng đắn trên toàn bộ dự án mà không cần phải chạy thử.
 - **Mũi tên kiểu trả về `-> Kiểu`**: Nếu hàm có sinh ra kết quả, bạn dùng dấu mũi tên `->` theo sau là kiểu dữ liệu.
 - **Biểu thức trả về (Implicit Return)**: Dòng cuối cùng của thân hàm nếu **không có dấu chấm phẩy `;`** sẽ được Rust coi là giá trị trả về của hàm. Bạn vẫn có thể dùng từ khóa `return` rõ ràng khi muốn thoát hàm sớm giữa chừng, nhưng phong cách viết không dùng `return` ở cuối hàm là chuẩn mực thanh lịch (idiomatic) của cộng đồng Rust.
 
@@ -82,7 +82,7 @@ Mỗi khi một hàm được gọi, hệ thống sẽ cấp phát một vùng n
 ```
   ĐỈNH STACK ▲
              │  ┌────────────────────────────────────────┐
-             │  │ Stack Frame của hàm con: tinh_bmi()    │ <── Đang thực thi
+             │  │ Stack Frame của hàm con: compute_bmi() │ <── Đang thực thi
              │  ├────────────────────────────────────────┤
              │  │ Stack Frame của hàm cha: main()        │ <── Tạm dừng chờ
              │  └────────────────────────────────────────┘
@@ -104,7 +104,7 @@ Một trong những ví dụ điển hình nhất minh họa mối quan hệ gi�
 ```rust
 let greeting = String::from("Xin chào");
 ```
-Dưới góc nhìn phần cứng, dữ liệu của biến `loi_chao` được tổ chức như sau:
+Dưới góc nhìn phần cứng, dữ liệu của biến `greeting` được tổ chức như sau:
 
 ```
     BỘ NHỚ STACK (Chiếm 24 bytes)                  BỘ NHỚ HEAP (Cấp phát động)
@@ -129,11 +129,11 @@ Dưới góc nhìn phần cứng, dữ liệu của biến `loi_chao` được t
 - **Phần nằm trên Heap**: Dãy byte thực tế chứa toàn bộ ký tự của dòng chữ.
 
 > **Điểm cực kỳ quan trọng cho người Việt — `len` đếm BYTE, không đếm CHỮ CÁI:**
-> Chuỗi `"Xin chào"` chỉ có **8 chữ cái**, nhưng `loi_chao.len()` trả về **9**!
+> Chuỗi `"Xin chào"` chỉ có **8 chữ cái**, nhưng `greeting.len()` trả về **9**!
 > Lý do: Rust lưu chuỗi theo chuẩn **UTF-8**. Các chữ cái ASCII (`X`, `i`, `n`, dấu cách, `c`, `h`, `o`) mỗi chữ chiếm đúng 1 byte,
 > nhưng chữ `'à'` là ký tự Unicode nên chiếm tới **2 byte**. Tổng cộng: $7 \times 1 + 1 \times 2 = 9$ byte.
-> - Muốn đếm **số byte**: dùng `chuoi.len()`.
-> - Muốn đếm **số chữ cái thật sự**: dùng `chuoi.chars().count()`.
+> - Muốn đếm **số byte**: dùng `s.len()`.
+> - Muốn đếm **số chữ cái thật sự**: dùng `s.chars().count()`.
 >
 > ```rust
 > let greeting = String::from("Xin chào");
@@ -155,18 +155,19 @@ Chương trình hoàn chỉnh dưới đây minh họa việc tách mã thành c
 use std::io; // Nhập khẩu module Nhập/Xuất chuẩn của Rust
 
 // 1. Hàm thuần túy: Toàn bộ tham số và kết quả đều nằm gọn trên STACK (kích thước f32 cố định)
-fn bmi(can_nang_kg: f32, chieu_cao_m: f32) -> f32 {
+fn compute_bmi(weight_kg: f32, height_m: f32) -> f32 {
     // Biểu thức tính toán trả về kết quả ngầm định (không cần từ khóa return hay dấu chấm phẩy)
-    can_nang_kg / (chieu_cao_m * chieu_cao_m)
+    weight_kg / (height_m * height_m)
 }
 
 // 2. Hàm phân tích trạng thái thể lực: Trả về một chuỗi ký tự cố định (&'static str)
-fn mark_price_state(bmi: f32) -> &'static str {
+fn body_status(bmi: f32) -> &'static str {
+    // Ngưỡng theo WHO: < 18.5 | 18.5–< 25 | 25–< 30 | ≥ 30
     if bmi < 18.5 {
         "Thiếu cân (cần bồi dưỡng thêm dinh dưỡng)"
-    } else if bmi < 24.9 {
+    } else if bmi < 25.0 {
         "Thể trạng lý tưởng (rất cân đối, chúc mừng bạn!)"
-    } else if bmi < 29.9 {
+    } else if bmi < 30.0 {
         "Thừa cân nhẹ (nên tăng cường vận động thể thao)"
     } else {
         "Béo phì (cần điều chỉnh chế độ ăn uống và tập luyện)"
@@ -177,8 +178,8 @@ fn mark_price_state(bmi: f32) -> &'static str {
 // Dùng #[allow(dead_code)] để hàm main có thể chạy mượt mà với dữ liệu mẫu tĩnh trong các môi trường kiểm thử tự động,
 // đồng thời người học vẫn có thể gọi hàm này khi thực hành tương tác trên máy tính cá nhân.
 #[allow(dead_code)]
-fn parse_float(cau_hoi: &str) -> f32 {
-    println!("{}", cau_hoi);
+fn read_f32(prompt: &str) -> f32 {
+    println!("{}", prompt);
 
     // Chuỗi co giãn được cấp phát trên bãi đỗ HEAP để hứng các ký tự người dùng gõ
     let mut input_buffer = String::new();
@@ -201,18 +202,19 @@ fn main() {
     println!("     ỨNG DỤNG ĐO CHỈ SỐ SỨC KHỎE THỂ HÌNH CHUẨN QUỐC TẾ     ");
     println!("============================================================");
 
-    // Lấy thông số cân nặng và chiều cao từ người dùng
-    // Trong môi trường tự động không có người gõ, hàm sẽ dùng giá trị mặc định an toàn
-    let can_heavy = 68.5; // Đơn vị: kg
-    let height = 1.72; // Đơn vị: mét
+    // Dùng dữ liệu mẫu cố định để chương trình chạy được cả khi không có người gõ
+    // (ví dụ trong CI). Muốn nhập thật từ bàn phím, thay bằng:
+    //     let weight_kg = read_f32("Nhập cân nặng (kg):");
+    let weight_kg = 68.5; // Đơn vị: kg
+    let height_m = 1.72; // Đơn vị: mét
 
     println!("Thông số kiểm tra thể lực mẫu:");
-    println!("- Cân nặng : {} kg (lưu trữ trên Stack)", can_heavy);
-    println!("- Chiều cao: {} m  (lưu trữ trên Stack)", height);
+    println!("- Cân nặng : {} kg (lưu trữ trên Stack)", weight_kg);
+    println!("- Chiều cao: {} m  (lưu trữ trên Stack)", height_m);
 
     // Gọi hàm tính toán BMI
-    let bmi = bmi(can_heavy, height);
-    let advice = mark_price_state(bmi);
+    let bmi = compute_bmi(weight_kg, height_m);
+    let advice = body_status(bmi);
 
     println!("------------------------------------------------------------");
     println!("Chỉ số BMI của bạn : {:.2}", bmi);
@@ -220,11 +222,43 @@ fn main() {
     println!("------------------------------------------------------------");
 
     // Khám phá kích thước của đối tượng String (Stack 24 bytes vs Heap)
-    let mo_ta_chi_tiet = String::from("Báo cáo sức khỏe cá nhân năm 2026");
+    let description = String::from("Báo cáo sức khỏe cá nhân năm 2026");
     println!("Kiểm tra ô nhớ của chuỗi mô tả:");
-    println!("- Kích thước thẻ quản lý trên STACK: {} bytes", std::mem::size_of_val(&mo_ta_chi_tiet));
-    println!("- Độ dài chuỗi nội dung trên HEAP  : {} bytes", mo_ta_chi_tiet.len());
-    println!("- Sức chứa bãi đỗ xe đã cấp phát   : {} bytes", mo_ta_chi_tiet.capacity());
+    println!(
+        "- Kích thước thẻ quản lý trên STACK: {} bytes",
+        std::mem::size_of_val(&description)
+    );
+    println!(
+        "- Độ dài chuỗi nội dung trên HEAP  : {} bytes",
+        description.len()
+    );
+    println!(
+        "- Sức chứa bãi đỗ xe đã cấp phát   : {} bytes",
+        description.capacity()
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bmi_formula() {
+        // 68.5 / (1.72 * 1.72) ≈ 23.15
+        let bmi = compute_bmi(68.5, 1.72);
+        assert!((bmi - 23.15).abs() < 0.01);
+    }
+
+    #[test]
+    fn body_status_thresholds_have_no_gaps() {
+        // Các mốc 24.95 và 29.95 từng rơi nhầm nhóm khi ngưỡng viết là 24.9 / 29.9.
+        assert!(body_status(18.4).starts_with("Thiếu cân"));
+        assert!(body_status(18.5).starts_with("Thể trạng lý tưởng"));
+        assert!(body_status(24.95).starts_with("Thể trạng lý tưởng"));
+        assert!(body_status(25.0).starts_with("Thừa cân"));
+        assert!(body_status(29.95).starts_with("Thừa cân"));
+        assert!(body_status(30.0).starts_with("Béo phì"));
+    }
 }
 ```
 
@@ -238,9 +272,9 @@ Dưới đây là các lỗi kinh điển khi làm việc với hàm và các ki
 |---|---|---|---|
 | **E0308** | `mismatched types: expected 'f32', found '()'` | Bạn vô tình thêm dấu chấm phẩy `;` vào dòng cuối cùng của hàm có kiểu trả về, khiến Rust hiểu đó là câu lệnh sinh ra kiểu rỗng `()`. | Xóa dấu chấm phẩy `;` ở dòng cuối cùng của hàm để biến nó thành biểu thức trả về giá trị. |
 | **E0061** | `this function takes 2 arguments but 1 argument was supplied` | Bạn gọi hàm với số lượng tham số ít hơn hoặc nhiều hơn so với định nghĩa ban đầu. | Kiểm tra lại định nghĩa của hàm và truyền đúng, đủ số lượng tham số theo yêu cầu. |
-| **E0425** | `cannot find value 'io' in this scope` | Bạn sử dụng `io::stdin()` nhưng quên chưa nhập khẩu thư viện ở đầu tệp. | Thêm dòng `use std::io;` vào dòng đầu tiên của tệp mã nguồn. |
-| **E0282 / E0284** | `type annotations needed: cannot infer type of the type parameter 'F'` | Gọi `.parse()` mà không chỉ định kiểu số đích cần chuyển đổi, khiến trình biên dịch không biết bạn muốn biến chuỗi thành `f32`, `i32` hay `u64`. | Sử dụng cú pháp Turbofish `.parse::<f32>()` hoặc khai báo tường minh kiểu dữ liệu cho biến nhận: `let x: f32 = ...`. |
-| **Lỗi Runtime (Panic)** | `ParseFloatError { kind: Invalid }` | Quên gọi `.trim()` trước khi `.parse()`, khiến chuỗi nhận từ bàn phím vẫn còn dính ký tự xuống dòng `\n`. Lỗi này không bị chặn lúc biên dịch mà làm sập chương trình lúc chạy khi gọi `.expect()`. | Luôn viết theo chuỗi phương thức chuẩn: `chuoi.trim().parse::<f32>()`. |
+| **E0433** | `cannot find module or crate 'io' in this scope` (kèm `use of unresolved module or unlinked crate 'io'`) | Bạn sử dụng đường dẫn `io::stdin()` nhưng quên chưa nhập khẩu module `io` ở đầu tệp, nên trình biên dịch không giải được đường dẫn `io::...`. | Thêm dòng `use std::io;` vào dòng đầu tiên của tệp mã nguồn. |
+| **E0284** | `type annotations needed` (kèm `cannot infer type of the type parameter 'F' declared on the method 'parse'`) | Gọi `.parse()` mà không chỉ định kiểu số đích cần chuyển đổi, khiến trình biên dịch không biết bạn muốn biến chuỗi thành `f32`, `i32` hay `u64`. | Sử dụng cú pháp Turbofish `.parse::<f32>()` hoặc khai báo tường minh kiểu dữ liệu cho biến nhận: `let x: f32 = ...`. |
+| **Lỗi Runtime (Panic)** | `ParseFloatError { kind: Invalid }` | Quên gọi `.trim()` trước khi `.parse()`, khiến chuỗi nhận từ bàn phím vẫn còn dính ký tự xuống dòng `\n`. Lỗi này không bị chặn lúc biên dịch mà làm sập chương trình lúc chạy khi gọi `.expect()`. | Luôn viết theo chuỗi phương thức chuẩn: `input.trim().parse::<f32>()`. |
 
 ---
 
@@ -253,7 +287,7 @@ Dưới đây là các lỗi kinh điển khi làm việc với hàm và các ki
 4. **Bản chất của `String`**: Một cấu trúc gồm 3 trường trên Stack (Con trỏ `ptr`, Độ dài `len`, Sức chứa `capacity`) quản lý một mảng byte thực sự nằm ngoài bãi đỗ Heap.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập thực hành 1**: Viết một hàm có tên là `tinh_chu_vi_dien_tich_hcn(chieu_dai: f32, chieu_rong: f32) -> (f32, f32)` nhận vào chiều dài và chiều rộng của một hình chữ nhật, sau đó trả về một bộ đôi (Tuple) gồm cả chu vi và diện tích của hình chữ nhật đó.
+1. **Bài tập thực hành 1**: Viết một hàm có tên là `rectangle_perimeter_area(length: f32, width: f32) -> (f32, f32)` nhận vào chiều dài và chiều rộng của một hình chữ nhật, sau đó trả về một bộ đôi (Tuple) gồm cả chu vi và diện tích của hình chữ nhật đó.
 2. **Bài tập tư duy 2**: Hãy chỉ ra các biến sau đây nằm ở vùng nhớ nào (Stack hay Heap):
    - `let a: i64 = 1000;`
    - `let b: bool = false;`
@@ -267,7 +301,7 @@ Dưới đây là các lỗi kinh điển khi làm việc với hàm và các ki
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Trả về nhiều giá trị bằng cách gói vào một tuple `(chu_vi, dien_tich)`. Người gọi tách ra bằng `let (cv, dt) = ...`.
+Trả về nhiều giá trị bằng cách gói vào một tuple `(perimeter, area)`. Người gọi tách ra bằng `let (p, a) = ...`.
 </details>
 
 <details>
@@ -275,23 +309,23 @@ Trả về nhiều giá trị bằng cách gói vào một tuple `(chu_vi, dien_
 
 ```rust
 // Trả về nhiều giá trị cùng lúc bằng cách gói vào một tuple.
-fn tinh_chu_vi_dien_tich_hcn(chieu_dai: f32, chieu_rong: f32) -> (f32, f32) {
-    let chu_vi = 2.0 * (chieu_dai + chieu_rong);
-    let dien_tich = chieu_dai * chieu_rong;
-    (chu_vi, dien_tich)   // dòng cuối không dấu ; -> đây là giá trị trả về
+fn rectangle_perimeter_area(length: f32, width: f32) -> (f32, f32) {
+    let perimeter = 2.0 * (length + width);
+    let area = length * width;
+    (perimeter, area) // dòng cuối không dấu ; -> đây là giá trị trả về
 }
 
 fn main() {
-    // Tách tuple ngay khi nhận: cv lấy phần tử 0, dt lấy phần tử 1.
-    let (cv, dt) = tinh_chu_vi_dien_tich_hcn(5.0, 3.0);
-    println!("Chu vi = {cv}, Diện tích = {dt}");
+    // Tách tuple ngay khi nhận: p lấy phần tử 0, a lấy phần tử 1.
+    let (p, a) = rectangle_perimeter_area(5.0, 3.0);
+    println!("Chu vi = {p}, Diện tích = {a}");
 }
 
 #[test]
-fn hcn_5x3() {
-    let (cv, dt) = tinh_chu_vi_dien_tich_hcn(5.0, 3.0);
-    assert_eq!(cv, 16.0);   // 2*(5+3)
-    assert_eq!(dt, 15.0);   // 5*3
+fn rectangle_5x3() {
+    let (p, a) = rectangle_perimeter_area(5.0, 3.0);
+    assert_eq!(p, 16.0); // 2*(5+3)
+    assert_eq!(a, 15.0); // 5*3
 }
 ```
 
@@ -343,23 +377,25 @@ Công thức thẳng: `F = C * 1.8 + 32`. Định dạng 1 chữ số thập ph�
 
 ```rust
 // Đổi độ C sang độ F. Dùng f64 cho đủ chính xác.
-fn c_sang_f(c: f64) -> f64 {
+fn celsius_to_fahrenheit(c: f64) -> f64 {
     c * 1.8 + 32.0
 }
 
 fn main() {
     let c = 37.0;
     // {:.1} = định dạng đúng 1 chữ số sau dấu phẩy.
-    println!("{c:.1}°C = {:.1}°F", c_sang_f(c));
+    println!("{c:.1}°C = {:.1}°F", celsius_to_fahrenheit(c));
 }
 
 #[test]
-fn cac_moc_quen_thuoc() {
-    assert_eq!(c_sang_f(0.0), 32.0);      // nước đá tan
-    assert_eq!(c_sang_f(100.0), 212.0);   // nước sôi
-    assert_eq!(c_sang_f(37.0), 98.6);     // thân nhiệt người
+fn familiar_reference_points() {
+    assert_eq!(celsius_to_fahrenheit(0.0), 32.0);      // nước đá tan
+    assert_eq!(celsius_to_fahrenheit(100.0), 212.0);   // nước sôi
+    // 37 * 1.8 + 32 ra 98.60000000000001 do sai số dấu phẩy động (chương 03),
+    // nên so sánh với dung sai thay vì assert_eq! tuyệt đối.
+    assert!((celsius_to_fahrenheit(37.0) - 98.6).abs() < 1e-9); // thân nhiệt người
 }
 ```
 
-Ba mốc trong test là cách **tự kiểm công thức** không cần máy tính: nước đá tan (0°C = 32°F) và nước sôi (100°C = 212°F) là hai điểm ai cũng nhớ, nếu hàm cho đúng cả hai thì công thức tuyến tính chắc chắn đúng ở mọi điểm giữa. Đây là thói quen tốt: chọn vài đầu vào mà bạn *đã biết* đáp án để chốt rằng code đúng, thay vì tin suông.
+Ba mốc trong test là cách **tự kiểm công thức** không cần máy tính: nước đá tan (0°C = 32°F) và nước sôi (100°C = 212°F) là hai điểm ai cũng nhớ, nếu hàm cho đúng cả hai thì công thức tuyến tính chắc chắn đúng ở mọi điểm giữa. Mốc thứ ba còn dạy thêm một bài học: `37.0 * 1.8 + 32.0` **không** cho ra đúng `98.6` mà là `98.60000000000001` — vì vậy với số thực, hãy so sánh bằng dung sai (`(x - y).abs() < ε`) chứ đừng dùng `==`. Đây là thói quen tốt: chọn vài đầu vào mà bạn *đã biết* đáp án để chốt rằng code đúng, thay vì tin suông.
 </details>

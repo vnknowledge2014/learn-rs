@@ -59,7 +59,7 @@ Rust bảo vệ bạn bằng một lời răn đe bất biến: **ĐÃ CÓ NGƯ�
 ### 1. Bản chất phần cứng của một Tham chiếu (Reference)
 
 Dưới góc nhìn ô nhớ, một tham chiếu `&s` thực chất là gì?
-- Nó là một **Con trỏ (Pointer)** có kích thước cố định bằng 8 bytes (trên hệ điều hành 64-bit).
+- Nó là một **Con trỏ (Pointer)** có kích thước cố định bằng 8 bytes (trên hệ điều hành 64-bit) khi trỏ tới một kiểu có kích thước biết trước (`&i32`, `&String`...). Riêng tham chiếu tới lát cắt (`&str`, `&[T]`) là **con trỏ béo** 16 bytes, vì mang thêm độ dài (xem mục 4).
 - Con trỏ này nằm trên Stack và lưu trữ **địa chỉ số nhà** của biến gốc mà nó đang trỏ tới.
 - Điểm khác biệt sống còn với ngôn ngữ C/C++: trong **Rust an toàn (Safe Rust)**, mọi tham chiếu `&T` / `&mut T` đều được trình biên dịch đảm bảo **chắc chắn 100% là đang trỏ vào một ô nhớ còn sống và hợp lệ**, tuyệt đối không bao giờ có chuyện trỏ vào khoảng không hư vô (Null Pointer hay Dangling Pointer)! (Rust vẫn có *con trỏ thô* `*const T` / `*mut T` có thể null hoặc lơ lửng, nhưng chúng chỉ được phép giải tham chiếu bên trong khối `unsafe` — chủ đề của Chương 39.)
 
@@ -107,18 +107,18 @@ Khi bạn muốn trích xuất một từ trong một câu văn dài mà không 
 
 ### 5. Toán tử Giải tham chiếu (Dereference Operator - `*`)
 
-Khi bạn nắm giữ một tham chiếu `so: &mut i32`, bạn thực chất chỉ đang cầm một chiếc "thẻ ghi số nhà" (con trỏ lưu địa chỉ 8 bytes trên Stack).
+Khi bạn nắm giữ một tham chiếu `n: &mut i32`, bạn thực chất chỉ đang cầm một chiếc "thẻ ghi số nhà" (con trỏ lưu địa chỉ 8 bytes trên Stack).
 - Nếu bạn muốn trực tiếp mở cửa bước vào căn nhà đó để đọc hoặc sửa đổi giá trị thực tế bên trong ô nhớ, bạn phải thực hiện thao tác **Giải tham chiếu (Dereferencing)** bằng cách đặt dấu sao `*` ngay phía trước tên biến:
 ```rust
 let mut x = 10;
 let r = &mut x; // r là tham chiếu mượn sửa trỏ tới x
 *r = *r * 2;    // Đi theo địa chỉ con trỏ để nhân đôi giá trị gốc của x lên 20!
 ```
-- **Lưu ý thực chiến**: Với các kiểu dữ liệu phức tạp như `String`, Rust tự động kích hoạt cơ chế Ép kiểu giải tham chiếu (**Deref Coercion**) khi bạn gọi phương thức (ví dụ: `chuoi.push_str(...)`), giúp bạn không cần phải viết dấu `*` thủ công. Nhưng đối với các kiểu dữ liệu nguyên bản (`i32`, `f64`, `bool`), dấu `*` là công cụ tường minh và bắt buộc khi thao tác qua tham chiếu!
+- **Lưu ý thực chiến**: Khi bạn **gọi phương thức** qua tham chiếu (ví dụ `text.push_str(...)` với `text: &mut String`), Rust tự động giải tham chiếu cho bạn (**auto-deref** của toán tử `.`), nên không cần viết `(*text).push_str(...)`. Nhưng khi **gán hoặc sửa trực tiếp giá trị** qua tham chiếu — như `*n = *n * 2` hay `*n += 1` với `n: &mut i32` — dấu `*` là bắt buộc!
 
 > **CẢNH BÁO QUAN TRỌNG VỀ LÁT CẮT VÀ CHUỖI TIẾNG VIỆT (UTF-8):**
 > Trong Rust, chỉ số cắt lát `[start..end]` luôn tính theo **đơn vị Byte**, tuyệt đối **KHÔNG PHẢI số thứ tự chữ cái**!
-> Các chữ cái tiếng Việt có dấu (như `'à'`, `'é'`, `'ộ'`) là các ký tự Unicode nhiều bytes (thường chiếm 2 đến 3 bytes trong UTF-8). Ví dụ: từ `"an toàn"` kéo dài từ byte số 5 đến byte số 12 (chữ `'à'` chiếm 2 bytes số 10 và 11; chữ `'n'` nằm ở byte số 12). Để lấy trọn vẹn chữ `'n'`, bạn phải cắt theo dải nửa mở đến trước byte số 13: `&cau_noi[5..13]`. Nếu bạn cắt nhầm vào giữa byte của ký tự Unicode (ví dụ `[5..11]`), Rust sẽ dừng chương trình ngay lập tức (**panic**) để ngăn ngừa hỏng dữ liệu!
+> Các chữ cái tiếng Việt có dấu (như `'à'`, `'é'`, `'ộ'`) là các ký tự Unicode nhiều bytes (thường chiếm 2 đến 3 bytes trong UTF-8). Ví dụ: từ `"an toàn"` kéo dài từ byte số 5 đến byte số 12 (chữ `'à'` chiếm 2 bytes số 10 và 11; chữ `'n'` nằm ở byte số 12). Để lấy trọn vẹn chữ `'n'`, bạn phải cắt theo dải nửa mở đến trước byte số 13: `&sentence[5..13]`. Nếu bạn cắt nhầm vào giữa byte của ký tự Unicode (ví dụ `[5..11]`), Rust sẽ dừng chương trình ngay lập tức (**panic**) để ngăn ngừa hỏng dữ liệu!
 
 ---
 
@@ -131,21 +131,25 @@ Chương trình dưới đây minh họa toàn bộ các khía cạnh: mượn c
 // Chương trình thực hành chuyên sâu về Vay mượn (Borrowing) và Tham chiếu (References)
 
 // 1. Hàm mượn chỉ đọc (&String): Nhận dữ liệu để tính toán nhưng KHÔNG cướp quyền sở hữu
-fn series_length(text: &String) -> usize {
-    // chuoi là một tham chiếu chỉ đọc, ta chỉ có thể xem nội dung qua .len()
+// Clippy sẽ gợi ý dùng `&str` thay cho `&String` (lint ptr_arg) — đó mới là cách viết
+// thành ngữ (xem mục Lát cắt chuỗi). Ở đây cố ý giữ `&String` để minh hoạ "mượn đúng kiểu gốc".
+#[allow(clippy::ptr_arg)]
+fn string_length(text: &String) -> usize {
+    // text là một tham chiếu chỉ đọc, ta chỉ có thể xem nội dung, ví dụ qua .len()
     text.len()
 }
 
 // 2. Hàm mượn sửa đổi (&mut String): Cho phép thay đổi trực tiếp nội dung biến gốc
-fn add_greeting(chuoi_goc: &mut String) {
+fn add_greeting(text: &mut String) {
     // Phương thức .push_str() ghi thêm ký tự vào bãi đỗ Heap của biến gốc
-    chuoi_goc.push_str(" - Chúc bạn một ngày tràn đầy năng lượng!");
+    text.push_str(" - Chúc bạn một ngày tràn đầy năng lượng!");
 }
 
 // 3. Hàm minh họa toán tử giải tham chiếu (Dereferencing '*') với số nguyên
-fn double(so: &mut i32) {
+fn double(n: &mut i32) {
     // Dấu * dùng để đi theo địa chỉ con trỏ và can thiệp thẳng vào giá trị thực bên trong ô nhớ
-    *so = *so * 2;
+    // (viết gọn của `*n = *n * 2;`)
+    *n *= 2;
 }
 
 fn main() {
@@ -155,18 +159,18 @@ fn main() {
 
     // --- PHẦN 1: THAM CHIẾU BẤT BIẾN (&T - MƯỢN ĐỂ ĐỌC) ---
     println!("\n1. Minh họa mượn dữ liệu chỉ để đọc:");
-    let thong_tin_xe = String::from("Xe máy Honda SH 150i");
+    let bike_info = String::from("Xe máy Honda SH 150i");
 
-    // Truyền &thong_tin_xe: Ta chỉ đưa "tấm ảnh chụp" địa chỉ ô nhớ cho hàm mượn
-    let length = series_length(&thong_tin_xe);
-    
-    // Biến thong_tin_xe vẫn còn nguyên quyền sở hữu thuộc về hàm main!
-    println!("- Xe máy: '{}'", thong_tin_xe);
-    println!("- Số lượng ký tự trong chuỗi thông tin: {}", length);
+    // Truyền &bike_info: Ta chỉ đưa "tấm ảnh chụp" địa chỉ ô nhớ cho hàm mượn
+    let length = string_length(&bike_info);
+
+    // Biến bike_info vẫn còn nguyên quyền sở hữu thuộc về hàm main!
+    println!("- Xe máy: '{}'", bike_info);
+    println!("- Độ dài chuỗi thông tin (tính bằng byte): {}", length);
 
     // Nhiều người có thể cùng mượn đọc đồng thời một lúc:
-    let reader_1 = &thong_tin_xe;
-    let reader_2 = &thong_tin_xe;
+    let reader_1 = &bike_info;
+    let reader_2 = &bike_info;
     println!("- Độc giả 1 đọc: {}", reader_1);
     println!("- Độc giả 2 đọc: {}", reader_2);
 
@@ -181,23 +185,27 @@ fn main() {
 
     // --- PHẦN 3: GIẢI THAM CHIẾU VỚI TOÁN TỬ '*' TRÊN SỐ NGUYÊN ---
     println!("\n3. Thao tác ô nhớ số nguyên với toán tử giải tham chiếu (*):");
-    let mut account_xu = 500;
-    println!("- Số xu trước khi nhân đôi: {}", account_xu);
+    let mut coins = 500;
+    println!("- Số xu trước khi nhân đôi: {}", coins);
 
-    double(&mut account_xu);
-    println!("- Số xu sau khi nhân đôi  : {}", account_xu);
+    double(&mut coins);
+    println!("- Số xu sau khi nhân đôi  : {}", coins);
 
     // --- PHẦN 4: LÁT CẮT CHUỖI (STRING SLICES - &str) ---
     println!("\n4. Trích xuất văn bản bằng Lát cắt chuỗi (String Slices):");
     let sentence = String::from("Rust an toàn tuyệt đối");
 
     // Lát cắt trỏ vào một phần ô nhớ của chuỗi mà không tạo dữ liệu mới:
-    let first_from: &str = &sentence[0..4];    // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
-    let from_two: &str = &sentence[5..13];   // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
+    let first_word: &str = &sentence[0..4]; // Cắt từ chỉ số byte 0 đến trước 4 ("Rust")
+    let second_word: &str = &sentence[5..13]; // Cắt từ chỉ số byte 5 đến trước 13 ("an toàn")
 
     println!("- Câu nói gốc: '{}'", sentence);
-    println!("- Từ thứ nhất : '{}' (chiếm {} bytes trên Stack)", first_from, std::mem::size_of_val(&first_from));
-    println!("- Từ thứ hai  : '{}'", from_two);
+    println!(
+        "- Từ thứ nhất : '{}' (bản thân lát cắt &str chiếm {} bytes trên Stack)",
+        first_word,
+        std::mem::size_of::<&str>()
+    );
+    println!("- Từ thứ hai  : '{}'", second_word);
 
     // --- PHẦN 5: CHỨNG MINH TÍNH LINH HOẠT CỦA NLL (NON-LEXICAL LIFETIMES) ---
     println!("\n5. Kiểm tra cơ chế Vòng đời không từ vựng (NLL):");
@@ -233,17 +241,17 @@ fn main() {
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Vay mượn (Borrowing)**: Sử dụng dấu `&` để tạo tham chiếu trỏ vào dữ liệu mà không cướp quyền sở hữu gốc của biến.
 2. **Nguyên tắc Aliasing XOR Mutability**: Tại một thời điểm, được phép có vô số người đọc (`&T`) HOẶC duy nhất một người sửa (`&mut T`), không bao giờ được phép vừa đọc vừa sửa đồng thời.
-3. **Triệt tiêu Data Race**: Nhờ cơ chế kiểm tra vay mượn ngay lúc biên dịch, Rust đảm bảo mã nguồn đa luồng không bao giờ gặp lỗi xung đột dữ liệu lúc chạy.
-4. **Lát cắt chuỗi (`&str`)**: Một con trỏ nhẹ nhàng 16-bit trỏ thẳng vào một đoạn của chuỗi văn bản, giúp thao tác trích xuất từ ngữ mà không cần sao chép bộ nhớ Heap.
+3. **Triệt tiêu Data Race**: Nhờ cơ chế kiểm tra vay mượn ngay lúc biên dịch, Rust đảm bảo mã nguồn đa luồng viết bằng Rust an toàn (safe Rust) không bao giờ gặp lỗi xung đột dữ liệu (data race) lúc chạy.
+4. **Lát cắt chuỗi (`&str`)**: Một con trỏ béo nhẹ nhàng 16 byte (địa chỉ + độ dài) trỏ thẳng vào một đoạn của chuỗi văn bản, giúp thao tác trích xuất từ ngữ mà không cần sao chép bộ nhớ Heap.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập thực hành 1**: Viết hàm `them_loi_chuc(loi_nhan: &mut String)` nhận vào một tham chiếu khả biến (`&mut String`). Hàm sẽ sử dụng phương thức `.push_str()` để nối thêm chuỗi `", chúc bạn học tốt Rust!"` vào trực tiếp cuối chuỗi gốc. Trong hàm `main`: khởi tạo một biến chuỗi có từ khóa `mut` (ví dụ: `"Chào bạn"`), truyền tham chiếu mượn sửa `&mut` vào hàm, sau đó in chuỗi ra màn hình để kiểm chứng dữ liệu đã được cập nhật thành công mà không làm mất quyền sở hữu gốc.
+1. **Bài tập thực hành 1**: Viết hàm `add_wish(message: &mut String)` nhận vào một tham chiếu khả biến (`&mut String`). Hàm sẽ sử dụng phương thức `.push_str()` để nối thêm chuỗi `", chúc bạn học tốt Rust!"` vào trực tiếp cuối chuỗi gốc. Trong hàm `main`: khởi tạo một biến chuỗi có từ khóa `mut` (ví dụ: `"Chào bạn"`), truyền tham chiếu mượn sửa `&mut` vào hàm, sau đó in chuỗi ra màn hình để kiểm chứng dữ liệu đã được cập nhật thành công mà không làm mất quyền sở hữu gốc.
 2. **Bài tập tìm lỗi (Borrow Checker audit)**: Hãy giải thích tại sao đoạn mã sau đây không thể biên dịch:
    ```rust
    let mut list = String::from("Táo, Cam");
-   let doc = &list;
+   let reader = &list;
    list.push_str(", Xoài");
-   println!("Danh sách quả: {}", doc);
+   println!("Danh sách quả: {}", reader);
    ```
    Hãy chỉ ra lỗi và viết lại đoạn mã để nó biên dịch thành công mà vẫn in ra được đầy đủ 3 loại quả.
 3. **Bài tập tư duy 3**: Tại sao việc cấm "Vừa đọc vừa sửa" lại có thể ngăn chặn được lỗi sập chương trình khi một chuỗi `String` tự động phình to kích thước trên Heap? Hãy giải thích mối liên hệ giữa việc tái cấp phát Heap (Reallocation) và con trỏ đọc lơ lửng.
@@ -263,59 +271,59 @@ fn main() {
 
 ```rust
 // Nhận tham chiếu KHẢ BIẾN: hàm sửa thẳng chuỗi gốc, không lấy quyền sở hữu.
-fn them_loi_chuc(loi_nhan: &mut String) {
-    loi_nhan.push_str(", chúc bạn học tốt Rust!");
+fn add_wish(message: &mut String) {
+    message.push_str(", chúc bạn học tốt Rust!");
 }
 
 fn main() {
-    let mut loi = String::from("Chào bạn");   // mut vì chuỗi sẽ bị sửa
-    them_loi_chuc(&mut loi);                    // cho mượn để sửa
-    println!("{loi}");                          // chuỗi gốc đã được cập nhật
+    let mut msg = String::from("Chào bạn"); // mut vì chuỗi sẽ bị sửa
+    add_wish(&mut msg); // cho mượn để sửa
+    println!("{msg}"); // chuỗi gốc đã được cập nhật
 }
 
 #[test]
-fn noi_them_vao_chuoi_goc() {
-    let mut loi = String::from("Chào bạn");
-    them_loi_chuc(&mut loi);
-    assert_eq!(loi, "Chào bạn, chúc bạn học tốt Rust!");
-    // Sau khi hàm trả về, `loi` VẪN thuộc về main — chỉ được sửa, không bị nuốt.
+fn appends_to_original() {
+    let mut msg = String::from("Chào bạn");
+    add_wish(&mut msg);
+    assert_eq!(msg, "Chào bạn, chúc bạn học tốt Rust!");
+    // Sau khi hàm trả về, `msg` VẪN thuộc về main — chỉ được sửa, không bị nuốt.
 }
 ```
 
-Điểm cốt lõi: `&mut String` là **mượn để sửa**, khác hẳn `String` (lấy luôn quyền sở hữu) và `&String` (mượn chỉ để đọc). Nhờ mượn sửa, hàm thay đổi được dữ liệu tại chỗ mà người gọi *không mất* biến — sau lời gọi, `main` vẫn dùng `loi` bình thường. Đây là cách Rust cho phép "hàm sửa đối số" một cách an toàn và tường minh: phải viết rõ `&mut` ở cả nơi khai báo hàm lẫn nơi gọi, không có sửa lén.
+Điểm cốt lõi: `&mut String` là **mượn để sửa**, khác hẳn `String` (lấy luôn quyền sở hữu) và `&String` (mượn chỉ để đọc). Nhờ mượn sửa, hàm thay đổi được dữ liệu tại chỗ mà người gọi *không mất* biến — sau lời gọi, `main` vẫn dùng `msg` bình thường. Đây là cách Rust cho phép "hàm sửa đối số" một cách an toàn và tường minh: phải viết rõ `&mut` ở cả nơi khai báo hàm lẫn nơi gọi, không có sửa lén.
 </details>
 
 <details>
 <summary><b>Bài tập 2 — Gợi ý</b></summary>
 
-Đây là quy tắc mượn cốt lõi: **không được vừa giữ một tham chiếu đọc (`&list`) vừa sửa (`push_str`)**. `doc` mượn bất biến, còn `push_str` cần mượn khả biến — hai thứ không sống chung.
+Đây là quy tắc mượn cốt lõi: **không được vừa giữ một tham chiếu đọc (`&list`) vừa sửa (`push_str`)**. `reader` mượn bất biến, còn `push_str` cần mượn khả biến — hai thứ không sống chung.
 </details>
 
 <details>
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
-**Lỗi: `cannot borrow `list` as mutable because it is also borrowed as immutable`.**
+**Lỗi `E0502`: ``cannot borrow `list` as mutable because it is also borrowed as immutable``.**
 
 Chuyện xảy ra theo dòng thời gian:
 ```text
-let doc = &list;            // (1) mượn ĐỌC bắt đầu
+let reader = &list;            // (1) mượn ĐỌC bắt đầu
 list.push_str(", Xoài");    // (2) cần mượn SỬA -> ĐỤNG mượn đọc còn sống
-println!("... {}", doc);    // (3) doc còn được dùng ở đây -> nên (1) chưa kết thúc
+println!("... {}", reader);    // (3) reader còn được dùng ở đây -> nên (1) chưa kết thúc
 ```
 
-Vì `doc` còn được dùng ở dòng (3), phép mượn đọc ở (1) vẫn **còn sống** khi tới (2). Rust cấm mượn-sửa trong lúc một mượn-đọc đang sống, nên chặn ngay.
+Vì `reader` còn được dùng ở dòng (3), phép mượn đọc ở (1) vẫn **còn sống** khi tới (2). Rust cấm mượn-sửa trong lúc một mượn-đọc đang sống, nên chặn ngay.
 
-**Viết lại cho biên dịch được — dùng xong `doc` rồi mới sửa:**
+**Viết lại cho biên dịch được — dùng xong `reader` rồi mới sửa:**
 ```text
 let mut list = String::from("Táo, Cam");
-let doc = &list;
-println!("Trước khi thêm: {doc}");   // dùng doc XONG ở đây
+let reader = &list;
+println!("Trước khi thêm: {reader}");   // dùng reader XONG ở đây
 // Tới đây mượn đọc đã kết thúc -> tự do sửa:
 list.push_str(", Xoài");
 println!("Danh sách quả: {list}");   // Táo, Cam, Xoài
 ```
 
-Mẹo: Rust dùng **NLL (non-lexical lifetimes)** — phép mượn kết thúc ngay tại *lần dùng cuối*, không phải ở cuối khối `{}`. Nên chỉ cần đưa mọi lần đọc `doc` lên *trước* lần sửa là xong. Đây không phải mẹo lách luật — nó phản ánh đúng ý định: đọc xong rồi mới đổi thì chẳng có mâu thuẫn nào.
+Mẹo: Rust dùng **NLL (non-lexical lifetimes)** — phép mượn kết thúc ngay tại *lần dùng cuối*, không phải ở cuối khối `{}`. Nên chỉ cần đưa mọi lần đọc `reader` lên *trước* lần sửa là xong. Đây không phải mẹo lách luật — nó phản ánh đúng ý định: đọc xong rồi mới đổi thì chẳng có mâu thuẫn nào.
 </details>
 
 <details>
@@ -339,7 +347,7 @@ Sau:    Stack[con trỏ = 0xBBB] ──▶ Heap 0xBBB: "Táo, Cam, Xoài"
                                     Heap 0xAAA: (ĐÃ GIẢI PHÓNG — rác)
 ```
 
-Bây giờ giả sử Rust *cho phép* giữ một tham chiếu đọc `doc` xuyên qua thao tác này. `doc` đã chụp lại địa chỉ **0xAAA** — nhưng 0xAAA vừa bị giải phóng. Đọc `doc` giờ là đọc vùng nhớ đã trả lại hệ điều hành: **dùng-sau-khi-giải-phóng**, thứ gây ra sập chương trình hoặc lỗ hổng bảo mật kinh điển trong C/C++.
+Bây giờ giả sử Rust *cho phép* giữ một tham chiếu đọc `reader` xuyên qua thao tác này. `reader` đã chụp lại địa chỉ **0xAAA** — nhưng 0xAAA vừa bị giải phóng. Đọc `reader` giờ là đọc vùng nhớ đã trả lại cho bộ cấp phát: **dùng-sau-khi-giải-phóng**, thứ gây ra sập chương trình hoặc lỗ hổng bảo mật kinh điển trong C/C++.
 
-Quy tắc mượn chặn đúng chỗ đó: **một mượn-đọc còn sống thì cấm mọi mượn-sửa**. Nhờ vậy con trỏ mà `doc` giữ được bảo đảm vẫn trỏ tới vùng nhớ hợp lệ suốt thời gian nó sống — vì trong khoảng đó không thao tác nào được phép tái cấp phát. Đây là một trong những ví dụ đẹp nhất cho thấy borrow checker không phải luật lệ tùy tiện, mà là **định lý an toàn bộ nhớ được ép ngay lúc biên dịch**.
+Quy tắc mượn chặn đúng chỗ đó: **một mượn-đọc còn sống thì cấm mọi mượn-sửa**. Nhờ vậy con trỏ mà `reader` giữ được bảo đảm vẫn trỏ tới vùng nhớ hợp lệ suốt thời gian nó sống — vì trong khoảng đó không thao tác nào được phép tái cấp phát. Đây là một trong những ví dụ đẹp nhất cho thấy borrow checker không phải luật lệ tùy tiện, mà là **định lý an toàn bộ nhớ được ép ngay lúc biên dịch**.
 </details>

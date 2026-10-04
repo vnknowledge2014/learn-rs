@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // File: src/main.rs
 // Chương trình mô phỏng Trạm Kiểm Soát Phóng Tên Lửa Vũ Trụ
 
@@ -8,25 +7,25 @@ fn main() {
     println!("============================================================");
 
     // 1. Sử dụng if như một biểu thức để xác định trạng thái thời tiết
-    let toc_do_gio_kmh = 25;
-    let troi_mua = false;
+    let wind_kmh = 25;
+    let is_raining = false;
 
     // if/else trả về trực tiếp chuỗi trạng thái được gán vào biến
-    let dieu_kien_thoi_tiet = if toc_do_gio_kmh < 40 && !troi_mua {
+    let weather = if wind_kmh < 40 && !is_raining {
         "Hoàn hảo để phóng"
-    } else if toc_do_gio_kmh < 60 {
+    } else if wind_kmh < 60 {
         "Cần theo dõi thêm sức gió"
     } else {
         "Hủy lịch phóng vì thời tiết xấu"
     };
-    println!("Tình trạng khí tượng hiện tại: {}", dieu_kien_thoi_tiet);
+    println!("Tình trạng khí tượng hiện tại: {}", weather);
 
     // 2. Sử dụng vòng lặp 'loop' có 'break' mang giá trị về:
     // Kiểm tra áp suất nhiên liệu buồng đốt đến khi đạt chuẩn an toàn
     let mut current_pressure = 80;
     println!("\nBắt đầu kích áp buồng đốt nhiên liệu...");
 
-    let ap_suat_chot = loop {
+    let final_pressure = loop {
         current_pressure += 5;
         println!("- Áp suất đang tăng: {} PSI", current_pressure);
 
@@ -37,7 +36,7 @@ fn main() {
     };
     println!(
         "==> Áp suất buồng đốt đã khóa an toàn tại mức: {} PSI",
-        ap_suat_chot
+        final_pressure
     );
 
     // 3. Sử dụng vòng lặp 'while' để nạp năng lượng bình ắc-quy phụ
@@ -51,25 +50,25 @@ fn main() {
 
     // 4. Sử dụng vòng lặp lồng nhau với Nhãn (Loop Labels) để quét cảm biến
     println!("\nBắt đầu diễn tập kịch bản ngắt khẩn cấp trên 3 tầng tên lửa:");
-    let mut has_emitted = false;
+    let mut fault_detected = false;
 
-    'kiem_tra_tang_ten_lua: for tang in 1..=3 {
-        println!("* Đang quét tầng tên lửa số {}", tang);
-        for cam_bien in 1..=4 {
-            if tang == 2 && cam_bien == 3 {
-                has_emitted = true; // Kích hoạt sự cố mô phỏng!
+    'stage_scan: for stage in 1..=3 {
+        println!("* Đang quét tầng tên lửa số {}", stage);
+        for sensor in 1..=4 {
+            if stage == 2 && sensor == 3 {
+                fault_detected = true; // Kích hoạt sự cố mô phỏng!
                 println!(
                     "  [!] Phát hiện sự cố tại tầng {}, cảm biến {}! Kích hoạt ngắt khẩn cấp!",
-                    tang, cam_bien
+                    stage, sensor
                 );
                 // Thoát thẳng ra ngoài cả hai vòng lặp nhờ nhãn:
-                break 'kiem_tra_tang_ten_lua;
+                break 'stage_scan;
             }
-            println!("  - Cảm biến {}.{} hoạt động bình thường", tang, cam_bien);
+            println!("  - Cảm biến {}.{} hoạt động bình thường", stage, sensor);
         }
     }
 
-    if has_emitted {
+    if fault_detected {
         println!("==> Cơ chế ngắt khẩn cấp bằng nhãn đã dừng kiểm tra an toàn!");
         println!("==> Đội kỹ thuật đã khắc phục xong sự cố cảm biến 2.3.");
     }
@@ -77,8 +76,8 @@ fn main() {
     // 5. Vòng lặp 'for' an toàn đếm ngược thời gian phóng tên lửa
     // (1..=5).rev() tạo ra dãy số: 5, 4, 3, 2, 1
     println!("\nTẤT CẢ HỆ THỐNG SẴN SÀNG! ĐẾM NGƯỢC ĐỂ PHÓNG:");
-    for giay in (1..=5).rev() {
-        println!("T-minus {} giây...", giay);
+    for second in (1..=5).rev() {
+        println!("T-minus {} giây...", second);
     }
 
     println!("\n🚀 KHAI HỎA ĐỘNG CƠ CHÍNH! TÊN LỬA ĐÃ RỜI BỆ PHÓNG THÀNH CÔNG! 🚀");

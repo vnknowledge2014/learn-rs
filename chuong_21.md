@@ -5,11 +5,11 @@
 Chào mừng bạn bước vào **Chủ đề 4: Siêu lập trình (Meta Programming)** — cảnh giới đỉnh cao của nghệ thuật lập trình trong Rust! Cho đến lúc này, bạn đã quen thuộc với việc viết mã nguồn để ra lệnh cho máy tính xử lý các con số, chuỗi ký tự, cấu trúc dữ liệu và các giao ước trait. Tất cả những thao tác đó đều xoay quanh việc: **Code xử lý Dữ liệu (Code processes Data)**.
 
 Tuy nhiên, có bao giờ bạn tự hỏi:
-- *Làm sao macro `println!("Xin chào {}", ten)` có thể nhận số lượng tham số tùy ý (1 tham số, 3 tham số hay 10 tham số đều được), trong khi hàm thông thường `fn` trong Rust luôn bắt buộc số lượng tham số cố định?*
+- *Làm sao macro `println!("Xin chào {}", name)` có thể nhận số lượng tham số tùy ý (1 tham số, 3 tham số hay 10 tham số đều được), trong khi hàm thông thường `fn` trong Rust luôn bắt buộc số lượng tham số cố định?*
 - *Làm sao macro `vec![1, 2, 3]` có thể tự động tạo ra một `Vec` đã được nạp sẵn các giá trị ban đầu chỉ bằng một dòng lệnh ngắn ngủi?*
 - *Liệu chúng ta có thể viết ra những đoạn mã có khả năng... **tự động viết ra mã nguồn khác** để giải phóng lập trình viên khỏi hàng trăm dòng code lặp đi lặp lại nhàm chán (boilerplate code)?*
 
-Câu trả lời nằm ở **Siêu lập trình (Metaprogramming)** và vũ khí cốt lõi đầu tiên của nó: **Macro khai báo (`macro_rules!`)**. Trong Rust, macro không phải là công cụ tìm-và-thay-thế chuỗi thô sơ như tiền xử lý `#define` của C/C++ (vốn rất dễ gây lỗi tràn số và xung đột tên biến). Macro trong Rust là một phần chính thức của trình biên dịch `rustc`, hoạt động trực tiếp trên các thẻ bài cú pháp (syntax tokens) và cây cú pháp trừu tượng (AST), đảm bảo an toàn tuyệt đối về mặt kiểu dữ liệu và bộ nhớ.
+Câu trả lời nằm ở **Siêu lập trình (Metaprogramming)** và vũ khí cốt lõi đầu tiên của nó: **Macro khai báo (`macro_rules!`)**. Trong Rust, macro không phải là công cụ tìm-và-thay-thế chuỗi thô sơ như tiền xử lý `#define` của C/C++ (vốn rất dễ gây lỗi thứ tự ưu tiên toán tử, tính lặp đối số và xung đột tên biến). Macro trong Rust là một phần chính thức của trình biên dịch `rustc`, hoạt động trực tiếp trên các thẻ bài cú pháp (syntax tokens) và cây cú pháp trừu tượng (AST), đảm bảo an toàn tuyệt đối về mặt kiểu dữ liệu và bộ nhớ.
 
 Mục tiêu học tập của chương này:
 - Hiểu rõ bản chất **Siêu lập trình (Metaprogramming)**: Viết mã nguồn để sinh ra mã nguồn tại thời điểm biên dịch (Compile-time).
@@ -96,13 +96,13 @@ Vì Macro được mở rộng ở **Giai đoạn 3** — sau khi mã nguồn đ
 Một macro khai báo được định nghĩa bằng cú pháp so khớp khuôn mẫu (Pattern Matching) tương tự như lệnh `match`:
 
 ```rust
-macro_rules! ten_macro {
+macro_rules! my_macro {
     // Nhánh 1: So khớp với khuôn mẫu A
-    ( khuôn_mau_A ) => {
+    ( pattern_a ) => {
         // Đoạn mã sinh ra tương ứng
     };
     // Nhánh 2: So khớp với khuôn mẫu B
-    ( khuôn_mau_B ) => {
+    ( pattern_b ) => {
         // Đoạn mã sinh ra tương ứng
     };
 }
@@ -115,9 +115,9 @@ Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu
 | Bộ chỉ định | Tên tiếng Anh | Ý nghĩa trong cú pháp Rust | Ví dụ thực tế |
 |---|---|---|---|
 | **`$e:expr`** | Expression | Bất kỳ biểu thức nào sinh ra giá trị | `1 + 2`, `x * 5`, `String::new()` |
-| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `quantity`, `User`, `tinh_tong` |
+| **`$i:ident`** | Identifier | Tên định danh (tên biến, tên hàm, tên struct) | `quantity`, `User`, `sum_all` |
 | **`$t:ty`** | Type | Một kiểu dữ liệu hợp lệ trong Rust | `i32`, `String`, `Vec<u8>`, `&str` |
-| **`$s:stmt`** | Statement | Một câu lệnh (thường kết thúc bằng dấu `;`) | `let x = 10;`, `dem += 1;` |
+| **`$s:stmt`** | Statement | Một câu lệnh, **không** kèm dấu `;` ở cuối | `let x = 10`, `count += 1` |
 | **`$p:path`** | Path | Đường dẫn định danh mô-đun hoặc kiểu dữ liệu | `std::collections::HashMap`, `crate::api` |
 | **`$b:block`** | Block | Một khối mã được bao bọc bởi cặp ngoặc `{}` | `{ let a = 1; a + 2 }` |
 | **`$lit:literal`** | Literal | Một hằng số nguyên bản | `42`, `"Xin chào"`, `true`, `'🦀'` |
@@ -134,9 +134,9 @@ Mỗi vị trí điền dữ liệu trong macro đều bắt đầu bằng dấu
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
 Chương trình hoàn chỉnh dưới đây xây dựng một **Bộ công cụ Siêu lập trình Tiện ích (Metaprogramming Utility Toolkit)** gồm 3 macro thực chiến:
-1. `tao_ban_do!`: Macro tạo nhanh `HashMap` theo phong cách từ điển JSON trực quan.
-2. `kiem_toan_bien!`: Macro soi sáng thông tin nội bộ của biến (tên biến, giá trị, tệp tin, dòng mã).
-3. `do_luong_thoi_gian!`: Macro bọc một khối lệnh bất kỳ để đo thời gian thực thi của nó.
+1. `hash_map!`: Macro tạo nhanh `HashMap` theo phong cách từ điển JSON trực quan.
+2. `inspect_var!`: Macro soi sáng thông tin nội bộ của biến (tên biến, giá trị, tệp tin, dòng mã).
+3. `measure_time!`: Macro bọc một khối lệnh bất kỳ để đo thời gian thực thi của nó.
 
 ```rust
 // Tệp: src/main.rs
@@ -146,68 +146,66 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 // ============================================================================
-// 1. MACRO TẠO NHANH HASHMAP VỚI CÚ PHÁP TỪ ĐIỂN: tao_ban_do!
+// 1. MACRO TẠO NHANH HASHMAP VỚI CÚ PHÁP TỪ ĐIỂN: hash_map!
 // ============================================================================
 
-/// Macro nhận vào các cặp $khoa => $value cách nhau bởi dấu phẩy
+/// Macro nhận vào các cặp $key => $value cách nhau bởi dấu phẩy
 /// Hỗ trợ dấu phẩy tùy chọn ở cuối cùng $(,)?
-macro_rules! tao_ban_do {
-    // Nhánh xử lý: $( $khoa:expr => $value:expr ),*
+macro_rules! hash_map {
+    // Nhánh xử lý: $( $key:expr => $value:expr ),*
     ( $( $key:expr => $value:expr ),* $(,)? ) => {
         {
-            let mut ban_do = HashMap::new();
+            let mut map = HashMap::new();
             $(
-                ban_do.insert($key, $value);
+                map.insert($key, $value);
             )*
-            ban_do
+            map
         }
     };
 }
 
 // ============================================================================
-// 2. MACRO SOI SÁNG VÀ KIỂM TOÁN BIẾN: kiem_toan_bien!
+// 2. MACRO SOI SÁNG VÀ KIỂM TOÁN BIẾN: inspect_var!
 // ============================================================================
 
 /// Macro sử dụng $i:ident và $e:expr kết hợp với stringify!, file!, line!
 /// Giúp lập trình viên gỡ lỗi với thông tin vị trí mã nguồn cực kỳ chi tiết
-macro_rules! kiem_toan_bien {
-    ( $ten_bien:ident ) => {
+macro_rules! inspect_var {
+    ( $var:ident ) => {
         println!(
             "[KIỂM TOÁN] Biến `{}` = {:?} (Tại tệp: {}, Dòng: {})",
-            stringify!($ten_bien),
-            $ten_bien,
+            stringify!($var),
+            $var,
             file!(),
             line!()
         );
     };
-    ( $nhan_dan:expr, $bieu_thuc:expr ) => {
+    ( $label:expr, $expression:expr ) => {
         println!(
             "[KIỂM TOÁN: {}] Biểu thức `{}` có giá trị = {:?} (Dòng: {})",
-            $nhan_dan,
-            stringify!($bieu_thuc),
-            $bieu_thuc,
+            $label,
+            stringify!($expression),
+            $expression,
             line!()
         );
     };
 }
 
 // ============================================================================
-// 3. MACRO ĐO THỜI GIAN KHỐI LỆNH: do_luong_thoi_gian!
+// 3. MACRO ĐO THỜI GIAN KHỐI LỆNH: measure_time!
 // ============================================================================
 
-/// Macro nhận một nhãn mô tả $ten:expr và một khối mã $khoi:block
+/// Macro nhận một nhãn mô tả $name:expr và một khối mã $body:block
 /// Trả về trực tiếp kết quả của khối mã đó!
-macro_rules! do_luong_thoi_gian {
-    ( $name:expr, $khoi:block ) => {
-        {
-            println!(">>> [BẮT ĐẦU ĐO] {}", $name);
-            let start = Instant::now();
-            let ket_qua = $khoi; // Thực thi khối lệnh
-            let time_time = start.elapsed();
-            println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $name, time_time);
-            ket_qua // Trả kết quả của khối lệnh về phía người gọi
-        }
-    };
+macro_rules! measure_time {
+    ( $name:expr, $body:block ) => {{
+        println!(">>> [BẮT ĐẦU ĐO] {}", $name);
+        let start = Instant::now();
+        let result = $body; // Thực thi khối lệnh
+        let elapsed = start.elapsed();
+        println!(">>> [KẾT THÚC] {} hoàn thành trong: {:?}", $name, elapsed);
+        result // Trả kết quả của khối lệnh về phía người gọi
+    }};
 }
 
 // ============================================================================
@@ -220,45 +218,45 @@ fn main() {
     println!("============================================================");
 
     // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 1: Sử dụng macro tao_ban_do! tạo cấu hình hệ thống
+    // TÌNH HUỐNG 1: Sử dụng macro hash_map! tạo cấu hình hệ thống
     // ------------------------------------------------------------------------
     println!("\n1. Khởi tạo Bản đồ thông số máy chủ bằng cú pháp trực quan:");
-    let thong_num_server = tao_ban_do! {
-        "cong_mang" => "8080",
-        "dia_chi_ip" => "192.168.1.100",
-        "moi_truong" => "SanXuat",
-        "trang_thai" => "KichHoat", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
+    let server_config = hash_map! {
+        "port" => "8080",
+        "ip_address" => "192.168.1.100",
+        "environment" => "production",
+        "status" => "active", // Hỗ trợ dấu phẩy ở phần tử cuối cùng!
     };
 
-    for (key, value) in &thong_num_server {
+    for (key, value) in &server_config {
         println!("  - Tham số `{}`: {}", key, value);
     }
 
     // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 2: Sử dụng macro kiem_toan_bien! để soi dữ liệu
+    // TÌNH HUỐNG 2: Sử dụng macro inspect_var! để soi dữ liệu
     // ------------------------------------------------------------------------
     println!("\n2. Soi sáng biến số và biểu thức bằng siêu lập trình:");
-    let point_mean = 8.75;
+    let average_score = 8.75;
     let class_list = vec!["An", "Bình", "Cường"];
 
     // Gỡ lỗi biến đơn lẻ qua $ident
-    kiem_toan_bien!(point_mean);
-    kiem_toan_bien!(class_list);
+    inspect_var!(average_score);
+    inspect_var!(class_list);
 
     // Gỡ lỗi biểu thức phức tạp qua $expr
-    kiem_toan_bien!("Tính toán điểm cộng", point_mean + 1.25);
+    inspect_var!("Tính toán điểm cộng", average_score + 1.25);
 
     // ------------------------------------------------------------------------
-    // TÌNH HUỐNG 3: Đo lường khối lệnh tính toán qua do_luong_thoi_gian!
+    // TÌNH HUỐNG 3: Đo lường khối lệnh tính toán qua measure_time!
     // ------------------------------------------------------------------------
     println!("\n3. Đo lường hiệu năng của một khối thuật toán:");
-    
-    let total_accumulated = do_luong_thoi_gian!("Tính tổng dãy 1 triệu số", {
-        let mut tong: u64 = 0;
+
+    let total_accumulated = measure_time!("Tính tổng dãy 1 triệu số", {
+        let mut total: u64 = 0;
         for i in 1..=1_000_000 {
-            tong += i;
+            total += i;
         }
-        tong // Giá trị trả về từ khối block
+        total // Giá trị trả về từ khối block
     });
 
     println!("-> Kết quả tính được từ khối mã: {}", total_accumulated);
@@ -266,6 +264,28 @@ fn main() {
     println!("\n============================================================");
     println!("     XÁC THỰC CÁC MACRO KHAI BÁO HOÀN THÀNH AN TOÀN TUYỆT ĐỐI");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_map_accepts_trailing_comma() {
+        let m = hash_map! { "a" => 1, "b" => 2, };
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get("b"), Some(&2));
+    }
+
+    #[test]
+    fn measure_time_returns_block_value() {
+        let v = measure_time!("cộng", { 40 + 2 });
+        assert_eq!(v, 42);
+    }
 }
 ```
 
@@ -277,30 +297,30 @@ Khi bắt đầu viết macro với `macro_rules!`, bạn sẽ gặp những l�
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0423** | `expected value, found macro '...'` | Bạn gọi một macro nhưng quên viết dấu chấm than `!` ở phía sau tên macro (ví dụ viết `println("...")` thay vì `println!("...")`). | Thêm dấu chấm than `!` ngay sau tên macro: `ten_macro!(...)`. |
-| **Lỗi cú pháp** | `no rules expected the token '...'` | Tham số bạn truyền vào khi gọi macro không khớp với bất kỳ nhánh so khớp nào đã được định nghĩa trong `macro_rules!`. | Kiểm tra lại khuôn mẫu ở vế trái: dấu ngăn cách (dấu phẩy, dấu mũi tên `=>`), kiểu dữ liệu của matcher, hoặc bổ sung thêm nhánh so khớp mới. |
-| **Lỗi cú pháp** | `$e:expr is followed by '...', which is not allowed for expr fragments` | Quy tắc an toàn cú pháp của Rust: Sau một biểu thức `$e:expr`, bạn chỉ được phép đặt các ký tự phân cách an toàn như `,`, `;`, hoặc `=>`. Bạn không thể đặt ngay một định danh khác liền kề vì trình biên dịch sẽ bị nhập nhằng cú pháp. | Đặt dấu phẩy `,` hoặc dấu chấm phẩy `;` ngăn cách giữa các matcher. |
-| **E0425** | `cannot find value '...' in this scope` | Mã bên trong thân macro tham chiếu đến một biến hoặc hàm mà ở phạm vi người gọi macro không tồn tại. | Đảm bảo các biến cần thiết được truyền trực tiếp vào macro qua tham số, hoặc sử dụng đường dẫn đầy đủ dạng `std::...` hoặc `$crate::...`. |
+| **E0423** | `expected function, found macro 'println'` | Bạn gọi một macro nhưng quên viết dấu chấm than `!` ở phía sau tên macro (ví dụ viết `println("...")` thay vì `println!("...")`). | Thêm dấu chấm than `!` ngay sau tên macro: `my_macro!(...)`. |
+| **Lỗi cú pháp** (không có mã) | `no rules expected ','` (hoặc token khác) | Tham số bạn truyền vào khi gọi macro không khớp với bất kỳ nhánh so khớp nào đã được định nghĩa trong `macro_rules!`. | Kiểm tra lại khuôn mẫu ở vế trái: dấu ngăn cách (dấu phẩy, dấu mũi tên `=>`), kiểu dữ liệu của matcher, hoặc bổ sung thêm nhánh so khớp mới. |
+| **Lỗi cú pháp** (không có mã) | `` `$e:expr` is followed by `$i:ident`, which is not allowed for `expr` fragments `` | Quy tắc an toàn cú pháp của Rust: Sau một biểu thức `$e:expr`, bạn chỉ được phép đặt các ký tự phân cách an toàn như `,`, `;`, hoặc `=>`. Bạn không thể đặt ngay một định danh khác liền kề vì trình biên dịch sẽ bị nhập nhằng cú pháp. | Đặt dấu phẩy `,` hoặc dấu chấm phẩy `;` ngăn cách giữa các matcher. |
+| **E0425** | `cannot find value 'x' in this scope` | Mã bên trong thân macro tham chiếu đến một biến cục bộ (vd `x`) không được truyền vào qua tham số. Vì **tính vệ sinh (hygiene)**, macro không "nhìn thấy" biến cục bộ của người gọi, kể cả khi ở chỗ gọi có biến `x`. | Đảm bảo các biến cần thiết được truyền trực tiếp vào macro qua tham số, hoặc sử dụng đường dẫn đầy đủ dạng `std::...` hoặc `$crate::...`. |
 
-### Phân tích lỗi thực tế "No rules expected the token":
+### Phân tích lỗi thực tế "no rules expected":
 
 ```rust
 // Định nghĩa macro chỉ nhận 1 biểu thức:
-macro_rules! in_gap_doi {
+macro_rules! print_double {
     ( $x:expr ) => {
         println!("{}", $x * 2);
     };
 }
 
 fn broken_macro() {
-    in_gap_doi!(10); // Hợp lệ!
+    print_double!(10); // Hợp lệ!
 
-    // LỖI: no rules expected the token `,`
-    // in_gap_doi!(10, 20); // Sai vì macro không có nhánh nhận 2 tham số!
+    // LỖI: no rules expected `,`
+    // print_double!(10, 20); // Sai vì macro không có nhánh nhận 2 tham số!
 }
 
-// Cách sửa chữa: Bổ sung nhánh nhận 2 tham số hoặc dùng cú pháp lặp $(,)*
-macro_rules! in_gap_doi_sua {
+// Cách sửa chữa: Bổ sung nhánh nhận 2 tham số hoặc dùng cú pháp lặp $( ... ),*
+macro_rules! print_double_fixed {
     ( $x:expr ) => { println!("{}", $x * 2); };
     ( $x:expr, $y:expr ) => { println!("{} và {}", $x * 2, $y * 2); };
 }
@@ -321,7 +341,7 @@ macro_rules! in_gap_doi_sua {
    Hãy viết một macro mang tên `swap!($a:ident, $b:ident)` nhận vào hai định danh biến và hoán đổi giá trị của chúng cho nhau bằng một biến tạm. Viết hàm `main` kiểm tra với hai biến số nguyên `mut x = 5; mut y = 10;`.
 
 2. **Bài tập 2 (Macro So sánh Giá trị Lớn nhất)**:  
-   Viết một macro `max_of!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = tim_max!(15, 27);`.
+   Viết một macro `max_of!($a:expr, $b:expr)` sử dụng biểu thức `if/else` để trả về giá trị lớn hơn giữa hai biểu thức. Đảm bảo kết quả của macro có thể được gán trực tiếp vào một biến bất biến: `let max = max_of!(15, 27);`.
 
 3. **Bài tập 3 (Tư duy thiết kế Macro vs Hàm)**:  
    Khi nào bạn nên viết một hàm bình thường `fn`, và khi nào bạn thực sự bắt buộc phải dùng `macro_rules!`? Hãy liệt kê 3 trường hợp mà hàm thông thường hoàn toàn bất lực không thể giải quyết được.
@@ -344,9 +364,9 @@ macro_rules! swap {
     ($a:ident, $b:ident) => {{
         // Biến tạm này chỉ tồn tại trong khối `{{ }}` của macro.
         // Nhờ TÍNH VỆ SINH, nó không bao giờ đụng biến cùng tên của người gọi.
-        let tam = $a;
+        let tmp = $a;
         $a = $b;
-        $b = tam;
+        $b = tmp;
     }};
 }
 
@@ -356,17 +376,17 @@ fn main() {
     swap!(x, y);
     assert_eq!((x, y), (10, 5));
 
-    // Người dùng CÓ một biến tên `tam` — macro vẫn chạy đúng.
-    let mut tam = 999;
+    // Người dùng CÓ một biến tên `tmp` — macro vẫn chạy đúng.
+    let mut tmp = 999;
     let mut z = 1;
-    swap!(tam, z);
-    assert_eq!((tam, z), (1, 999));
+    swap!(tmp, z);
+    assert_eq!((tmp, z), (1, 999));
 
-    println!("x={x} y={y} tam={tam} z={z}");
+    println!("x={x} y={y} tmp={tmp} z={z}");
 }
 ```
 
-Bài này tồn tại để chỉ ra **tính vệ sinh (hygiene)**: biến `tam` bên trong macro và biến `tam` của người gọi là hai thứ khác nhau, dù trùng tên. Trong C, cùng đoạn macro này sẽ hỏng — đó là lý do lập trình viên C phải đặt tên kiểu `__tmp_swap_internal`.
+Bài này tồn tại để chỉ ra **tính vệ sinh (hygiene)**: biến `tmp` bên trong macro và biến `tmp` của người gọi là hai thứ khác nhau, dù trùng tên. Trong C, cùng đoạn macro này sẽ hỏng — đó là lý do lập trình viên C phải đặt tên kiểu `__tmp_swap_internal`.
 </details>
 
 <details>
@@ -383,7 +403,7 @@ macro_rules! max_of {
     ($a:expr, $b:expr) => {{
         // Gán ra biến TRƯỚC khi so sánh. Nếu viết thẳng
         //     if $a > $b { $a } else { $b }
-        // thì $a bị tính HAI lần — với `max_of!(dem(), 3)` là gọi dem() hai lượt.
+        // thì $a bị tính HAI lần — với `max_of!(counter(), 3)` là gọi counter() hai lượt.
         let a = $a;
         let b = $b;
         if a > b { a } else { b }
@@ -395,16 +415,16 @@ fn main() {
     assert_eq!(max, 27);
 
     // Kiểm chứng: biểu thức chỉ được tính MỘT lần.
-    let mut so_lan = 0;
-    let mut dem = || { so_lan += 1; 7 };
-    let _ = max_of!(dem(), 3);
-    assert_eq!(so_lan, 1, "biểu thức phải chỉ tính một lần");
+    let mut calls = 0;
+    let mut counter = || { calls += 1; 7 };
+    let _ = max_of!(counter(), 3);
+    assert_eq!(calls, 1, "biểu thức phải chỉ tính một lần");
 
     println!("max = {max}");
 }
 ```
 
-Lỗi "tính nhiều lần" là cái bẫy kinh điển của macro. Nó vô hại với `max_of!(15, 27)` nhưng thành thảm hoạ với `max_of!(pop_khoi_hang_doi(), 0)`.
+Lỗi "tính nhiều lần" là cái bẫy kinh điển của macro. Nó vô hại với `max_of!(15, 27)` nhưng thành thảm hoạ với `max_of!(queue.pop_front().unwrap_or(0), 0)`.
 </details>
 
 <details>

@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // File: src/main.rs
 // Chương trình minh họa việc in ấn thông tin và kiểm tra công cụ Rust
 
@@ -7,18 +6,18 @@ fn main() {
     println!("Xin chào! Chào mừng bạn đến với thế giới lập trình Rust!");
 
     // 2. Sử dụng dấu ngoặc nhọn {} làm "vị trí giữ chỗ định dạng" (Format slot)
-    let ten_khoa_hoc = "Rust Masterclass Toàn Diện";
-    let so_chuong = 12;
-    println!("Bạn đang tham gia khóa học: {}", ten_khoa_hoc);
+    let course_name = "Rust Masterclass Toàn Diện";
+    let chapter_count = 12;
+    println!("Bạn đang tham gia khóa học: {}", course_name);
     println!(
         "Giai đoạn nền tảng bao gồm: {} chương chuyên sâu.",
-        so_chuong
+        chapter_count
     );
 
     // 3. Truyền nhiều giá trị vào cùng một câu thông báo
-    let nguoi_hoc = "Lập trình viên tương lai";
+    let learner = "Lập trình viên tương lai";
     let target = "Làm chủ bộ nhớ và hệ thống";
-    println!("Học viên [{}] đặt mục tiêu: [{}]", nguoi_hoc, target);
+    println!("Học viên [{}] đặt mục tiêu: [{}]", learner, target);
 
     // 4. Các kỹ thuật định dạng văn bản nâng cao với println!
     // In số với khoảng cách căn lề cố định (rất hữu ích khi in bảng biểu dữ liệu)

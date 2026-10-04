@@ -2,7 +2,7 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong lập trình hệ thống hiệu năng cao, cách dữ liệu được sắp đặt vật lý trên các thanh RAM đóng vai trò quyết định đến tốc độ của toàn bộ ứng dụng. Một thuật toán dù có độ phức tạp lý thuyết là $O(N)$ nhưng nếu dữ liệu bị xé nhỏ và ném rải rác khắp nơi trong bộ nhớ sẽ chạy chậm hơn gấp hàng chục lần so với một thuật toán cũng $O(N)$ nhưng dữ liệu nằm san sát nhau trên cùng một dải ô nhớ liên tục. Hiện tượng này bắt nguồn từ tính chất phần cứng vi xử lý CPU: **Tính cục bộ không gian (Spatial Locality)** và cơ chế nạp trước của bộ nhớ đệm (buffer cache prefetching).
+Trong lập trình hệ thống hiệu năng cao, cách dữ liệu được sắp đặt vật lý trên các thanh RAM đóng vai trò quyết định đến tốc độ của toàn bộ ứng dụng. Một thuật toán dù có độ phức tạp lý thuyết là $O(N)$ nhưng nếu dữ liệu bị xé nhỏ và ném rải rác khắp nơi trong bộ nhớ sẽ chạy chậm hơn gấp hàng chục lần so với một thuật toán cũng $O(N)$ nhưng dữ liệu nằm san sát nhau trên cùng một dải ô nhớ liên tục. Hiện tượng này bắt nguồn từ tính chất phần cứng vi xử lý CPU: **Tính cục bộ không gian (Spatial Locality)** và cơ chế nạp trước của bộ nhớ đệm (cache prefetching).
 
 Để khai thác tối đa sức mạnh phần cứng mà vẫn đảm bảo 100% an toàn bộ nhớ (không lo tràn bộ nhớ đệm hay truy cập ngoài biên), Rust cung cấp ba cấu trúc dữ liệu lưu trữ liền kề cốt lõi:
 1. **Mảng cố định (Array - `[T; N]`)**: Kích thước cố định từ lúc biên dịch, nằm trực tiếp trên Ngăn xếp (Stack).
@@ -10,7 +10,7 @@ Trong lập trình hệ thống hiệu năng cao, cách dữ liệu được s�
 3. **Lát cắt (Slice - `&[T]` và `&mut [T]`)**: Cửa sổ góc nhìn (View) trỏ vào một phần của mảng hoặc vector mà không tốn chi phí sao chép dữ liệu.
 
 Mục tiêu học tập của chương này:
-- Thấu hiểu cơ chế tổ chức vật lý của **Vùng nhớ liền kề (Contiguous Memory)** và lý do tại sao nó lại thân thiện tuyệt đối với bộ nhớ đệm (buffer) của CPU.
+- Thấu hiểu cơ chế tổ chức vật lý của **Vùng nhớ liền kề (Contiguous Memory)** và lý do tại sao nó lại thân thiện tuyệt đối với bộ nhớ đệm (cache) của CPU.
 - Phân biệt rạch ròi sự khác nhau giữa `Array`, `Vec`, và `Slice` về vị trí bộ nhớ (Stack vs Heap) và chi phí vận hành.
 - Nắm vững cơ chế tăng trưởng tự động của `Vec` (Độ dài `len` vs Sức chứa `capacity`, chiến lược nhân đôi dung lượng và chi phí khấu hao amortized $O(1)$).
 - Làm chủ kỹ thuật sử dụng `with_capacity` để triệt tiêu các lần tái cấp phát bộ nhớ lãng phí.
@@ -76,7 +76,7 @@ Hãy tưởng tượng bạn bước vào phòng thay đồ của một phòng t
 Trong Rust, mảng tĩnh được khai báo với cú pháp `[T; N]`, trong đó `T` là kiểu dữ liệu và `N` là số lượng phần tử cố định được biết trước ngay từ lúc biên dịch:
 
 ```rust
-let mang: [i32; 4] = [10, 20, 30, 40];
+let array: [i32; 4] = [10, 20, 30, 40];
 ```
 
 Trên thanh RAM (ngăn xếp Stack), mảng này chiếm đúng $4 \times 4 = 16$ bytes liên tục:
@@ -112,13 +112,13 @@ STACK (24 bytes)                      HEAP (Vùng nhớ tự do)
 
 ### 3. Con trỏ béo (Fat Pointer) của Lát cắt `&[T]`
 
-Một lát cắt (Slice) là một kiểu dữ liệu có kích thước không cố định (Dynamically Sized Type - DST). Do đó, bạn không bao giờ có thể lưu trực tiếp `[T]` vào một biến, mà luôn phải thông qua một tham chiếu mượn (borrow): `&[T]` hoặc `&mut [T]`.
+Một lát cắt (Slice) là một kiểu dữ liệu có kích thước không cố định (Dynamically Sized Type - DST). Do đó, bạn không bao giờ có thể lưu trực tiếp `[T]` vào một biến, mà luôn phải đứng sau một con trỏ: thường gặp nhất là tham chiếu mượn (borrow) `&[T]` hoặc `&mut [T]`, ngoài ra còn có `Box<[T]>`, `Rc<[T]>`.
 
 Một tham chiếu lát cắt `&[T]` là một **Con trỏ béo (Fat Pointer)** chiếm đúng 16 bytes trên Stack:
 - **Địa chỉ con trỏ dữ liệu (8 bytes)**: Trỏ tới phần tử bắt đầu của lát cắt (có thể nằm trên Stack nếu cắt từ Array, hoặc nằm trên Heap nếu cắt từ Vec).
 - **Độ dài lát cắt (8 bytes)**: Số lượng phần tử nằm trong phạm vi của lát cắt.
 
-Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Rust sẽ thực hiện phép **Kiểm tra biên an toàn (Bounds Check)** lúc chạy. Nếu `i >= len`, chương trình sẽ báo lỗi hoảng loạn (panic) an toàn thay vì đọc lén bộ nhớ rác như C/C++.
+Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `slice[i]`, Rust sẽ thực hiện phép **Kiểm tra biên an toàn (Bounds Check)** lúc chạy. Nếu `i >= len`, chương trình sẽ báo lỗi hoảng loạn (panic) an toàn thay vì đọc lén bộ nhớ rác như C/C++.
 
 ---
 
@@ -131,11 +131,11 @@ Vì mang theo độ dài bên mình, mỗi khi bạn truy cập `lat_cat[i]`, Ru
 /// Hàm này có tính tổng quát cực cao: Nó chấp nhận cả mảng tĩnh [i32; N],
 /// một phần mảng, hoặc toàn bộ Vector động Vec<i32> mà không cần sao chép dữ liệu!
 pub fn sum_slice(data: &[i32]) -> i64 {
-    let mut tong: i64 = 0;
+    let mut sum: i64 = 0;
     for &value in data {
-        tong += value as i64;
+        sum += value as i64;
     }
-    tong
+    sum
 }
 
 /// Hàm đảo ngược các phần tử tại chỗ trên một lát cắt khả biến &mut [i32]
@@ -160,29 +160,38 @@ fn main() {
     // 1. Khảo sát Mảng tĩnh [T; N] cố định trên Stack
     let static_array: [i32; 5] = [10, 20, 30, 40, 50];
     println!("[1] Mảng tĩnh trên Stack:");
-    println!("    - Kích thước vật lý : {} bytes", std::mem::size_of_val(&static_array));
+    println!(
+        "    - Kích thước vật lý : {} bytes",
+        std::mem::size_of_val(&static_array)
+    );
     println!("    - Số lượng phần tử  : {}", static_array.len());
-    
+
     // Kiểm chứng tính chất liền kề của các địa chỉ ô nhớ
     print!("    - Địa chỉ ô nhớ từng phần tử: ");
-    for i in 0..static_array.len() {
-        let address = &static_array[i] as *const i32 as usize;
+    for (i, element) in static_array.iter().enumerate() {
+        let address = element as *const i32 as usize;
         print!("[Phần tử {}: đuôi ...{:x}] ", i, address % 0x1000);
     }
     println!("\n    => Mỗi ô nhớ cách nhau đúng 4 bytes (kích thước i32)!");
 
     // 2. Khảo sát Vector động Vec<T> và chu kỳ co giãn dung lượng
     println!("\n[2] Vòng đời co giãn của Vector động (Heap Allocation):");
-    let mut vec_dong: Vec<i32> = Vec::new();
-    println!("    Ban đầu khi mới tạo: len = {}, cap = {}", vec_dong.len(), vec_dong.capacity());
+    let mut growing_vec: Vec<i32> = Vec::new();
+    println!(
+        "    Ban đầu khi mới tạo: len = {}, cap = {}",
+        growing_vec.len(),
+        growing_vec.capacity()
+    );
 
     let mut prev_address: usize = 0;
     for i in 1..=9 {
-        vec_dong.push(i * 10);
-        let current_address = vec_dong.as_ptr() as usize;
-        
-        // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới
-        let row_changed = if current_address != prev_address && prev_address != 0 {
+        growing_vec.push(i * 10);
+        let current_address = growing_vec.as_ptr() as usize;
+
+        // Phát hiện thời điểm vector đổi nhà sang vùng nhớ mới.
+        // Lưu ý: bộ cấp phát có thể nới rộng vùng nhớ TẠI CHỖ (realloc), khi đó
+        // cap tăng mà địa chỉ không đổi — vì vậy hãy nhìn cột cap là chính.
+        let relocation_note = if current_address != prev_address && prev_address != 0 {
             prev_address = current_address;
             " -> [ĐỔI NHÀ MỚI TRÊN HEAP!]"
         } else {
@@ -193,52 +202,63 @@ fn main() {
         println!(
             "    - Thêm {:2}: len = {}, cap = {:2}, ptr = {:x}{}",
             i * 10,
-            vec_dong.len(),
-            vec_dong.capacity(),
+            growing_vec.len(),
+            growing_vec.capacity(),
             current_address % 0x10000,
-            row_changed
+            relocation_note
         );
     }
 
     // 3. Tối ưu hóa trước với with_capacity
     println!("\n[3] Tối ưu hóa Vector với with_capacity(100):");
-    let mut vec_toi_uu: Vec<i32> = Vec::with_capacity(100);
-    let ptr_before = vec_toi_uu.as_ptr() as usize;
+    let mut presized_vec: Vec<i32> = Vec::with_capacity(100);
+    let ptr_before = presized_vec.as_ptr() as usize;
     for i in 0..100 {
-        vec_toi_uu.push(i);
+        presized_vec.push(i);
     }
-    let ptr_after = vec_toi_uu.as_ptr() as usize;
-    println!("    - Sau khi nạp 100 phần tử: len = {}, cap = {}", vec_toi_uu.len(), vec_toi_uu.capacity());
-    println!("    - Địa chỉ vùng nhớ có đổi không? {}", if ptr_before == ptr_after { "KHÔNG ĐỔI (Cực kỳ tối ưu!)" } else { "CÓ ĐỔI" });
+    let ptr_after = presized_vec.as_ptr() as usize;
+    println!(
+        "    - Sau khi nạp 100 phần tử: len = {}, cap = {}",
+        presized_vec.len(),
+        presized_vec.capacity()
+    );
+    println!(
+        "    - Địa chỉ vùng nhớ có đổi không? {}",
+        if ptr_before == ptr_after {
+            "KHÔNG ĐỔI (Cực kỳ tối ưu!)"
+        } else {
+            "CÓ ĐỔI"
+        }
+    );
     assert_eq!(ptr_before, ptr_after);
 
     // 4. Khảo sát Lát cắt (Slice) - Cửa sổ góc nhìn không tốn phí sao chép
     println!("\n[4] Ứng dụng Lát cắt (Slice) linh hoạt:");
     // Lấy lát cắt từ mảng tĩnh
-    let lat_cat_mang = &static_array[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
-    println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", lat_cat_mang);
-    let tong_mang = sum_slice(lat_cat_mang);
-    println!("    - Tổng tính từ lát cắt mảng  : {}", tong_mang);
-    assert_eq!(tong_mang, 90);
+    let array_slice = &static_array[1..4]; // Lấy phần tử chỉ số 1, 2, 3 -> [20, 30, 40]
+    println!("    - Lát cắt từ mảng tĩnh [1..4]: {:?}", array_slice);
+    let array_sum = sum_slice(array_slice);
+    println!("    - Tổng tính từ lát cắt mảng  : {}", array_sum);
+    assert_eq!(array_sum, 90);
 
     // Lấy lát cắt từ vector động
-    let lat_cat_vec = &vec_dong[0..5]; // Lấy 5 phần tử đầu tiên
-    println!("    - Lát cắt từ vector [0..5]   : {:?}", lat_cat_vec);
-    let tong_vec = sum_slice(lat_cat_vec);
-    println!("    - Tổng tính từ lát cắt vector: {}", tong_vec);
-    assert_eq!(tong_vec, 150);
+    let vec_slice = &growing_vec[0..5]; // Lấy 5 phần tử đầu tiên
+    println!("    - Lát cắt từ vector [0..5]   : {:?}", vec_slice);
+    let vec_sum = sum_slice(vec_slice);
+    println!("    - Tổng tính từ lát cắt vector: {}", vec_sum);
+    assert_eq!(vec_sum, 150);
 
     // 5. Thao tác trên lát cắt khả biến &mut [T]
-    let mut mang_can_dao = [1, 2, 3, 4, 5, 6];
+    let mut to_reverse = [1, 2, 3, 4, 5, 6];
     println!("\n[5] Đảo ngược tại chỗ trên lát cắt khả biến:");
-    println!("    - Mảng ban đầu : {:?}", mang_can_dao);
+    println!("    - Mảng ban đầu : {:?}", to_reverse);
     // Đảo ngược chỉ một đoạn ở giữa: từ chỉ số 1 đến 4 (các số 2, 3, 4, 5)
-    reverse_in_place(&mut mang_can_dao[1..5]);
-    println!("    - Sau khi đảo đoạn [1..5]: {:?}", mang_can_dao);
-    assert_eq!(mang_can_dao, [1, 5, 4, 3, 2, 6]);
+    reverse_in_place(&mut to_reverse[1..5]);
+    println!("    - Sau khi đảo đoạn [1..5]: {:?}", to_reverse);
+    assert_eq!(to_reverse, [1, 5, 4, 3, 2, 6]);
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 22               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 26               ");
     println!("============================================================");
 }
 ```
@@ -262,14 +282,14 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 // Đoạn mã lỗi minh họa: Vi phạm an toàn bộ nhớ do vector tái cấp phát
 fn e0502_broken() {
     let mut list = vec![1, 2, 3];
-    // Lát cắt giu_cho đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
-    // let giu_cho = &list[0]; 
+    // Tham chiếu first_ref đang giữ con trỏ trỏ vào vùng nhớ Heap hiện tại của vector
+    // let first_ref = &list[0]; 
     
     // Thao tác push có thể kích hoạt cấp phát vùng nhớ mới to hơn và hủy vùng nhớ cũ!
     // list.push(4); 
     
-    // Nếu dòng này được phép chạy, giu_cho sẽ đọc vào vùng nhớ rác đã bị giải phóng!
-    // println!("Phần tử đầu: {}", giu_cho); // LỖI E0502!
+    // Nếu dòng này được phép chạy, first_ref sẽ đọc vào vùng nhớ rác đã bị giải phóng!
+    // println!("Phần tử đầu: {}", first_ref); // LỖI E0502!
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng xong lát cắt trước khi biến đổi
@@ -295,7 +315,7 @@ fn e0502_correct() {
 
 ## Kiểm thử tự động (Automated Tests)
 
-Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Hãy để ý cách các test nhắm thẳng vào trường hợp biên và vào **bất biến** của cấu trúc dữ liệu, thay vì chỉ thử một ví dụ "đẹp".
 
 ```rust
 #[cfg(test)]
@@ -303,7 +323,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tong_lat_cat() {
+    fn sum_of_slices() {
         assert_eq!(sum_slice(&[10, 20, 30]), 60);
         assert_eq!(sum_slice(&[]), 0);
     }
@@ -317,11 +337,11 @@ mod tests {
 
     #[test]
     fn reverse_twice_is_identity() {
-        let root = vec![7, 3, 9, 1];
-        let mut v = root.clone();
+        let original = vec![7, 3, 9, 1];
+        let mut v = original.clone();
         reverse_in_place(&mut v);
         reverse_in_place(&mut v);
-        assert_eq!(v, root); // đảo hai lần = phép đồng nhất
+        assert_eq!(v, original); // đảo hai lần = phép đồng nhất
     }
 
     #[test]
@@ -339,7 +359,7 @@ mod tests {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Lợi thế vùng nhớ liền kề**: Dữ liệu nằm liên tục giúp CPU tải trước dữ liệu vào bộ nhớ đệm (buffer cache) siêu tốc, giảm thiểu tối đa hiện tượng trượt cache (Cache Miss).
+1. **Lợi thế vùng nhớ liền kề**: Dữ liệu nằm liên tục giúp CPU tải trước dữ liệu vào bộ nhớ đệm (cache) siêu tốc, giảm thiểu tối đa hiện tượng trượt cache (Cache Miss).
 2. **Array vs Vector**: Dùng `Array` khi biết trước số lượng phần tử cố định và muốn tiết kiệm tối đa tài nguyên trên Stack; Dùng `Vec` khi dữ liệu co giãn kích thước linh hoạt trên Heap.
 3. **Cơ chế nhân đôi dung lượng**: `Vec` tự động nhân đôi sức chứa khi đầy. Hãy tận dụng `Vec::with_capacity(n)` bất cứ khi nào ước tính được quy mô dữ liệu để tránh tái cấp phát nhiều lần.
 4. **Sức mạnh của Lát cắt (`&[T]`)**: Luôn ưu tiên nhận tham số hàm dưới dạng `&[T]` thay vì `&Vec<T>`, vì `&[T]` có thể nhận cả Array, Vector, lẫn các lát cắt con mà không đòi hỏi cấp phát hay chuyển quyền sở hữu (ownership).
@@ -353,7 +373,7 @@ mod tests {
 2. **Bài tập 2 (Tìm phần tử lớn nhất bằng Lát cắt)**:  
    Hãy viết một hàm `fn max_of(data: &[i32]) -> Option<i32>` trả về giá trị lớn nhất trong lát cắt. Viết hàm kiểm thử gọi `max_of` lần lượt với một mảng tĩnh `[10, 50, 30]`, một `Vec` động, và một lát cắt rỗng `&[]` để đảm bảo hàm xử lý an toàn không bị hoảng loạn (panic).
 3. **Bài tập 3 (Tối ưu hóa dung lượng)**:  
-   Viết một đoạn mã tạo một vector chứa các số chẵn từ 2 đến 2000. Đo lường số lần vector phải thay đổi địa chỉ con trỏ `as_ptr()` trong hai trường hợp:
+   Viết một đoạn mã tạo một vector chứa các số chẵn từ 2 đến 2000. Đếm số lần vector phải tái cấp phát (sức chứa `capacity()` thay đổi) và số lần địa chỉ con trỏ `as_ptr()` thay đổi trong hai trường hợp:
    - Trường hợp A: Sử dụng `Vec::new()` thông thường.
    - Trường hợp B: Sử dụng `Vec::with_capacity(1000)`.  
    Quan sát và đưa ra nhận xét về hiệu quả bảo toàn vùng nhớ.
@@ -397,9 +417,9 @@ pub fn max_of(data: &[i32]) -> Option<i32> {
 }
 
 #[test]
-fn max_of_hoat_dong_voi_moi_nguon() {
-    let mang = [10, 50, 30];
-    assert_eq!(max_of(&mang), Some(50));          // mảng tĩnh
+fn max_of_works_for_every_source() {
+    let array = [10, 50, 30];
+    assert_eq!(max_of(&array), Some(50));          // mảng tĩnh
 
     let v = vec![-5, -1, -99];
     assert_eq!(max_of(&v), Some(-1));             // Vec động
@@ -418,46 +438,57 @@ Hai chi tiết:
 <details>
 <summary><b>Bài tập 3 — Gợi ý</b></summary>
 
-`as_ptr()` cho địa chỉ vùng nhớ hiện tại. Mỗi lần `Vec` hết chỗ, nó cấp phát vùng mới và **sao chép toàn bộ** sang đó — địa chỉ đổi. Đếm số lần đổi là đếm số lần tái cấp phát.
+Mỗi lần `Vec` hết chỗ, nó xin vùng nhớ lớn hơn — `capacity()` đổi. Đếm số lần `capacity()` đổi là đếm số lần tái cấp phát. `as_ptr()` cho địa chỉ vùng nhớ hiện tại; hãy so hai con số này với nhau — chúng không nhất thiết bằng nhau.
 </details>
 
 <details>
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
-fn dem_lan_doi_dia_chi(dung_truoc: bool) -> (usize, usize) {
-    let mut v: Vec<u32> = if dung_truoc {
-        Vec::with_capacity(1000)     // xin đủ chỗ NGAY TỪ ĐẦU
+/// Trả về (số lần sức chứa đổi, số lần địa chỉ đổi, sức chứa cuối).
+fn count_reallocations(preallocate: bool) -> (usize, usize, usize) {
+    let mut v: Vec<u32> = if preallocate {
+        Vec::with_capacity(1000) // xin đủ chỗ NGAY TỪ ĐẦU
     } else {
-        Vec::new()                   // để nó tự lớn dần
+        Vec::new() // để nó tự lớn dần
     };
-    let mut dia_chi_cu = v.as_ptr();
-    let mut so_lan_doi = 0;
+    let mut old_cap = v.capacity();
+    let mut old_ptr = v.as_ptr();
+    let mut cap_changes = 0;
+    let mut ptr_changes = 0;
 
     for x in (2..=2000).step_by(2) {
         v.push(x);
-        let moi = v.as_ptr();
-        if moi != dia_chi_cu {       // địa chỉ đổi = vừa tái cấp phát
-            so_lan_doi += 1;
-            dia_chi_cu = moi;
+        if v.capacity() != old_cap {
+            // sức chứa đổi = vừa (tái) cấp phát
+            cap_changes += 1;
+            old_cap = v.capacity();
+        }
+        if v.as_ptr() != old_ptr {
+            // địa chỉ đổi = dữ liệu đã bị chuyển sang vùng nhớ mới
+            ptr_changes += 1;
+            old_ptr = v.as_ptr();
         }
     }
-    (so_lan_doi, v.capacity())
+    (cap_changes, ptr_changes, v.capacity())
 }
 
 fn main() {
-    let (a, cap_a) = dem_lan_doi_dia_chi(false);
-    let (b, cap_b) = dem_lan_doi_dia_chi(true);
+    let (a, pa, cap_a) = count_reallocations(false);
+    let (b, pb, cap_b) = count_reallocations(true);
 
-    println!("Vec::new()               : {a} lần tái cấp phát, capacity cuối {cap_a}");
-    println!("Vec::with_capacity(1000) : {b} lần tái cấp phát, capacity cuối {cap_b}");
+    println!("Vec::new()               : {a} lần tái cấp phát, {pa} lần đổi địa chỉ, capacity cuối {cap_a}");
+    println!("Vec::with_capacity(1000) : {b} lần tái cấp phát, {pb} lần đổi địa chỉ, capacity cuối {cap_b}");
 
     assert!(a > b, "biết trước sức chứa thì tái cấp phát ít hơn hẳn");
-    assert_eq!(b, 1, "chỉ một lần: lần cấp phát ban đầu");
+    assert_eq!(b, 0, "đã đủ chỗ từ đầu nên không phải tái cấp phát lần nào");
+    assert!(pa <= a, "địa chỉ chỉ có thể đổi khi có tái cấp phát");
 }
 ```
 
-**Con số thường thấy:** `Vec::new()` đổi địa chỉ khoảng **11 lần** (dung lượng đi 0→4→8→16→…→1024), còn `with_capacity(1000)` đúng **1 lần**.
+**Con số thường thấy:** `Vec::new()` tái cấp phát **9 lần** (sức chứa đi 0→4→8→16→…→1024), còn `with_capacity(1000)` **0 lần** — vùng nhớ đã được xin sẵn lúc gọi `with_capacity`, mọi `push` sau đó chỉ ghi vào chỗ trống.
+
+**Cái bẫy của việc đếm bằng `as_ptr()`:** số lần *đổi địa chỉ* thường ÍT hơn 9 — trên Linux/glibc có khi chỉ 1–2 lần. Lý do: `Vec` tái cấp phát bằng `realloc`, và khi ngay sau khối nhớ cũ còn trống, bộ cấp phát **nới rộng tại chỗ** mà không cần chép dữ liệu. Vì vậy đếm `capacity()` mới là cách đo chính xác số lần tái cấp phát; địa chỉ đổi chỉ cho biết lần nào thực sự phải sao chép.
 
 Vì sao vẫn là O(1) khấu hao dù có tái cấp phát: mỗi lần nhân đôi, tổng số phần tử phải sao chép là 1+2+4+…+N < 2N. Chia cho N thao tác `push` ra một hằng số. Nhưng **khấu hao O(1) không có nghĩa là miễn phí** — mỗi lần tái cấp phát là một lần dừng để sao chép, và trong hệ thống độ trễ thấp (Chương 74) đó chính là cái đuôi độ trễ phải tiêu diệt bằng cách cấp phát trước.
 </details>

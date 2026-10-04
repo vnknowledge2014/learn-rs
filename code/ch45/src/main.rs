@@ -1,6 +1,6 @@
-#![allow(dead_code, unused_variables, unused_imports)]
+#![allow(dead_code)]
 // ============================================================================
-// CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT & TDD CÙNG AI
+// CHƯƠNG 45: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT & TDD CÙNG AI
 // Tác giả: Kỹ Sư Hệ Thống Rust
 // ============================================================================
 
@@ -18,7 +18,8 @@ pub enum ValidationError {
     InvalidAccountPrefix(String),
     InvalidAccountDigits,
     SameSourceAndDestination,
-    ZeroOrNegativeAmount,
+    // u64 không thể âm — hệ thống kiểu đã loại trừ ca "số tiền âm" giúp ta
+    ZeroAmount,
     AmountExceedsLimit { limit: u64, requested: u64 },
 }
 
@@ -41,17 +42,20 @@ impl BankTransactionValidator {
     // Xác thực định dạng của một số tài khoản theo quy chuẩn
     // Mượn (borrow) tham chiếu lát cắt chuỗi &str để tối ưu hóa hiệu năng, zero-copy
     pub fn validate_account_format(&self, account: &str) -> Result<(), ValidationError> {
-        if account.len() != 10 {
+        // Đếm theo KÝ TỰ (chars), không theo byte: "ệ" chiếm 3 byte UTF-8
+        let char_count = account.chars().count();
+        if char_count != 10 {
             return Err(ValidationError::InvalidAccountLength {
                 expected: 10,
-                actual: account.len(),
+                actual: char_count,
             });
         }
 
         if !account.starts_with("VN") {
-            return Err(ValidationError::InvalidAccountPrefix(
-                account[0..2].to_string(),
-            ));
+            // KHÔNG dùng `account[0..2]`: cắt chuỗi theo byte sẽ panic nếu byte 2
+            // nằm giữa một ký tự nhiều byte (ca biên "ký tự dị biệt").
+            let prefix: String = account.chars().take(2).collect();
+            return Err(ValidationError::InvalidAccountPrefix(prefix));
         }
 
         // Kiểm tra 8 ký tự phía sau phải là chữ số hợp lệ
@@ -77,7 +81,7 @@ impl BankTransactionValidator {
 
         // 4. Kiểm tra số tiền
         if req.amount_cents == 0 {
-            return Err(ValidationError::ZeroOrNegativeAmount);
+            return Err(ValidationError::ZeroAmount);
         }
 
         if req.amount_cents > self.max_limit_cents {
@@ -92,7 +96,49 @@ impl BankTransactionValidator {
 }
 
 // ----------------------------------------------------------------------------
-// PHẦN 2: BỘ KIỂM THỬ ĐƠN VỊ TDD DO AI SINH RA TỪ FILE SPEC (RED -> GREEN)
+// PHẦN 2: HÀM MAIN THỰC THI TRỰC TIẾP ĐỂ KIỂM CHỨNG TÍNH NĂNG
+// ----------------------------------------------------------------------------
+fn main() {
+    println!("=== CHƯƠNG 45: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
+
+    // Khởi tạo bộ kiểm định giao dịch với hạn mức 50 triệu xu
+    let validator = BankTransactionValidator::new(50_000_000);
+
+    // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công
+    let req_ok = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN33334444".to_string(),
+        amount_cents: 15_000_000,
+    };
+    match validator.validate_transfer(&req_ok) {
+        Ok(()) => println!(
+            "[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!",
+            req_ok.from_account, req_ok.to_account
+        ),
+        Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
+    }
+
+    // Kịch bản kiểm thử trực tiếp 2: Chuyển khoản trùng tài khoản
+    let req_duplicate = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN11112222".to_string(),
+        amount_cents: 500_000,
+    };
+    match validator.validate_transfer(&req_duplicate) {
+        Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
+        Err(e) => println!(
+            "[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}",
+            e
+        ),
+    }
+
+    println!(
+        "\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// PHẦN 3: BỘ KIỂM THỬ ĐƠN VỊ TDD DO AI SINH RA TỪ FILE SPEC (RED -> GREEN)
 // ----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -176,6 +222,37 @@ mod tests {
     }
 
     #[test]
+    fn test_account_non_ascii_does_not_panic() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        // 10 ký tự, nhưng ký tự đầu nhiều byte: phiên bản cũ cắt `account[0..2]` và panic
+        let err = validator.validate_account_format("ệN12345678").unwrap_err();
+        assert_eq!(err, ValidationError::InvalidAccountPrefix("ệN".to_string()));
+        // 10 byte nhưng chỉ 4 ký tự -> sai độ dài
+        let err = validator.validate_account_format("ệệệA").unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 4
+            }
+        );
+    }
+
+    #[test]
+    fn test_transfer_zero_amount() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let req = TransferRequest {
+            from_account: "VN12345678".to_string(),
+            to_account: "VN87654321".to_string(),
+            amount_cents: 0,
+        };
+        assert_eq!(
+            validator.validate_transfer(&req),
+            Err(ValidationError::ZeroAmount)
+        );
+    }
+
+    #[test]
     fn test_transfer_success() {
         let validator = BankTransactionValidator::new(50_000_000);
         let req = TransferRequest {
@@ -185,46 +262,4 @@ mod tests {
         };
         assert!(validator.validate_transfer(&req).is_ok());
     }
-}
-
-// ----------------------------------------------------------------------------
-// PHẦN 3: HÀM MAIN THỰC THI TRỰC TIẾP ĐỂ KIỂM CHỨNG TÍNH NĂNG
-// ----------------------------------------------------------------------------
-fn main() {
-    println!("=== CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
-
-    // Khởi tạo bộ kiểm định giao dịch với hạn mức 50 triệu xu
-    let validator = BankTransactionValidator::new(50_000_000);
-
-    // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công
-    let req_ok = TransferRequest {
-        from_account: "VN11112222".to_string(),
-        to_account: "VN33334444".to_string(),
-        amount_cents: 15_000_000,
-    };
-    match validator.validate_transfer(&req_ok) {
-        Ok(()) => println!(
-            "[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!",
-            req_ok.from_account, req_ok.to_account
-        ),
-        Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
-    }
-
-    // Kịch bản kiểm thử trực tiếp 2: Chuyển khoản trùng tài khoản
-    let req_duplicate = TransferRequest {
-        from_account: "VN11112222".to_string(),
-        to_account: "VN11112222".to_string(),
-        amount_cents: 500_000,
-    };
-    match validator.validate_transfer(&req_duplicate) {
-        Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
-        Err(e) => println!(
-            "[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}",
-            e
-        ),
-    }
-
-    println!(
-        "\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!"
-    );
 }

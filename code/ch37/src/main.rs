@@ -1,15 +1,20 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 use std::hint::black_box;
+use std::sync::atomic::{AtomicI32, AtomicU64};
 
-// 1. Biến tĩnh toàn cục nằm trong phân đoạn .data
-static GLOBAL_DATA_VAR: i32 = 2026;
+// 1. Biến tĩnh toàn cục CÓ THỂ GHI, khởi tạo khác 0 -> phân đoạn .data
+//    (một `static` thường, bất biến, sẽ được xếp vào .rodata chỉ đọc!)
+static GLOBAL_DATA_VAR: AtomicI32 = AtomicI32::new(2026);
+
+// 1b. Biến tĩnh có thể ghi, khởi tạo bằng 0 -> phân đoạn .bss (không chiếm chỗ trong tệp thực thi)
+static GLOBAL_BSS_VAR: AtomicU64 = AtomicU64::new(0);
 
 // 2. Hằng số tĩnh bất biến nằm trong phân đoạn dữ liệu chỉ đọc (.rodata)
-static READ_ONLY_STRING: &str = "Ban do bo nho Rust Masterclass";
+static READ_ONLY_STRING: &str = "Bản đồ bộ nhớ Rust Masterclass";
 
 // Một hàm đơn giản nằm trong phân đoạn mã máy (.text)
 fn sample_target_function() {
-    println!("    [Execute] Ham muc tieu dang chay ben trong phan doan .text!");
+    println!("    [Thực thi] Hàm mục tiêu đang chạy bên trong phân đoạn .text!");
 }
 
 // Hàm đệ quy mô phỏng việc đẩy nhiều khung ngăn xếp (Stack Frames) liên tiếp
@@ -18,7 +23,7 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
     let current_addr = &local_var as *const u64 as usize;
 
     println!(
-        "    - Stack Frame do sau {}: Bien cuc bo tai dia chi 0x{:012x}",
+        "    - Stack Frame độ sâu {}: Biến cục bộ tại địa chỉ 0x{:012x}",
         depth, current_addr
     );
 
@@ -26,12 +31,12 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
         if current_addr < prev_addr {
             let diff = prev_addr - current_addr;
             println!(
-                "      ==> Dia chi GIAM di {} bytes so voi khung truoc (Stack phat trien DI XUONG)!",
+                "      ==> Địa chỉ GIẢM đi {} bytes so với khung trước (Stack phát triển ĐI XUỐNG)!",
                 diff
             );
         } else {
             let diff = current_addr - prev_addr;
-            println!("      ==> Dia chi TANG len {} bytes!", diff);
+            println!("      ==> Địa chỉ TĂNG lên {} bytes!", diff);
         }
     }
 
@@ -45,32 +50,37 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
 
 fn main() {
     println!("==================================================================");
-    println!("   KHAM PHA BAN DO BO NHO & KHONG GIAN DIA CHI AO (VIRTUAL MEMORY)  ");
+    println!("   KHÁM PHÁ BẢN ĐỒ BỘ NHỚ & KHÔNG GIAN ĐỊA CHỈ ẢO (VIRTUAL MEMORY)  ");
     println!("==================================================================");
 
     // 1. Phân đoạn Mã lệnh (.text)
     let text_addr = sample_target_function as fn() as usize;
-    println!("\n[1] Phan doan Ma may (.text segment):");
+    println!("\n[1] Phân đoạn Mã máy (.text segment):");
     println!(
-        "    - Dia chi ham sample_target_function: 0x{:012x}",
+        "    - Địa chỉ hàm sample_target_function: 0x{:012x}",
         text_addr
     );
 
-    // 2. Phân đoạn Dữ liệu (.data & .rodata)
-    let data_addr = &GLOBAL_DATA_VAR as *const i32 as usize;
+    // 2. Phân đoạn Dữ liệu (.data, .bss     // 2. Phân đoạn Dữ liệu (.data & .rodata) .rodata)
+    let data_addr = &GLOBAL_DATA_VAR as *const AtomicI32 as usize;
+    let bss_addr = &GLOBAL_BSS_VAR as *const AtomicU64 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
-    println!("\n[2] Phan doan Du lieu toan cuc (.data & .rodata segments):");
+    println!("\n[2] Phân đoạn Dữ liệu toàn cục (.data, .bss & .rodata):");
     println!(
-        "    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}",
+        "    - Biến toàn cục GLOBAL_DATA_VAR (.data)   : 0x{:012x}",
         data_addr
     );
     println!(
-        "    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}",
+        "    - Biến toàn cục GLOBAL_BSS_VAR (.bss)     : 0x{:012x}",
+        bss_addr
+    );
+    println!(
+        "    - Chuỗi hằng READ_ONLY_STRING (.rodata): 0x{:012x}",
         rodata_addr
     );
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
-    println!("\n[3] Phan doan Vung nho dong (Heap segment):");
+    println!("\n[3] Phân đoạn Vùng nhớ động (Heap segment):");
     let heap_box_1 = Box::new(1000u64);
     let heap_box_2 = Box::new(2000u64);
     let heap_box_3 = Box::new(3000u64);
@@ -79,41 +89,41 @@ fn main() {
     let heap_addr_2 = heap_box_2.as_ref() as *const u64 as usize;
     let heap_addr_3 = heap_box_3.as_ref() as *const u64 as usize;
 
-    println!("    - Khoi Heap #1: 0x{:012x}", heap_addr_1);
-    println!("    - Khoi Heap #2: 0x{:012x}", heap_addr_2);
-    println!("    - Khoi Heap #3: 0x{:012x}", heap_addr_3);
+    println!("    - Khối Heap #1: 0x{:012x}", heap_addr_1);
+    println!("    - Khối Heap #2: 0x{:012x}", heap_addr_2);
+    println!("    - Khối Heap #3: 0x{:012x}", heap_addr_3);
 
     if heap_addr_2 > heap_addr_1 {
         println!(
-            "    ==> Khoang cach Heap #2 so voi #1: +{} bytes (Heap phat trien DI LEN)!",
+            "    ==> Khoảng cách Heap #2 so với #1: +{} bytes (lần này trình cấp phát cấp địa chỉ TĂNG dần)",
             heap_addr_2 - heap_addr_1
         );
     }
 
     // 4. Phân đoạn Ngăn xếp (Stack segment)
-    println!("\n[4] Phan doan Ngan xep cuoc goi (Stack segment):");
+    println!("\n[4] Phân đoạn Ngăn xếp cuộc gọi (Stack segment):");
     let main_stack_var: u64 = 42;
     println!(
-        "    - Bien cuc bo trong ham main(): 0x{:012x}",
+        "    - Biến cục bộ trong hàm main(): 0x{:012x}",
         &main_stack_var as *const u64 as usize
     );
-    println!("    - Kiem tra huong dich chuyen cua Stack qua cac lan goi ham:");
+    println!("    - Kiểm tra hướng dịch chuyển của Stack qua các lần gọi hàm:");
     demonstrate_stack_growth(1, 0);
 
     // 5. Tổng kết so sánh khoảng cách địa chỉ ảo
-    println!("\n[5] So sanh tuong quan ban do dia chi ao:");
+    println!("\n[5] So sánh tương quan bản đồ địa chỉ ảo:");
     println!(
-        "    - Dinh cao nhat (Stack)   : ~0x{:012x}",
+        "    - Đỉnh cao nhất (Stack)   : ~0x{:012x}",
         &main_stack_var as *const u64 as usize
     );
-    println!("    - Vung trung tam (Heap)   : ~0x{:012x}", heap_addr_1);
-    println!("    - Vung thap (Data)        : ~0x{:012x}", data_addr);
-    println!("    - Vung day co so (Text)   : ~0x{:012x}", text_addr);
+    println!("    - Vùng trung tâm (Heap)   : ~0x{:012x}", heap_addr_1);
+    println!("    - Vùng thấp (Data)        : ~0x{:012x}", data_addr);
+    println!("    - Vùng đáy cơ sở (Text)   : ~0x{:012x}", text_addr);
 
     // Gọi hàm mẫu để đảm bảo logic chạy hoàn hảo
     sample_target_function();
 
     println!("\n==================================================================");
-    println!("   QUAN SAT THANH CONG: KHONG GIAN BO NHO HOAN TOAN CACH LY!     ");
+    println!("   QUAN SÁT THÀNH CÔNG: KHÔNG GIAN BỘ NHỚ HOÀN TOÀN CÁCH LY!     ");
     println!("==================================================================");
 }

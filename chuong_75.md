@@ -12,7 +12,7 @@ gói UDP → phân tích nhị phân → phát hiện khe → cập nhật sổ 
 
 Ba bài học cốt lõi:
 
-1. **Giao thức nhị phân (Binary protocol), không JSON.** ITCH của Nasdaq nhồi một cập nhật vào 36 byte. Cùng nội dung ở JSON tốn khoảng 200 byte và mất hàng microsecond để phân tích.
+1. **Giao thức nhị phân (Binary protocol), không JSON.** ITCH của Nasdaq nhồi một cập nhật vào 36 byte. Cùng nội dung ở JSON tốn 100–200 byte và mất hàng microsecond để phân tích.
 2. **Multicast UDP mất gói.** Không có TCP để sửa hộ. Bạn phải tự phát hiện khe và tự yêu cầu phát lại — **đúng một lần**, không lặp.
 3. **L2 hay L3 là quyết định kiến trúc.** L2 (gộp theo mức giá) đủ cho hầu hết chiến lược. L3 (từng lệnh) cho biết **vị trí xếp hàng** — thứ quyết định lãi lỗ của nhà tạo lập.
 
@@ -24,10 +24,10 @@ Ba bài học cốt lõi:
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  GIAO THỨC NHỊ PHÂN = ĐIỀN VÀO Ô CÓ SẴN, KHÔNG VIẾT VĂN                     │
 │                                                                              │
-│   JSON (≈200 byte, phân tích ~1 µs):                                        │
+│   JSON (≈70 byte cho ví dụ này, phân tích ~1 µs):                           │
 │     {"type":"add","order_id":12345,"side":"B","price":10050,"qty":100}      │
 │                                                                              │
-│   Nhị phân (24 byte, phân tích ~40 ns):                                     │
+│   Nhị phân (30 byte, phân tích ~40 ns):                                     │
 │     ┌──┬────────┬────────┬──┬────────┬────────┐                            │
 │     │01│ 12345  │  ts    │B │ 10050  │  100   │                            │
 │     └──┴────────┴────────┴──┴────────┴────────┘                            │
@@ -77,7 +77,9 @@ Về endianness: các giao thức mạng thường dùng big-endian ("thứ tự
 
 Bản đầu tiên của bộ phát hiện khe trong chương này có một lỗi thật: nó báo lại **cùng một khe** cho mọi thông điệp tiếp theo. Trong sản xuất, lỗi đó tạo ra bão yêu cầu phát lại — và bão đó làm sập chính đường phục hồi mà bạn đang cần.
 
-Cách chữa là thêm trạng thái `pending_gap: Option<(u64, u64)>` và một biến thể kết quả `DangChoKhoiPhuc`. Khi đã yêu cầu phát lại một khe, mọi thông điệp sau đó chỉ báo "đang chờ" chứ không sinh yêu cầu mới.
+Cách chữa là thêm trạng thái `pending_gap: Option<(u64, u64)>` và một biến thể kết quả `SeqOutcome::AwaitingRecovery`. Khi đã yêu cầu phát lại một khe, mọi thông điệp sau đó chỉ báo "đang chờ" chứ không sinh yêu cầu mới. Bộ phát hiện còn nhớ số thứ tự lớn nhất đã thấy (`highest_seen`), nên nếu một khe **mới** xuất hiện phía sau khe cũ, nó vẫn xin phát lại đúng phần mới đó — một lần.
+
+Hai chi tiết nhỏ nhưng dễ sai: khi gói còn thiếu tới trễ trên chính luồng chính (UDP có thể đảo thứ tự), bộ phát hiện phải đẩy số kỳ vọng qua **mọi** bản tin đã đệm liền mạch chứ không chỉ +1; và `drain()` chỉ được rút những bản tin đứng trước khe đầu tiên.
 
 Đây là ví dụ điển hình của một loại lỗi mà **kiểm thử một thông điệp không bao giờ bắt được** — phải kiểm thử một dòng thông điệp mới lộ.
 
@@ -121,35 +123,57 @@ use std::collections::{BTreeMap, HashMap};
 // thông tin đó ở dạng nhị phân cố định tốn 42 byte và đọc xong trong vài chục
 // nano-giây — chỉ là vài phép đọc số nguyên từ vị trí đã biết trước.
 
-pub type Price = i64;      // tick, 1 tick = 0,01 đơn vị tiền
+pub type Price = i64; // tick, 1 tick = 0,01 đơn vị tiền
 pub type Quantity = u32;
 pub type OrderId = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side { Buy, Sell }
+// `PartialOrd, Ord` để `(Side, Price)` dùng được làm khoá `BTreeMap` ở sổ L3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Side {
+    Buy,
+    Sell,
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BanTin {
+pub enum Message {
     /// Thêm lệnh mới vào sổ
-    AddOrder { id: OrderId, id_chain: u32, side: Side, price: Price, quantity: Quantity },
+    AddOrder {
+        id: OrderId,
+        symbol_id: u32,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+    },
     /// Lệnh bị huỷ một phần hoặc toàn bộ
-    CancelOrder { id: OrderId, cancel_quantity: Quantity },
+    CancelOrder {
+        id: OrderId,
+        cancel_quantity: Quantity,
+    },
     /// Lệnh khớp
-    Fill { id: OrderId, quantity: Quantity, price: Price },
+    Fill {
+        id: OrderId,
+        quantity: Quantity,
+        price: Price,
+    },
     /// Thay thế lệnh: huỷ cũ, tạo mới, MẤT ưu tiên thời gian
-    Replaced { old_id: OrderId, ma_moi: OrderId, price: Price, quantity: Quantity },
+    Replaced {
+        old_id: OrderId,
+        new_id: OrderId,
+        price: Price,
+        quantity: Quantity,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeedPacket {
     pub seq: u64,
     pub timestamp_nanos: u64,
-    pub ban_tin: BanTin,
+    pub message: Message,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
-    TooShort { can: usize, co: usize },
+    TooShort { needed: usize, got: usize },
     UnknownMessageKind(u8),
     UnknownSide(u8),
 }
@@ -165,66 +189,120 @@ pub enum ParseError {
 ///  | 1 byte | 8 byte | 8 byte    |8 byte| 4 byte| 1 byte| 8 byte | 4 byte
 /// ```
 pub fn analyze(b: &[u8]) -> Result<FeedPacket, ParseError> {
-    if b.len() < 17 { return Err(ParseError::QuaNgan { can: 17, co: b.len() }); }
+    if b.len() < 17 {
+        return Err(ParseError::TooShort {
+            needed: 17,
+            got: b.len(),
+        });
+    }
     let kind = b[0];
     let seq = u64::from_be_bytes(b[1..9].try_into().unwrap());
     let timestamp_nanos = u64::from_be_bytes(b[9..17].try_into().unwrap());
 
-    let can = match kind { b'A' => 42, b'X' => 29, b'E' => 37, b'R' => 45, _ => 17 };
-    if b.len() < can { return Err(ParseError::QuaNgan { can, co: b.len() }); }
-
-    let doc_u32 = |i: usize| -> u32 { u32::from_be_bytes(b[i..i + 4].try_into().unwrap()) };
-    let doc_i64 = |i: usize| -> i64 { i64::from_be_bytes(b[i..i + 8].try_into().unwrap()) };
-    let doc_u64 = |i: usize| -> u64 { u64::from_be_bytes(b[i..i + 8].try_into().unwrap()) };
-
-    let ban_tin = match kind {
-        b'A' => BanTin::AddOrder {
-            ma: doc_u64(17), id_chain: doc_u32(25),
-            side: match b[29] { b'B' => Side::Buy, b'S' => Side::Sell,
-                                 x => return Err(ParseError::ChieuLa(x)) },
-            price: doc_i64(30), quantity: doc_u32(38),
-        },
-        b'X' => BanTin::CancelOrder { ma: doc_u64(17), so_luong_huy: doc_u32(25) },
-        b'E' => BanTin::Fill { ma: doc_u64(17), quantity: doc_u32(25), price: doc_i64(29) },
-        b'R' => BanTin::ThayThe {
-            old_id: doc_u64(17), ma_moi: doc_u64(25),
-            price: doc_i64(33), quantity: doc_u32(41),
-        },
-        x => return Err(ParseError::LoaiBanTinLa(x)),
+    let needed = match kind {
+        b'A' => 42,
+        b'X' => 29,
+        b'E' => 37,
+        b'R' => 45,
+        _ => 17,
     };
-    Ok(FeedPacket { seq, timestamp_nanos, ban_tin })
+    if b.len() < needed {
+        return Err(ParseError::TooShort {
+            needed,
+            got: b.len(),
+        });
+    }
+
+    let read_u32 = |i: usize| -> u32 { u32::from_be_bytes(b[i..i + 4].try_into().unwrap()) };
+    let read_i64 = |i: usize| -> i64 { i64::from_be_bytes(b[i..i + 8].try_into().unwrap()) };
+    let read_u64 = |i: usize| -> u64 { u64::from_be_bytes(b[i..i + 8].try_into().unwrap()) };
+
+    let message = match kind {
+        b'A' => Message::AddOrder {
+            id: read_u64(17),
+            symbol_id: read_u32(25),
+            side: match b[29] {
+                b'B' => Side::Buy,
+                b'S' => Side::Sell,
+                x => return Err(ParseError::UnknownSide(x)),
+            },
+            price: read_i64(30),
+            quantity: read_u32(38),
+        },
+        b'X' => Message::CancelOrder {
+            id: read_u64(17),
+            cancel_quantity: read_u32(25),
+        },
+        b'E' => Message::Fill {
+            id: read_u64(17),
+            quantity: read_u32(25),
+            price: read_i64(29),
+        },
+        b'R' => Message::Replaced {
+            old_id: read_u64(17),
+            new_id: read_u64(25),
+            price: read_i64(33),
+            quantity: read_u32(41),
+        },
+        x => return Err(ParseError::UnknownMessageKind(x)),
+    };
+    Ok(FeedPacket {
+        seq,
+        timestamp_nanos,
+        message,
+    })
 }
 
 /// Mã hoá ngược — dùng để sinh dữ liệu kiểm thử và để ghi lại phiên (Chương 76).
 pub fn encode(g: &FeedPacket) -> Vec<u8> {
     let mut v = Vec::with_capacity(48);
-    let kind = match g.ban_tin {
-        BanTin::AddOrder { .. } => b'A', BanTin::CancelOrder { .. } => b'X',
-        BanTin::Fill { .. } => b'E', BanTin::ThayThe { .. } => b'R',
+    let kind = match g.message {
+        Message::AddOrder { .. } => b'A',
+        Message::CancelOrder { .. } => b'X',
+        Message::Fill { .. } => b'E',
+        Message::Replaced { .. } => b'R',
     };
     v.push(kind);
     v.extend_from_slice(&g.seq.to_be_bytes());
     v.extend_from_slice(&g.timestamp_nanos.to_be_bytes());
-    match &g.ban_tin {
-        BanTin::AddOrder { ma, id_chain, side, price, quantity } => {
-            v.extend_from_slice(&ma.to_be_bytes());
-            v.extend_from_slice(&id_chain.to_be_bytes());
+    match &g.message {
+        Message::AddOrder {
+            id,
+            symbol_id,
+            side,
+            price,
+            quantity,
+        } => {
+            v.extend_from_slice(&id.to_be_bytes());
+            v.extend_from_slice(&symbol_id.to_be_bytes());
             v.push(if *side == Side::Buy { b'B' } else { b'S' });
             v.extend_from_slice(&price.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
         }
-        BanTin::CancelOrder { ma, so_luong_huy } => {
-            v.extend_from_slice(&ma.to_be_bytes());
-            v.extend_from_slice(&so_luong_huy.to_be_bytes());
+        Message::CancelOrder {
+            id,
+            cancel_quantity,
+        } => {
+            v.extend_from_slice(&id.to_be_bytes());
+            v.extend_from_slice(&cancel_quantity.to_be_bytes());
         }
-        BanTin::Fill { ma, quantity, price } => {
-            v.extend_from_slice(&ma.to_be_bytes());
+        Message::Fill {
+            id,
+            quantity,
+            price,
+        } => {
+            v.extend_from_slice(&id.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
             v.extend_from_slice(&price.to_be_bytes());
         }
-        BanTin::ThayThe { old_id, ma_moi, price, quantity } => {
+        Message::Replaced {
+            old_id,
+            new_id,
+            price,
+            quantity,
+        } => {
             v.extend_from_slice(&old_id.to_be_bytes());
-            v.extend_from_slice(&ma_moi.to_be_bytes());
+            v.extend_from_slice(&new_id.to_be_bytes());
             v.extend_from_slice(&price.to_be_bytes());
             v.extend_from_slice(&quantity.to_be_bytes());
         }
@@ -240,91 +318,135 @@ pub fn encode(g: &FeedPacket) -> Vec<u8> {
 // mình có đang nhìn bức tranh đầy đủ hay không.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum KetQuaNhan {
+pub enum SeqOutcome {
     /// Đúng bản tin kế tiếp — xử lý ngay
-    DungThuTu,
+    InOrder,
     /// Bản tin cũ (bản sao từ luồng dự phòng) — bỏ qua
-    TrungLap,
-    /// PHÁT HIỆN khe lần đầu: thiếu `so_ban_tin_mat` bản tin.
+    Duplicate,
+    /// PHÁT HIỆN một khe mới: thiếu `count` bản tin, từ `from` tới `to`.
     /// Đây là lúc DUY NHẤT ta gửi yêu cầu phát lại.
-    ThieuBanTin { tu: u64, den: u64, so_ban_tin_mat: u64 },
-    /// Đã biết có khe rồi, đang chờ dữ liệu phát lại. Bản tin mới vẫn được
-    /// đệm lại nhưng KHÔNG xin phát lại nữa.
-    DangChoKhoiPhuc,
+    MissingMessages { from: u64, to: u64, count: u64 },
+    /// Bản tin tới sớm nhưng khe phía trước đã được xin phát lại. Bản tin
+    /// vẫn được đệm lại nhưng KHÔNG xin phát lại nữa.
+    AwaitingRecovery,
 }
 
 pub struct GapDetector {
     pub expected_seq: u64,
-    /// Bản tin tới sớm được giữ lại, xử lý sau khi khe được lấp.
+    /// Bản tin đã nhận nhưng chưa rút ra — cả bản tin đúng thứ tự lẫn bản tin
+    /// tới sớm (giữ lại, xử lý sau khi khe được lấp).
     buffered: BTreeMap<u64, FeedPacket>,
-    /// Khe đang chờ lấp: (bản tin đầu thiếu, bản tin cuối thiếu).
+    /// Số thứ tự lớn nhất từng thấy — để nhận ra một khe MỚI nằm sau khe cũ.
+    highest_seen: Option<u64>,
+    /// Vùng đang chờ lấp: (bản tin đầu thiếu, bản tin cuối thiếu).
     /// Có giá trị nghĩa là ta đang ở CHẾ ĐỘ KHÔI PHỤC.
     pending_gap: Option<(u64, u64)>,
-    pub slot_count: u64,
-    pub num_duplicate_loop: u64,
-    pub tong_ban_tin_mat: u64,
+    pub gap_count: u64,
+    pub duplicate_count: u64,
+    pub total_lost: u64,
 }
 
 impl GapDetector {
     pub fn new(start: u64) -> Self {
-        GapDetector { expected_seq: start, buffered: BTreeMap::new(), pending_gap: None,
-                        slot_count: 0, num_duplicate_loop: 0, tong_ban_tin_mat: 0 }
+        GapDetector {
+            expected_seq: start,
+            buffered: BTreeMap::new(),
+            highest_seen: None,
+            pending_gap: None,
+            gap_count: 0,
+            duplicate_count: 0,
+            total_lost: 0,
+        }
     }
 
-    pub fn is_recovering(&self) -> bool { self.pending_gap.is_some() }
-
-    pub fn nhan(&mut self, g: FeedPacket) -> KetQuaNhan {
-        let stt = g.seq;
-        if stt < self.expected_seq {
-            self.num_duplicate_loop += 1;
-            return KetQuaNhan::TrungLap;
-        }
-        if stt > self.expected_seq {
-            self.buffered.insert(stt, g); // luôn giữ lại, đừng bao giờ vứt
-            // Đã biết có khe rồi thì chỉ đệm tiếp. Nếu báo lại mỗi bản tin,
-            // ta sẽ gửi hàng nghìn yêu cầu phát lại cho CÙNG một khe và tự
-            // làm sập luồng khôi phục của sàn — lỗi vận hành có thật.
-            if let Some((_, den)) = &mut self.pending_gap {
-                if stt > *den + 1 { *den = stt - 1; }
-                return KetQuaNhan::DangChoKhoiPhuc;
-            }
-            let (tu, den) = (self.expected_seq, stt - 1);
-            self.pending_gap = Some((tu, den));
-            self.slot_count += 1;
-            self.tong_ban_tin_mat += den - tu + 1;
-            return KetQuaNhan::ThieuBanTin { tu, den, so_ban_tin_mat: den - tu + 1 };
-        }
-        self.expected_seq += 1;
-        self.buffered.insert(stt, g);
-        KetQuaNhan::DungThuTu
+    pub fn is_recovering(&self) -> bool {
+        self.pending_gap.is_some()
     }
 
-    /// Rút các bản tin liền mạch đã sẵn sàng xử lý, theo đúng thứ tự.
+    pub fn receive(&mut self, g: FeedPacket) -> SeqOutcome {
+        let seq_no = g.seq;
+        // Đã xử lý rồi, hoặc đã nằm sẵn trong bộ đệm → bản sao từ luồng dự phòng.
+        if seq_no < self.expected_seq || self.buffered.contains_key(&seq_no) {
+            self.duplicate_count += 1;
+            return SeqOutcome::Duplicate;
+        }
+        // Số thứ tự nhỏ nhất CHƯA từng thấy và chưa từng được xin phát lại.
+        let known_until = self
+            .highest_seen
+            .map_or(self.expected_seq, |h| h + 1)
+            .max(self.expected_seq);
+        self.highest_seen = Some(self.highest_seen.map_or(seq_no, |h| h.max(seq_no)));
+        self.buffered.insert(seq_no, g); // luôn giữ lại, đừng bao giờ vứt
+
+        if seq_no == self.expected_seq {
+            // Bản tin này có thể lấp luôn khe (ví dụ gói UDP tới trễ), nên đẩy
+            // kỳ vọng qua MỌI bản tin liền mạch đã đệm, không chỉ +1.
+            self.advance();
+            return SeqOutcome::InOrder;
+        }
+
+        // seq_no > expected_seq: có khe phía trước. Chỉ xin phát lại phần
+        // CHƯA từng được xin. Nếu báo lại mỗi bản tin, ta sẽ gửi hàng nghìn yêu
+        // cầu phát lại cho CÙNG một khe và tự làm sập luồng khôi phục của
+        // sàn — lỗi vận hành có thật.
+        if seq_no <= known_until {
+            // Khe đã biết: bản tin này nằm trong hoặc ngay sau vùng đang chờ.
+            return SeqOutcome::AwaitingRecovery;
+        }
+        let (from, to) = (known_until, seq_no - 1);
+        self.pending_gap = Some(match self.pending_gap {
+            Some((first, _)) => (first, to),
+            None => (from, to),
+        });
+        self.gap_count += 1;
+        self.total_lost += to - from + 1;
+        SeqOutcome::MissingMessages {
+            from,
+            to,
+            count: to - from + 1,
+        }
+    }
+
+    /// Đẩy kỳ vọng qua toàn bộ phần đã liền mạch; rời chế độ khôi phục khi
+    /// mọi bản tin thiếu đã về đủ.
+    fn advance(&mut self) {
+        while self.buffered.contains_key(&self.expected_seq) {
+            self.expected_seq += 1;
+        }
+        if let Some((_, to)) = self.pending_gap
+            && self.expected_seq > to
+        {
+            self.pending_gap = None;
+        }
+    }
+
+    /// Rút các bản tin liền mạch đã sẵn sàng xử lý, theo đúng thứ tự. Chỉ rút
+    /// những bản tin ĐỨNG TRƯỚC khe đầu tiên — phần sau khe phải chờ.
     pub fn drain(&mut self) -> Vec<FeedPacket> {
-        let mut ra = Vec::new();
-        let mut mong = match self.buffered.keys().next() { Some(&k) => k, None => return ra };
-        while let Some(g) = self.buffered.remove(&mong) {
-            ra.push(g);
-            mong += 1;
+        let mut out = Vec::new();
+        while let Some(entry) = self.buffered.first_entry() {
+            if *entry.key() >= self.expected_seq {
+                break;
+            }
+            out.push(entry.remove());
         }
-        ra
+        out
     }
 
     /// Lấp khe bằng dữ liệu phát lại từ luồng khôi phục. Khi mọi bản tin
     /// thiếu đã về đủ, ta rời chế độ khôi phục và chạy bình thường trở lại.
-    pub fn slot_loop(&mut self, cac_goi: Vec<FeedPacket>) {
-        for g in cac_goi {
-            let stt = g.seq;
-            self.buffered.insert(stt, g);
+    pub fn fill_gap(&mut self, packets: Vec<FeedPacket>) {
+        for g in packets {
+            if g.seq >= self.expected_seq {
+                self.buffered.insert(g.seq, g);
+            }
         }
-        // Đẩy kỳ vọng qua toàn bộ phần đã liền mạch
-        while self.buffered.contains_key(&self.expected_seq) { self.expected_seq += 1; }
-        if let Some((_, den)) = self.pending_gap {
-            if self.expected_seq > den { self.pending_gap = None; }
-        }
+        self.advance();
     }
 
-    pub fn num_dang_count(&self) -> usize { self.buffered.len() }
+    pub fn buffered_len(&self) -> usize {
+        self.buffered.len()
+    }
 }
 
 // ============================================================================
@@ -334,88 +456,132 @@ impl GapDetector {
 // Nhẹ hơn L3 rất nhiều, và cập nhật nhanh hơn.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PriceLevel { pub price: Price, pub quantity: u64, pub so_lenh: u32 }
+pub struct PriceLevel {
+    pub price: Price,
+    pub quantity: u64,
+    pub order_count: u32,
+}
 
 #[derive(Debug, Default)]
 pub struct L2Book {
     /// Bên mua lưu khoá ÂM để `BTreeMap` trả giá cao nhất trước.
-    buy: BTreeMap<Price, (u64, u32)>,
-    ban: BTreeMap<Price, (u64, u32)>,
+    bids: BTreeMap<Price, (u64, u32)>,
+    asks: BTreeMap<Price, (u64, u32)>,
 }
 
 impl L2Book {
-    pub fn new() -> Self { L2Book::default() }
+    pub fn new() -> Self {
+        L2Book::default()
+    }
 
-    pub fn them(&mut self, side: Side, price: Price, kl: Quantity) {
-        let (ban_do, key) = match side {
-            Side::Buy => (&mut self.buy, -price),
-            Side::Sell => (&mut self.ban, price),
+    pub fn add(&mut self, side: Side, price: Price, kl: Quantity) {
+        let (map, key) = match side {
+            Side::Buy => (&mut self.bids, -price),
+            Side::Sell => (&mut self.asks, price),
         };
-        let e = ban_do.entry(key).or_insert((0, 0));
+        let e = map.entry(key).or_insert((0, 0));
         e.0 += kl as u64;
         e.1 += 1;
     }
 
     /// Trả `true` nếu mức giá bị xoá hẳn khỏi sổ.
-    pub fn bot(&mut self, side: Side, price: Price, kl: Quantity, bot_mot_lenh: bool) -> bool {
-        let (ban_do, key) = match side {
-            Side::Buy => (&mut self.buy, -price),
-            Side::Sell => (&mut self.ban, price),
+    pub fn reduce(&mut self, side: Side, price: Price, kl: Quantity, remove_order: bool) -> bool {
+        let (map, key) = match side {
+            Side::Buy => (&mut self.bids, -price),
+            Side::Sell => (&mut self.asks, price),
         };
-        if let Some(e) = ban_do.get_mut(&key) {
+        if let Some(e) = map.get_mut(&key) {
             e.0 = e.0.saturating_sub(kl as u64);
-            if bot_mot_lenh { e.1 = e.1.saturating_sub(1); }
+            if remove_order {
+                e.1 = e.1.saturating_sub(1);
+            }
             // Mức giá hết khối lượng phải BIẾN MẤT, không được để lại mức rỗng —
             // nếu không, "giá tốt nhất" sẽ trỏ vào chỗ không có gì.
-            if e.0 == 0 { ban_do.remove(&key); return true; }
+            if e.0 == 0 {
+                map.remove(&key);
+                return true;
+            }
         }
         false
     }
 
-    pub fn best_bid(&self) -> Option<Price> { self.buy.keys().next().map(|k| -k) }
-    pub fn best_ask(&self) -> Option<Price> { self.ban.keys().next().copied() }
+    pub fn best_bid(&self) -> Option<Price> {
+        self.bids.keys().next().map(|k| -k)
+    }
+    pub fn best_ask(&self) -> Option<Price> {
+        self.asks.keys().next().copied()
+    }
     pub fn spread(&self) -> Option<Price> {
         Some(self.best_ask()? - self.best_bid()?)
     }
     pub fn num_levels(&self, side: Side) -> usize {
-        match side { Side::Buy => self.buy.len(), Side::Sell => self.ban.len() }
+        match side {
+            Side::Buy => self.bids.len(),
+            Side::Sell => self.asks.len(),
+        }
     }
     pub fn qty_at(&self, side: Side, price: Price) -> u64 {
-        let (bd, k) = match side {
-            Side::Buy => (&self.buy, -price), Side::Sell => (&self.ban, price) };
-        bd.get(&k).map_or(0, |e| e.0)
+        let (map, k) = match side {
+            Side::Buy => (&self.bids, -price),
+            Side::Sell => (&self.asks, price),
+        };
+        map.get(&k).map_or(0, |e| e.0)
     }
 
     /// `n` mức giá tốt nhất mỗi bên — đúng thứ mà giao diện và chiến lược cần.
     pub fn top_levels(&self, n: usize) -> (Vec<PriceLevel>, Vec<PriceLevel>) {
-        let m = self.buy.iter().take(n)
-            .map(|(k, v)| PriceLevel { price: -k, quantity: v.0, so_lenh: v.1 }).collect();
-        let b = self.ban.iter().take(n)
-            .map(|(k, v)| PriceLevel { price: *k, quantity: v.0, so_lenh: v.1 }).collect();
+        let m = self
+            .bids
+            .iter()
+            .take(n)
+            .map(|(k, v)| PriceLevel {
+                price: -k,
+                quantity: v.0,
+                order_count: v.1,
+            })
+            .collect();
+        let b = self
+            .asks
+            .iter()
+            .take(n)
+            .map(|(k, v)| PriceLevel {
+                price: *k,
+                quantity: v.0,
+                order_count: v.1,
+            })
+            .collect();
         (m, b)
     }
 
     /// Giá bình quân gia quyền theo khối lượng đối ứng — ước lượng "giá trị
     /// thật" tốt hơn giá giữa, vì nó tính cả độ mất cân bằng cung cầu.
-    pub fn price_can_table(&self) -> Option<f64> {
+    pub fn micro_price(&self) -> Option<f64> {
         let (m, b) = self.top_levels(1);
         let (m, b) = (m.first()?, b.first()?);
-        let tong = (m.quantity + b.quantity) as f64;
-        if tong == 0.0 { return None; }
+        let total = (m.quantity + b.quantity) as f64;
+        if total == 0.0 {
+            return None;
+        }
         // Bên nào NHIỀU khối lượng hơn thì giá cân bằng lệch về phía bên kia
-        Some((m.price as f64 * b.quantity as f64 + b.price as f64 * m.quantity as f64) / tong)
+        Some((m.price as f64 * b.quantity as f64 + b.price as f64 * m.quantity as f64) / total)
     }
 
     // ---- Kiểm tra chất lượng dữ liệu ----
 
     /// Sổ "khoá" (locked): giá mua = giá bán. Hiếm nhưng hợp lệ ở vài thị trường.
-    pub fn is_key(&self) -> bool { self.spread() == Some(0) }
+    pub fn is_locked(&self) -> bool {
+        self.spread() == Some(0)
+    }
 
     /// Sổ "chéo" (crossed): giá mua > giá bán. LUÔN LUÔN là dấu hiệu dữ liệu
     /// hỏng hoặc mất bản tin — phải dừng giao dịch ngay, đừng cố khai thác.
-    pub fn is_crossed(&self) -> bool { self.spread().is_some_and(|c| c < 0) }
+    pub fn is_crossed(&self) -> bool {
+        self.spread().is_some_and(|c| c < 0)
+    }
 
-    pub fn is_healthy(&self) -> bool { !self.is_crossed() }
+    pub fn is_healthy(&self) -> bool {
+        !self.is_crossed()
+    }
 }
 
 // ============================================================================
@@ -426,139 +592,213 @@ impl L2Book {
 // chiến lược tạo lập thị trường.
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct L3Order { pub ma: OrderId, pub side: Side, pub price: Price, pub remaining: Quantity }
-
-/// `Chieu` không cài `Ord`, nên dùng bản có thứ tự làm khoá bản đồ.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Chieu2 { Buy, Sell }
-
-impl From<Side> for Chieu2 {
-    fn from(c: Side) -> Self { match c { Side::Buy => Chieu2::Buy, Side::Sell => Chieu2::Sell } }
+pub struct L3Order {
+    pub id: OrderId,
+    pub side: Side,
+    pub price: Price,
+    pub remaining: Quantity,
 }
 
 #[derive(Debug, Default)]
 pub struct L3Book {
-    pub order: HashMap<OrderId, L3Order>,
+    pub orders: HashMap<OrderId, L3Order>,
     /// Thứ tự tới của từng mức giá — nền của ưu tiên thời gian.
-    queue: BTreeMap<(Chieu2, Price), Vec<OrderId>>,
+    queue: BTreeMap<(Side, Price), Vec<OrderId>>,
     pub l2: L2Book,
 }
 
 impl L3Book {
-    pub fn new() -> Self { L3Book::default() }
+    pub fn new() -> Self {
+        L3Book::default()
+    }
 
-    pub fn apply(&mut self, bt: &BanTin) {
-        match bt {
-            BanTin::AddOrder { ma, side, price, quantity, .. } => {
-                self.order.insert(*ma,
-                    L3Order { ma: *ma, side: *side, price: *price, remaining: *quantity });
-                self.queue.entry(((*side).into(), *price)).or_default().push(*ma);
-                self.l2.them(*side, *price, *quantity);
+    pub fn apply(&mut self, msg: &Message) {
+        match msg {
+            Message::AddOrder {
+                id,
+                side,
+                price,
+                quantity,
+                ..
+            } => {
+                self.orders.insert(
+                    *id,
+                    L3Order {
+                        id: *id,
+                        side: *side,
+                        price: *price,
+                        remaining: *quantity,
+                    },
+                );
+                self.queue.entry((*side, *price)).or_default().push(*id);
+                self.l2.add(*side, *price, *quantity);
             }
-            BanTin::CancelOrder { ma, so_luong_huy } => {
-                if let Some(l) = self.order.get_mut(ma) {
-                    let actually_cancelled = (*so_luong_huy).min(l.remaining);
+            Message::CancelOrder {
+                id,
+                cancel_quantity,
+            } => {
+                if let Some(l) = self.orders.get_mut(id) {
+                    let actually_cancelled = (*cancel_quantity).min(l.remaining);
                     l.remaining -= actually_cancelled;
-                    let (c, g, het) = (l.side, l.price, l.remaining == 0);
-                    self.l2.bot(c, g, actually_cancelled, het);
-                    if het { self.remove_from_queue(*ma, c, g); self.order.remove(ma); }
+                    let (c, g, done) = (l.side, l.price, l.remaining == 0);
+                    self.l2.reduce(c, g, actually_cancelled, done);
+                    if done {
+                        self.remove_from_queue(*id, c, g);
+                        self.orders.remove(id);
+                    }
                 }
             }
-            BanTin::Fill { ma, quantity, .. } => {
-                if let Some(l) = self.order.get_mut(ma) {
-                    let thuc = (*quantity).min(l.remaining);
-                    l.remaining -= thuc;
-                    let (c, g, het) = (l.side, l.price, l.remaining == 0);
-                    self.l2.bot(c, g, thuc, het);
-                    if het { self.remove_from_queue(*ma, c, g); self.order.remove(ma); }
+            Message::Fill { id, quantity, .. } => {
+                if let Some(l) = self.orders.get_mut(id) {
+                    let filled = (*quantity).min(l.remaining);
+                    l.remaining -= filled;
+                    let (c, g, done) = (l.side, l.price, l.remaining == 0);
+                    self.l2.reduce(c, g, filled, done);
+                    if done {
+                        self.remove_from_queue(*id, c, g);
+                        self.orders.remove(id);
+                    }
                 }
             }
-            BanTin::ThayThe { old_id, ma_moi, price, quantity } => {
+            Message::Replaced {
+                old_id,
+                new_id,
+                price,
+                quantity,
+            } => {
                 // Thay thế = huỷ hẳn rồi thêm mới. Lệnh MẤT ưu tiên thời gian,
                 // xuống cuối hàng — đây là lý do sửa lệnh rất đắt trong HFT.
-                if let Some(l) = self.order.remove(old_id) {
-                    self.l2.bot(l.side, l.price, l.remaining, true);
+                if let Some(l) = self.orders.remove(old_id) {
+                    self.l2.reduce(l.side, l.price, l.remaining, true);
                     self.remove_from_queue(*old_id, l.side, l.price);
-                    self.order.insert(*ma_moi,
-                        L3Order { ma: *ma_moi, side: l.side, price: *price, remaining: *quantity });
-                    self.queue.entry((l.side.into(), *price)).or_default().push(*ma_moi);
-                    self.l2.them(l.side, *price, *quantity);
+                    self.orders.insert(
+                        *new_id,
+                        L3Order {
+                            id: *new_id,
+                            side: l.side,
+                            price: *price,
+                            remaining: *quantity,
+                        },
+                    );
+                    self.queue
+                        .entry((l.side, *price))
+                        .or_default()
+                        .push(*new_id);
+                    self.l2.add(l.side, *price, *quantity);
                 }
             }
         }
     }
 
-    fn remove_from_queue(&mut self, ma: OrderId, c: Side, g: Price) {
-        if let Some(h) = self.queue.get_mut(&(c.into(), g)) {
-            h.retain(|&x| x != ma);
-            if h.is_empty() { self.queue.remove(&(c.into(), g)); }
+    fn remove_from_queue(&mut self, id: OrderId, c: Side, g: Price) {
+        if let Some(h) = self.queue.get_mut(&(c, g)) {
+            h.retain(|&x| x != id);
+            if h.is_empty() {
+                self.queue.remove(&(c, g));
+            }
         }
     }
 
     /// Lệnh này đứng thứ mấy trong hàng ở mức giá của nó? (0 = đầu hàng)
     /// Câu trả lời quyết định xác suất được khớp.
-    pub fn queue_position(&self, ma: OrderId) -> Option<usize> {
-        let l = self.order.get(&ma)?;
-        self.queue.get(&(l.side.into(), l.price))?.iter().position(|&x| x == ma)
+    pub fn queue_position(&self, id: OrderId) -> Option<usize> {
+        let l = self.orders.get(&id)?;
+        self.queue
+            .get(&(l.side, l.price))?
+            .iter()
+            .position(|&x| x == id)
     }
 
     /// Khối lượng đứng TRƯỚC lệnh này — phải khớp hết chỗ đó thì mới tới lượt ta.
-    pub fn queue_ahead(&self, ma: OrderId) -> Option<u64> {
-        let l = self.order.get(&ma)?;
-        let h = self.queue.get(&(l.side.into(), l.price))?;
-        let vt = h.iter().position(|&x| x == ma)?;
-        Some(h[..vt].iter().filter_map(|m| self.order.get(m)).map(|x| x.remaining as u64).sum())
+    pub fn queue_ahead(&self, id: OrderId) -> Option<u64> {
+        let l = self.orders.get(&id)?;
+        let h = self.queue.get(&(l.side, l.price))?;
+        let pos = h.iter().position(|&x| x == id)?;
+        Some(
+            h[..pos]
+                .iter()
+                .filter_map(|m| self.orders.get(m))
+                .map(|x| x.remaining as u64)
+                .sum(),
+        )
     }
 
-    pub fn open_orders(&self) -> usize { self.order.len() }
+    pub fn open_orders(&self) -> usize {
+        self.orders.len()
+    }
 }
 
 // ============================================================================
 // 5. SINH DỮ LIỆU PHIÊN TẤT ĐỊNH
 // ============================================================================
 
-pub fn generate_session(so_ban_tin: usize, hat_giong: u64) -> Vec<FeedPacket> {
-    let mut s = hat_giong;
-    let mut ra = Vec::with_capacity(so_ban_tin);
+pub fn generate_session(count: usize, seed: u64) -> Vec<FeedPacket> {
+    let mut s = seed;
+    let mut out = Vec::with_capacity(count);
     let mut order_id: u64 = 1;
     let mut open_orders: Vec<(OrderId, Side, Price, Quantity)> = Vec::new();
     let mut t: u64 = 1_000_000_000;
 
-    for stt in 0..so_ban_tin as u64 {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    for seq_no in 0..count as u64 {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let r = (s >> 33) % 100;
         t += 1_000 + (s >> 20) % 50_000;
 
         // Giữ sổ có ít nhất vài lệnh trước khi bắt đầu huỷ/khớp
-        let bt = if open_orders.len() < 4 || r < 55 {
-            let side = if (s >> 40) % 2 == 0 { Side::Buy } else { Side::Sell };
-            // Bên mua đặt dưới 8400, bên bán đặt trên 8400 → sổ không bao giờ chéo
-            let lech = ((s >> 44) % 20) as i64;
-            let price = match side {
-                Side::Buy => 8_400 - 1 - lech,
-                Side::Sell => 8_400 + 1 + lech,
+        let msg = if open_orders.len() < 4 || r < 55 {
+            let side = if (s >> 40).is_multiple_of(2) {
+                Side::Buy
+            } else {
+                Side::Sell
             };
-            let sl = 100 + ((s >> 48) % 10) as u32 * 100;
-            open_orders.push((order_id, side, price, sl));
-            let bt = BanTin::AddOrder { ma: order_id, id_chain: 1, side, price, quantity: sl };
+            // Bên mua đặt dưới 8400, bên bán đặt trên 8400 → sổ không bao giờ chéo
+            let offset = ((s >> 44) % 20) as i64;
+            let price = match side {
+                Side::Buy => 8_400 - 1 - offset,
+                Side::Sell => 8_400 + 1 + offset,
+            };
+            let qty = 100 + ((s >> 48) % 10) as u32 * 100;
+            open_orders.push((order_id, side, price, qty));
+            let msg = Message::AddOrder {
+                id: order_id,
+                symbol_id: 1,
+                side,
+                price,
+                quantity: qty,
+            };
             order_id += 1;
-            bt
+            msg
         } else {
             let i = ((s >> 52) as usize) % open_orders.len();
-            let (ma, _, price, sl) = open_orders[i];
-            let part = (sl / 2).max(1);
+            let (id, _, price, qty) = open_orders[i];
+            let part = (qty / 2).max(1);
             if r < 80 {
                 open_orders.remove(i);
-                BanTin::CancelOrder { ma, so_luong_huy: sl }
+                Message::CancelOrder {
+                    id,
+                    cancel_quantity: qty,
+                }
             } else {
                 open_orders[i].3 -= part;
-                if open_orders[i].3 == 0 { open_orders.remove(i); }
-                BanTin::Fill { ma, quantity: part, price }
+                if open_orders[i].3 == 0 {
+                    open_orders.remove(i);
+                }
+                Message::Fill {
+                    id,
+                    quantity: part,
+                    price,
+                }
             }
         };
-        ra.push(FeedPacket { seq: stt, timestamp_nanos: t, ban_tin: bt });
+        out.push(FeedPacket {
+            seq: seq_no,
+            timestamp_nanos: t,
+            message: msg,
+        });
     }
-    ra
+    out
 }
 
 fn main() {
@@ -568,74 +808,139 @@ fn main() {
 
     println!("\n1. GIAO THỨC NHỊ PHÂN vs JSON");
     let g = FeedPacket {
-        seq: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
-        ban_tin: BanTin::AddOrder { ma: 999, id_chain: 1, side: Side::Buy,
-                                    price: 8_450, quantity: 100 },
+        seq: 12345,
+        timestamp_nanos: 1_700_000_000_000_000_000,
+        message: Message::AddOrder {
+            id: 999,
+            symbol_id: 1,
+            side: Side::Buy,
+            price: 8_450,
+            quantity: 100,
+        },
     };
     let b = encode(&g);
     let json = r#"{"seq":12345,"ts":1700000000000000000,"type":"add","id":999,"sym":"VNM","side":"B","px":84.50,"qty":100}"#;
     println!("   Nhị phân: {} byte", b.len());
-    println!("   JSON    : {} byte → gấp {:.1} lần", json.len(), json.len() as f64 / b.len() as f64);
-    println!("   Phân tích ngược ra đúng bản gốc: {}", analyze(&b).unwrap() == g);
+    println!(
+        "   JSON    : {} byte → gấp {:.1} lần",
+        json.len(),
+        json.len() as f64 / b.len() as f64
+    );
+    println!(
+        "   Phân tích ngược ra đúng bản gốc: {}",
+        analyze(&b).unwrap() == g
+    );
 
     println!("\n2. PHÁT HIỆN KHE SỐ THỨ TỰ");
-    let mut pd = GapDetector::new(0);
+    let mut detector = GapDetector::new(0);
     let session = generate_session(10, 7);
-    for (i, gt) in session.iter().enumerate() {
-        if i == 3 || i == 4 { continue; } // giả lập mất 2 gói UDP
-        let kq = pd.nhan(gt.clone());
-        if kq != KetQuaNhan::DungThuTu { println!("   stt {} → {:?}", gt.seq, kq); }
+    for (i, pkt) in session.iter().enumerate() {
+        if i == 3 || i == 4 {
+            continue;
+        } // giả lập mất 2 gói UDP
+        let outcome = detector.receive(pkt.clone());
+        if outcome != SeqOutcome::InOrder {
+            println!("   seq {} → {:?}", pkt.seq, outcome);
+        }
     }
-    println!("   Tổng khe: {} · tổng bản tin mất: {} · đang đệm: {}",
-             pd.slot_count, pd.tong_ban_tin_mat, pd.num_dang_count());
-    pd.slot_loop(vec![session[3].clone(), session[4].clone()]);
-    println!("   Đang ở chế độ khôi phục: {}", pd.is_recovering());
-    println!("   Sau khi phát lại → còn khôi phục: {} · rút liền mạch được {} bản tin",
-             pd.is_recovering(), pd.drain().len());
+    println!(
+        "   Tổng khe: {} · tổng bản tin mất: {} · đang đệm: {}",
+        detector.gap_count,
+        detector.total_lost,
+        detector.buffered_len()
+    );
+    println!("   Đang ở chế độ khôi phục: {}", detector.is_recovering());
+    detector.fill_gap(vec![session[3].clone(), session[4].clone()]);
+    println!(
+        "   Sau khi phát lại → còn khôi phục: {} · rút liền mạch được {} bản tin",
+        detector.is_recovering(),
+        detector.drain().len()
+    );
 
     println!("\n3. DỰNG SỔ L2 TỪ 5000 BẢN TIN");
-    let mut so = L3Book::new();
-    for g in generate_session(5_000, 42) { so.apply(&g.ban_tin); }
-    let (buy, ban) = so.l2.top_levels(5);
-    println!("   {} lệnh đang mở · {} mức mua · {} mức bán",
-             so.open_orders(), so.l2.num_levels(Side::Buy), so.l2.num_levels(Side::Sell));
+    let mut book = L3Book::new();
+    for g in generate_session(5_000, 42) {
+        book.apply(&g.message);
+    }
+    let (bids, asks) = book.l2.top_levels(5);
+    println!(
+        "   {} lệnh đang mở · {} mức mua · {} mức bán",
+        book.open_orders(),
+        book.l2.num_levels(Side::Buy),
+        book.l2.num_levels(Side::Sell)
+    );
     println!("   ── 5 MỨC TỐT NHẤT ──");
-    for m in ban.iter().rev() {
-        println!("        BÁN {:>7.2}  {:>6} ({} lệnh)",
-                 m.price as f64 / 100.0, m.quantity, m.so_lenh);
+    for m in asks.iter().rev() {
+        println!(
+            "        BÁN {:>7.2}  {:>6} ({} lệnh)",
+            m.price as f64 / 100.0,
+            m.quantity,
+            m.order_count
+        );
     }
-    println!("        ─────────────  chênh lệch {} tick", so.l2.spread().unwrap_or(0));
-    for m in &buy {
-        println!("        MUA {:>7.2}  {:>6} ({} lệnh)",
-                 m.price as f64 / 100.0, m.quantity, m.so_lenh);
+    println!(
+        "        ─────────────  chênh lệch {} tick",
+        book.l2.spread().unwrap_or(0)
+    );
+    for m in &bids {
+        println!(
+            "        MUA {:>7.2}  {:>6} ({} lệnh)",
+            m.price as f64 / 100.0,
+            m.quantity,
+            m.order_count
+        );
     }
-    println!("   Giá cân bằng theo khối lượng: {:.2}",
-             so.l2.price_can_table().unwrap_or(0.0) / 100.0);
+    println!(
+        "   Giá cân bằng theo khối lượng: {:.2}",
+        book.l2.micro_price().unwrap_or(0.0) / 100.0
+    );
 
     println!("\n4. KIỂM TRA CHẤT LƯỢNG DỮ LIỆU");
-    println!("   Sổ lành mạnh: {} · bị khoá: {} · bị chéo: {}",
-             so.l2.is_healthy(), so.l2.is_key(), so.l2.is_crossed());
-    let mut hong = L2Book::new();
-    hong.them(Side::Buy, 8_500, 100);
-    hong.them(Side::Sell, 8_400, 100); // mua CAO hơn bán → vô lý
-    println!("   Sổ dựng sai (mua 85.00 > bán 84.00) → bị chéo: {} · lành mạnh: {}",
-             hong.is_crossed(), hong.is_healthy());
+    println!(
+        "   Sổ lành mạnh: {} · bị khoá: {} · bị chéo: {}",
+        book.l2.is_healthy(),
+        book.l2.is_locked(),
+        book.l2.is_crossed()
+    );
+    let mut broken = L2Book::new();
+    broken.add(Side::Buy, 8_500, 100);
+    broken.add(Side::Sell, 8_400, 100); // giá mua CAO hơn giá bán → vô lý
+    println!(
+        "   Sổ dựng sai (mua 85.00 > bán 84.00) → bị chéo: {} · lành mạnh: {}",
+        broken.is_crossed(),
+        broken.is_healthy()
+    );
     println!("   → Gặp sổ chéo phải NGỪNG giao dịch, không được coi là cơ hội.");
 
     println!("\n5. VỊ TRÍ TRONG HÀNG — câu hỏi sống còn của tạo lập thị trường");
     let mut s3 = L3Book::new();
-    for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-        s3.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
-                                       price: 8_400, quantity: sl });
+    for (id, qty) in [(1u64, 500u32), (2, 300), (3, 200)] {
+        s3.apply(&Message::AddOrder {
+            id,
+            symbol_id: 1,
+            side: Side::Buy,
+            price: 8_400,
+            quantity: qty,
+        });
     }
-    for ma in [1u64, 2, 3] {
-        println!("   Lệnh #{} → đứng thứ {} · phải chờ {} đơn vị khớp trước",
-                 ma, s3.queue_position(ma).unwrap(),
-                 s3.queue_ahead(ma).unwrap());
+    for id in [1u64, 2, 3] {
+        println!(
+            "   Lệnh #{} → đứng thứ {} · phải chờ {} đơn vị khớp trước",
+            id,
+            s3.queue_position(id).unwrap(),
+            s3.queue_ahead(id).unwrap()
+        );
     }
-    s3.apply(&BanTin::ThayThe { old_id: 1, ma_moi: 4, price: 8_400, quantity: 500 });
-    println!("   Sửa lệnh #1 (thành #4) → giờ đứng thứ {} — MẤT SẠCH ưu tiên thời gian",
-             s3.queue_position(4).unwrap());
+    s3.apply(&Message::Replaced {
+        old_id: 1,
+        new_id: 4,
+        price: 8_400,
+        quantity: 500,
+    });
+    println!(
+        "   Sửa lệnh #1 (thành #4) → giờ đứng thứ {} — MẤT SẠCH ưu tiên thời gian",
+        s3.queue_position(4).unwrap()
+    );
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   SAI MỘT BẢN TIN LÀ SAI TOÀN BỘ QUYẾT ĐỊNH SAU ĐÓ         ");
@@ -649,60 +954,131 @@ mod tests {
     // ---------- Giao thức nhị phân ----------
     #[test]
     fn encode_then_parse_round_trips() {
-        let all_bt = vec![
-            BanTin::AddOrder { ma: 1, id_chain: 7, side: Side::Buy, price: 8_450, quantity: 100 },
-            BanTin::AddOrder { ma: 2, id_chain: 7, side: Side::Sell, price: -50, quantity: 1 },
-            BanTin::CancelOrder { ma: 3, so_luong_huy: 250 },
-            BanTin::Fill { ma: 4, quantity: 75, price: 8_400 },
-            BanTin::ThayThe { old_id: 5, ma_moi: 6, price: 8_390, quantity: 999 },
+        let all_msgs = vec![
+            Message::AddOrder {
+                id: 1,
+                symbol_id: 7,
+                side: Side::Buy,
+                price: 8_450,
+                quantity: 100,
+            },
+            Message::AddOrder {
+                id: 2,
+                symbol_id: 7,
+                side: Side::Sell,
+                price: -50,
+                quantity: 1,
+            },
+            Message::CancelOrder {
+                id: 3,
+                cancel_quantity: 250,
+            },
+            Message::Fill {
+                id: 4,
+                quantity: 75,
+                price: 8_400,
+            },
+            Message::Replaced {
+                old_id: 5,
+                new_id: 6,
+                price: 8_390,
+                quantity: 999,
+            },
         ];
-        for bt in all_bt {
-            let g = FeedPacket { seq: 42, timestamp_nanos: 1_700_000_000_000_000_000,
-                                   ban_tin: bt };
-            assert_eq!(analyze(&encode(&g)), Ok(g.clone()), "vòng mã hoá phải khép kín");
+        for msg in all_msgs {
+            let g = FeedPacket {
+                seq: 42,
+                timestamp_nanos: 1_700_000_000_000_000_000,
+                message: msg,
+            };
+            assert_eq!(
+                analyze(&encode(&g)),
+                Ok(g.clone()),
+                "vòng mã hoá phải khép kín"
+            );
         }
     }
 
     #[test]
     fn parser_rejects_short_packets() {
-        assert_eq!(analyze(&[]), Err(ParseError::QuaNgan { can: 17, co: 0 }));
-        assert_eq!(analyze(&[b'A'; 10]), Err(ParseError::QuaNgan { can: 17, co: 10 }));
+        assert_eq!(
+            analyze(&[]),
+            Err(ParseError::TooShort { needed: 17, got: 0 })
+        );
+        assert_eq!(
+            analyze(&[b'A'; 10]),
+            Err(ParseError::TooShort {
+                needed: 17,
+                got: 10
+            })
+        );
         // Đủ phần đầu chung nhưng thiếu thân bản tin 'A'
-        let mut b = vec![b'A']; b.extend_from_slice(&[0u8; 20]);
-        assert!(matches!(analyze(&b), Err(ParseError::QuaNgan { .. })));
+        let mut b = vec![b'A'];
+        b.extend_from_slice(&[0u8; 20]);
+        assert!(matches!(analyze(&b), Err(ParseError::TooShort { .. })));
     }
 
     #[test]
-    fn analyze_reject_kind_sell_info_is() {
-        let mut b = vec![b'Z']; b.extend_from_slice(&[0u8; 60]);
-        assert_eq!(analyze(&b), Err(ParseError::LoaiBanTinLa(b'Z')));
+    fn parser_rejects_unknown_message_type() {
+        let mut b = vec![b'Z'];
+        b.extend_from_slice(&[0u8; 60]);
+        assert_eq!(analyze(&b), Err(ParseError::UnknownMessageKind(b'Z')));
     }
 
     #[test]
-    fn analyze_reject_id_side_is() {
-        let g = FeedPacket { seq: 1, timestamp_nanos: 1,
-            ban_tin: BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
-                                        price: 100, quantity: 1 } };
+    fn parser_rejects_unknown_side_code() {
+        let g = FeedPacket {
+            seq: 1,
+            timestamp_nanos: 1,
+            message: Message::AddOrder {
+                id: 1,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 100,
+                quantity: 1,
+            },
+        };
         let mut b = encode(&g);
         b[29] = b'?'; // phá byte chiều
-        assert_eq!(analyze(&b), Err(ParseError::ChieuLa(b'?')));
+        assert_eq!(analyze(&b), Err(ParseError::UnknownSide(b'?')));
     }
 
     #[test]
     fn binary_is_far_smaller_than_json() {
-        let g = FeedPacket { seq: 12345, timestamp_nanos: 1_700_000_000_000_000_000,
-            ban_tin: BanTin::AddOrder { ma: 999, id_chain: 1, side: Side::Buy,
-                                        price: 8_450, quantity: 100 } };
-        assert_eq!(encode(&g).len(), 42, "bản tin thêm lệnh dài đúng 42 byte cố định");
-        assert!(encode(&g).len() * 2 < 105, "nhị phân phải gọn hơn JSON ít nhất 2 lần");
+        let g = FeedPacket {
+            seq: 12345,
+            timestamp_nanos: 1_700_000_000_000_000_000,
+            message: Message::AddOrder {
+                id: 999,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 8_450,
+                quantity: 100,
+            },
+        };
+        assert_eq!(
+            encode(&g).len(),
+            42,
+            "bản tin thêm lệnh dài đúng 42 byte cố định"
+        );
+        assert!(
+            encode(&g).len() * 2 < 105,
+            "nhị phân phải gọn hơn JSON ít nhất 2 lần"
+        );
     }
 
     #[test]
     fn uses_big_endian_byte_order() {
         // Giao thức mạng LUÔN dùng big-endian. Nhầm sang little-endian thì
         // số nhỏ vẫn "chạy" nhưng giá trị hoàn toàn sai.
-        let g = FeedPacket { seq: 0x0102030405060708, timestamp_nanos: 0,
-            ban_tin: BanTin::CancelOrder { ma: 1, so_luong_huy: 1 } };
+        let g = FeedPacket {
+            seq: 0x0102030405060708,
+            timestamp_nanos: 0,
+            message: Message::CancelOrder {
+                id: 1,
+                cancel_quantity: 1,
+            },
+        };
         let b = encode(&g);
         assert_eq!(&b[1..9], &[1, 2, 3, 4, 5, 6, 7, 8], "byte cao đứng TRƯỚC");
     }
@@ -712,28 +1088,40 @@ mod tests {
     fn a_contiguous_stream_reports_no_gap() {
         let mut p = GapDetector::new(0);
         for g in generate_session(100, 1) {
-            assert_eq!(p.nhan(g), KetQuaNhan::DungThuTu);
+            assert_eq!(p.receive(g), SeqOutcome::InOrder);
         }
-        assert_eq!(p.slot_count, 0);
+        assert_eq!(p.gap_count, 0);
         assert_eq!(p.expected_seq, 100);
     }
 
     #[test]
-    fn phat_show_use_khe_and_num_sell_info_mat() {
+    fn detects_the_gap_and_counts_lost_messages() {
         let session = generate_session(10, 2);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
-            if (3..=5).contains(&i) { continue; } // mất gói 3,4,5
-            let kq = p.nhan(g.clone());
+            if (3..=5).contains(&i) {
+                continue;
+            } // mất gói 3,4,5
+            let outcome = p.receive(g.clone());
             if i == 6 {
-                assert_eq!(kq, KetQuaNhan::ThieuBanTin { tu: 3, den: 5, so_ban_tin_mat: 3 });
+                assert_eq!(
+                    outcome,
+                    SeqOutcome::MissingMessages {
+                        from: 3,
+                        to: 5,
+                        count: 3
+                    }
+                );
             } else if i > 6 {
-                assert_eq!(kq, KetQuaNhan::DangChoKhoiPhuc,
-                           "các bản tin sau chỉ được đệm, không xin phát lại nữa");
+                assert_eq!(
+                    outcome,
+                    SeqOutcome::AwaitingRecovery,
+                    "các bản tin sau chỉ được đệm, không xin phát lại nữa"
+                );
             }
         }
-        assert_eq!(p.slot_count, 1);
-        assert_eq!(p.tong_ban_tin_mat, 3);
+        assert_eq!(p.gap_count, 1);
+        assert_eq!(p.total_lost, 3);
     }
 
     #[test]
@@ -744,14 +1132,16 @@ mod tests {
         let mut p = GapDetector::new(0);
         let mut gap_count = 0;
         for (i, g) in session.iter().enumerate() {
-            if (3..=5).contains(&i) { continue; }
-            if matches!(p.nhan(g.clone()), KetQuaNhan::ThieuBanTin { .. }) {
+            if (3..=5).contains(&i) {
+                continue;
+            }
+            if matches!(p.receive(g.clone()), SeqOutcome::MissingMessages { .. }) {
                 gap_count += 1;
             }
         }
         assert_eq!(gap_count, 1, "một khe chỉ được xin phát lại đúng một lần");
-        assert_eq!(p.slot_count, 1);
-        assert_eq!(p.tong_ban_tin_mat, 3);
+        assert_eq!(p.gap_count, 1);
+        assert_eq!(p.total_lost, 3);
         assert!(p.is_recovering(), "vẫn đang chờ dữ liệu phát lại");
     }
 
@@ -760,28 +1150,35 @@ mod tests {
         let session = generate_session(20, 8);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
-            if (3..=5).contains(&i) { continue; }
-            p.nhan(g.clone());
+            if (3..=5).contains(&i) {
+                continue;
+            }
+            p.receive(g.clone());
         }
         assert!(p.is_recovering());
-        p.slot_loop(vec![session[3].clone(), session[4].clone()]);
-        assert!(p.is_recovering(), "còn thiếu bản tin 5 thì vẫn đang khôi phục");
-        p.slot_loop(vec![session[5].clone()]);
+        p.fill_gap(vec![session[3].clone(), session[4].clone()]);
+        assert!(
+            p.is_recovering(),
+            "còn thiếu bản tin 5 thì vẫn đang khôi phục"
+        );
+        p.fill_gap(vec![session[5].clone()]);
         assert!(!p.is_recovering(), "đủ rồi thì phải trở lại bình thường");
         assert_eq!(p.drain().len(), 20);
     }
 
     #[test]
-    fn sell_info_duplicate_loop_is_unit_qua() {
+    fn duplicates_from_the_redundant_feed_are_skipped() {
         // Sàn thường phát hai luồng giống hệt (A và B) để chống mất gói.
         // Bản sao đến sau phải bị loại, không được xử lý hai lần.
         let session = generate_session(5, 3);
         let mut p = GapDetector::new(0);
-        for g in &session { p.nhan(g.clone()); }
         for g in &session {
-            assert_eq!(p.nhan(g.clone()), KetQuaNhan::TrungLap);
+            p.receive(g.clone());
         }
-        assert_eq!(p.num_duplicate_loop, 5);
+        for g in &session {
+            assert_eq!(p.receive(g.clone()), SeqOutcome::Duplicate);
+        }
+        assert_eq!(p.duplicate_count, 5);
         assert_eq!(p.expected_seq, 5, "trùng lặp không được đẩy kỳ vọng đi");
     }
 
@@ -789,9 +1186,9 @@ mod tests {
     fn early_messages_are_buffered_not_dropped() {
         let session = generate_session(10, 4);
         let mut p = GapDetector::new(0);
-        p.nhan(session[0].clone());
-        p.nhan(session[5].clone()); // nhảy cóc
-        assert_eq!(p.num_dang_count(), 2, "cả hai đều phải được giữ lại");
+        p.receive(session[0].clone());
+        p.receive(session[5].clone()); // nhảy cóc
+        assert_eq!(p.buffered_len(), 2, "cả hai đều phải được giữ lại");
         assert_eq!(p.drain().len(), 1, "chỉ rút được phần liền mạch từ đầu");
     }
 
@@ -800,47 +1197,127 @@ mod tests {
         let session = generate_session(10, 5);
         let mut p = GapDetector::new(0);
         for (i, g) in session.iter().enumerate() {
-            if i == 3 || i == 4 { continue; }
-            p.nhan(g.clone());
+            if i == 3 || i == 4 {
+                continue;
+            }
+            p.receive(g.clone());
         }
-        p.slot_loop(vec![session[3].clone(), session[4].clone()]);
-        let ra = p.drain();
-        assert_eq!(ra.len(), 10, "sau khi lấp khe phải rút được đủ 10 bản tin");
-        for (i, g) in ra.iter().enumerate() {
+        p.fill_gap(vec![session[3].clone(), session[4].clone()]);
+        let out = p.drain();
+        assert_eq!(out.len(), 10, "sau khi lấp khe phải rút được đủ 10 bản tin");
+        for (i, g) in out.iter().enumerate() {
             assert_eq!(g.seq, i as u64, "và đúng thứ tự");
         }
     }
 
+    #[test]
+    fn a_late_packet_closes_the_gap_by_itself() {
+        // Trước đây bản tin đúng thứ tự chỉ đẩy kỳ vọng +1, nên khi gói 3 tới
+        // trễ (UDP đảo thứ tự) bộ phát hiện bỏ qua các gói 4.. đã đệm và kẹt
+        // mãi trong chế độ khôi phục.
+        let session = generate_session(8, 6);
+        let mut p = GapDetector::new(0);
+        for i in [0, 1, 2, 4, 5, 3, 6, 7] {
+            p.receive(session[i].clone());
+        }
+        assert!(
+            !p.is_recovering(),
+            "khe đã tự lấp, phải rời chế độ khôi phục"
+        );
+        assert_eq!(p.expected_seq, 8);
+        assert_eq!(p.gap_count, 1);
+        let seqs: Vec<u64> = p.drain().iter().map(|g| g.seq).collect();
+        assert_eq!(seqs, (0..8).collect::<Vec<u64>>());
+    }
+
+    #[test]
+    fn drain_stops_at_the_first_gap() {
+        // Trước đây `drain` bắt đầu từ khoá nhỏ nhất trong bộ đệm, nên sau khi
+        // phần đầu đã rút, nó rút luôn các bản tin NẰM SAU khe.
+        let session = generate_session(10, 4);
+        let mut p = GapDetector::new(0);
+        p.receive(session[0].clone());
+        assert_eq!(p.drain().len(), 1);
+        p.receive(session[5].clone());
+        p.receive(session[6].clone());
+        assert!(p.drain().is_empty(), "thiếu 1..=4 thì chưa được xử lý 5, 6");
+        assert_eq!(p.buffered_len(), 2);
+    }
+
+    #[test]
+    fn a_second_gap_behind_the_first_is_also_requested() {
+        // Khe 3..=5 đang chờ, rồi lại mất gói 8. Gói 8 phải được xin phát lại
+        // (đúng một lần) — nếu không ta chờ mãi một thứ chưa từng xin.
+        let session = generate_session(12, 8);
+        let mut p = GapDetector::new(0);
+        let mut requests = Vec::new();
+        for (i, g) in session.iter().enumerate() {
+            if (3..=5).contains(&i) || i == 8 {
+                continue;
+            }
+            if let SeqOutcome::MissingMessages { from, to, .. } = p.receive(g.clone()) {
+                requests.push((from, to));
+            }
+        }
+        assert_eq!(requests, vec![(3, 5), (8, 8)]);
+        assert_eq!(p.total_lost, 4);
+        p.fill_gap(vec![
+            session[3].clone(),
+            session[4].clone(),
+            session[5].clone(),
+        ]);
+        assert!(p.is_recovering(), "còn thiếu gói 8");
+        p.fill_gap(vec![session[8].clone()]);
+        assert!(!p.is_recovering());
+        assert_eq!(p.drain().len(), 12);
+    }
+
+    #[test]
+    fn a_duplicate_of_a_buffered_packet_is_counted_once() {
+        let session = generate_session(10, 9);
+        let mut p = GapDetector::new(0);
+        p.receive(session[0].clone());
+        p.receive(session[5].clone());
+        assert_eq!(p.receive(session[5].clone()), SeqOutcome::Duplicate);
+        assert_eq!(p.duplicate_count, 1);
+        assert_eq!(p.buffered_len(), 2);
+    }
+
     // ---------- Sổ L2 ----------
     #[test]
-    fn l2_return_use_price_good_nhat_two_side() {
+    fn l2_reports_best_on_both_sides() {
         let mut s = L2Book::new();
-        s.them(Side::Buy, 8_390, 100);
-        s.them(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên mua
-        s.them(Side::Sell, 8_420, 150);
-        s.them(Side::Sell, 8_410, 50);  // thấp hơn = tốt hơn cho bên bán
+        s.add(Side::Buy, 8_390, 100);
+        s.add(Side::Buy, 8_400, 200); // cao hơn = tốt hơn cho bên mua
+        s.add(Side::Sell, 8_420, 150);
+        s.add(Side::Sell, 8_410, 50); // thấp hơn = tốt hơn cho bên bán
         assert_eq!(s.best_bid(), Some(8_400));
         assert_eq!(s.best_ask(), Some(8_410));
         assert_eq!(s.spread(), Some(10));
     }
 
     #[test]
-    fn l2_coalesce_quantity_and_count_order_book_same_level_price() {
+    fn l2_aggregates_size_and_order_count_per_level() {
         let mut s = L2Book::new();
-        for _ in 0..3 { s.them(Side::Buy, 8_400, 100); }
+        for _ in 0..3 {
+            s.add(Side::Buy, 8_400, 100);
+        }
         let (m, _) = s.top_levels(1);
         assert_eq!(m[0].quantity, 300);
-        assert_eq!(m[0].so_lenh, 3);
+        assert_eq!(m[0].order_count, 3);
     }
 
     #[test]
-    fn level_price_done_quantity_must_bien_mat_block_num() {
+    fn an_emptied_level_disappears_from_the_book() {
         // Nếu để lại mức rỗng, `best_bid` sẽ trỏ vào chỗ không có gì —
         // và chiến lược sẽ gửi lệnh vào hư không.
         let mut s = L2Book::new();
-        s.them(Side::Buy, 8_400, 100);
-        s.them(Side::Buy, 8_390, 50);
-        assert!(s.bot(Side::Buy, 8_400, 100, true), "phải báo mức giá đã bị xoá");
+        s.add(Side::Buy, 8_400, 100);
+        s.add(Side::Buy, 8_390, 50);
+        assert!(
+            s.reduce(Side::Buy, 8_400, 100, true),
+            "phải báo mức giá đã bị xoá"
+        );
         assert_eq!(s.best_bid(), Some(8_390), "đỉnh sổ phải tụt xuống mức kế");
         assert_eq!(s.num_levels(Side::Buy), 1);
     }
@@ -848,8 +1325,11 @@ mod tests {
     #[test]
     fn over_reducing_never_makes_size_negative() {
         let mut s = L2Book::new();
-        s.them(Side::Buy, 8_400, 100);
-        assert!(s.bot(Side::Buy, 8_400, 99_999, true), "trừ quá cũng chỉ về 0");
+        s.add(Side::Buy, 8_400, 100);
+        assert!(
+            s.reduce(Side::Buy, 8_400, 99_999, true),
+            "trừ quá cũng chỉ về 0"
+        );
         assert_eq!(s.qty_at(Side::Buy, 8_400), 0);
         assert_eq!(s.num_levels(Side::Buy), 0);
     }
@@ -859,24 +1339,29 @@ mod tests {
         let s = L2Book::new();
         assert_eq!(s.best_bid(), None);
         assert_eq!(s.spread(), None);
-        assert!(!s.is_crossed() && !s.is_key() && s.is_healthy());
-        assert_eq!(s.price_can_table(), None);
+        assert!(!s.is_crossed() && !s.is_locked() && s.is_healthy());
+        assert_eq!(s.micro_price(), None);
     }
 
     #[test]
     fn detects_crossed_and_locked_books() {
-        let mut cheo = L2Book::new();
-        cheo.them(Side::Buy, 8_500, 100);
-        cheo.them(Side::Sell, 8_400, 100);
-        assert!(cheo.is_crossed(), "mua 85.00 > bán 84.00 là dữ liệu hỏng");
-        assert!(!cheo.is_healthy());
+        let mut crossed = L2Book::new();
+        crossed.add(Side::Buy, 8_500, 100);
+        crossed.add(Side::Sell, 8_400, 100);
+        assert!(
+            crossed.is_crossed(),
+            "mua 85.00 > bán 84.00 là dữ liệu hỏng"
+        );
+        assert!(!crossed.is_healthy());
 
-        let mut key = L2Book::new();
-        key.them(Side::Buy, 8_400, 100);
-        key.them(Side::Sell, 8_400, 100);
-        assert!(key.is_key() && !key.is_crossed(),
-                "sổ khoá là hiếm nhưng hợp lệ, khác hẳn sổ chéo");
-        assert!(key.is_healthy());
+        let mut locked = L2Book::new();
+        locked.add(Side::Buy, 8_400, 100);
+        locked.add(Side::Sell, 8_400, 100);
+        assert!(
+            locked.is_locked() && !locked.is_crossed(),
+            "sổ khoá là hiếm nhưng hợp lệ, khác hẳn sổ chéo"
+        );
+        assert!(locked.is_healthy());
     }
 
     #[test]
@@ -884,54 +1369,77 @@ mod tests {
         // Nhiều người muốn mua hơn bán → áp lực đẩy giá lên → giá cân bằng
         // phải gần giá BÁN hơn.
         let mut s = L2Book::new();
-        s.them(Side::Buy, 8_400, 900);
-        s.them(Side::Sell, 8_410, 100);
-        let cb = s.price_can_table().unwrap();
-        assert!(cb > 8_405.0, "áp lực mua mạnh → giá cân bằng {} phải lệch lên trên", cb);
-        assert!(cb < 8_410.0);
+        s.add(Side::Buy, 8_400, 900);
+        s.add(Side::Sell, 8_410, 100);
+        let fair = s.micro_price().unwrap();
+        assert!(
+            fair > 8_405.0,
+            "áp lực mua mạnh → giá cân bằng {} phải lệch lên trên",
+            fair
+        );
+        assert!(fair < 8_410.0);
     }
 
     #[test]
-    fn peak_num_return_use_thu_from_uu_tien() {
+    fn top_of_book_respects_priority_order() {
         let mut s = L2Book::new();
-        for g in [8_380, 8_390, 8_400] { s.them(Side::Buy, g, 100); }
-        for g in [8_430, 8_420, 8_410] { s.them(Side::Sell, g, 100); }
+        for g in [8_380, 8_390, 8_400] {
+            s.add(Side::Buy, g, 100);
+        }
+        for g in [8_430, 8_420, 8_410] {
+            s.add(Side::Sell, g, 100);
+        }
         let (m, b) = s.top_levels(3);
-        assert_eq!(m.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_400, 8_390, 8_380],
-                   "bên mua: giá cao xuống thấp");
-        assert_eq!(b.iter().map(|x| x.price).collect::<Vec<_>>(), vec![8_410, 8_420, 8_430],
-                   "bên bán: giá thấp lên cao");
+        assert_eq!(
+            m.iter().map(|x| x.price).collect::<Vec<_>>(),
+            vec![8_400, 8_390, 8_380],
+            "bên mua: giá cao xuống thấp"
+        );
+        assert_eq!(
+            b.iter().map(|x| x.price).collect::<Vec<_>>(),
+            vec![8_410, 8_420, 8_430],
+            "bên bán: giá thấp lên cao"
+        );
     }
 
     // ---------- Sổ L3 ----------
     #[test]
-    fn l3_and_l2_always_nhat_quan_qua_all_session_long() {
+    fn l3_and_l2_stay_consistent_over_a_long_session() {
         // BẤT BIẾN QUAN TRỌNG NHẤT của chương: L2 phải luôn là bản tổng hợp
         // đúng của L3. Lệch nhau nghĩa là có bản tin bị xử lý sai.
         let mut s = L3Book::new();
         for g in generate_session(3_000, 99) {
-            s.apply(&g.ban_tin);
-            assert!(s.l2.is_healthy(), "sổ không bao giờ được chéo khi dữ liệu sạch");
+            s.apply(&g.message);
+            assert!(
+                s.l2.is_healthy(),
+                "sổ không bao giờ được chéo khi dữ liệu sạch"
+            );
         }
         // Dựng lại L2 từ L3 rồi so
         let mut check = L2Book::new();
-        for l in s.order.values() { check.them(l.side, l.price, l.remaining); }
+        for l in s.orders.values() {
+            check.add(l.side, l.price, l.remaining);
+        }
         assert_eq!(check.best_bid(), s.l2.best_bid());
         assert_eq!(check.best_ask(), s.l2.best_ask());
         assert_eq!(check.num_levels(Side::Buy), s.l2.num_levels(Side::Buy));
         assert_eq!(check.num_levels(Side::Sell), s.l2.num_levels(Side::Sell));
-        for l in s.order.values() {
-            assert_eq!(check.qty_at(l.side, l.price),
-                       s.l2.qty_at(l.side, l.price));
+        for l in s.orders.values() {
+            assert_eq!(check.qty_at(l.side, l.price), s.l2.qty_at(l.side, l.price));
         }
     }
 
     #[test]
     fn l3_preserves_time_priority() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
-                                          price: 8_400, quantity: sl });
+        for (id, qty) in [(1u64, 500u32), (2, 300), (3, 200)] {
+            s.apply(&Message::AddOrder {
+                id,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 8_400,
+                quantity: qty,
+            });
         }
         assert_eq!(s.queue_position(1), Some(0));
         assert_eq!(s.queue_position(2), Some(1));
@@ -944,11 +1452,20 @@ mod tests {
     #[test]
     fn filling_the_head_advances_the_whole_queue() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
-                                          price: 8_400, quantity: sl });
+        for (id, qty) in [(1u64, 500u32), (2, 300)] {
+            s.apply(&Message::AddOrder {
+                id,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 8_400,
+                quantity: qty,
+            });
         }
-        s.apply(&BanTin::Fill { ma: 1, quantity: 500, price: 8_400 });
+        s.apply(&Message::Fill {
+            id: 1,
+            quantity: 500,
+            price: 8_400,
+        });
         assert_eq!(s.queue_position(2), Some(0), "lệnh #2 lên đầu hàng");
         assert_eq!(s.queue_ahead(2), Some(0));
         assert_eq!(s.open_orders(), 1);
@@ -957,11 +1474,20 @@ mod tests {
     #[test]
     fn a_partial_fill_keeps_queue_position() {
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
-                                          price: 8_400, quantity: sl });
+        for (id, qty) in [(1u64, 500u32), (2, 300)] {
+            s.apply(&Message::AddOrder {
+                id,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 8_400,
+                quantity: qty,
+            });
         }
-        s.apply(&BanTin::Fill { ma: 1, quantity: 200, price: 8_400 });
+        s.apply(&Message::Fill {
+            id: 1,
+            quantity: 200,
+            price: 8_400,
+        });
         assert_eq!(s.queue_position(1), Some(0), "khớp một phần KHÔNG mất chỗ");
         assert_eq!(s.queue_ahead(2), Some(300), "chỉ còn 300 đứng trước");
         assert_eq!(s.l2.qty_at(Side::Buy, 8_400), 600);
@@ -972,12 +1498,22 @@ mod tests {
         // Bài học đắt tiền: sửa giá/khối lượng một lệnh = xuống cuối hàng.
         // Đó là lý do chiến lược tốt cân nhắc rất kỹ trước khi sửa lệnh.
         let mut s = L3Book::new();
-        for (ma, sl) in [(1u64, 500u32), (2, 300), (3, 200)] {
-            s.apply(&BanTin::AddOrder { ma, id_chain: 1, side: Side::Buy,
-                                          price: 8_400, quantity: sl });
+        for (id, qty) in [(1u64, 500u32), (2, 300), (3, 200)] {
+            s.apply(&Message::AddOrder {
+                id,
+                symbol_id: 1,
+                side: Side::Buy,
+                price: 8_400,
+                quantity: qty,
+            });
         }
         assert_eq!(s.queue_position(1), Some(0));
-        s.apply(&BanTin::ThayThe { old_id: 1, ma_moi: 4, price: 8_400, quantity: 500 });
+        s.apply(&Message::Replaced {
+            old_id: 1,
+            new_id: 4,
+            price: 8_400,
+            quantity: 500,
+        });
         assert_eq!(s.queue_position(1), None, "mã cũ biến mất");
         assert_eq!(s.queue_position(4), Some(2), "mã mới xuống CUỐI hàng");
         assert_eq!(s.queue_ahead(4), Some(500));
@@ -986,19 +1522,35 @@ mod tests {
     #[test]
     fn cancelling_an_unknown_order_leaves_the_book_intact() {
         let mut s = L3Book::new();
-        s.apply(&BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
-                                      price: 8_400, quantity: 100 });
-        s.apply(&BanTin::CancelOrder { ma: 999, so_luong_huy: 50 }); // mã lạ
+        s.apply(&Message::AddOrder {
+            id: 1,
+            symbol_id: 1,
+            side: Side::Buy,
+            price: 8_400,
+            quantity: 100,
+        });
+        s.apply(&Message::CancelOrder {
+            id: 999,
+            cancel_quantity: 50,
+        }); // mã lạ
         assert_eq!(s.open_orders(), 1);
         assert_eq!(s.l2.qty_at(Side::Buy, 8_400), 100, "sổ phải nguyên vẹn");
     }
 
     #[test]
-    fn cancel_qua_quantity_remaining_van_safe() {
+    fn cancelling_more_than_remaining_is_safe() {
         let mut s = L3Book::new();
-        s.apply(&BanTin::AddOrder { ma: 1, id_chain: 1, side: Side::Buy,
-                                      price: 8_400, quantity: 100 });
-        s.apply(&BanTin::CancelOrder { ma: 1, so_luong_huy: 99_999 });
+        s.apply(&Message::AddOrder {
+            id: 1,
+            symbol_id: 1,
+            side: Side::Buy,
+            price: 8_400,
+            quantity: 100,
+        });
+        s.apply(&Message::CancelOrder {
+            id: 1,
+            cancel_quantity: 99_999,
+        });
         assert_eq!(s.open_orders(), 0);
         assert_eq!(s.l2.num_levels(Side::Buy), 0);
     }
@@ -1012,19 +1564,23 @@ mod tests {
 
     // ---------- Sinh dữ liệu ----------
     #[test]
-    fn gen_session_all_peak_and_lien_mach_nonce() {
+    fn generated_session_is_deterministic_and_gapless() {
         assert_eq!(generate_session(50, 9), generate_session(50, 9));
         assert_ne!(generate_session(50, 9), generate_session(50, 10));
         let p = generate_session(200, 1);
-        for (i, g) in p.iter().enumerate() { assert_eq!(g.seq, i as u64); }
+        for (i, g) in p.iter().enumerate() {
+            assert_eq!(g.seq, i as u64);
+        }
     }
 
     #[test]
     fn session_timestamps_are_monotonic() {
         let p = generate_session(500, 3);
         for w in p.windows(2) {
-            assert!(w[1].timestamp_nanos > w[0].timestamp_nanos,
-                    "dấu thời gian phải tăng — nền tảng cho phát lại ở Chương 76");
+            assert!(
+                w[1].timestamp_nanos > w[0].timestamp_nanos,
+                "dấu thời gian phải tăng — nền tảng cho phát lại ở Chương 76"
+            );
         }
     }
 
@@ -1043,11 +1599,11 @@ mod tests {
 
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
-| `E0308: expected [u8; 8], found &[u8]` | `from_be_bytes` cần mảng cố định | `.try_into().map_err(\|_\| Loi::ThieuByte)?` |
+| `E0308: mismatched types` (expected `[u8; 8]`, found `&[u8]`) | `from_be_bytes` cần mảng cố định | Kiểm độ dài trước rồi `b[i..i + 8].try_into().unwrap()` như `analyze`, hoặc `.try_into().map_err(...)?` |
 | Giá sai lệch hàng triệu lần | Dùng `from_le_bytes` cho giao thức mạng | Giao thức mạng là big-endian: `from_be_bytes` |
-| `E0502: cannot borrow as mutable` | Duyệt `self.levels` rồi muốn `remove` | Thu chỉ số cần xoá vào `Vec` trước, xoá sau |
+| `E0502: cannot borrow as mutable because it is also borrowed as immutable` | Duyệt `self.levels` rồi muốn `remove` trong vòng lặp | Thu khoá cần xoá vào `Vec` trước, xoá sau — hoặc dùng `retain` |
 | Khe bị báo lại vô hạn | Thiếu trạng thái "đang chờ khôi phục" | Thêm `pending_gap: Option<(u64,u64)>` |
-| `E0507: cannot move out of BTreeMap` | Lấy `Vec` ra khỏi map | `.remove(&k)` để lấy quyền sở hữu, hoặc mượn |
+| `E0507: cannot move out of index of BTreeMap` | `let v = map[&k];` với giá trị là `Vec` | `.remove(&k)` để lấy quyền sở hữu, hoặc mượn `&map[&k]` |
 
 ---
 
@@ -1077,43 +1633,55 @@ Sổ lệnh dựng gia tăng sẽ **trôi** theo thời gian — vì gói mất,
 ```rust
 #[derive(Debug, PartialEq)]
 pub enum ReconcileOutcome {
-    Khop,
-    Lech { muc_sai: usize, chi_tiet: Vec<String> },
+    Match,
+    Mismatch { levels: usize, details: Vec<String> },
 }
 
 impl L2Book {
-    /// Truy cập một bên của sổ dưới dạng bản đồ giá → (khối lượng, số lệnh).
+    /// Một bên của sổ dưới dạng bản đồ khoá → (khối lượng, số lệnh).
+    /// Lưu ý: khoá bên mua là giá ĐẢO DẤU (xem `L2Book`).
     pub fn levels(&self, side: Side) -> &BTreeMap<Price, (u64, u32)> {
-        match side { Side::Buy => &self.buy, Side::Sell => &self.ban }
+        match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        }
     }
 
     pub fn reconcile(&self, snap: &L2Book) -> ReconcileOutcome {
-        let mut chi_tiet = Vec::new();
-        for (side, ta, no) in [("bid", self.levels(Side::Buy), snap.levels(Side::Buy)),
-                                ("ban", self.levels(Side::Sell), snap.levels(Side::Sell))] {
-            for (price, kl) in ta {
-                match no.get(price) {
-                    Some(k) if k == kl => {}
-                    Some(k) => chi_tiet.push(
-                        format!("{} {}: ta={:?} anh={:?}", side, price, kl, k)),
-                    None => chi_tiet.push(
-                        format!("{} {}: ta={:?} anh=THIEU", side, price, kl)),
+        let mut details = Vec::new();
+        for side in [Side::Buy, Side::Sell] {
+            let (ours, theirs) = (self.levels(side), snap.levels(side));
+            for (key, level) in ours {
+                match theirs.get(key) {
+                    Some(t) if t == level => {}
+                    Some(t) => details.push(format!(
+                        "{side:?} {key}: của ta={level:?} ảnh chụp={t:?}"
+                    )),
+                    None => details.push(format!(
+                        "{side:?} {key}: của ta={level:?} ảnh chụp=THIẾU"
+                    )),
                 }
             }
-            for price in no.keys() {
-                if !ta.contains_key(price) {
-                    chi_tiet.push(format!("{} {}: ta=THIEU", side, price));
+            for key in theirs.keys() {
+                if !ours.contains_key(key) {
+                    details.push(format!("{side:?} {key}: của ta=THIẾU"));
                 }
             }
         }
-        if chi_tiet.is_empty() { ReconcileOutcome::Khop }
-        else { ReconcileOutcome::Lech { muc_sai: chi_tiet.len(), chi_tiet } }
+        if details.is_empty() {
+            ReconcileOutcome::Match
+        } else {
+            ReconcileOutcome::Mismatch {
+                levels: details.len(),
+                details,
+            }
+        }
     }
 
     /// Khi lệch: XÂY LẠI, không vá. Sổ đã sai thì mọi phép vá đều đoán mò.
     pub fn rebuild_from(&mut self, snap: &L2Book) {
-        self.buy = snap.buy.clone();
-        self.ban = snap.ban.clone();
+        self.bids = snap.bids.clone();
+        self.asks = snap.asks.clone();
     }
 }
 ```
@@ -1143,37 +1711,39 @@ pub struct QueueTracker {
 impl QueueTracker {
     /// Sổ L3 đã cho sẵn `queue_ahead` — ta chỉ chụp lại giá trị đó
     /// tại thời điểm đặt lệnh để về sau đo được tiến độ.
-    pub fn new(so: &L3Book, id: OrderId) -> Option<Self> {
-        let l = so.order.get(&id)?;
-        let prev = so.queue_ahead(id)?;
+    pub fn new(book: &L3Book, id: OrderId) -> Option<Self> {
+        let order = book.orders.get(&id)?;
+        let ahead = book.queue_ahead(id)?;
         Some(QueueTracker {
             our_order_id: id,
-            price: l.price,
-            queue_ahead: prev,
-            initial_queue_ahead: prev,
+            price: order.price,
+            queue_ahead: ahead,
+            initial_queue_ahead: ahead,
         })
     }
 
     /// Lệnh đứng trước bị khớp HOẶC bị huỷ → hàng ngắn lại.
     pub fn queue_shrank(&mut self, quantity: u64) {
-        self.queue_ahead =
-            self.queue_ahead.saturating_sub(quantity);
+        self.queue_ahead = self.queue_ahead.saturating_sub(quantity);
     }
 
     /// Tỉ lệ đã tiến được, 0.0 → 1.0.
-    pub fn tien_do(&self) -> f64 {
-        if self.initial_queue_ahead == 0 { return 1.0; }
-        1.0 - self.queue_ahead as f64
-               / self.initial_queue_ahead as f64
+    pub fn progress(&self) -> f64 {
+        if self.initial_queue_ahead == 0 {
+            return 1.0;
+        }
+        1.0 - self.queue_ahead as f64 / self.initial_queue_ahead as f64
     }
 
     /// Ước lượng thô xác suất được khớp trước khi giá đi mất.
-    pub fn fill_probability(&self, khoi_luong_ky_vong: u64) -> f64 {
-        if self.queue_ahead == 0 { return 1.0; }
-        (khoi_luong_ky_vong as f64 / self.queue_ahead as f64).min(1.0)
+    pub fn fill_probability(&self, expected_volume: u64) -> f64 {
+        if self.queue_ahead == 0 {
+            return 1.0;
+        }
+        (expected_volume as f64 / self.queue_ahead as f64).min(1.0)
     }
 }
 ```
 
-Con số `xac_suat_khop` là đầu vào trực tiếp cho quyết định giao dịch: nếu xác suất quá thấp, tốt hơn là huỷ và đặt ở mức giá tốt hơn — chấp nhận chênh lệch nhỏ hơn để đổi lấy khả năng được khớp.
+Con số `fill_probability` là đầu vào trực tiếp cho quyết định giao dịch: nếu xác suất quá thấp, tốt hơn là huỷ và đặt ở mức giá tốt hơn — chấp nhận chênh lệch nhỏ hơn để đổi lấy khả năng được khớp.
 </details>

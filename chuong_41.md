@@ -70,7 +70,8 @@ Một gói tin truyền qua cáp quang hay sóng Wi-Fi là một chuỗi byte tu
 ```
 
 #### Giải mã Tiêu đề IPv4 (20 bytes chuẩn):
-- **Byte 0**: 4 bits đầu là Phiên bản (`Version = 4`), 4 bits sau là Độ dài tiêu đề (`IHL - Internet Header Length`, thường là 5 từ 32-bit = 20 bytes).
+- **Byte 0**: 4 bits đầu là Phiên bản (`Version = 4`), 4 bits sau là Độ dài tiêu đề (`IHL - Internet Header Length`, tính bằng từ 32-bit: tối thiểu 5 = 20 bytes, tối đa 15 = 60 bytes khi có trường tuỳ chọn). IHL < 5 là gói dị dạng và phải bị loại.
+- **Bytes 2..3**: Tổng độ dài (`Total Length`, Big-Endian) = tiêu đề + dữ liệu. Khung Ethernet có thể đệm thêm byte 0 ở cuối, nên payload thật kết thúc tại `Total Length`, không phải ở cuối bộ đệm.
 - **Byte 8**: Thời gian sống (`TTL - Time to Live`): Số trạm trung chuyển (router) tối đa gói tin được đi qua trước khi bị hủy để chống lặp vòng.
 - **Byte 9**: Giao thức tầng trên (`Protocol`): `1` là ICMP (Ping), `6` là TCP, `17` là UDP.
 - **Bytes 12..15**: Địa chỉ IP Nguồn (Source IP Address).
@@ -95,7 +96,8 @@ Mọi tệp thực thi, thư viện chia sẻ (`.so`), và tệp mã đối tư�
 - **Byte 0..3**: Chuỗi ma thuật định danh: `0x7F`, `0x45` ('E'), `0x4C` ('L'), `0x46` ('F').
 - **Byte 4 (`EI_CLASS`)**: Phân biệt kiến trúc: `1` là 32-bit, `2` là 64-bit.
 - **Byte 5 (`EI_DATA`)**: Phân biệt mã hóa số: `1` là Little-Endian (Intel/AMD), `2` là Big-Endian (IBM PowerPC).
-- **Bytes 24..31** (trên hệ 64-bit): Điểm nhập cuộc (`Entry Point Virtual Address`) — địa chỉ câu lệnh máy đầu tiên mà CPU sẽ nhảy tới khi tiến trình khởi động!
+- **Bytes 18..19 (`e_machine`)**: Kiến trúc CPU đích (`0x3E` = x86-64, `0xB7` = AArch64, `0x03` = x86…).
+- **Từ byte 24 (`e_entry`)**: Điểm nhập cuộc (`Entry Point Virtual Address`) — địa chỉ câu lệnh máy đầu tiên mà CPU sẽ nhảy tới khi tiến trình khởi động! Trường này dài **8 byte trên ELF64 nhưng chỉ 4 byte trên ELF32**, và được đọc theo thứ tự byte mà `EI_DATA` khai báo. (Sơ đồ trên chỉ vẽ các trường tiêu biểu; giữa `Version` và `e_entry` còn các trường khác.) Một parser luôn đọc 8 byte Little-Endian sẽ trả về địa chỉ sai cho mọi tệp 32-bit hoặc Big-Endian.
 
 ---
 
@@ -104,7 +106,6 @@ Mọi tệp thực thi, thư viện chia sẻ (`.so`), và tệp mã đối tư�
 Dưới đây là chương trình Rust hoàn chỉnh thể hiện kỹ thuật **Zero-Copy Parser**: Giải mã trực tiếp gói tin mạng IPv4 và bóc tách tiêu đề tệp thực thi nhị phân Linux ELF chỉ từ một mảng byte thô `&[u8]`, không cấp phát thêm bất kỳ ô nhớ Heap nào:
 
 ```rust
-#![allow(dead_code, unused_variables, unused_imports)]
 /// Thông tin tiêu đề gói tin IPv4 sau khi giải mã Zero-Copy
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsedIpv4Header<'a> {
@@ -120,7 +121,7 @@ pub struct ParsedIpv4Header<'a> {
 /// Trình phân tích tiêu đề gói tin mạng IPv4
 pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'static str> {
     if raw_bytes.len() < 20 {
-        return Err("Kich thuoc goi tin qua short de chua IPv4 Header hop le!");
+        return Err("Kích thước gói tin quá ngắn để chứa IPv4 Header hợp lệ!");
     }
 
     // Byte 0: 4-bit Version và 4-bit IHL
@@ -129,11 +130,23 @@ pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'sta
     let header_length_bytes = ihl * 4;
 
     if version != 4 {
-        return Err("Day khong phai goi tin dinh dang IPv4!");
+        return Err("Đây không phải gói tin định dạng IPv4!");
     }
 
-    if raw_bytes.len() < header_length_bytes {
-        return Err("Do dai goi tin thuc te nho hon IHL khai bao trong tieu de!");
+    // IHL nhỏ hơn 5 (20 byte) là gói dị dạng: nếu chấp nhận, "payload" sẽ chồng lên
+    // chính các trường tiêu đề (TTL, IP nguồn/đích...) mà ta vừa đọc.
+    if ihl < 5 {
+        return Err("IHL nhỏ hơn 5: tiêu đề IPv4 tối thiểu phải dài 20 byte!");
+    }
+
+    // Byte 2..4: Total Length (Big-Endian) = tiêu đề + dữ liệu, KHÔNG gồm phần đệm
+    // mà tầng liên kết (Ethernet) có thể chèn vào cuối khung.
+    let total_length = u16::from_be_bytes([raw_bytes[2], raw_bytes[3]]) as usize;
+    if total_length < header_length_bytes {
+        return Err("Total Length nhỏ hơn độ dài tiêu đề khai báo!");
+    }
+    if raw_bytes.len() < total_length {
+        return Err("Gói tin bị cắt cụt: ngắn hơn Total Length khai báo trong tiêu đề!");
     }
 
     let ttl = raw_bytes[8];
@@ -145,8 +158,9 @@ pub fn parse_ipv4_packet(raw_bytes: &[u8]) -> Result<ParsedIpv4Header<'_>, &'sta
     let mut dest_ip = [0u8; 4];
     dest_ip.copy_from_slice(&raw_bytes[16..20]);
 
-    // Trích xuất payload mà không tốn một lần cấp phát Heap nào (Zero-Copy)
-    let payload = &raw_bytes[header_length_bytes..];
+    // Trích xuất payload mà không tốn một lần cấp phát Heap nào (Zero-Copy).
+    // Cắt tới total_length để loại phần đệm ở cuối khung (nếu có).
+    let payload = &raw_bytes[header_length_bytes..total_length];
 
     Ok(ParsedIpv4Header {
         version,
@@ -165,91 +179,142 @@ pub struct ParsedElfHeader {
     pub is_valid_elf: bool,
     pub bit_architecture: &'static str,
     pub endianness: &'static str,
+    pub machine: &'static str,
     pub entry_point_address: u64,
 }
 
-/// Trình giải mã tiêu đề tệp ELF Linux
+/// Đọc số nguyên N byte tại `offset` theo đúng thứ tự byte mà tệp khai báo
+fn read_u16(data: &[u8], offset: usize, big_endian: bool) -> u16 {
+    let b = [data[offset], data[offset + 1]];
+    if big_endian {
+        u16::from_be_bytes(b)
+    } else {
+        u16::from_le_bytes(b)
+    }
+}
+
+fn read_u32(data: &[u8], offset: usize, big_endian: bool) -> u32 {
+    let b: [u8; 4] = data[offset..offset + 4].try_into().unwrap();
+    if big_endian {
+        u32::from_be_bytes(b)
+    } else {
+        u32::from_le_bytes(b)
+    }
+}
+
+fn read_u64(data: &[u8], offset: usize, big_endian: bool) -> u64 {
+    let b: [u8; 8] = data[offset..offset + 8].try_into().unwrap();
+    if big_endian {
+        u64::from_be_bytes(b)
+    } else {
+        u64::from_le_bytes(b)
+    }
+}
+
+/// Trình giải mã tiêu đề tệp ELF Linux (cả ELF32 lẫn ELF64, cả LE lẫn BE)
 pub fn parse_elf_header(binary_data: &[u8]) -> Result<ParsedElfHeader, &'static str> {
-    if binary_data.len() < 32 {
-        return Err("Tap tin qua nho de chua ELF Header hop le!");
+    if binary_data.len() < 16 {
+        return Err("Tập tin quá nhỏ để chứa phần định danh ELF (e_ident 16 byte)!");
     }
 
     // Kiểm tra 4 Magic Bytes: 0x7F, 'E', 'L', 'F'
     if binary_data[0..4] != [0x7F, b'E', b'L', b'F'] {
-        return Err("Dau hieu nhan dang Magic Bytes khong khop voi dinh dang ELF!");
+        return Err("Dấu hiệu nhận dạng Magic Bytes không khớp với định dạng ELF!");
     }
 
-    // Byte 4: EI_CLASS (1 = 32-bit, 2 = 64-bit)
-    let bit_architecture = match binary_data[4] {
-        1 => "32-bit (x86 / ARM32)",
-        2 => "64-bit (x86_64 / AArch64)",
-        _ => "Kien truc khong xac dinh",
+    // Byte 4: EI_CLASS (1 = 32-bit, 2 = 64-bit) quyết định KÍCH THƯỚC các trường địa chỉ
+    let (bit_architecture, header_size, is_64) = match binary_data[4] {
+        1 => ("32-bit (ELFCLASS32)", 52, false),
+        2 => ("64-bit (ELFCLASS64)", 64, true),
+        _ => return Err("EI_CLASS không hợp lệ (phải là 1 hoặc 2)!"),
     };
 
-    // Byte 5: EI_DATA (1 = Little Endian, 2 = Big Endian)
-    let endianness = match binary_data[5] {
-        1 => "Little-Endian (Intel/AMD)",
-        2 => "Big-Endian (Network/MIPS)",
-        _ => "Dinh dang endian khong xac dinh",
+    // Byte 5: EI_DATA (1 = Little Endian, 2 = Big Endian) quyết định THỨ TỰ BYTE của mọi trường sau
+    let (endianness, big_endian) = match binary_data[5] {
+        1 => ("Little-Endian (ELFDATA2LSB)", false),
+        2 => ("Big-Endian (ELFDATA2MSB)", true),
+        _ => return Err("EI_DATA không hợp lệ (phải là 1 hoặc 2)!"),
     };
 
-    // Trích xuất địa chỉ Entry Point (Byte 24..32 cho tệp 64-bit Little-Endian)
-    let mut entry_bytes = [0u8; 8];
-    entry_bytes.copy_from_slice(&binary_data[24..32]);
-    let entry_point_address = u64::from_le_bytes(entry_bytes);
+    if binary_data.len() < header_size {
+        return Err("Tập tin bị cắt cụt: ngắn hơn ELF Header của lớp đã khai báo!");
+    }
+
+    // Byte 18..20: e_machine — kiến trúc CPU đích
+    let machine = match read_u16(binary_data, 18, big_endian) {
+        0x03 => "x86 (i386)",
+        0x08 => "MIPS",
+        0x14 => "PowerPC",
+        0x28 => "ARM (32-bit)",
+        0x3E => "x86-64 (AMD64)",
+        0xB7 => "AArch64 (ARM64)",
+        0xF3 => "RISC-V",
+        _ => "Kiến trúc khác",
+    };
+
+    // Byte 24..: e_entry — 4 byte trên ELF32, 8 byte trên ELF64, theo đúng EI_DATA
+    let entry_point_address = if is_64 {
+        read_u64(binary_data, 24, big_endian)
+    } else {
+        read_u32(binary_data, 24, big_endian) as u64
+    };
 
     Ok(ParsedElfHeader {
         is_valid_elf: true,
         bit_architecture,
         endianness,
+        machine,
         entry_point_address,
     })
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   PHAN TICH GOI TIN ZERO-COPY & GIAI MA TEP NHI PHAN ELF RUST   ");
+    println!("   PHÂN TÍCH GÓI TIN ZERO-COPY & GIẢI MÃ TỆP NHỊ PHÂN ELF RUST   ");
     println!("==================================================================");
 
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM GIẢI MÃ GÓI TIN MẠNG IPV4 ZERO-COPY
     // -------------------------------------------------------------
-    println!("\n[1] Giai ma goi tin mang IPv4 mo phong:");
+    println!("\n[1] Giải mã gói tin mạng IPv4 mô phỏng:");
 
     // Dựng mảng byte gói tin mẫu (Tiêu đề 20 bytes + Payload 4 bytes)
     let sample_packet: [u8; 24] = [
         0x45, 0x00, 0x00, 0x18, // Ver=4, IHL=5, Total Len=24
         0x1C, 0x7B, 0x40, 0x00, // ID, Flags, Fragment Offset
         0x40, 0x06, 0x00, 0x00, // TTL=64, Protocol=6 (TCP), Checksum
-        192, 168, 1, 100,       // Source IP: 192.168.1.100
-        10, 0, 0, 1,            // Dest IP: 10.0.0.1
-        0xDE, 0xAD, 0xBE, 0xEF, // Payload du lieu
+        192, 168, 1, 100, // Source IP: 192.168.1.100
+        10, 0, 0, 1, // Dest IP: 10.0.0.1
+        0xDE, 0xAD, 0xBE, 0xEF, // Payload dữ liệu
     ];
 
     match parse_ipv4_packet(&sample_packet) {
         Ok(parsed) => {
-            println!("    - Phien ban IP      : IPv{}", parsed.version);
-            println!("    - Do dai Tieu de   : {} bytes", parsed.header_length_bytes);
-            println!("    - Thoi gian song TTL: {}", parsed.ttl);
-            println!("    - Giao thuc tang 4  : {} (TCP)", parsed.protocol);
+            println!("    - Phiên bản IP      : IPv{}", parsed.version);
             println!(
-                "    - Dia chi IP Nguon : {}.{}.{}.{}",
+                "    - Độ dài Tiêu đề    : {} bytes",
+                parsed.header_length_bytes
+            );
+            println!("    - Thời gian sống TTL: {}", parsed.ttl);
+            println!("    - Giao thức tầng 4  : {} (TCP)", parsed.protocol);
+            println!(
+                "    - Địa chỉ IP Nguồn  : {}.{}.{}.{}",
                 parsed.source_ip[0], parsed.source_ip[1], parsed.source_ip[2], parsed.source_ip[3]
             );
             println!(
-                "    - Dia chi IP Dich  : {}.{}.{}.{}",
+                "    - Địa chỉ IP Đích   : {}.{}.{}.{}",
                 parsed.dest_ip[0], parsed.dest_ip[1], parsed.dest_ip[2], parsed.dest_ip[3]
             );
             println!("    - Payload Data (Hex): {:X?}", parsed.payload);
-            println!("    => Zero-Copy: Payload la lat cat &[u8] tro thang vao mang goc!");
+            println!("    => Zero-Copy: Payload là lát cắt &[u8] trỏ thẳng vào mảng gốc!");
         }
-        Err(err) => println!("    [!] Failed phan products: {}", err),
+        Err(err) => println!("    [!] Phân tích thất bại: {}", err),
     }
 
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM GIẢI MÃ TIÊU ĐỀ TỆP NHỊ PHÂN LINUX ELF
     // -------------------------------------------------------------
-    println!("\n[2] Giai ma tieu de tep thuc thi ELF Linux mo phong:");
+    println!("\n[2] Giải mã tiêu đề tệp thực thi ELF Linux mô phỏng:");
 
     // Tạo mảng 64 bytes mô phỏng phần đầu ELF64
     let mut mock_elf_data = [0u8; 64];
@@ -260,6 +325,7 @@ fn main() {
     mock_elf_data[4] = 2; // ELFCLASS64
     mock_elf_data[5] = 1; // ELFDATA2LSB (Little Endian)
     mock_elf_data[6] = 1; // EV_CURRENT
+    mock_elf_data[18..20].copy_from_slice(&0x3Eu16.to_le_bytes()); // e_machine = x86-64
 
     // Đặt địa chỉ Entry Point giả lập: 0x0000000000401000
     let entry_addr: u64 = 0x00401000;
@@ -268,16 +334,20 @@ fn main() {
     match parse_elf_header(&mock_elf_data) {
         Ok(elf) => {
             println!("    - Magic Bytes Valid : {}", elf.is_valid_elf);
-            println!("    - Kien truc Chip CPU: {}", elf.bit_architecture);
-            println!("    - Thu tu Byte Endian: {}", elf.endianness);
-            println!("    - Dia chi khoi chay : 0x{:012X}", elf.entry_point_address);
-            println!("    => Nhan dang tep nhi phan thanh cong chi voi 64 bytes dau!");
+            println!("    - Lớp địa chỉ       : {}", elf.bit_architecture);
+            println!("    - Kiến trúc CPU     : {}", elf.machine);
+            println!("    - Thứ tự Byte Endian: {}", elf.endianness);
+            println!(
+                "    - Địa chỉ khởi chạy : 0x{:012X}",
+                elf.entry_point_address
+            );
+            println!("    => Nhận dạng tệp nhị phân thành công chỉ với 64 bytes đầu!");
         }
-        Err(err) => println!("    [!] Failed phan products ELF: {}", err),
+        Err(err) => println!("    [!] Phân tích ELF thất bại: {}", err),
     }
 
     println!("\n==================================================================");
-    println!("   HOAN TAT: TOC DO PHAN TICH TOI DA - KHONG CAP PHAT HEAP!     ");
+    println!("   HOÀN TẤT: TỐC ĐỘ PHÂN TÍCH TỐI ĐA - KHÔNG CẤP PHÁT HEAP!     ");
     println!("==================================================================");
 }
 ```
@@ -290,28 +360,138 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0507** | `cannot move out of a shared reference` | Cố gắng di chuyển quyền sở hữu (ownership) của một trường nằm bên trong lát cắt mượn `&[u8]`. | Sử dụng phép sao chép dữ liệu nhỏ qua `.copy_from_slice()` hoặc chỉ mượn (borrow) tham chiếu con. |
-| **E0277** | `the trait 'From<[u8]>' is not implemented` | Cố gắng chuyển đổi mảng slice `&[u8]` thành mảng có kích thước cố định `[u8; 4]` mà không qua phương thức `try_into`. | Sử dụng `slice[..4].try_into().unwrap()` hoặc hàm sao chép byte chuyên dụng. |
+| **E0308** | `mismatched types: expected '[u8; 4]', found '[u8]'` | Viết `let a: [u8; 4] = slice[0..4];` — biểu thức `slice[0..4]` có kiểu lát cắt *không định cỡ* `[u8]`, không phải mảng cố định. | Sao chép qua `.copy_from_slice()` hoặc dùng `slice[0..4].try_into().unwrap()`. |
+| **E0277** | `the trait bound '[u8; 4]: From<&[u8]>' is not satisfied` | Cố gắng chuyển đổi mảng slice `&[u8]` thành mảng có kích thước cố định `[u8; 4]` mà không qua phương thức `try_into`. | Sử dụng `slice[..4].try_into().unwrap()` hoặc hàm sao chép byte chuyên dụng. |
 | **E0597** | `'raw_bytes' does not live long enough` | Cấu trúc chứa trường lát cắt `&'a [u8]` cố gắng sống lâu hơn biến mảng byte gốc mà nó đang tham chiếu. | Đảm bảo mảng gốc có thời gian sống (lifetime) bao trùm toàn bộ phạm vi sử dụng của cấu trúc phân tích. |
 | **E0308** | `mismatched types: expected array '[u8; 4]', found slice '&[u8]'` | Nhầm lẫn giữa mảng cố định nằm trên Stack và lát cắt mượn động trên bộ nhớ đệm (buffer). | Khai báo rõ ràng mảng cố định `let mut arr = [0u8; 4];` rồi gọi `.copy_from_slice()`. |
 
-### Ví dụ phân tích lỗi `E0507` khi trích xuất mảng con từ lát cắt:
+### Ví dụ phân tích lỗi `E0308` khi trích xuất mảng con từ lát cắt:
 
 ```rust
-// Đoạn mã lỗi minh họa E0507:
-fn e0507_broken(slice: &[u8]) {
-    // let mang_bon_byte: [u8; 4] = slice[0..4]; // LỖI E0507: Không thể move dữ liệu từ slice mượn!
+// Đoạn mã lỗi minh họa E0308:
+fn e0308_broken(slice: &[u8]) {
+    // let four_bytes: [u8; 4] = slice[0..4]; // LỖI E0308: expected `[u8; 4]`, found `[u8]`!
+    let _ = slice;
 }
 
-// Cách sửa chữa đúng chuẩn: Dùng con trỏ mượn hoặc sao chép byte
-fn vi_du_dung_e0507(slice: &[u8]) -> [u8; 4] {
-    let mut mang = [0u8; 4];
-    mang.copy_from_slice(&slice[0..4]); // Sao chép an toàn 4 bytes
-    mang
+// Cách sửa chữa đúng chuẩn: sao chép byte vào mảng cố định
+fn e0308_correct(slice: &[u8]) -> [u8; 4] {
+    let mut arr = [0u8; 4];
+    arr.copy_from_slice(&slice[0..4]); // Sao chép an toàn 4 bytes
+    arr
 }
 ```
 
 ---
+
+## Kiểm thử tự động (Automated Tests)
+
+Bộ phân tích nhị phân là nơi **đầu vào do kẻ tấn công kiểm soát**, nên mỗi trường đọc từ dữ liệu (IHL, Total Length, EI_CLASS, EI_DATA) đều phải được coi là không đáng tin. Các test dưới đây dựng gói tin và tiêu đề ELF dị dạng bằng tay để khẳng định parser từ chối chúng bằng `Err` — không panic, không đọc sai vị trí — và đọc đúng cả ELF32 lẫn ELF Big-Endian.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ipv4(ihl: u8, total_len: u16, payload: &[u8]) -> Vec<u8> {
+        let mut p = vec![0u8; 20];
+        p[0] = 0x40 | ihl;
+        p[2..4].copy_from_slice(&total_len.to_be_bytes());
+        p[8] = 64;
+        p[9] = 17;
+        p[12..16].copy_from_slice(&[10, 0, 0, 1]);
+        p[16..20].copy_from_slice(&[10, 0, 0, 2]);
+        p.extend_from_slice(payload);
+        p
+    }
+
+    #[test]
+    fn parses_minimal_packet() {
+        let pkt = ipv4(5, 23, b"abc");
+        let h = parse_ipv4_packet(&pkt).unwrap();
+        assert_eq!(h.header_length_bytes, 20);
+        assert_eq!(h.protocol, 17);
+        assert_eq!(h.source_ip, [10, 0, 0, 1]);
+        assert_eq!(h.payload, b"abc");
+    }
+
+    #[test]
+    fn rejects_ihl_below_five() {
+        // Lỗi cũ: IHL = 2 được chấp nhận và "payload" bắt đầu từ byte 8 — chồng lên tiêu đề
+        for ihl in 0..5 {
+            assert!(
+                parse_ipv4_packet(&ipv4(ihl, 24, b"data")).is_err(),
+                "IHL = {ihl}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_ihl_longer_than_packet_and_truncated_packets() {
+        assert!(parse_ipv4_packet(&ipv4(15, 60, b"")).is_err()); // khai 60 byte, chỉ có 20
+        assert!(parse_ipv4_packet(&ipv4(5, 100, b"abc")).is_err()); // Total Length > thực tế
+        assert!(parse_ipv4_packet(&ipv4(5, 10, b"abc")).is_err()); // Total Length < tiêu đề
+    }
+
+    #[test]
+    fn payload_excludes_link_layer_padding() {
+        // Khung Ethernet tối thiểu 60 byte: gói IP 23 byte được đệm thêm số 0 ở cuối
+        let mut pkt = ipv4(5, 23, b"abc");
+        pkt.resize(46, 0);
+        assert_eq!(parse_ipv4_packet(&pkt).unwrap().payload, b"abc");
+    }
+
+    fn elf(class: u8, data: u8, len: usize) -> Vec<u8> {
+        let mut v = vec![0u8; len];
+        v[0..4].copy_from_slice(&[0x7F, b'E', b'L', b'F']);
+        v[4] = class;
+        v[5] = data;
+        v[6] = 1;
+        v
+    }
+
+    #[test]
+    fn elf64_little_endian_entry() {
+        let mut v = elf(2, 1, 64);
+        v[18..20].copy_from_slice(&0xB7u16.to_le_bytes());
+        v[24..32].copy_from_slice(&0x0040_1000u64.to_le_bytes());
+        let h = parse_elf_header(&v).unwrap();
+        assert_eq!(h.entry_point_address, 0x0040_1000);
+        assert_eq!(h.machine, "AArch64 (ARM64)");
+    }
+
+    #[test]
+    fn elf32_reads_four_byte_entry() {
+        // Lỗi cũ: luôn đọc 8 byte ở offset 24 -> với ELF32 lẫn cả e_phoff vào e_entry
+        let mut v = elf(1, 1, 52);
+        v[18..20].copy_from_slice(&0x03u16.to_le_bytes());
+        v[24..28].copy_from_slice(&0x0804_8000u32.to_le_bytes());
+        v[28..32].copy_from_slice(&0x34u32.to_le_bytes()); // e_phoff = 52
+        let h = parse_elf_header(&v).unwrap();
+        assert_eq!(h.entry_point_address, 0x0804_8000);
+        assert_eq!(h.machine, "x86 (i386)");
+    }
+
+    #[test]
+    fn elf_big_endian_is_honoured() {
+        // Lỗi cũ: luôn from_le_bytes kể cả khi EI_DATA = 2 (Big-Endian)
+        let mut v = elf(2, 2, 64);
+        v[18..20].copy_from_slice(&0x14u16.to_be_bytes());
+        v[24..32].copy_from_slice(&0x1000_0000u64.to_be_bytes());
+        let h = parse_elf_header(&v).unwrap();
+        assert_eq!(h.entry_point_address, 0x1000_0000);
+        assert_eq!(h.machine, "PowerPC");
+    }
+
+    #[test]
+    fn elf_rejects_bad_class_data_and_truncation() {
+        assert!(parse_elf_header(&elf(3, 1, 64)).is_err());
+        assert!(parse_elf_header(&elf(2, 0, 64)).is_err());
+        assert!(parse_elf_header(&elf(2, 1, 40)).is_err()); // ELF64 cần 64 byte
+        assert!(parse_elf_header(b"MZ not an elf file at all").is_err());
+    }
+}
+```
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
@@ -354,7 +534,7 @@ pub struct UdpHeader {
 /// Phân tích 8 byte tiêu đề UDP. Trả Err nếu không đủ 8 byte.
 pub fn parse_udp_header(data: &[u8]) -> Result<UdpHeader, &'static str> {
     if data.len() < 8 {
-        return Err("Goi tin qua ngan cho UDP header (can it nhat 8 byte)!");
+        return Err("Gói tin quá ngắn cho UDP header (cần ít nhất 8 byte)!");
     }
     // Mạng dùng big-endian (network byte order) -> from_be_bytes.
     Ok(UdpHeader {
@@ -366,10 +546,10 @@ pub fn parse_udp_header(data: &[u8]) -> Result<UdpHeader, &'static str> {
 }
 
 #[test]
-fn phan_tich_udp_dns() {
+fn parses_udp_dns() {
     // Cổng nguồn 0x0035 = 53 (DNS), cổng đích 0x1F90 = 8080, length 0x0020 = 32
-    let goi = [0x00, 0x35, 0x1F, 0x90, 0x00, 0x20, 0xAB, 0xCD];
-    let h = parse_udp_header(&goi).unwrap();
+    let packet = [0x00, 0x35, 0x1F, 0x90, 0x00, 0x20, 0xAB, 0xCD];
+    let h = parse_udp_header(&packet).unwrap();
     assert_eq!(h.source_port, 53);
     assert_eq!(h.dest_port, 8080);
     assert_eq!(h.length, 32);
@@ -403,7 +583,7 @@ pub fn parse_pe_header(data: &[u8]) -> bool {
         return false;
     }
     let e_lfanew = u32::from_le_bytes([data[0x3C], data[0x3D], data[0x3E], data[0x3F]]) as usize;
-    // 3. Nhảy tới đó và xác nhận chữ ký "PE  " — NHỚ kiểm đủ 4 byte tại vị trí nhảy.
+    // 3. Nhảy tới đó và xác nhận chữ ký "PE\0\0" — NHỚ kiểm đủ 4 byte tại vị trí nhảy.
     if e_lfanew + 4 > data.len() {
         return false;
     }
@@ -411,8 +591,8 @@ pub fn parse_pe_header(data: &[u8]) -> bool {
 }
 
 #[test]
-fn nhan_dien_pe() {
-    // Dựng một PE tối thiểu: MZ ở đầu, e_lfanew = 0x40, "PE  " tại 0x40.
+fn detects_pe() {
+    // Dựng một PE tối thiểu: MZ ở đầu, e_lfanew = 0x40, "PE\0\0" tại 0x40.
     let mut data = vec![0u8; 0x44];
     data[0] = 0x4D; data[1] = 0x5A;                 // "MZ"
     data[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes()); // e_lfanew = 0x40
@@ -453,7 +633,9 @@ Trong **C/C++**, đây là thảm họa kinh điển: con trỏ chạy quá cu�
 
 2. **Lát cắt (slice) mang theo độ dài.** `&[u8]` là con trỏ béo: luôn biết vùng nó bao phủ dài bao nhiêu. Không có "con trỏ trần" chạy tự do như C — mọi truy cập đều đối chiếu với độ dài đó.
 
-3. **Kiểu buộc bạn xử lý ca lỗi.** Chính hàm `parse_ipv4_packet` của chương này trả `Result` và có dòng `if raw_bytes.len() < header_length_bytes { return Err(...) }`. Cách *đúng* là biến gói dị dạng thành một `Err` tường minh mà người gọi phải xử lý — thay vì để nó âm thầm phá bộ nhớ.
+3. **Kiểu buộc bạn xử lý ca lỗi.** Chính hàm `parse_ipv4_packet` của chương này trả `Result` và từ chối mọi gói có `Total Length` lớn hơn số byte thực có (mà `Total Length` lại phải ≥ độ dài tiêu đề IHL khai báo). Cách *đúng* là biến gói dị dạng thành một `Err` tường minh mà người gọi phải xử lý — thay vì để nó âm thầm phá bộ nhớ.
+
+**Chiều ngược lại cũng là bẫy:** IHL nhỏ hơn 5 (ví dụ 2 → "tiêu đề 8 byte") không gây đọc tràn nào, nên Rust *không* panic — nhưng parser ngây thơ sẽ coi byte 8 trở đi (TTL, địa chỉ IP…) là payload. Lỗi kiểu này không phải lỗi bộ nhớ mà là lỗi *logic*, và không ngôn ngữ nào tự chặn giúp bạn: phải kiểm `ihl < 5` tường minh như hàm của chương này.
 
 Nói gọn: trong C, lỗi này là **đọc lén vùng nhớ người khác** (bí mật, nguy hiểm); trong Rust, tệ nhất nó là **một panic có kiểm soát**, và nếu viết đúng thì chỉ là một `Err`. Rust không xóa được lỗi *logic* (quên kiểm), nhưng nó biến hậu quả từ "lỗ hổng bảo mật" thành "dừng an toàn".
 </details>

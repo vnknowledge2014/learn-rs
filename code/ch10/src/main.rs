@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // File: src/main.rs
 // Chương trình thực chiến làm chủ Enums, Option & So khớp mẫu (Pattern Matching)
 
@@ -6,63 +5,66 @@
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
 enum OrderStatus {
     AwaitingPayment,
-    DangDongGoi {
-        store_export_queue: String,
+    Packing {
+        warehouse: String,
     },
     InTransit {
-        ma_van_don: String,
-        ten_tai_xe: String,
+        tracking_code: String,
+        driver_name: String,
     },
     Delivered {
         recipient: String,
-        time_time_recv: String,
+        received_at: String,
     },
     Cancelled(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
 }
 
 // 2. Hàm chia kẹo an toàn: Trả về Option<u32> để ngăn chặn lỗi chia cho 0
-fn safe_divide(so_keo: u32, so_tre_em: u32) -> Option<u32> {
-    if so_tre_em == 0 {
+// (Thư viện chuẩn đã có sẵn `candies.checked_div(children)` làm đúng việc này;
+// ở đây ta tự viết tay để thấy rõ Option hoạt động thế nào, nên tắt lint gợi ý của Clippy.)
+#[allow(clippy::manual_checked_ops)]
+fn safe_divide(candies: u32, children: u32) -> Option<u32> {
+    if children == 0 {
         // Không thể chia cho 0 em bé: Trả về None báo hiệu không có kết quả
         None
     } else {
         // Chia thành công: Bọc kết quả vào trong hộp Some
-        Some(so_keo / so_tre_em)
+        Some(candies / children)
     }
 }
 
 // 3. Hàm xử lý trạng thái đơn hàng bằng cấu trúc so khớp mẫu 'match' toàn diện
-fn update_progress(don_hang: &OrderStatus) {
+fn update_progress(order: &OrderStatus) {
     println!("------------------------------------------------------------");
-    match don_hang {
+    match order {
         OrderStatus::AwaitingPayment => {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
-        OrderStatus::DangDongGoi { store_export_queue } => {
+        OrderStatus::Packing { warehouse } => {
             println!(
                 "[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}",
-                store_export_queue
+                warehouse
             );
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
         OrderStatus::InTransit {
-            ma_van_don,
-            ten_tai_xe,
+            tracking_code,
+            driver_name,
         } => {
             println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
-            println!("  + Mã vận đơn : {}", ma_van_don);
-            println!("  + Shipper    : {}", ten_tai_xe);
+            println!("  + Mã vận đơn : {}", tracking_code);
+            println!("  + Shipper    : {}", driver_name);
         }
         OrderStatus::Delivered {
             recipient,
-            time_time_recv,
+            received_at,
         } => {
             println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
             println!("  + Người ký nhận: {}", recipient);
-            println!("  + Thời điểm    : {}", time_time_recv);
+            println!("  + Thời điểm    : {}", received_at);
         }
-        OrderStatus::Cancelled(ly_do) => {
-            println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", ly_do);
+        OrderStatus::Cancelled(reason) => {
+            println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", reason);
         }
     }
 }
@@ -73,50 +75,50 @@ fn main() {
     println!("============================================================");
 
     // --- PHẦN 1: SO KHỚP MẪU VỚI ENUM CHỨA DỮ LIỆU ---
-    let don_cho = OrderStatus::AwaitingPayment;
-    let don_dong_goi = OrderStatus::DangDongGoi {
-        store_export_queue: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
+    let awaiting = OrderStatus::AwaitingPayment;
+    let packing = OrderStatus::Packing {
+        warehouse: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
     };
-    let don_van_transfer = OrderStatus::InTransit {
-        ma_van_don: String::from("SPX-987654321"),
-        ten_tai_xe: String::from("Bác Ba Giao Hàng"),
+    let in_transit = OrderStatus::InTransit {
+        tracking_code: String::from("SPX-987654321"),
+        driver_name: String::from("Bác Ba Giao Hàng"),
     };
-    let order_delivered = OrderStatus::Delivered {
+    let delivered = OrderStatus::Delivered {
         recipient: String::from("Trần Thị Bình"),
-        time_time_recv: String::from("14:30 ngày 05/09/2026"),
+        received_at: String::from("14:30 ngày 05/09/2026"),
     };
-    let don_cancel = OrderStatus::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
+    let cancelled = OrderStatus::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
 
-    update_progress(&don_cho);
-    update_progress(&don_dong_goi);
-    update_progress(&don_van_transfer);
-    update_progress(&order_delivered);
-    update_progress(&don_cancel);
+    update_progress(&awaiting);
+    update_progress(&packing);
+    update_progress(&in_transit);
+    update_progress(&delivered);
+    update_progress(&cancelled);
 
     // --- PHẦN 2: LÀM VIỆC VỚI OPTION<T> VÀ TRIỆT TIÊU NULL ---
     println!("\n=== KIỂM THỬ TÍNH TOÁN AN TOÀN VỚI OPTION ===");
-    let result_hop_le = safe_divide(20, 4);
-    let result_error = safe_divide(20, 0);
+    let valid_result = safe_divide(20, 4);
+    let zero_result = safe_divide(20, 0);
 
     // Dùng match để mở hộp quà Option
-    match result_hop_le {
-        Some(keo) => println!("- Chia 20 kẹo cho 4 bé: Mỗi bé được {} cái kẹo.", keo),
+    match valid_result {
+        Some(each) => println!("- Chia 20 kẹo cho 4 bé: Mỗi bé được {} cái kẹo.", each),
         None => println!("- Lỗi: Số trẻ em không thể bằng 0!"),
     }
 
-    match result_error {
-        Some(keo) => println!("- Mỗi bé được: {} cái kẹo.", keo),
+    match zero_result {
+        Some(each) => println!("- Mỗi bé được: {} cái kẹo.", each),
         None => println!("- [Được bảo vệ an toàn] Không thể chia cho 0 bé! Hệ thống không bị sập!"),
     }
 
     // --- PHẦN 3: MATCH GUARDS (ĐIỀU KIỆN BẢO VỆ PHỤ) VÀ KHOẢNG GIÁ TRỊ ---
     println!("\n=== PHÂN LOẠI TUỔI KHÁCH HÀNG VỚI MATCH GUARDS ===");
     let age = 17;
-    let co_the_can_cuoc = true;
+    let has_id_card = true;
 
     match age {
         0..=12 => println!("Khách hàng thuộc lứa tuổi Thiếu nhi"),
-        13..=17 if co_the_can_cuoc => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
+        13..=17 if has_id_card => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
         13..=17 => println!("Lứa tuổi vị thành niên (chưa làm thẻ CCCD)"),
         18..=60 => println!("Khách hàng trong độ tuổi lao động trưởng thành"),
         _ => println!("Khách hàng cao tuổi ưu tiên"),
@@ -124,10 +126,23 @@ fn main() {
 
     // --- PHẦN 4: CÚ PHÁP RÚT GỌN 'if let' ---
     println!("\n=== DÙNG 'if let' KHI CHỈ QUAN TÂM 1 TRƯỜNG HỢP ===");
-    let info_recv_send_to: Option<&str> = Some("Xin chào, bạn có nhà không?");
+    let incoming_message: Option<&str> = Some("Xin chào, bạn có nhà không?");
 
     // Thay vì viết match dài dòng với cả nhánh None, ta chỉ bắt nhánh Some:
-    if let Some(content) = info_recv_send_to {
+    if let Some(content) = incoming_message {
         println!("Tin nhắn mới nhận được: '{}'", content);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_divide_handles_zero() {
+        assert_eq!(safe_divide(20, 4), Some(5));
+        assert_eq!(safe_divide(20, 0), None);
+        // Cùng hành vi với hàm có sẵn của thư viện chuẩn:
+        assert_eq!(safe_divide(7, 2), 7u32.checked_div(2));
     }
 }

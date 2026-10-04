@@ -42,7 +42,7 @@ Với 8 chiếc công tắc này, bạn có thể tạo ra $2 \times 2 \times 2 
 
 - Trạng thái tất cả đều tắt: `00000000` (quy ước là số `0`).
 - Trạng thái bật công tắc cuối cùng: `00000001` (quy ước là số `1`).
-- Trạng thái `01000001`: hiệp hội quốc tế quy ước đó là chữ cái in hoa `'A'`.
+- Trạng thái `01000001`: theo bảng mã quốc tế ASCII, đó là chữ cái in hoa `'A'`.
 
 Mọi thứ bạn nhìn thấy trên màn hình — từ bức ảnh gia đình, video âm nhạc đến trò chơi 3D — bên dưới tận cùng của phần cứng đều chỉ là hàng tỷ chiếc công tắc siêu nhỏ đang được bật hoặc tắt với tốc độ hàng tỷ lần mỗi giây!
 
@@ -191,29 +191,43 @@ fn main() {
     // 1. Khám phá kích thước của 1 Byte (gồm 8 bits công tắc)
     // std::mem::size_of::<T>() là hàm đo xem kiểu dữ liệu T chiếm bao nhiêu Byte trên RAM.
     let u8_size = std::mem::size_of::<u8>();
-    println!("- Kiểu u8 (số nguyên nhỏ 0..255) chiếm : {} byte ({} bits)", 
-             u8_size, u8_size * 8);
+    println!(
+        "- Kiểu u8 (số nguyên nhỏ 0..255) chiếm : {} byte ({} bits)",
+        u8_size,
+        u8_size * 8
+    );
 
     // 2. Khám phá kiểu số nguyên tiêu chuẩn 32-bit (i32)
     let i32_size = std::mem::size_of::<i32>();
-    println!("- Kiểu i32 (số nguyên chuẩn) chiếm       : {} bytes ({} bits)", 
-             i32_size, i32_size * 8);
+    println!(
+        "- Kiểu i32 (số nguyên chuẩn) chiếm       : {} bytes ({} bits)",
+        i32_size,
+        i32_size * 8
+    );
 
     // 3. Khám phá kiểu số nguyên cực lớn 64-bit (i64)
     let i64_size = std::mem::size_of::<i64>();
-    println!("- Kiểu i64 (số nguyên lớn) chiếm         : {} bytes ({} bits)", 
-             i64_size, i64_size * 8);
+    println!(
+        "- Kiểu i64 (số nguyên lớn) chiếm         : {} bytes ({} bits)",
+        i64_size,
+        i64_size * 8
+    );
 
     // 4. Khám phá kiểu ký tự Unicode (char)
     // Trong Rust, một ký tự có thể là chữ cái tiếng Việt hoặc biểu tượng cảm xúc Emoji!
     let char_size = std::mem::size_of::<char>();
-    println!("- Kiểu char (ký tự Unicode/Emoji) chiếm  : {} bytes ({} bits)", 
-             char_size, char_size * 8);
+    println!(
+        "- Kiểu char (ký tự Unicode/Emoji) chiếm  : {} bytes ({} bits)",
+        char_size,
+        char_size * 8
+    );
 
     // 5. Khám phá kiểu logic Đúng/Sai (bool)
     let bool_size = std::mem::size_of::<bool>();
-    println!("- Kiểu bool (true/false) chiếm           : {} byte (dù chỉ cần 1 bit)", 
-             bool_size);
+    println!(
+        "- Kiểu bool (true/false) chiếm           : {} byte (dù chỉ cần 1 bit)",
+        bool_size
+    );
 
     println!("------------------------------------------------------------");
 
@@ -221,11 +235,17 @@ fn main() {
     let favorite_number: u8 = 42;
     println!("Con số quen thuộc trong đời thực: {}", favorite_number);
     // Cú pháp {:08b} yêu cầu Rust in số này dưới dạng nhị phân 8 bit (0 và 1)
-    println!("Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}", favorite_number);
+    println!(
+        "Dãy 8 công tắc điện thực tế trong chip RAM: {:08b}",
+        favorite_number
+    );
 
-    let linh_vat: char = '🦀'; // Cua Ferris - Linh vật chính thức của cộng đồng Rust
-    println!("Linh vật đáng yêu của Rust: {}", linh_vat);
-    println!("Mã số đại diện trong bộ ký tự quốc tế: U+{:X}", linh_vat as u32);
+    let mascot: char = '🦀'; // Cua Ferris - Linh vật chính thức của cộng đồng Rust
+    println!("Linh vật đáng yêu của Rust: {}", mascot);
+    println!(
+        "Mã số đại diện trong bộ ký tự quốc tế: U+{:X}",
+        mascot as u32
+    );
 }
 ```
 
@@ -238,7 +258,8 @@ Khi viết chương trình đầu tiên, người mới bắt đầu rất dễ 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 | --- | --- | --- | --- |
 | **Lỗi Macro** | `cannot find macro 'prinln' in this scope` | Gõ sai chính tả tên Macro in ấn (ví dụ gõ thiếu chữ `t` trong `println!`). Trình biên dịch sẽ phát hiện và gợi ý tên macro chuẩn. | Kiểm tra lại từng ký tự, sửa đúng thành `println!`. |
-| **E0425** | `cannot find value 'x' in this scope` (hoặc `cannot find function`) | Sử dụng một tên biến chưa từng được khai báo bằng `let`, hoặc gọi hàm in ấn mà quên dấu chấm than `!` (ví dụ viết nhầm `prinln("...")` như một hàm thông thường). | Khai báo biến trước khi dùng (`let x = ...;`) hoặc kiểm tra lại tên hàm và bổ sung dấu `!` nếu là Macro. |
+| **E0425** | `cannot find value 'x' in this scope` (hoặc `cannot find function 'prinln' in this scope`) | Sử dụng một tên biến chưa từng được khai báo bằng `let`, hoặc vừa gõ sai tên vừa quên dấu chấm than `!` (ví dụ `prinln("...")`) nên trình biên dịch đi tìm một *hàm* không tồn tại. | Khai báo biến trước khi dùng (`let x = ...;`) hoặc kiểm tra lại tên hàm và bổ sung dấu `!` nếu là Macro. |
+| **E0423** | `expected function, found macro 'println'` | Gõ đúng tên nhưng quên dấu `!` (`println("...")`): `println` là macro, không gọi như hàm được. | Thêm dấu `!`: `println!("...")`. |
 | **E0308** | `mismatched types: expected 'u8', found 'i32'` | Gán một biến có kiểu số có dấu hoặc kích thước lớn hơn vào một biến kiểu số nhỏ hơn (ví dụ: `let y: i32 = 10; let x: u8 = y;`). | Dùng phương thức chuyển đổi kiểu dữ liệu an toàn (`.try_into()`) hoặc đồng nhất kiểu dữ liệu của hai biến. *(Lưu ý: Nếu viết trực tiếp số âm `let x: u8 = -1;`, Rust sẽ báo lỗi `E0600: cannot apply unary operator '-' to type 'u8'`)*. |
 | **Cảnh báo `unused`** | `warning: variable does not need to be mutable` hoặc `unused variable` | Khai báo một biến trên bộ nhớ nhưng không bao giờ dùng tới trong chương trình. | Xóa biến thừa, hoặc thêm tiền tố dấu gạch dưới `_` (ví dụ `_ten_bien`) để báo cho trình biên dịch biết đây là biến cố ý chưa dùng. |
 
@@ -320,7 +341,7 @@ fn main() {
 }
 
 #[test]
-fn kich_thuoc_so_thuc() {
+fn float_sizes() {
     // f32 = 32 bit = 4 byte (độ chính xác đơn)
     assert_eq!(std::mem::size_of::<f32>(), 4);
     // f64 = 64 bit = 8 byte (độ chính xác kép) — gấp đôi f32

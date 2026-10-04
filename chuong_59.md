@@ -63,7 +63,7 @@ Mục tiêu học tập:
 | Điểm hỏng | Một máy sập = sập hết | Một máy sập = phần còn lại vẫn chạy |
 | Độ phức tạp | Đơn giản | Cần cân bằng tải, băm nhất quán, đồng thuận (Raft, Ch53) |
 
-Rust tỏa sáng ở mở rộng ngang: một dịch vụ Rust chỉ tốn ~15MB RAM (Chương 48), nên nhồi được 200–400 tiến trình trên một máy chủ Kubernetes, thay vì 10–20 như Java/Node.
+Rust tỏa sáng ở mở rộng ngang: một dịch vụ Rust nhỏ thường chỉ tốn vài chục MB RAM (Chương 48), nên mỗi máy chủ Kubernetes chứa được nhiều bản sao hơn hẳn một dịch vụ JVM/Node tương đương (con số cụ thể phải tự đo).
 
 ### 2. Cân bằng tải — ba chiến lược, một trait
 
@@ -80,7 +80,7 @@ Giả sử bạn có 4 máy cache và phân khóa bằng `hash(khóa) % 4`. Thê
 
 **Băm nhất quán** đặt cả máy chủ lẫn khóa lên một *vòng tròn băm*. Khóa đi theo chiều kim đồng hồ tới máy chủ gần nhất. Khi thêm/bớt một máy, **chỉ những khóa trong một cung nhỏ** cần di chuyển — trung bình `1/N` số khóa, thay vì gần như tất cả.
 
-Test `consistent_hash_minimizes_remapping` trong chương chứng minh: bỏ 1 trong 4 máy chỉ làm ~25% khóa di chuyển (giữ nguyên >60%, thực tế thường ~75%), và **0 khóa "bất thường"** — chỉ khóa của máy bị bỏ mới di chuyển.
+Test `consistent_hash_minimizes_remapping` trong chương chứng minh: bỏ 1 trong 4 máy chỉ làm ~25% khóa di chuyển (test đòi giữ nguyên >60%, thực tế thường ~75%), và **0 khóa "bất thường"** — test kiểm từng khóa bị di chuyển đều từng thuộc máy bị bỏ.
 
 ### 4. Chất lượng hàm băm quyết định phân bố tải
 
@@ -89,6 +89,7 @@ Test `consistent_hash_minimizes_remapping` trong chương chứng minh: bỏ 1 t
 Lời giải: thêm một **bộ trộn bit cuối (splitmix64 finalizer)** để đạt *hiệu ứng tuyết lở* — đổi 1 bit đầu vào làm đổi ~một nửa số bit đầu ra:
 
 ```rust
+let mut h: u64 = 0x1234_5678_9abc_def0; // giá trị băm FNV-1a cần trộn thêm
 h ^= h >> 30; h = h.wrapping_mul(0xbf58476d1ce4e5b9);
 h ^= h >> 27; h = h.wrapping_mul(0x94d049bb133111eb);
 h ^= h >> 31;
@@ -139,21 +140,30 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 #[derive(Debug, Clone)]
 pub struct Server {
     pub name: String,
-    pub current_connection: u32,
+    pub active_connections: u32,
     pub weight: u32, // máy mạnh hơn có trọng số cao hơn
 }
 
 pub trait BalancingStrategy {
-    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server>;
+    fn pick<'a>(&mut self, servers: &'a [Server]) -> Option<&'a Server>;
 }
 
 /// Xoay vòng (Round-Robin): lần lượt từng máy.
-pub struct RoundRobin { index: usize }
-impl RoundRobin { pub fn new() -> Self { RoundRobin { index: 0 } } }
+#[derive(Default)]
+pub struct RoundRobin {
+    index: usize,
+}
+impl RoundRobin {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 impl BalancingStrategy for RoundRobin {
-    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        if server.is_empty() { return None; }
-        let m = &server[self.index % server.len()];
+    fn pick<'a>(&mut self, servers: &'a [Server]) -> Option<&'a Server> {
+        if servers.is_empty() {
+            return None;
+        }
+        let m = &servers[self.index % servers.len()];
         self.index += 1;
         Some(m)
     }
@@ -162,27 +172,42 @@ impl BalancingStrategy for RoundRobin {
 /// Ít kết nối nhất (Least-Connections): gửi tới máy đang rảnh nhất.
 pub struct LeastConnections;
 impl BalancingStrategy for LeastConnections {
-    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        server.iter().min_by_key(|m| m.current_connection)
+    fn pick<'a>(&mut self, servers: &'a [Server]) -> Option<&'a Server> {
+        servers.iter().min_by_key(|m| m.active_connections)
     }
 }
 
 /// Xoay vòng có trọng số (Weighted): máy mạnh nhận nhiều hơn theo tỷ lệ trọng số.
-pub struct WeightedRoundRobin { count: u32 }
-impl WeightedRoundRobin { pub fn new() -> Self { WeightedRoundRobin { count: 0 } } }
+/// Bản đơn giản này dồn các lượt của một máy liền nhau (a, b, b, b, c); nginx dùng
+/// "smooth weighted round-robin" để xen kẽ (b, a, b, c, b) cho tải mượt hơn.
+#[derive(Default)]
+pub struct WeightedRoundRobin {
+    count: u32,
+}
+impl WeightedRoundRobin {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 impl BalancingStrategy for WeightedRoundRobin {
-    fn pick<'a>(&mut self, server: &'a [Server]) -> Option<&'a Server> {
-        if server.is_empty() { return None; }
-        let tong: u32 = server.iter().map(|m| m.weight).sum();
-        if tong == 0 { return server.first(); }
-        let level = self.count % tong;
-        self.count += 1;
-        let mut accumulate = 0;
-        for m in server {
-            accumulate += m.weight;
-            if level < accumulate { return Some(m); }
+    fn pick<'a>(&mut self, servers: &'a [Server]) -> Option<&'a Server> {
+        if servers.is_empty() {
+            return None;
         }
-        server.last()
+        let total: u32 = servers.iter().map(|m| m.weight).sum();
+        if total == 0 {
+            return servers.first();
+        }
+        let slot = self.count % total;
+        self.count = self.count.wrapping_add(1); // không panic tràn số sau ~4 tỷ lượt
+        let mut cumulative = 0;
+        for m in servers {
+            cumulative += m.weight;
+            if slot < cumulative {
+                return Some(m);
+            }
+        }
+        servers.last()
     }
 }
 
@@ -191,7 +216,7 @@ impl BalancingStrategy for WeightedRoundRobin {
 // ============================================================================
 
 /// Băm đơn giản, tất định (FNV-1a) — đủ cho minh họa.
-pub fn bam(key: &str) -> u64 {
+pub fn hash_key(key: &str) -> u64 {
     // FNV-1a để trộn từng byte...
     let mut h: u64 = 0xcbf29ce484222325;
     for b in key.bytes() {
@@ -212,29 +237,37 @@ pub fn bam(key: &str) -> u64 {
 /// Vòng băm nhất quán. Mỗi máy chủ được đặt tại NHIỀU điểm ảo trên vòng,
 /// để phân bố đều. Khóa đi theo chiều kim đồng hồ tới máy chủ gần nhất.
 pub struct ConsistentHashRing {
-    round: BTreeMap<u64, String>, // điểm trên vòng -> tên máy chủ
-    so_diem_ao: u32,
+    ring: BTreeMap<u64, String>, // điểm trên vòng -> tên máy chủ
+    virtual_nodes: u32,
 }
 
 impl ConsistentHashRing {
-    pub fn new(so_diem_ao: u32) -> Self {
-        ConsistentHashRing { round: BTreeMap::new(), so_diem_ao }
-    }
-    pub fn add_server(&mut self, name: &str) {
-        for i in 0..self.so_diem_ao {
-            self.round.insert(bam(&format!("{}#{}", name, i)), name.to_string());
+    pub fn new(virtual_nodes: u32) -> Self {
+        ConsistentHashRing {
+            ring: BTreeMap::new(),
+            virtual_nodes,
         }
     }
-    pub fn unit_server(&mut self, name: &str) {
-        self.round.retain(|_, v| v != name);
+    pub fn add_server(&mut self, name: &str) {
+        for i in 0..self.virtual_nodes {
+            self.ring
+                .insert(hash_key(&format!("{}#{}", name, i)), name.to_string());
+        }
+    }
+    pub fn remove_server(&mut self, name: &str) {
+        self.ring.retain(|_, v| v != name);
     }
     /// Tìm máy chủ chịu trách nhiệm cho một khóa: điểm đầu tiên >= hash(khóa),
     /// hoặc quay vòng về đầu (vòng tròn).
     pub fn find_server(&self, key: &str) -> Option<&str> {
-        if self.round.is_empty() { return None; }
-        let h = bam(key);
-        self.round.range(h..).next()
-            .or_else(|| self.round.iter().next()) // quay vòng
+        if self.ring.is_empty() {
+            return None;
+        }
+        let h = hash_key(key);
+        self.ring
+            .range(h..)
+            .next()
+            .or_else(|| self.ring.iter().next()) // quay vòng
             .map(|(_, v)| v.as_str())
     }
 }
@@ -247,25 +280,33 @@ impl ConsistentHashRing {
 /// Cho phép "bùng nổ" ngắn (dùng token tích lũy) nhưng giới hạn tốc độ trung bình.
 pub struct TokenBucket {
     capacity: f64,
-    token: f64,
-    measured_rate: f64, // token/giây
+    tokens: f64,
+    refill_rate: f64, // token/giây
 }
 
 impl TokenBucket {
-    pub fn new(capacity: f64, measured_rate: f64) -> Self {
-        TokenBucket { capacity, token: capacity, measured_rate }
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        TokenBucket {
+            capacity,
+            tokens: capacity,
+            refill_rate,
+        }
     }
     /// Nạp token theo thời gian trôi qua (giây), rồi thử tiêu 1 token.
-    pub fn try_acquire(&mut self, thoi_gian_troi: f64) -> bool {
-        self.token = (self.token + thoi_gian_troi * self.measured_rate).min(self.capacity);
-        if self.token >= 1.0 {
-            self.token -= 1.0;
+    pub fn try_acquire(&mut self, elapsed_secs: f64) -> bool {
+        // Thời gian âm (đồng hồ lùi) không được "rút" token
+        let elapsed_secs = elapsed_secs.max(0.0);
+        self.tokens = (self.tokens + elapsed_secs * self.refill_rate).min(self.capacity);
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
             true
         } else {
             false
         }
     }
-    pub fn token_con(&self) -> f64 { self.token }
+    pub fn tokens_left(&self) -> f64 {
+        self.tokens
+    }
 }
 
 // ============================================================================
@@ -273,9 +314,9 @@ impl TokenBucket {
 // ============================================================================
 
 #[derive(Debug, PartialEq)]
-pub enum KetQuaNhan {
-    DaNhan,
-    RejectReason, // hàng đầy — báo ngược lên nguồn để nó chậm lại (back-pressure)
+pub enum SendResult {
+    Accepted,
+    Rejected, // hàng đầy — báo ngược lên nguồn để nó chậm lại (back-pressure)
 }
 
 /// Hàng đợi có giới hạn: khi đầy, TỪ CHỐI thay vì phình vô hạn.
@@ -284,25 +325,35 @@ pub enum KetQuaNhan {
 pub struct BoundedQueue<T> {
     queue: VecDeque<T>,
     capacity: usize,
-    da_reject: u64,
+    rejected: u64,
 }
 
 impl<T> BoundedQueue<T> {
     pub fn new(capacity: usize) -> Self {
-        BoundedQueue { queue: VecDeque::new(), capacity, da_reject: 0 }
-    }
-    pub fn send(&mut self, viec: T) -> KetQuaNhan {
-        if self.queue.len() >= self.capacity {
-            self.da_reject += 1;
-            KetQuaNhan::RejectReason
-        } else {
-            self.queue.push_back(viec);
-            KetQuaNhan::DaNhan
+        BoundedQueue {
+            queue: VecDeque::new(),
+            capacity,
+            rejected: 0,
         }
     }
-    pub fn nhan(&mut self) -> Option<T> { self.queue.pop_front() }
-    pub fn so_cho(&self) -> usize { self.queue.len() }
-    pub fn num_da_reject(&self) -> u64 { self.da_reject }
+    pub fn send(&mut self, job: T) -> SendResult {
+        if self.queue.len() >= self.capacity {
+            self.rejected += 1;
+            SendResult::Rejected
+        } else {
+            self.queue.push_back(job);
+            SendResult::Accepted
+        }
+    }
+    pub fn recv(&mut self) -> Option<T> {
+        self.queue.pop_front()
+    }
+    pub fn pending(&self) -> usize {
+        self.queue.len()
+    }
+    pub fn rejected_count(&self) -> u64 {
+        self.rejected
+    }
 }
 
 fn main() {
@@ -310,49 +361,93 @@ fn main() {
     println!("   THIẾT KẾ HỆ THỐNG MỞ RỘNG: CÂN BẰNG TẢI · BĂM NHẤT QUÁN     ");
     println!("═══════════════════════════════════════════════════════════════");
 
-    let may = vec![
-        Server { name: "web-1".into(), current_connection: 5, weight: 1 },
-        Server { name: "web-2".into(), current_connection: 2, weight: 3 },
-        Server { name: "web-3".into(), current_connection: 8, weight: 1 },
+    let servers = vec![
+        Server {
+            name: "web-1".into(),
+            active_connections: 5,
+            weight: 1,
+        },
+        Server {
+            name: "web-2".into(),
+            active_connections: 2,
+            weight: 3,
+        },
+        Server {
+            name: "web-3".into(),
+            active_connections: 8,
+            weight: 1,
+        },
     ];
 
     println!("\n1. CÂN BẰNG TẢI");
-    let mut xv = RoundRobin::new();
-    let series: Vec<&str> = (0..5).filter_map(|_| xv.pick(&may).map(|m| m.name.as_str())).collect();
+    let mut rr = RoundRobin::new();
+    let series: Vec<&str> = (0..5)
+        .filter_map(|_| rr.pick(&servers).map(|m| m.name.as_str()))
+        .collect();
     println!("   Xoay vòng     : {:?}", series);
-    println!("   Ít kết nối    : {:?}", LeastConnections.pick(&may).map(|m| &m.name)); // web-2 (2 kết nối)
+    println!(
+        "   Ít kết nối    : {:?}",
+        LeastConnections.pick(&servers).map(|m| &m.name)
+    ); // web-2 (2 kết nối)
     let mut wt = WeightedRoundRobin::new();
-    let ws: Vec<&str> = (0..5).filter_map(|_| wt.pick(&may).map(|m| m.name.as_str())).collect();
+    let ws: Vec<&str> = (0..5)
+        .filter_map(|_| wt.pick(&servers).map(|m| m.name.as_str()))
+        .collect();
     println!("   Trọng số      : {:?} (web-2 xuất hiện nhiều nhất)", ws);
 
     println!("\n2. BĂM NHẤT QUÁN — thêm/bớt máy chủ ít xáo trộn");
-    let mut round = ConsistentHashRing::new(100);
-    for m in ["cache-A", "cache-B", "cache-C"] { round.add_server(m); }
-    let key = ["user:1", "user:2", "user:3", "user:4", "user:5"];
-    let prev: HashMap<&str, String> = key.iter()
-        .map(|k| (*k, round.find_server(k).unwrap().to_string())).collect();
-    println!("   Trước khi bỏ cache-B: {:?}", prev);
-    round.unit_server("cache-B");
-    let mut giu_nguyen = 0;
-    for k in &key {
-        let next = round.find_server(k).unwrap();
-        if next == prev[k] { giu_nguyen += 1; }
+    let mut ring = ConsistentHashRing::new(100);
+    for m in ["cache-A", "cache-B", "cache-C"] {
+        ring.add_server(m);
     }
-    println!("   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ", giu_nguyen, key.len());
+    let keys = ["user:1", "user:2", "user:3", "user:4", "user:5"];
+    let before: HashMap<&str, String> = keys
+        .iter()
+        .map(|k| (*k, ring.find_server(k).unwrap().to_string()))
+        .collect();
+    println!("   Trước khi bỏ cache-B: {:?}", before);
+    ring.remove_server("cache-B");
+    let mut unchanged = 0;
+    for k in &keys {
+        let after = ring.find_server(k).unwrap();
+        if after == before[k] {
+            unchanged += 1;
+        }
+    }
+    println!(
+        "   Sau khi bỏ cache-B: {}/{} khóa GIỮ NGUYÊN máy chủ",
+        unchanged,
+        keys.len()
+    );
     println!("   → Băm thường (hash % N) sẽ xáo trộn GẦN NHƯ TẤT CẢ khóa!");
 
     println!("\n3. GIỚI HẠN TẦN SUẤT (Token Bucket: 3 token, đổ 1/giây)");
-    let mut xor = TokenBucket::new(3.0, 1.0);
+    let mut bucket = TokenBucket::new(3.0, 1.0);
     for i in 1..=5 {
-        print!("   Yêu cầu {} (tức thì): {} | ", i, if xor.try_acquire(0.0) { "CHO" } else { "CHẶN" });
+        print!(
+            "   Yêu cầu {} (tức thì): {} | ",
+            i,
+            if bucket.try_acquire(0.0) {
+                "CHO"
+            } else {
+                "CHẶN"
+            }
+        );
     }
     println!();
-    println!("   Chờ 2 giây rồi thử lại: {}", if xor.try_acquire(2.0) { "CHO" } else { "CHẶN" });
+    println!(
+        "   Chờ 2 giây rồi thử lại: {}",
+        if bucket.try_acquire(2.0) {
+            "CHO"
+        } else {
+            "CHẶN"
+        }
+    );
 
     println!("\n4. BACK-PRESSURE (hàng đợi sức chứa 3)");
-    let mut hq: BoundedQueue<u32> = BoundedQueue::new(3);
+    let mut queue: BoundedQueue<u32> = BoundedQueue::new(3);
     for i in 1..=5 {
-        println!("   Gửi việc {}: {:?}", i, hq.send(i));
+        println!("   Gửi việc {}: {:?}", i, queue.send(i));
     }
     println!("   → 2 việc bị TỪ CHỐI. Nguồn gửi phải chậm lại, không được ép thêm.");
 
@@ -367,18 +462,30 @@ mod tests {
 
     fn server3() -> Vec<Server> {
         vec![
-            Server { name: "a".into(), current_connection: 5, weight: 1 },
-            Server { name: "b".into(), current_connection: 2, weight: 3 },
-            Server { name: "c".into(), current_connection: 8, weight: 1 },
+            Server {
+                name: "a".into(),
+                active_connections: 5,
+                weight: 1,
+            },
+            Server {
+                name: "b".into(),
+                active_connections: 2,
+                weight: 3,
+            },
+            Server {
+                name: "c".into(),
+                active_connections: 8,
+                weight: 1,
+            },
         ]
     }
 
     #[test]
     fn round_robin_is_even_and_wraps() {
         let m = server3();
-        let mut xv = RoundRobin::new();
-        let name: Vec<&str> = (0..6).map(|_| xv.pick(&m).unwrap().name.as_str()).collect();
-        assert_eq!(name, vec!["a", "b", "c", "a", "b", "c"]);
+        let mut rr = RoundRobin::new();
+        let names: Vec<&str> = (0..6).map(|_| rr.pick(&m).unwrap().name.as_str()).collect();
+        assert_eq!(names, vec!["a", "b", "c", "a", "b", "c"]);
     }
 
     #[test]
@@ -391,7 +498,9 @@ mod tests {
         let m = server3(); // trọng số a=1, b=3, c=1 -> tổng 5
         let mut wt = WeightedRoundRobin::new();
         let mut count: HashMap<String, u32> = HashMap::new();
-        for _ in 0..5 { *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1; }
+        for _ in 0..5 {
+            *count.entry(wt.pick(&m).unwrap().name.clone()).or_insert(0) += 1;
+        }
         assert_eq!(count["b"], 3); // b nhận 3/5
         assert_eq!(count["a"], 1);
         assert_eq!(count["c"], 1);
@@ -399,61 +508,83 @@ mod tests {
 
     #[test]
     fn consistent_hash_minimizes_remapping() {
-        let mut round = ConsistentHashRing::new(150);
-        for m in ["A", "B", "C", "D"] { round.add_server(m); }
-        let key: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
-        let prev: HashMap<&String, String> =
-            key.iter().map(|k| (k, round.find_server(k).unwrap().to_string())).collect();
+        let mut ring = ConsistentHashRing::new(150);
+        for m in ["A", "B", "C", "D"] {
+            ring.add_server(m);
+        }
+        let keys: Vec<String> = (0..1000).map(|i| format!("k{}", i)).collect();
+        let before: HashMap<&String, String> = keys
+            .iter()
+            .map(|k| (k, ring.find_server(k).unwrap().to_string()))
+            .collect();
 
-        round.unit_server("B"); // bỏ 1 trong 4 máy
+        ring.remove_server("B"); // bỏ 1 trong 4 máy
 
-        let giu = key.iter().filter(|k| round.find_server(k).unwrap() == prev[*k]).count();
+        let kept = keys
+            .iter()
+            .filter(|k| ring.find_server(k).unwrap() == before[*k])
+            .count();
         // Lý thuyết: chỉ ~1/4 khóa (thuộc B) phải di chuyển. Giữ nguyên phải > 60%.
-        assert!(giu as f64 / 1000.0 > 0.6, "chỉ giữ {} khóa — xáo trộn quá nhiều", giu);
+        assert!(
+            kept as f64 / 1000.0 > 0.6,
+            "chỉ giữ {} khóa — xáo trộn quá nhiều",
+            kept
+        );
+        // Và KHÔNG có khóa "bất thường": mọi khóa bị di chuyển đều từng thuộc B
+        for k in &keys {
+            let after = ring.find_server(k).unwrap();
+            if after != before[k] {
+                assert_eq!(
+                    before[k], "B",
+                    "khóa {} không thuộc B mà vẫn bị di chuyển",
+                    k
+                );
+            }
+        }
     }
 
     #[test]
     fn consistent_hash_keys_are_stable() {
-        let mut round = ConsistentHashRing::new(50);
-        round.add_server("X");
-        round.add_server("Y");
+        let mut ring = ConsistentHashRing::new(50);
+        ring.add_server("X");
+        ring.add_server("Y");
         // Cùng một khóa luôn cho cùng một máy chủ
-        let a = round.find_server("user:42").unwrap().to_string();
-        let b = round.find_server("user:42").unwrap().to_string();
+        let a = ring.find_server("user:42").unwrap().to_string();
+        let b = ring.find_server("user:42").unwrap().to_string();
         assert_eq!(a, b);
     }
 
     #[test]
     fn token_bucket_limits_and_refills() {
-        let mut xor = TokenBucket::new(3.0, 1.0);
+        let mut bucket = TokenBucket::new(3.0, 1.0);
         // 3 token đầu -> cho; token thứ 4 tức thì -> chặn
-        assert!(xor.try_acquire(0.0));
-        assert!(xor.try_acquire(0.0));
-        assert!(xor.try_acquire(0.0));
-        assert!(!xor.try_acquire(0.0));
+        assert!(bucket.try_acquire(0.0));
+        assert!(bucket.try_acquire(0.0));
+        assert!(bucket.try_acquire(0.0));
+        assert!(!bucket.try_acquire(0.0));
         // Chờ 1 giây -> đổ lại 1 token -> cho đúng 1 lần
-        assert!(xor.try_acquire(1.0));
-        assert!(!xor.try_acquire(0.0));
+        assert!(bucket.try_acquire(1.0));
+        assert!(!bucket.try_acquire(0.0));
     }
 
     #[test]
     fn token_bucket_never_exceeds_capacity() {
-        let mut xor = TokenBucket::new(2.0, 100.0);
+        let mut bucket = TokenBucket::new(2.0, 100.0);
         // chờ rất lâu nhưng token bị GHIM ở dung lượng, không tràn
-        xor.try_acquire(1000.0);
-        assert!(xor.token_con() <= 2.0);
+        bucket.try_acquire(1000.0);
+        assert!(bucket.tokens_left() <= 2.0);
     }
 
     #[test]
     fn back_pressure_rejects_when_full() {
-        let mut hq: BoundedQueue<u32> = BoundedQueue::new(2);
-        assert_eq!(hq.send(1), KetQuaNhan::DaNhan);
-        assert_eq!(hq.send(2), KetQuaNhan::DaNhan);
-        assert_eq!(hq.send(3), KetQuaNhan::RejectReason); // đầy!
-        assert_eq!(hq.num_da_reject(), 1);
+        let mut queue: BoundedQueue<u32> = BoundedQueue::new(2);
+        assert_eq!(queue.send(1), SendResult::Accepted);
+        assert_eq!(queue.send(2), SendResult::Accepted);
+        assert_eq!(queue.send(3), SendResult::Rejected); // đầy!
+        assert_eq!(queue.rejected_count(), 1);
         // Lấy ra 1 -> có chỗ -> nhận lại được
-        assert_eq!(hq.nhan(), Some(1));
-        assert_eq!(hq.send(3), KetQuaNhan::DaNhan);
+        assert_eq!(queue.recv(), Some(1));
+        assert_eq!(queue.send(3), SendResult::Accepted);
     }
 }
 ```
@@ -476,8 +607,8 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
-| `E0038: the trait cannot be made into an object` | `Box<dyn BalancingStrategy>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
-| `E0106: missing lifetime specifier` | Trả `Option<&Server>` từ lát cắt truyền vào | Ràng buộc vòng đời tường minh: `fn pick<'a>(&mut self, s: &'a [Server]) -> Option<&'a Server>` |
+| `` E0038: the trait `BalancingStrategy` is not dyn compatible `` | `Box<dyn BalancingStrategy>` mà trait có phương thức generic | Bỏ generic, hoặc dùng enum thay trait object |
+| `lifetime may not live long enough` (không có mã lỗi) | Viết `fn pick(&mut self, servers: &[Server]) -> Option<&Server>`: quy tắc rút gọn gắn vòng đời đầu ra với `&mut self`, nhưng giá trị trả về lại mượn từ `servers`. (Hàm tự do không có `self` mà nhận hai tham chiếu thì ra `E0106: missing lifetime specifier`.) | Ràng buộc vòng đời tường minh: `fn pick<'a>(&mut self, servers: &'a [Server]) -> Option<&'a Server>` |
 | `E0502: cannot borrow as mutable` | `self.pos` đổi trong khi còn mượn `&self.servers` | Đọc chỉ số ra biến trước, tăng `self.pos` sau |
 | `attempt to subtract with overflow` | Trừ dấu thời gian `u64` khi cửa sổ chưa đầy | `saturating_sub` — thời gian có thể chưa trôi đủ |
 | Băm nhất quán phân bố lệch nặng | Quá ít điểm ảo, hoặc hàm băm trộn bit kém | Tăng số điểm ảo lên hàng trăm và dùng bộ trộn có hiệu ứng tuyết lở |
@@ -495,7 +626,7 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (Cân bằng tải kèm kiểm tra sức khỏe)**
-Thêm trường `khoe_manh: bool` vào `Server` và một chiến lược `XoayVongBoQuaChet` chỉ chọn máy đang khỏe. Test rằng máy chết không bao giờ được chọn.
+Thêm trường `healthy: bool` vào `Server` và một chiến lược `RoundRobinSkipDead` chỉ chọn máy đang khỏe. Test rằng máy chết không bao giờ được chọn.
 
 <details>
 <summary><b>Lời giải</b></summary>
@@ -507,7 +638,7 @@ Thêm trường `khoe_manh: bool` vào `Server` và một chiến lược `XoayV
 #[derive(Debug, Clone)]
 pub struct HealthyServer {
     pub name: String,
-    pub current_connection: u32,
+    pub active_connections: u32,
     pub weight: u32,
     /// Do luồng kiểm tra sức khoẻ nền cập nhật.
     pub healthy: bool,
@@ -534,9 +665,9 @@ impl RoundRobinSkipDead {
 #[test]
 fn dead_servers_are_never_picked() {
     let servers = vec![
-        HealthyServer { name: "a".into(), current_connection: 0, weight: 1, healthy: true },
-        HealthyServer { name: "b".into(), current_connection: 0, weight: 1, healthy: false },
-        HealthyServer { name: "c".into(), current_connection: 0, weight: 1, healthy: true },
+        HealthyServer { name: "a".into(), active_connections: 0, weight: 1, healthy: true },
+        HealthyServer { name: "b".into(), active_connections: 0, weight: 1, healthy: false },
+        HealthyServer { name: "c".into(), active_connections: 0, weight: 1, healthy: true },
     ];
     let mut lb = RoundRobinSkipDead::new();
     let picked: Vec<&str> = (0..6).filter_map(|_| lb.pick(&servers)).map(|s| s.name.as_str()).collect();
@@ -547,7 +678,7 @@ fn dead_servers_are_never_picked() {
 #[test]
 fn all_dead_returns_none() {
     let servers = vec![
-        HealthyServer { name: "a".into(), current_connection: 0, weight: 1, healthy: false },
+        HealthyServer { name: "a".into(), active_connections: 0, weight: 1, healthy: false },
     ];
     // Không có máy nào sống thì phải TRẢ VỀ None, không phải chọn bừa.
     assert!(RoundRobinSkipDead::new().pick(&servers).is_none());
@@ -558,7 +689,7 @@ Trong thực tế, "kiểm tra sức khỏe" là một luồng nền định k�
 </details>
 
 **Bài tập 2 (Sliding window rate limiter)**
-Token bucket cho phép bùng nổ. Đôi khi ta muốn giới hạn *chặt* "tối đa N yêu cầu trong 60 giây gần nhất". Viết `CuaSoTruot` lưu dấu thời gian các yêu cầu và loại bỏ cái quá cũ. (Truyền thời gian vào làm tham số để test tất định — bài học Chương 55.)
+Token bucket cho phép bùng nổ. Đôi khi ta muốn giới hạn *chặt* "tối đa N yêu cầu trong 60 giây gần nhất". Viết `SlidingWindow` lưu dấu thời gian các yêu cầu và loại bỏ cái quá cũ. (Truyền thời gian vào làm tham số để test tất định — bài học Chương 55.)
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -571,30 +702,30 @@ Dùng `VecDeque<u64>` chứa dấu thời gian. Mỗi yêu cầu ở thời đi�
 
 ```rust
 use std::collections::VecDeque;
-pub struct SlidingWindow { dau_thoi_gian: VecDeque<u64>, limit: usize, cua_so_giay: u64 }
+pub struct SlidingWindow { timestamps: VecDeque<u64>, limit: usize, window_secs: u64 }
 impl SlidingWindow {
-    pub fn new(limit: usize, cua_so_giay: u64) -> Self {
-        SlidingWindow { dau_thoi_gian: VecDeque::new(), limit, cua_so_giay }
+    pub fn new(limit: usize, window_secs: u64) -> Self {
+        SlidingWindow { timestamps: VecDeque::new(), limit, window_secs }
     }
     pub fn try_acquire(&mut self, now: u64) -> bool {
-        while let Some(&cu) = self.dau_thoi_gian.front() {
-            if cu + self.cua_so_giay <= now { self.dau_thoi_gian.pop_front(); } else { break; }
+        while let Some(&oldest) = self.timestamps.front() {
+            if oldest + self.window_secs <= now { self.timestamps.pop_front(); } else { break; }
         }
-        if self.dau_thoi_gian.len() < self.limit {
-            self.dau_thoi_gian.push_back(now);
+        if self.timestamps.len() < self.limit {
+            self.timestamps.push_back(now);
             true
         } else { false }
     }
 }
 #[cfg(test)]
-mod bt2 {
+mod exercise_2 {
     use super::*;
     #[test]
     fn limits_three_requests_per_ten_seconds() {
-        let mut cs = SlidingWindow::new(3, 10);
-        assert!(cs.try_acquire(0)); assert!(cs.try_acquire(1)); assert!(cs.try_acquire(2));
-        assert!(!cs.try_acquire(3));      // đã đủ 3 trong cửa sổ
-        assert!(cs.try_acquire(11));      // cái ở t=0 đã hết hạn (11 >= 0+10)
+        let mut limiter = SlidingWindow::new(3, 10);
+        assert!(limiter.try_acquire(0)); assert!(limiter.try_acquire(1)); assert!(limiter.try_acquire(2));
+        assert!(!limiter.try_acquire(3));      // đã đủ 3 trong cửa sổ
+        assert!(limiter.try_acquire(11));      // cái ở t=0 đã hết hạn (11 >= 0+10)
     }
 }
 ```

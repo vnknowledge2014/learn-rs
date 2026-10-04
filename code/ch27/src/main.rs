@@ -1,13 +1,13 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 /// Cấu trúc nút bên trong danh sách liên kết
-struct Nut<T> {
+struct Node<T> {
     value: T,
-    next: Option<Box<Nut<T>>>,
+    next: Option<Box<Node<T>>>,
 }
 
 /// Cấu trúc Danh sách liên kết đơn (Singly Linked List)
 pub struct LinkedList<T> {
-    peak: Option<Box<Nut<T>>>,
+    head: Option<Box<Node<T>>>,
     length: usize,
 }
 
@@ -15,7 +15,7 @@ impl<T> LinkedList<T> {
     /// Khởi tạo một danh sách liên kết rỗng
     pub fn new() -> Self {
         LinkedList {
-            peak: None,
+            head: None,
             length: 0,
         }
     }
@@ -23,32 +23,32 @@ impl<T> LinkedList<T> {
     /// Thêm một phần tử mới vào đầu danh sách - Độ phức tạp O(1)
     pub fn push_front(&mut self, value: T) {
         // Tạo nút mới trên Heap thông qua con trỏ thông minh Box
-        // Sử dụng self.dinh.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
-        let nut_moi = Box::new(Nut {
+        // Sử dụng self.head.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
+        let new_node = Box::new(Node {
             value,
-            next: self.peak.take(),
+            next: self.head.take(),
         });
 
         // Gán đỉnh mới cho danh sách
-        self.peak = Some(nut_moi);
+        self.head = Some(new_node);
         self.length += 1;
     }
 
     /// Lấy phần tử ở đầu danh sách ra và trả về giá trị - Độ phức tạp O(1)
     pub fn pop_front(&mut self) -> Option<T> {
-        // .take() thay thế đỉnh bằng None và trả về Some(nut_cu)
-        self.peak.take().map(|nut_cu| {
+        // .take() thay thế đỉnh bằng None và trả về Some(old_head)
+        self.head.take().map(|old_head| {
             // Đưa nút kế tiếp lên làm đỉnh mới
-            self.peak = nut_cu.next;
+            self.head = old_head.next;
             self.length -= 1;
             // Trả về giá trị của nút vừa lấy ra
-            nut_cu.value
+            old_head.value
         })
     }
 
     /// Xem giá trị phần tử ở đầu danh sách mà không đoạt quyền sở hữu - Trả về tham chiếu mượn
     pub fn peek_front(&self) -> Option<&T> {
-        self.peak.as_ref().map(|nut| &nut.value)
+        self.head.as_ref().map(|node| &node.value)
     }
 
     /// Kiểm tra số lượng phần tử hiện tại trong danh sách
@@ -66,11 +66,11 @@ impl<T> LinkedList<T> {
 /// Sử dụng vòng lặp tuần tự thay vì đệ quy để triệt tiêu nguy cơ tràn ngăn xếp (Stack Overflow)
 impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
-        let mut current_node = self.peak.take();
+        let mut current_node = self.head.take();
         // Lặp tuần tự gỡ từng Box trên Heap đưa vào biến cục bộ rồi giải phóng
-        while let Some(mut nut) = current_node {
-            current_node = nut.next.take();
-            // nut tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
+        while let Some(mut node) = current_node {
+            current_node = node.next.take();
+            // node tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
         }
     }
 }
@@ -136,7 +136,7 @@ fn main() {
     println!("    => Giải phóng 100.000 nút bộ nhớ thành công tuyệt đối!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 23               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 27               ");
     println!("============================================================");
 }
 

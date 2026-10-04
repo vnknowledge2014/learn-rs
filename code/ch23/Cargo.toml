@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Crate macro thủ tục do chính chương này viết (proc-macro = true)
+ch23_macros = { path = "../ch23_macros" }
+# Dùng syn ở chế độ thường (không trong macro) để "soi" cây AST lúc chạy
+syn = "3"
+quote = "1"

@@ -36,7 +36,7 @@ Tuy nhiên, thay vì chỉ sử dụng các công cụ có sẵn một cách th�
 │ ├──────────────────────────────────────────────────────────────────────┤         │
 │ │ Đội trưởng ngồi tại phòng bảo vệ chỉ việc ghi nhận danh sách phòng mở│         │
 │ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> Toàn bộ tòa nhà 1,000 phòng được quét sạch trong chưa đầy 5 GIÂY!         │
+│   ===> Mỗi người chỉ 20 phòng x 3 giây = 60 giây: NHANH GẤP 50 LẦN!            │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,7 +51,7 @@ Tuy nhiên, thay vì chỉ sử dụng các công cụ có sẵn một cách th�
 ### 2. Quét cổng mạng (Port Scanning) giống như gõ cửa từng phòng
 - Khi bạn muốn biết phòng nào đang hoạt động, bạn gõ nhẹ vào cửa phòng (`gửi gói tin TCP SYN`).
 - Nếu phòng có người ra mở cửa và niềm nở chào bạn (`trả về TCP SYN-ACK`), bạn biết ngay phòng đó đang **MỞ (Open)**. Bạn lịch sự cảm ơn và rời đi.
-- Nếu phòng khóa trái cửa im lìm, sau 200 mili-giây không ai trả lời (`Timeout`), bạn kết luận phòng đó đang **ĐÓNG (Closed/Filtered)**.
+- Nếu có người nói vọng ra *"Không có ai, đi đi!"* (`gói RST`), phòng đó **ĐÓNG (Closed)**. Nếu cửa im lìm, sau 200 mili-giây không ai trả lời (`Timeout`), bạn ghi nhận phòng đó là **BỊ LỌC (Filtered)** — có thể tường lửa đã nuốt mất tiếng gõ. Với TCP Connect Scan, cả hai trường hợp đều được tính là "không mở".
 - Khi sử dụng Rust đa luồng kết hợp bộ đàm liên lạc (`mpsc`), công việc này diễn ra với tốc độ hàng ngàn phòng mỗi giây mà không bỏ sót bất kỳ dịch vụ nào!
 
 ---
@@ -98,8 +98,8 @@ Kỹ thuật quét mà chúng ta triển khai mang tên **TCP Connect Scan**:
 
 ### 3. Tương thích Bộ nhớ và Quản lý Tài nguyên Hệ thống
 
-- Mỗi tiến trình trên hệ điều hành đều có một giới hạn về số lượng kết nối mạng mở đồng thời (gọi là giới hạn **File Descriptors**). Giá trị mặc định thay đổi theo hệ điều hành: thường là 1024 trên Linux và chỉ 256 trên macOS. Bạn có thể xem bằng lệnh `ulimit -n`. Vì vậy đừng bao giờ sinh ra hàng nghìn luồng cùng mở socket một lúc — hãy chia dải cổng thành từng lô như mã nguồn bên dưới.
-- Chúng ta sử dụng cấu trúc khối để đảm bảo biến `TcpStream` ngay sau khi kết nối thành công sẽ lập tức được đóng kết nối và giải phóng vùng nhớ thông qua cơ chế RAII, bảo đảm không bao giờ làm tràn bộ nhớ đệm (buffer) mạng của hệ điều hành.
+- Mỗi tiến trình trên hệ điều hành đều có một giới hạn về số lượng kết nối mạng mở đồng thời (gọi là giới hạn **File Descriptors**). Giá trị mặc định thay đổi theo hệ điều hành: thường là 1024 trên Linux và chỉ 256 trên macOS. Bạn có thể xem bằng lệnh `ulimit -n`. Vì vậy đừng bao giờ sinh ra hàng nghìn luồng cùng mở socket một lúc — mã nguồn bên dưới chỉ tạo `thread_count` luồng, mỗi luồng quét lần lượt một lô cổng và chỉ mở **một** socket tại một thời điểm, nên số socket đồng thời không bao giờ vượt `thread_count`.
+- `TcpStream` ngay sau khi kết nối thành công sẽ lập tức bị huỷ (ra khỏi phạm vi) — kết nối được đóng và mô tả tệp được trả lại cho hệ điều hành thông qua cơ chế RAII, nên trình quét không bao giờ giữ socket lâu hơn cần thiết.
 
 ---
 
@@ -108,8 +108,8 @@ Kỹ thuật quét mà chúng ta triển khai mang tên **TCP Connect Scan**:
 Dưới đây là mã nguồn hoàn chỉnh của công cụ **Trình quét cổng mạng (Port Scanner)** đa luồng hiệu năng cao bằng Rust chuẩn mực, không cần thư viện ngoài, có khả năng quét dải cổng mạng song song với thời gian chờ thông minh:
 
 ```rust
-use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Sender};
+use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::sync::mpsc::{Sender, channel};
 use std::thread;
 use std::time::Duration;
 
@@ -153,15 +153,15 @@ fn guess_service_name(port: u16) -> &'static str {
 
 /// Thực hiện kiểm tra trạng thái một cổng đơn lẻ với thời gian chờ xác định
 pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
-    let address_str = format!("{}:{}", ip, port);
-    if let Ok(socket_addr) = address_str.parse::<SocketAddr>() {
-        // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt
-        if let Ok(_stream) = TcpStream::connect_timeout(&socket_addr, timeout) {
-            // Kết nối thành công! _stream sẽ tự động đóng kết nối khi ra khỏi phạm vi
-            return true;
-        }
-    }
-    false
+    // Ghép IpAddr + cổng bằng SocketAddr::new thay vì format!("{ip}:{port}"):
+    // cách ghép chuỗi hỏng với IPv6 (phải viết [::1]:80).
+    let Ok(ip_addr) = ip.parse::<IpAddr>() else {
+        return false;
+    };
+    let socket_addr = SocketAddr::new(ip_addr, port);
+    // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt.
+    // Kết nối thành công thì _stream tự động đóng khi ra khỏi phạm vi (RAII).
+    TcpStream::connect_timeout(&socket_addr, timeout).is_ok()
 }
 
 /// Động cơ quét cổng mạng đa luồng tốc độ cao
@@ -176,7 +176,12 @@ pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
     );
 
     let ports: Vec<u16> = (config.start_port..=config.end_port).collect();
-    let chunk_size = (ports.len() + config.thread_count - 1) / config.thread_count;
+    if ports.is_empty() {
+        return Vec::new(); // start_port > end_port: không có gì để quét
+    }
+    // Chia đều cho các luồng (làm tròn lên). max(1) tránh chia cho 0 khi thread_count = 0;
+    // mỗi luồng chỉ mở MỘT socket tại một thời điểm -> tối đa thread_count socket cùng lúc.
+    let chunk_size = ports.len().div_ceil(config.thread_count.max(1));
 
     for chunk in ports.chunks(chunk_size) {
         let chunk_vec = chunk.to_vec();
@@ -217,47 +222,57 @@ pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
 
 fn main() {
     println!("==================================================================");
-    println!("   CONG CU QUET CONG MANG DA LUONG SIEU TOC (RUST PORT SCANNER)  ");
+    println!("   CÔNG CỤ QUÉT CỔNG MẠNG ĐA LUỒNG SIÊU TỐC (RUST PORT SCANNER)  ");
     println!("==================================================================");
+
+    // Giả lập một dịch vụ đang chạy để kiểm tra tính chính xác của trình quét:
+    // bind cổng 0 -> hệ điều hành tự chọn một cổng trống (không cần quyền root
+    // như khi bind cổng 80).
+    let mock_listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("không mở được cổng giả lập");
+    let mock_port = mock_listener.local_addr().unwrap().port();
 
     // Thiết lập cấu hình kiểm thử quét trên máy cục bộ (Localhost 127.0.0.1)
     let config = ScanConfig {
         target_ip: "127.0.0.1".to_string(),
-        start_port: 75,
-        end_port: 85,
+        start_port: mock_port.saturating_sub(5),
+        end_port: mock_port.saturating_add(5),
         timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
-        thread_count: 4,  // 4 luồng quét song song
+        thread_count: 4, // 4 luồng quét song song
     };
 
-    println!("    - Dia chi IP muc tieu : {}", config.target_ip);
-    println!("    - Pham vi cong quet   : {} -> {}", config.start_port, config.end_port);
-    println!("    - So luong luong chay : {}", config.thread_count);
-    println!("    - Thoi gian cho toi da: {} ms/port\n", config.timeout_ms);
-
-    // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
-    let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();
-    if mock_listener.is_some() {
-        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem attempt.");
-    }
+    println!("    - Địa chỉ IP mục tiêu : {}", config.target_ip);
+    println!(
+        "    - Phạm vi cổng quét   : {} -> {}",
+        config.start_port, config.end_port
+    );
+    println!("    - Số luồng chạy       : {}", config.thread_count);
+    println!("    - Thời gian chờ tối đa: {} ms/cổng", config.timeout_ms);
+    println!(
+        "    [+] Đã kích hoạt cổng giả lập {} để kiểm thử.\n",
+        mock_port
+    );
 
     let results = execute_concurrent_scan(config);
 
     println!("\n==================================================================");
-    println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
+    println!("                  DANH SÁCH CỔNG ĐANG MỞ (OPEN PORTS)             ");
     println!("==================================================================");
     if results.is_empty() {
-        println!("    [!] Low phat hien thay cong nao mo trong pham vi quet.");
+        println!("    [!] Không phát hiện thấy cổng nào mở trong phạm vi quét.");
     } else {
         for res in &results {
             println!(
-                "    [+] Cong {:5}/TCP : MO (Open) | Dich vu: {}",
+                "    [+] Cổng {:5}/TCP : MỞ (Open) | Dịch vụ: {}",
                 res.port, res.service_hint
             );
         }
     }
+    assert!(results.iter().any(|r| r.port == mock_port));
+    drop(mock_listener);
 
     println!("\n==================================================================");
-    println!("   QUET CONG HOAN TAT AN TOAN: ZERO DATA RACE & ZERO MEMORY LEAK! ");
+    println!("   QUÉT CỔNG HOÀN TẤT AN TOÀN: KHÔNG DATA RACE, KHÔNG RÒ RỈ BỘ NHỚ! ");
     println!("==================================================================");
 }
 ```
@@ -270,10 +285,10 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait 'Send' is not implemented for 'Rc<T>'` | Bạn cố gắng truyền một con trỏ thông minh (smart pointer) đơn luồng (`Rc<T>`) qua ranh giới luồng trong `thread::spawn`. | Thay thế `Rc<T>` bằng con trỏ thông minh đa luồng an toàn: `Arc<T>` (Atomic Reference Counting). |
+| **E0277** | `'Rc<i32>' cannot be sent between threads safely` | Bạn cố gắng truyền một con trỏ thông minh (smart pointer) đơn luồng (`Rc<T>`) qua ranh giới luồng trong `thread::spawn`. | Thay thế `Rc<T>` bằng con trỏ thông minh đa luồng an toàn: `Arc<T>` (Atomic Reference Counting). |
 | **E0382** | `use of moved value: 'tx'` | Bạn truyền `tx` vào luồng thứ nhất khiến quyền sở hữu (ownership) bị di chuyển, sau đó lại cố gắng dùng lại `tx` ở luồng thứ hai. | Nhân bản `Sender` trước khi đưa vào luồng: `let tx_clone = tx.clone();`. |
-| **E0597** | `'target_ip' does not live long enough` | Luồng con được tạo bằng `thread::spawn` có thời gian sống (lifetime) `'static`, do đó nó không thể mượn tham chiếu `&str` từ hàm cha. | Sử dụng từ khóa `move` và clone chuỗi thành kiểu có quyền sở hữu độc lập: `let ip = target_ip.clone();`. |
-| **E0507** | `cannot move out of a shared reference` | Cố gắng lấy phần tử ra khỏi một lát cắt mượn `&[T]` mà kiểu dữ liệu không triển khai trait `Copy`. | Sử dụng phương thức `.clone()` hoặc chuyển thành `Vec` riêng biệt. |
+| **E0373** | `closure may outlive the current function, but it borrows 'target_ip', which is owned by the current function` | Closure truyền cho `thread::spawn` phải là `'static` (luồng con có thể sống lâu hơn hàm cha), do đó nó không thể mượn biến cục bộ của hàm cha. (Nếu thứ bị mượn là một tham số `&str`, lỗi sẽ là **E0521** `borrowed data escapes outside of function`.) | Sử dụng từ khóa `move` và clone chuỗi thành kiểu có quyền sở hữu độc lập: `let ip = target_ip.clone();`. |
+| **E0508** | `cannot move out of type '[String]', a non-copy slice` | Cố gắng lấy phần tử ra khỏi một lát cắt mượn `&[T]` (`let ip = ips[0];`) mà kiểu dữ liệu không triển khai trait `Copy`. | Sử dụng phương thức `.clone()` hoặc chuyển thành `Vec` riêng biệt. |
 
 ### Ví dụ phân tích lỗi `E0382` khi truyền Sender vào luồng con:
 
@@ -293,7 +308,7 @@ fn e0382_broken() {
 }
 
 // Cách sửa chữa đúng chuẩn: Nhân bản bản sao Sender cho mỗi luồng
-fn vi_du_dung_e0382() {
+fn e0382_correct() {
     let (tx, _rx) = channel::<u16>();
 
     let tx1 = tx.clone();
@@ -305,6 +320,67 @@ fn vi_du_dung_e0382() {
 ```
 
 ---
+
+## Kiểm thử tự động (Automated Tests)
+
+Kiểm thử một trình quét mạng nghe có vẻ khó vì cần một máy chủ thật — nhưng `TcpListener::bind("127.0.0.1:0")` cho ta một cổng đang lắng nghe trong chớp mắt, do hệ điều hành tự chọn, không cần quyền root. Các test dưới đây dùng đúng kỹ thuật đó, và khoá lại hai trường hợp biên từng làm phiên bản cũ panic: dải cổng rỗng và `thread_count = 0`.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    #[test]
+    fn finds_a_listening_port_and_nothing_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let results = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: port,
+            end_port: port,
+            timeout_ms: 200,
+            thread_count: 2,
+        });
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].port, port);
+        assert!(results[0].is_open);
+    }
+
+    #[test]
+    fn empty_range_and_zero_threads_do_not_panic() {
+        // Lỗi cũ: thread_count = 0 -> chia cho 0; dải rỗng -> chunks(0) panic
+        let empty = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: 10,
+            end_port: 5,
+            timeout_ms: 50,
+            thread_count: 4,
+        });
+        assert!(empty.is_empty());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let zero_threads = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: port,
+            end_port: port,
+            timeout_ms: 200,
+            thread_count: 0,
+        });
+        assert_eq!(zero_threads.len(), 1);
+    }
+
+    #[test]
+    fn invalid_ip_is_reported_closed() {
+        assert!(!check_single_port(
+            "không-phải-ip",
+            80,
+            Duration::from_millis(10)
+        ));
+        assert_eq!(guess_service_name(22), "SSH (Secure Shell)");
+    }
+}
+```
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
@@ -337,23 +413,22 @@ Sau khi `TcpStream::connect` thành công, bạn có một luồng hai chiều: 
 
 ```rust
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
 
 /// Kết nối tới `ip:port`, gửi một yêu cầu HEAD và đọc tối đa 128 byte đầu.
 /// Trả về `None` nếu không kết nối được hoặc máy chủ không nói gì.
 pub fn grab_banner(ip: &str, port: u16, timeout: Duration) -> Option<String> {
-    let addr = format!("{ip}:{port}");
-    let mut stream = TcpStream::connect(&addr).ok()?;
+    let addr = SocketAddr::new(ip.parse::<IpAddr>().ok()?, port);
+    // Kết nối cũng phải có thời gian chờ: cổng bị lọc có thể treo hàng chục giây.
+    let mut stream = TcpStream::connect_timeout(&addr, timeout).ok()?;
 
     // BẮT BUỘC đặt thời gian chờ ĐỌC. Một cổng có thể mở nhưng dịch vụ
     // im lặng chờ ta nói trước; không có timeout thì `read` treo vô hạn.
     stream.set_read_timeout(Some(timeout)).ok()?;
 
     // Gửi yêu cầu tối thiểu để khều máy chủ trả lời.
-    stream.write_all(b"HEAD / HTTP/1.0
-
-").ok()?;
+    stream.write_all(b"HEAD / HTTP/1.0\r\n\r\n").ok()?;
 
     // Đọc tối đa 128 byte đầu — đủ để lộ dòng "Server:" mà không đọc cả trang.
     let mut buf = [0u8; 128];
@@ -367,7 +442,7 @@ pub fn grab_banner(ip: &str, port: u16, timeout: Duration) -> Option<String> {
 }
 
 #[test]
-fn banner_none_khi_khong_ket_noi_duoc() {
+fn banner_is_none_when_connection_fails() {
     // Cổng 1 trên địa chỉ loopback gần như chắc chắn đóng -> None, không treo.
     let r = grab_banner("127.0.0.1", 1, Duration::from_millis(200));
     assert!(r.is_none());
@@ -389,6 +464,8 @@ fn banner_none_khi_khong_ket_noi_duoc() {
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
+// Đặt trong một module riêng của cùng crate; dùng lại `check_single_port`
+// của chương trình chính (`use super::check_single_port;`).
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -445,7 +522,7 @@ pub fn scan_with_worker_pool(ip: &str, ports: Vec<u16>, timeout: Duration) -> Ve
 }
 ```
 
-**Vì sao 20 luồng cố định thắng "một luồng mỗi cổng":** một luồng chiếm khoảng 8 MB ngăn xếp và tốn công cho hệ điều hành lập lịch. Quét 10.000 cổng theo kiểu một-luồng-một-cổng đòi 80 GB bộ nhớ ảo và làm bộ lập lịch nghẹt thở. Việc quét lại **bị chặn bởi I/O** (chờ mạng), không phải bởi CPU — nên 20 luồng, mỗi luồng lần lượt xử lý nhiều cổng, đã đủ giữ đường truyền luôn bận mà chi phí không đổi dù dải cổng lớn đến đâu.
+**Vì sao 20 luồng cố định thắng "một luồng mỗi cổng":** mỗi luồng do `std::thread::spawn` tạo ra mặc định giữ 2 MiB ngăn xếp (bộ nhớ ảo) và tốn công cho hệ điều hành lập lịch. Quét 10.000 cổng theo kiểu một-luồng-một-cổng đòi khoảng 20 GB bộ nhớ ảo chỉ riêng cho ngăn xếp, mở 10.000 socket cùng lúc (vượt xa `ulimit -n`) và làm bộ lập lịch nghẹt thở. Việc quét lại **bị chặn bởi I/O** (chờ mạng), không phải bởi CPU — nên 20 luồng, mỗi luồng lần lượt xử lý nhiều cổng, đã đủ giữ đường truyền luôn bận mà chi phí không đổi dù dải cổng lớn đến đâu.
 
 **Hai chi tiết quyết định đúng/sai:**
 1. **`drop(job_tx)` trước khi công nhân chạy.** `recv()` chỉ trả `Err` khi kênh vừa cạn *vừa* đã đóng mọi phía gửi. Quên `drop` thì công nhân cuối rút hết việc rồi vẫn ngồi chờ việc không bao giờ tới — treo vĩnh viễn.

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Chương 67 — FPGA & Thiết kế phần cứng số bằng Rust: cổng logic, mạch tổ hợp,
 //! mạch tuần tự có xung nhịp, đường ống, và vì sao phần cứng nhanh hơn phần mềm.
 //!
@@ -19,17 +18,18 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Low,
-    Cao,
-    KhongXacDinh,
+    High,
+    /// Không xác định — chưa reset, dây chưa nối, hoặc hai nguồn cùng lái.
+    X,
 }
 
 impl Signal {
     pub fn from_bool(b: bool) -> Signal {
-        if b { Signal::Cao } else { Signal::Low }
+        if b { Signal::High } else { Signal::Low }
     }
     pub fn to_bool(self) -> Option<bool> {
         match self {
-            Signal::Cao => Some(true),
+            Signal::High => Some(true),
             Signal::Low => Some(false),
             _ => None,
         }
@@ -38,8 +38,8 @@ impl Signal {
 
 pub fn not_gate(a: Signal) -> Signal {
     match a {
-        Signal::Cao => Signal::Low,
-        Signal::Low => Signal::Cao,
+        Signal::High => Signal::Low,
+        Signal::Low => Signal::High,
         x => x,
     }
 }
@@ -48,21 +48,21 @@ pub fn and_gate(a: Signal, b: Signal) -> Signal {
     // Đây gọi là "làm ngắn mạch giá trị điều khiển" và có thật trên silicon.
     match (a, b) {
         (Signal::Low, _) | (_, Signal::Low) => Signal::Low,
-        (Signal::Cao, Signal::Cao) => Signal::Cao,
-        _ => Signal::KhongXacDinh,
+        (Signal::High, Signal::High) => Signal::High,
+        _ => Signal::X,
     }
 }
 pub fn or_gate(a: Signal, b: Signal) -> Signal {
     match (a, b) {
-        (Signal::Cao, _) | (_, Signal::Cao) => Signal::Cao,
+        (Signal::High, _) | (_, Signal::High) => Signal::High,
         (Signal::Low, Signal::Low) => Signal::Low,
-        _ => Signal::KhongXacDinh,
+        _ => Signal::X,
     }
 }
 pub fn xor_gate(a: Signal, b: Signal) -> Signal {
     match (a.to_bool(), b.to_bool()) {
         (Some(x), Some(y)) => Signal::from_bool(x ^ y),
-        _ => Signal::KhongXacDinh, // XOR KHÔNG có giá trị điều khiển
+        _ => Signal::X, // XOR KHÔNG có giá trị điều khiển
     }
 }
 /// NAND là cổng "phổ dụng": mọi hàm logic đều dựng được chỉ từ NAND.
@@ -71,8 +71,8 @@ pub fn nand_gate(a: Signal, b: Signal) -> Signal {
 }
 
 /// Bộ chọn kênh 2-1 — viên gạch của mọi thứ có chữ "if" trong phần cứng.
-pub fn unit_pick(pick: Signal, khi_0: Signal, khi_1: Signal) -> Signal {
-    or_gate(and_gate(not_gate(pick), khi_0), and_gate(pick, khi_1))
+pub fn mux2(sel: Signal, when0: Signal, when1: Signal) -> Signal {
+    or_gate(and_gate(not_gate(sel), when0), and_gate(sel, when1))
 }
 
 // ============================================================================
@@ -85,16 +85,16 @@ pub fn half_adder(a: Signal, b: Signal) -> (Signal, Signal) {
 }
 
 /// Bộ cộng toàn phần: cộng 2 bit CỘNG bit nhớ vào.
-pub fn full_adder(a: Signal, b: Signal, nho_vao: Signal) -> (Signal, Signal) {
+pub fn full_adder(a: Signal, b: Signal, carry_in: Signal) -> (Signal, Signal) {
     let (t1, n1) = half_adder(a, b);
-    let (tong, n2) = half_adder(t1, nho_vao);
-    (tong, or_gate(n1, n2))
+    let (sum, n2) = half_adder(t1, carry_in);
+    (sum, or_gate(n1, n2))
 }
 
 #[derive(Debug, PartialEq)]
 pub struct AdderResult {
-    pub tong: u16,
-    pub tran: bool,
+    pub sum: u16,
+    pub overflow: bool,
     /// Số tầng cổng mà tín hiệu phải đi qua — quyết định TẦN SỐ TỐI ĐA của mạch.
     pub gate_depth: usize,
 }
@@ -102,20 +102,20 @@ pub struct AdderResult {
 /// Bộ cộng nhớ nối tiếp 8 bit — cách dựng đơn giản nhất, và CHẬM nhất.
 /// Bit nhớ phải "chảy" tuần tự qua cả 8 tầng: độ trễ tỉ lệ THUẬN với số bit.
 pub fn ripple_adder_8bit(a: u8, b: u8) -> AdderResult {
-    let mut small = Signal::Low;
-    let mut tong = 0u16;
+    let mut carry = Signal::Low;
+    let mut sum = 0u16;
     for i in 0..8 {
         let bit_a = Signal::from_bool((a >> i) & 1 == 1);
         let bit_b = Signal::from_bool((b >> i) & 1 == 1);
-        let (s, n) = full_adder(bit_a, bit_b, small);
-        if s == Signal::Cao {
-            tong |= 1 << i;
+        let (s, c) = full_adder(bit_a, bit_b, carry);
+        if s == Signal::High {
+            sum |= 1 << i;
         }
-        small = n;
+        carry = c;
     }
     AdderResult {
-        tong,
-        tran: small == Signal::Cao,
+        sum,
+        overflow: carry == Signal::High,
         gate_depth: 8 * 3, // mỗi bộ cộng toàn phần ~3 tầng cổng, nối tiếp nhau
     }
 }
@@ -127,23 +127,23 @@ pub fn ripple_adder_8bit(a: u8, b: u8) -> AdderResult {
 pub fn lookahead_adder_8bit(a: u8, b: u8) -> AdderResult {
     let g = a & b; // sinh nhớ
     let p = a ^ b; // truyền nhớ
-    let mut small = [false; 9];
+    let mut carry = [false; 9];
     for i in 0..8 {
         // c[i+1] = G[i] + P[i]·c[i] — trong phần cứng, khai triển hết thành
         // một biểu thức phẳng nên tính đồng thời chỉ trong vài tầng cổng.
-        small[i + 1] = ((g >> i) & 1 == 1) || (((p >> i) & 1 == 1) && small[i]);
+        carry[i + 1] = ((g >> i) & 1 == 1) || (((p >> i) & 1 == 1) && carry[i]);
     }
-    let mut tong = 0u16;
-    for i in 0..8 {
-        if ((p >> i) & 1 == 1) ^ small[i] {
-            tong |= 1 << i;
+    let mut sum = 0u16;
+    for (i, &c) in carry[..8].iter().enumerate() {
+        if ((p >> i) & 1 == 1) ^ c {
+            sum |= 1 << i;
         }
     }
     AdderResult {
-        tong,
-        tran: small[8],
-        gate_depth: 5,
-    } // ~log2(8) + vài tầng
+        sum,
+        overflow: carry[8],
+        gate_depth: 5, // ~log2(8) + vài tầng
+    }
 }
 
 // ============================================================================
@@ -158,17 +158,21 @@ pub struct FlipFlopD {
     q: Signal,
 }
 
+impl Default for FlipFlopD {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FlipFlopD {
     /// Chưa reset thì giá trị là KHÔNG XÁC ĐỊNH — đúng như silicon thật.
     pub fn new() -> Self {
-        FlipFlopD {
-            q: Signal::KhongXacDinh,
-        }
+        FlipFlopD { q: Signal::X }
     }
     pub fn q(&self) -> Signal {
         self.q
     }
-    pub fn suon_len(&mut self, d: Signal) {
+    pub fn rising_edge(&mut self, d: Signal) {
         self.q = d;
     }
     pub fn reset(&mut self) {
@@ -178,17 +182,23 @@ impl FlipFlopD {
 
 /// Thanh ghi dịch — dùng cho SPI, UART, tính CRC, tạo số giả ngẫu nhiên.
 pub struct ShiftRegister<const N: usize> {
-    o: [FlipFlopD; N],
+    flops: [FlipFlopD; N],
+}
+
+impl<const N: usize> Default for ShiftRegister<N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<const N: usize> ShiftRegister<N> {
     pub fn new() -> Self {
         ShiftRegister {
-            o: [FlipFlopD::new(); N],
+            flops: [FlipFlopD::new(); N],
         }
     }
     pub fn reset(&mut self) {
-        for f in self.o.iter_mut() {
+        for f in self.flops.iter_mut() {
             f.reset();
         }
     }
@@ -196,22 +206,22 @@ impl<const N: usize> ShiftRegister<N> {
     /// ĐỒNG THỜI trong một chu kỳ — không có vòng lặp nào chạy trên chip.
     ///
     /// Chú ý vòng lặp chạy NGƯỢC (`(1..N).rev()`): phải chép từ cuối về đầu,
-    /// nếu không giá trị mới của o[i-1] sẽ đè lên giá trị cũ mà o[i] cần đọc.
+    /// nếu không giá trị mới của flops[i-1] sẽ đè lên giá trị cũ mà flops[i] cần đọc.
     /// Lỗi này khiến cả thanh ghi biến thành một flip-flop duy nhất.
     ///
     /// Đầu ra được lấy SAU sườn xung — đúng như Q của flip-flop cuối đổi
     /// giá trị ngay tại sườn. Đọc trước sườn sẽ trễ một chu kỳ; đây là lỗi
     /// lệch-một kinh điển khi viết mô phỏng HDL.
-    pub fn suon_len(&mut self, input: Signal) -> Signal {
+    pub fn rising_edge(&mut self, input: Signal) -> Signal {
         for i in (1..N).rev() {
-            let prev = self.o[i - 1].q();
-            self.o[i].suon_len(prev);
+            let prev = self.flops[i - 1].q();
+            self.flops[i].rising_edge(prev);
         }
-        self.o[0].suon_len(input);
-        self.o[N - 1].q()
+        self.flops[0].rising_edge(input);
+        self.flops[N - 1].q()
     }
-    pub fn doc(&self) -> Vec<Signal> {
-        self.o.iter().map(|f| f.q()).collect()
+    pub fn contents(&self) -> Vec<Signal> {
+        self.flops.iter().map(|f| f.q()).collect()
     }
 }
 
@@ -219,62 +229,68 @@ impl<const N: usize> ShiftRegister<N> {
 /// Đây là dạng mạch mà FPGA làm tốt nhất: điều khiển tất định, độ trễ đếm được.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrafficLight {
-    Do,
-    DoVang,
-    Xanh,
-    Vang,
+    Red,
+    RedAmber,
+    Green,
+    Amber,
 }
 
-pub struct LedController {
+pub struct TrafficController {
     pub state: TrafficLight,
     pub counter: u8,
-    pub time_amount: [u8; 4],
+    pub durations: [u8; 4],
 }
 
-impl LedController {
+impl Default for TrafficController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TrafficController {
     pub fn new() -> Self {
-        LedController {
-            state: TrafficLight::Do,
+        TrafficController {
+            state: TrafficLight::Red,
             counter: 0,
-            time_amount: [5, 1, 4, 2],
+            durations: [5, 1, 4, 2],
         }
     }
-    fn chi_so(&self) -> usize {
+    fn phase_index(&self) -> usize {
         match self.state {
-            TrafficLight::Do => 0,
-            TrafficLight::DoVang => 1,
-            TrafficLight::Xanh => 2,
-            TrafficLight::Vang => 3,
+            TrafficLight::Red => 0,
+            TrafficLight::RedAmber => 1,
+            TrafficLight::Green => 2,
+            TrafficLight::Amber => 3,
         }
     }
     /// Một sườn xung nhịp. Toàn bộ logic là TỔ HỢP, chỉ `state` và
     /// `counter` nằm trong flip-flop — đây là mẫu "logic tách khỏi thanh ghi".
-    pub fn suon_len(&mut self) -> TrafficLight {
+    pub fn rising_edge(&mut self) -> TrafficLight {
         self.counter += 1;
-        if self.counter >= self.time_amount[self.chi_so()] {
+        if self.counter >= self.durations[self.phase_index()] {
             self.counter = 0;
             self.state = match self.state {
-                TrafficLight::Do => TrafficLight::DoVang,
-                TrafficLight::DoVang => TrafficLight::Xanh,
-                TrafficLight::Xanh => TrafficLight::Vang,
-                TrafficLight::Vang => TrafficLight::Do,
+                TrafficLight::Red => TrafficLight::RedAmber,
+                TrafficLight::RedAmber => TrafficLight::Green,
+                TrafficLight::Green => TrafficLight::Amber,
+                TrafficLight::Amber => TrafficLight::Red,
             };
         }
         self.state
     }
-    /// Ràng buộc AN TOÀN: không bao giờ được nhảy thẳng Xanh → Đỏ.
-    pub fn transfer_hop_le(tu: TrafficLight, den: TrafficLight) -> bool {
+    /// Ràng buộc AN TOÀN: không bao giờ được nhảy thẳng Green → Đỏ.
+    pub fn is_legal_transition(from: TrafficLight, to: TrafficLight) -> bool {
         use TrafficLight::*;
         matches!(
-            (tu, den),
-            (Do, Do)
-                | (Do, DoVang)
-                | (DoVang, DoVang)
-                | (DoVang, Xanh)
-                | (Xanh, Xanh)
-                | (Xanh, Vang)
-                | (Vang, Vang)
-                | (Vang, Do)
+            (from, to),
+            (Red, Red)
+                | (Red, RedAmber)
+                | (RedAmber, RedAmber)
+                | (RedAmber, Green)
+                | (Green, Green)
+                | (Green, Amber)
+                | (Amber, Amber)
+                | (Amber, Red)
         )
     }
 }
@@ -291,55 +307,51 @@ pub struct PipelineResult {
     pub latency: usize,
 }
 
-/// Không đường ống: mỗi phần tử phải đi hết `so_tang` giai đoạn rồi mới
-/// nạp phần tử kế. Thông lượng = 1 kết quả / `so_tang` chu kỳ.
-pub fn handle_without_pipeline(
-    input: &[u32],
-    so_tang: usize,
-    f: impl Fn(u32) -> u32,
-) -> PipelineResult {
+/// Không đường ống: mỗi phần tử phải đi hết `stages` giai đoạn rồi mới
+/// nạp phần tử kế. Thông lượng = 1 kết quả / `stages` chu kỳ.
+pub fn run_unpipelined(input: &[u32], stages: usize, f: impl Fn(u32) -> u32) -> PipelineResult {
     let output: Vec<u32> = input.iter().map(|&x| f(x)).collect();
     PipelineResult {
-        num_cycles: input.len() * so_tang,
-        latency: so_tang,
+        num_cycles: input.len() * stages,
+        latency: stages,
         output,
     }
 }
 
-/// Có đường ống: mỗi tầng có thanh ghi riêng, nên `so_tang` phần tử được xử lý
+/// Có đường ống: mỗi tầng có thanh ghi riêng, nên `stages` phần tử được xử lý
 /// ĐỒNG THỜI ở các giai đoạn khác nhau. Sau khi ống đầy: 1 kết quả MỖI chu kỳ.
-pub fn handle_with_pipeline(
-    input: &[u32],
-    so_tang: usize,
-    f: impl Fn(u32) -> u32,
-) -> PipelineResult {
-    let mut tang: Vec<Option<u32>> = vec![None; so_tang];
+pub fn run_pipelined(input: &[u32], stages: usize, f: impl Fn(u32) -> u32) -> PipelineResult {
+    let mut regs: Vec<Option<u32>> = vec![None; stages]; // thanh ghi giữa các tầng
     let mut output = Vec::new();
-    let mut chi_so = 0;
-    let mut period = 0;
+    let mut next_input = 0;
+    let mut cycle = 0;
+    let mut latency = 0;
 
     while output.len() < input.len() {
         // Dịch từ CUỐI về ĐẦU để không ghi đè dữ liệu chưa dùng —
         // giống hệt cách thanh ghi thật cập nhật đồng thời trên sườn xung.
-        if let Some(v) = tang[so_tang - 1] {
+        if let Some(v) = regs[stages - 1] {
+            if output.is_empty() {
+                latency = cycle; // ĐO độ trễ: số chu kỳ tới kết quả đầu tiên
+            }
             output.push(v);
         }
-        for i in (1..so_tang).rev() {
-            tang[i] = tang[i - 1];
+        for i in (1..stages).rev() {
+            regs[i] = regs[i - 1];
         }
-        tang[0] = if chi_so < input.len() {
-            let v = f(input[chi_so]);
-            chi_so += 1;
+        regs[0] = if next_input < input.len() {
+            let v = f(input[next_input]);
+            next_input += 1;
             Some(v)
         } else {
             None
         };
-        period += 1;
+        cycle += 1;
     }
     PipelineResult {
         output,
-        num_cycles: period,
-        latency: so_tang,
+        num_cycles: cycle,
+        latency,
     }
 }
 
@@ -348,57 +360,58 @@ pub fn handle_with_pipeline(
 // ============================================================================
 
 #[derive(Debug, Clone)]
-pub enum Nut {
+pub enum Node {
     Input(String),
-    Low(usize),
-    Va(usize, usize),
-    Hoac(usize, usize),
+    Not(usize),
+    And(usize, usize),
+    Or(usize, usize),
     Xor(usize, usize),
 }
 
 /// Danh sách nối (netlist) chính là thứ trình tổng hợp sinh ra từ HDL,
 /// và cũng là thứ được nạp xuống FPGA.
+#[derive(Default)]
 pub struct Circuit {
-    pub nut: Vec<Nut>,
+    pub nodes: Vec<Node>,
 }
 
 impl Circuit {
     pub fn new() -> Self {
-        Circuit { nut: Vec::new() }
+        Self::default()
     }
-    pub fn them(&mut self, n: Nut) -> usize {
-        self.nut.push(n);
-        self.nut.len() - 1
+    pub fn add(&mut self, n: Node) -> usize {
+        self.nodes.push(n);
+        self.nodes.len() - 1
     }
 
     /// Mô phỏng: vì netlist là đồ thị không chu trình, tính lần lượt theo
     /// thứ tự thêm vào là đủ — đó chính là "sắp xếp tô-pô" miễn phí.
-    pub fn open_bucket(&self, input: &HashMap<String, Signal>) -> Vec<Signal> {
-        let mut gt = vec![Signal::KhongXacDinh; self.nut.len()];
-        for (i, n) in self.nut.iter().enumerate() {
-            gt[i] = match n {
-                Nut::Input(name) => *input.get(name).unwrap_or(&Signal::KhongXacDinh),
-                Nut::Low(a) => not_gate(gt[*a]),
-                Nut::Va(a, b) => and_gate(gt[*a], gt[*b]),
-                Nut::Hoac(a, b) => or_gate(gt[*a], gt[*b]),
-                Nut::Xor(a, b) => xor_gate(gt[*a], gt[*b]),
+    pub fn simulate(&self, input: &HashMap<String, Signal>) -> Vec<Signal> {
+        let mut values = vec![Signal::X; self.nodes.len()];
+        for (i, n) in self.nodes.iter().enumerate() {
+            values[i] = match n {
+                Node::Input(name) => *input.get(name).unwrap_or(&Signal::X),
+                Node::Not(a) => not_gate(values[*a]),
+                Node::And(a, b) => and_gate(values[*a], values[*b]),
+                Node::Or(a, b) => or_gate(values[*a], values[*b]),
+                Node::Xor(a, b) => xor_gate(values[*a], values[*b]),
             };
         }
-        gt
+        values
     }
 
     /// Đường tới hạn: chuỗi cổng DÀI NHẤT từ đầu vào tới đầu ra.
     /// Tần số tối đa của mạch = 1 / (độ trễ đường tới hạn).
     pub fn critical_path(&self) -> usize {
-        let mut next = vec![0usize; self.nut.len()];
-        for (i, n) in self.nut.iter().enumerate() {
-            next[i] = match n {
-                Nut::Input(_) => 0,
-                Nut::Low(a) => next[*a] + 1,
-                Nut::Va(a, b) | Nut::Hoac(a, b) | Nut::Xor(a, b) => next[*a].max(next[*b]) + 1,
+        let mut depth = vec![0usize; self.nodes.len()];
+        for (i, n) in self.nodes.iter().enumerate() {
+            depth[i] = match n {
+                Node::Input(_) => 0,
+                Node::Not(a) => depth[*a] + 1,
+                Node::And(a, b) | Node::Or(a, b) | Node::Xor(a, b) => depth[*a].max(depth[*b]) + 1,
             };
         }
-        next.into_iter().max().unwrap_or(0)
+        depth.into_iter().max().unwrap_or(0)
     }
 }
 
@@ -410,26 +423,23 @@ fn main() {
     println!("\n1. BẢNG CHÂN TRỊ CÓ TRẠNG THÁI 'X'");
     println!(
         "   0 AND X = {:?}  ← đã xác định! (0 là giá trị điều khiển của AND)",
-        and_gate(Signal::Low, Signal::KhongXacDinh)
+        and_gate(Signal::Low, Signal::X)
     );
-    println!(
-        "   1 AND X = {:?}",
-        and_gate(Signal::Cao, Signal::KhongXacDinh)
-    );
+    println!("   1 AND X = {:?}", and_gate(Signal::High, Signal::X));
     println!(
         "   0 XOR X = {:?}  ← XOR không có giá trị điều khiển",
-        xor_gate(Signal::Low, Signal::KhongXacDinh)
+        xor_gate(Signal::Low, Signal::X)
     );
 
     println!("\n2. HAI CÁCH DỰNG BỘ CỘNG 8 BIT — cùng kết quả, khác tốc độ");
     for (a, b) in [(200u8, 100u8), (255, 1), (37, 91)] {
-        let nt = ripple_adder_8bit(a, b);
-        let lt = lookahead_adder_8bit(a, b);
+        let rc = ripple_adder_8bit(a, b);
+        let la = lookahead_adder_8bit(a, b);
         println!(
             "   {:>3} + {:>3} = {:>3} (tràn {}) | nối tiếp {} tầng · nhìn trước {} tầng",
-            a, b, nt.tong, nt.tran, nt.gate_depth, lt.gate_depth
+            a, b, rc.sum, rc.overflow, rc.gate_depth, la.gate_depth
         );
-        assert_eq!(nt.tong, lt.tong);
+        assert_eq!(rc.sum, la.sum);
     }
     println!(
         "   → Cùng đáp số, nhưng mạch nhìn trước chạy nhanh hơn ~{}×",
@@ -437,22 +447,22 @@ fn main() {
     );
 
     println!("\n3. THANH GHI DỊCH 4 BIT");
-    let mut tg: ShiftRegister<4> = ShiftRegister::new();
-    tg.reset();
+    let mut sr: ShiftRegister<4> = ShiftRegister::new();
+    sr.reset();
     print!("   Đẩy 1,0,1,1 → ra: ");
     for v in [true, false, true, true] {
-        print!("{:?} ", tg.suon_len(Signal::from_bool(v)));
+        print!("{:?} ", sr.rising_edge(Signal::from_bool(v)));
     }
-    println!("\n   Nội dung sau 4 chu kỳ: {:?}", tg.doc());
+    println!("\n   Nội dung sau 4 chu kỳ: {:?}", sr.contents());
 
     println!("\n4. MÁY TRẠNG THÁI ĐÈN GIAO THÔNG (mỗi ký tự = 1 chu kỳ nhịp)");
-    let mut den = LedController::new();
+    let mut light = TrafficController::new();
     let text: String = (0..24)
-        .map(|_| match den.suon_len() {
-            TrafficLight::Do => 'Đ',
-            TrafficLight::DoVang => 'v',
-            TrafficLight::Xanh => 'X',
-            TrafficLight::Vang => 'V',
+        .map(|_| match light.rising_edge() {
+            TrafficLight::Red => 'Đ',
+            TrafficLight::RedAmber => 'v',
+            TrafficLight::Green => 'X',
+            TrafficLight::Amber => 'V',
         })
         .collect();
     println!("   {}", text);
@@ -463,34 +473,34 @@ fn main() {
 
     println!("\n5. ĐƯỜNG ỐNG — 100 phần tử qua mạch 5 tầng");
     let input: Vec<u32> = (0..100).collect();
-    let no = handle_without_pipeline(&input, 5, |x| x * x);
-    let co = handle_with_pipeline(&input, 5, |x| x * x);
+    let plain = run_unpipelined(&input, 5, |x| x * x);
+    let piped = run_pipelined(&input, 5, |x| x * x);
     println!(
         "   Không ống: {} chu kỳ (độ trễ {})",
-        no.num_cycles, no.latency
+        plain.num_cycles, plain.latency
     );
     println!(
         "   Có ống   : {} chu kỳ (độ trễ {}) → nhanh gấp {:.1}×",
-        co.num_cycles,
-        co.latency,
-        no.num_cycles as f64 / co.num_cycles as f64
+        piped.num_cycles,
+        piped.latency,
+        plain.num_cycles as f64 / piped.num_cycles as f64
     );
     println!("   → Độ trễ KHÔNG giảm; chỉ THÔNG LƯỢNG tăng. Hai đại lượng khác nhau.");
 
     println!("\n6. NETLIST & ĐƯỜNG TỚI HẠN");
-    let mut m = Circuit::new();
-    let a = m.them(Nut::Input("a".into()));
-    let b = m.them(Nut::Input("b".into()));
-    let c = m.them(Nut::Input("c".into()));
-    let x = m.them(Nut::Xor(a, b));
-    let y = m.them(Nut::Xor(x, c)); // tổng của bộ cộng toàn phần
+    let mut circuit = Circuit::new();
+    let a = circuit.add(Node::Input("a".into()));
+    let b = circuit.add(Node::Input("b".into()));
+    let c = circuit.add(Node::Input("c".into()));
+    let x = circuit.add(Node::Xor(a, b));
+    let y = circuit.add(Node::Xor(x, c)); // tổng của bộ cộng toàn phần
     let _ = y;
-    let mut index_map = HashMap::new();
+    let mut inputs = HashMap::new();
     for (k, v) in [("a", true), ("b", true), ("c", false)] {
-        index_map.insert(k.to_string(), Signal::from_bool(v));
+        inputs.insert(k.to_string(), Signal::from_bool(v));
     }
-    println!("   1 XOR 1 XOR 0 = {:?}", m.open_bucket(&index_map)[y]);
-    println!("   Đường tới hạn = {} tầng cổng", m.critical_path());
+    println!("   1 XOR 1 XOR 0 = {:?}", circuit.simulate(&inputs)[y]);
+    println!("   Đường tới hạn = {} tầng cổng", circuit.critical_path());
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("   PHẦN MỀM SONG SONG THEO THỜI GIAN — PHẦN CỨNG THEO KHÔNG GIAN");
@@ -500,45 +510,45 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Signal::{Cao, KhongXacDinh, Low};
+    use Signal::{High, Low, X};
 
     // ---------- Cổng logic ----------
     #[test]
     fn controlling_value_erases_x_state() {
         // Bài học phần cứng thật: 0·X = 0 và 1+X = 1, dù X là gì đi nữa.
-        assert_eq!(and_gate(Low, KhongXacDinh), Low);
-        assert_eq!(and_gate(KhongXacDinh, Low), Low);
-        assert_eq!(or_gate(Cao, KhongXacDinh), Cao);
+        assert_eq!(and_gate(Low, X), Low);
+        assert_eq!(and_gate(X, Low), Low);
+        assert_eq!(or_gate(High, X), High);
         // nhưng khi không có giá trị điều khiển thì X lan ra
-        assert_eq!(and_gate(Cao, KhongXacDinh), KhongXacDinh);
-        assert_eq!(xor_gate(Low, KhongXacDinh), KhongXacDinh);
+        assert_eq!(and_gate(High, X), X);
+        assert_eq!(xor_gate(Low, X), X);
     }
 
     #[test]
     fn nand_is_universal() {
         // Dựng NOT, AND, OR chỉ từ NAND — nền tảng của mọi thư viện cổng.
-        let no = |a| nand_gate(a, a);
-        let va = |a, b| no(nand_gate(a, b));
-        let hoac = |a, b| nand_gate(no(a), no(b));
-        for a in [Low, Cao] {
-            assert_eq!(no(a), not_gate(a));
-            for b in [Low, Cao] {
-                assert_eq!(va(a, b), and_gate(a, b));
-                assert_eq!(hoac(a, b), or_gate(a, b));
+        let not = |a| nand_gate(a, a);
+        let and = |a, b| not(nand_gate(a, b));
+        let or = |a, b| nand_gate(not(a), not(b));
+        for a in [Low, High] {
+            assert_eq!(not(a), not_gate(a));
+            for b in [Low, High] {
+                assert_eq!(and(a, b), and_gate(a, b));
+                assert_eq!(or(a, b), or_gate(a, b));
             }
         }
     }
 
     #[test]
     fn mux_behaves_like_an_if() {
-        assert_eq!(unit_pick(Low, Cao, Low), Cao, "chọn=0 → lấy nhánh 0");
-        assert_eq!(unit_pick(Cao, Cao, Low), Low, "chọn=1 → lấy nhánh 1");
+        assert_eq!(mux2(Low, High, Low), High, "chọn=0 → lấy nhánh 0");
+        assert_eq!(mux2(High, High, Low), Low, "chọn=1 → lấy nhánh 1");
     }
 
     #[test]
     fn de_morgan_holds_on_gates() {
-        for a in [Low, Cao] {
-            for b in [Low, Cao] {
+        for a in [Low, High] {
+            for b in [Low, High] {
                 assert_eq!(not_gate(and_gate(a, b)), or_gate(not_gate(a), not_gate(b)));
                 assert_eq!(not_gate(or_gate(a, b)), and_gate(not_gate(a), not_gate(b)));
             }
@@ -556,9 +566,9 @@ mod tests {
                         Signal::from_bool(b),
                         Signal::from_bool(c),
                     );
-                    let tong = a as u8 + b as u8 + c as u8;
-                    assert_eq!(t.to_bool(), Some(tong & 1 == 1));
-                    assert_eq!(n.to_bool(), Some(tong >= 2));
+                    let total = a as u8 + b as u8 + c as u8;
+                    assert_eq!(t.to_bool(), Some(total & 1 == 1));
+                    assert_eq!(n.to_bool(), Some(total >= 2));
                 }
             }
         }
@@ -570,10 +580,10 @@ mod tests {
         // nhưng với 8 bit thì đây là chứng minh tuyệt đối.
         for a in 0u16..256 {
             for b in 0u16..256 {
-                let kq = ripple_adder_8bit(a as u8, b as u8);
-                let that = a + b;
-                assert_eq!(kq.tong, that & 0xFF, "{a}+{b}");
-                assert_eq!(kq.tran, that > 255, "{a}+{b} phải báo tràn");
+                let r = ripple_adder_8bit(a as u8, b as u8);
+                let exact = a + b;
+                assert_eq!(r.sum, exact & 0xFF, "{a}+{b}");
+                assert_eq!(r.overflow, exact > 255, "{a}+{b} phải báo tràn");
             }
         }
     }
@@ -582,11 +592,11 @@ mod tests {
     fn both_adder_designs_agree() {
         for a in 0u16..256 {
             for b in 0u16..256 {
-                let nt = ripple_adder_8bit(a as u8, b as u8);
-                let lt = lookahead_adder_8bit(a as u8, b as u8);
+                let rc = ripple_adder_8bit(a as u8, b as u8);
+                let la = lookahead_adder_8bit(a as u8, b as u8);
                 assert_eq!(
-                    (nt.tong, nt.tran),
-                    (lt.tong, lt.tran),
+                    (rc.sum, rc.overflow),
+                    (la.sum, la.overflow),
                     "hai kiến trúc phải tương đương về CHỨC NĂNG: {a}+{b}"
                 );
             }
@@ -605,7 +615,7 @@ mod tests {
         let f = FlipFlopD::new();
         assert_eq!(
             f.q(),
-            KhongXacDinh,
+            X,
             "silicon thật cũng vậy — phải reset trước khi dùng"
         );
     }
@@ -615,61 +625,61 @@ mod tests {
         let mut f = FlipFlopD::new();
         f.reset();
         assert_eq!(f.q(), Low);
-        f.suon_len(Cao);
-        assert_eq!(f.q(), Cao);
+        f.rising_edge(High);
+        assert_eq!(f.q(), High);
     }
 
     #[test]
     fn shift_register_delays_by_n_cycles() {
-        let mut tg: ShiftRegister<4> = ShiftRegister::new();
-        tg.reset();
+        let mut sr: ShiftRegister<4> = ShiftRegister::new();
+        sr.reset();
         // Bit đầu tiên phải mất ĐÚNG N = 4 chu kỳ mới ra tới đầu kia.
         // Đây chính là độ trễ của thanh ghi dịch — nền của SPI và UART.
-        assert_eq!(tg.suon_len(Cao), Low);
-        assert_eq!(tg.suon_len(Low), Low);
-        assert_eq!(tg.suon_len(Low), Low);
+        assert_eq!(sr.rising_edge(High), Low);
+        assert_eq!(sr.rising_edge(Low), Low);
+        assert_eq!(sr.rising_edge(Low), Low);
         assert_eq!(
-            tg.suon_len(Low),
-            Cao,
+            sr.rising_edge(Low),
+            High,
             "bit '1' xuất hiện đúng ở chu kỳ thứ 4"
         );
-        assert_eq!(tg.suon_len(Low), Low, "sau đó ống rỗng trở lại");
+        assert_eq!(sr.rising_edge(Low), Low, "sau đó ống rỗng trở lại");
     }
 
     #[test]
     fn traffic_light_never_jumps_green_to_red() {
-        let mut d = LedController::new();
+        let mut d = TrafficController::new();
         let mut prev = d.state;
         for _ in 0..200 {
-            let nay = d.suon_len();
+            let now = d.rising_edge();
             assert!(
-                LedController::transfer_hop_le(prev, nay),
+                TrafficController::is_legal_transition(prev, now),
                 "chuyển trái phép {:?} → {:?}",
                 prev,
-                nay
+                now
             );
-            prev = nay;
+            prev = now;
         }
     }
 
     #[test]
     fn traffic_light_cycles_and_repeats() {
-        let mut d = LedController::new();
-        let tong: u32 = d.time_amount.iter().map(|&x| x as u32).sum();
-        let one_round: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
-        let round_two: Vec<TrafficLight> = (0..tong).map(|_| d.suon_len()).collect();
+        let mut d = TrafficController::new();
+        let period: u32 = d.durations.iter().map(|&x| x as u32).sum();
+        let one_round: Vec<TrafficLight> = (0..period).map(|_| d.rising_edge()).collect();
+        let round_two: Vec<TrafficLight> = (0..period).map(|_| d.rising_edge()).collect();
         assert_eq!(
             one_round, round_two,
             "máy trạng thái phải tuần hoàn đúng chu kỳ"
         );
         // và ghé qua đủ cả 4 trạng thái
-        for tt in [
-            TrafficLight::Do,
-            TrafficLight::DoVang,
-            TrafficLight::Xanh,
-            TrafficLight::Vang,
+        for state in [
+            TrafficLight::Red,
+            TrafficLight::RedAmber,
+            TrafficLight::Green,
+            TrafficLight::Amber,
         ] {
-            assert!(one_round.contains(&tt), "thiếu trạng thái {:?}", tt);
+            assert!(one_round.contains(&state), "thiếu trạng thái {:?}", state);
         }
     }
 
@@ -677,31 +687,34 @@ mod tests {
     #[test]
     fn pipeline_same_result_much_faster() {
         let input: Vec<u32> = (1..=50).collect();
-        let no = handle_without_pipeline(&input, 5, |x| x * 3);
-        let co = handle_with_pipeline(&input, 5, |x| x * 3);
-        assert_eq!(no.output, co.output, "đường ống không được đổi KẾT QUẢ");
-        assert!(co.num_cycles < no.num_cycles);
+        let plain = run_unpipelined(&input, 5, |x| x * 3);
+        let piped = run_pipelined(&input, 5, |x| x * 3);
+        assert_eq!(
+            plain.output, piped.output,
+            "đường ống không được đổi KẾT QUẢ"
+        );
+        assert!(piped.num_cycles < plain.num_cycles);
     }
 
     #[test]
     fn pipeline_reaches_one_result_per_cycle() {
         let input: Vec<u32> = (0..100).collect();
-        let co = handle_with_pipeline(&input, 5, |x| x + 1);
+        let piped = run_pipelined(&input, 5, |x| x + 1);
         // 100 phần tử + 5 chu kỳ đổ đầy ống ≈ 105, chứ không phải 500
         assert!(
-            co.num_cycles <= input.len() + 5,
+            piped.num_cycles <= input.len() + 5,
             "sau khi đầy ống phải ra 1 kết quả/chu kỳ, thực tế {} chu kỳ",
-            co.num_cycles
+            piped.num_cycles
         );
     }
 
     #[test]
     fn pipelining_does_not_reduce_latency() {
         let input: Vec<u32> = (0..20).collect();
-        let no = handle_without_pipeline(&input, 4, |x| x);
-        let co = handle_with_pipeline(&input, 4, |x| x);
+        let plain = run_unpipelined(&input, 4, |x| x);
+        let piped = run_pipelined(&input, 4, |x| x);
         assert_eq!(
-            co.latency, no.latency,
+            piped.latency, plain.latency,
             "đường ống tăng THÔNG LƯỢNG, không giảm ĐỘ TRỄ — đừng nhầm hai thứ"
         );
     }
@@ -709,12 +722,12 @@ mod tests {
     // ---------- Netlist ----------
     #[test]
     fn netlist_sim_matches_direct_function() {
-        let mut m = Circuit::new();
-        let a = m.them(Nut::Input("a".into()));
-        let b = m.them(Nut::Input("b".into()));
-        let c = m.them(Nut::Input("c".into()));
-        let x = m.them(Nut::Xor(a, b));
-        let y = m.them(Nut::Xor(x, c));
+        let mut circuit = Circuit::new();
+        let a = circuit.add(Node::Input("a".into()));
+        let b = circuit.add(Node::Input("b".into()));
+        let c = circuit.add(Node::Input("c".into()));
+        let x = circuit.add(Node::Xor(a, b));
+        let y = circuit.add(Node::Xor(x, c));
         for va in [false, true] {
             for vb in [false, true] {
                 for vc in [false, true] {
@@ -722,12 +735,12 @@ mod tests {
                     input.insert("a".to_string(), Signal::from_bool(va));
                     input.insert("b".to_string(), Signal::from_bool(vb));
                     input.insert("c".to_string(), Signal::from_bool(vc));
-                    let (tong_that, _) = full_adder(
+                    let (expected, _) = full_adder(
                         Signal::from_bool(va),
                         Signal::from_bool(vb),
                         Signal::from_bool(vc),
                     );
-                    assert_eq!(m.open_bucket(&input)[y], tong_that);
+                    assert_eq!(circuit.simulate(&input)[y], expected);
                 }
             }
         }
@@ -735,26 +748,26 @@ mod tests {
 
     #[test]
     fn critical_path_counts_deepest_stage() {
-        let mut m = Circuit::new();
-        let a = m.them(Nut::Input("a".into()));
-        let b = m.them(Nut::Input("b".into()));
-        let x = m.them(Nut::Va(a, b)); // sâu 1
-        let y = m.them(Nut::Low(x)); // sâu 2
-        let _z = m.them(Nut::Hoac(y, a)); // sâu 3 (nhánh a sâu 0, lấy max)
-        assert_eq!(m.critical_path(), 3);
+        let mut circuit = Circuit::new();
+        let a = circuit.add(Node::Input("a".into()));
+        let b = circuit.add(Node::Input("b".into()));
+        let x = circuit.add(Node::And(a, b)); // sâu 1
+        let y = circuit.add(Node::Not(x)); // sâu 2
+        let _z = circuit.add(Node::Or(y, a)); // sâu 3 (nhánh a sâu 0, lấy max)
+        assert_eq!(circuit.critical_path(), 3);
     }
 
     #[test]
     fn missing_input_propagates_as_x() {
-        let mut m = Circuit::new();
-        let a = m.them(Nut::Input("a".into()));
-        let b = m.them(Nut::Input("b_quen_noi".into()));
-        let x = m.them(Nut::Xor(a, b));
+        let mut circuit = Circuit::new();
+        let a = circuit.add(Node::Input("a".into()));
+        let b = circuit.add(Node::Input("b_unconnected".into()));
+        let x = circuit.add(Node::Xor(a, b));
         let mut input = HashMap::new();
-        input.insert("a".to_string(), Cao);
+        input.insert("a".to_string(), High);
         assert_eq!(
-            m.open_bucket(&input)[x],
-            KhongXacDinh,
+            circuit.simulate(&input)[x],
+            X,
             "quên nối một dây → X lan tới đầu ra, đúng như mô phỏng thật"
         );
     }

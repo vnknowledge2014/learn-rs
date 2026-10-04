@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 // ============================================================================
-// CHƯƠNG 39: MINH HỌA TƯ DUY VIBE CODING & KIẾN TRÚC HỢP ĐỒNG GIAO ƯỚC (CONTRACT)
+// CHƯƠNG 43: MINH HỌA TƯ DUY VIBE CODING & KIẾN TRÚC HỢP ĐỒNG GIAO ƯỚC (CONTRACT)
 // Tác giả: Tổng Đạo Diễn Kiến Trúc Rust (System Architect)
 // ============================================================================
 
@@ -41,6 +41,7 @@ pub enum PaymentError {
     InsufficientFunds { available: u64, required: u64 },
     NetworkTimeout(String),
     InvalidCurrency(String),
+    InvalidAccount(String),
     CardExpired,
 }
 
@@ -60,8 +61,10 @@ impl PaymentGateway for MockBankingGateway {
     fn process_payment(&self, account_id: &str, amount_cents: u64) -> Result<String, PaymentError> {
         // Kiểm tra dữ liệu đầu vào: tài khoản không được để trống
         if account_id.is_empty() {
-            return Err(PaymentError::NetworkTimeout(
-                "Mã định danh tài khoản không hợp lệ".to_string(),
+            // Lưu ý: phải là `InvalidAccount`, không phải `NetworkTimeout` — gán nhầm
+            // biến thể lỗi là kiểu "ảo giác" mà trình biên dịch KHÔNG bắt được.
+            return Err(PaymentError::InvalidAccount(
+                "Mã tài khoản không được để trống".to_string(),
             ));
         }
 
@@ -146,4 +149,38 @@ fn main() {
     println!(
         "\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_account_is_invalid_account_not_timeout() {
+        let gateway = MockBankingGateway {
+            mock_balance_cents: 1_000,
+        };
+        let err = gateway.process_payment("", 10).unwrap_err();
+        assert!(matches!(err, PaymentError::InvalidAccount(_)));
+    }
+
+    #[test]
+    fn checkout_updates_status() {
+        let gateway = MockBankingGateway {
+            mock_balance_cents: 1_000,
+        };
+        let processor = OrderProcessor::new(&gateway);
+        let mut ok = Order::new(1, "A", 500);
+        assert!(processor.checkout(&mut ok, "ACC").is_ok());
+        assert!(matches!(ok.status, OrderStatus::Paid { .. }));
+        let mut too_big = Order::new(2, "B", 5_000);
+        assert_eq!(
+            processor.checkout(&mut too_big, "ACC"),
+            Err(PaymentError::InsufficientFunds {
+                available: 1_000,
+                required: 5_000
+            })
+        );
+        assert!(matches!(too_big.status, OrderStatus::Failed { .. }));
+    }
 }

@@ -8,7 +8,7 @@ Trong các thập kỷ trước, một lập trình viên thường được đo
 
 Khái niệm **Vibe Coding** đại diện cho sự dịch chuyển mô hình tư duy: Lập trình viên không còn phải vật lộn với những chi tiết lặp đi lặp lại của cú pháp bề mặt, mà nâng tầm vị thế thành một **Tổng đạo diễn kiến trúc (System Architect)**. Bạn tập trung 90% năng lượng trí tuệ vào việc thiết kế cấu trúc dữ liệu, xác định ranh giới hệ thống, quy định các giao ước hành vi (traits), bảo vệ tính bất biến của nghiệp vụ, và đóng vai trò thẩm định viên chất lượng tối cao.
 
-Điều tuyệt vời nhất là: **Rust chính là ngôn ngữ lập trình hoàn hảo nhất hành tinh để thực hành Vibe Coding**. Trong các ngôn ngữ động như Python hay JavaScript, khi AI sinh mã sai lệch về kiểu dữ liệu hay bỏ quên trường hợp rỗng, chương trình vẫn có thể chạy và chỉ nổ tung lúc nửa đêm khi khách hàng bấm nút thanh toán. Nhưng trong Rust, trình biên dịch `rustc` cực kỳ nghiêm khắc. Trình biên dịch sẽ ngay lập tức "bắt lỗi" bất kỳ ảo giác (hallucination) nào của AI về kiểu dữ liệu, vi phạm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), hay xung đột đa luồng.
+Điều tuyệt vời nhất là: **Rust chính là ngôn ngữ lập trình hoàn hảo nhất hành tinh để thực hành Vibe Coding**. Trong các ngôn ngữ động như Python hay JavaScript, khi AI sinh mã sai lệch về kiểu dữ liệu hay bỏ quên trường hợp rỗng, chương trình vẫn có thể chạy và chỉ nổ tung lúc nửa đêm khi khách hàng bấm nút thanh toán. Nhưng trong Rust, trình biên dịch `rustc` cực kỳ nghiêm khắc. Trình biên dịch sẽ ngay lập tức "bắt lỗi" một lớp rất lớn các ảo giác (hallucination) của AI: sai kiểu dữ liệu, phương thức không tồn tại, vi phạm quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), hay chia sẻ dữ liệu giữa các luồng không an toàn. Nhưng hãy tỉnh táo: `rustc` chỉ kiểm được những gì được mã hóa trong kiểu. Logic nghiệp vụ sai (tính nhầm phí, so sánh `<` thay vì `<=`, gán nhầm biến thể lỗi), deadlock, hay `unwrap()` gây panic lúc chạy vẫn lọt qua — đó là việc của test và của người rà soát.
 
 Mục tiêu học tập của chương:
 - Thấu hiểu bản chất và triết lý của làn sóng **Vibe Coding** trong kỷ nguyên AI.
@@ -57,10 +57,10 @@ AI sẽ tự suy diễn theo hàng triệu dòng mã trôi nổi trên Internet:
 
 Nhưng khi bạn tiếp cận theo tư duy kiến trúc sư hệ thống:
 1. Bạn xác định kiểu dữ liệu bất biến: Tiền tệ phải là số nguyên dương tính theo đơn vị nhỏ nhất (ví dụ: `u64` xu/cents), không dùng số thực.
-2. Bạn định nghĩa Enum liệt kê đầy đủ mọi trạng thái lỗi có thể xảy ra (`InsufficientFunds`, `NetworkTimeout`, `InvalidCurrency`).
+2. Bạn định nghĩa Enum liệt kê đầy đủ mọi trạng thái lỗi có thể xảy ra (`InsufficientFunds`, `NetworkTimeout`, `InvalidCurrency`, `InvalidAccount`).
 3. Bạn thiết lập Trait quy định giao ước tương tác giữa các mô-đun.
 
-Khi khung kiến trúc vững như bàn thạch, AI chỉ việc điền phần logic bên trong thân hàm. Khả năng phát sinh lỗi gần như bị triệt tiêu hoàn toàn.
+Khi khung kiến trúc vững như bàn thạch, AI chỉ việc điền phần logic bên trong thân hàm. Không gian để AI sinh lỗi bị thu hẹp đáng kể — phần còn lại (logic bên trong thân hàm) được bắt bởi test.
 
 ### 2. Vì sao Rust là "Cặp bài trùng" vĩ đại nhất với AI?
 Các nhà nghiên cứu công nghệ thường nhận định: *"Ngôn ngữ lập trình càng dễ dãi thì càng nguy hiểm khi kết hợp với AI; ngôn ngữ càng khắt khe thì AI càng phát huy sức mạnh tối thượng"*.
@@ -68,7 +68,7 @@ Các nhà nghiên cứu công nghệ thường nhận định: *"Ngôn ngữ l�
 | Tiêu chí | Ngôn ngữ thông dịch/Động (Python, JS) | Rust (Hệ thống kiểu tĩnh & Trình biên dịch khắt khe) |
 | :--- | :--- | :--- |
 | **Hành vi khi AI suy đoán sai kiểu** | Chương trình vẫn khởi động bình thường. Lỗi kiểu dữ liệu (TypeError) chỉ phát tác khi người dùng chạm vào nhánh code đó. | `rustc` báo lỗi ngay lập tức lúc biên dịch với mã lỗi cụ thể (ví dụ: `E0308`). Mã không thể chạy nếu chưa đúng kiểu 100%. |
-| **Quản lý tài nguyên & Bộ nhớ** | Phụ thuộc bộ thu gom rác (Garbage Collector) hoặc giải phóng thủ công. AI dễ tạo ra rò rỉ bộ nhớ (Memory Leak) âm thầm. | Hệ thống quyền sở hữu (ownership), quy tắc mượn (borrow), và thời gian sống (lifetime) đảm bảo an toàn bộ nhớ tuyệt đối mà không cần GC. |
+| **Quản lý tài nguyên & Bộ nhớ** | Phụ thuộc bộ thu gom rác (Garbage Collector) hoặc giải phóng thủ công. AI dễ tạo ra rò rỉ bộ nhớ (Memory Leak) âm thầm. | Hệ thống quyền sở hữu (ownership), quy tắc mượn (borrow), và thời gian sống (lifetime) đảm bảo an toàn bộ nhớ (không use-after-free, không double-free) trong safe Rust mà không cần GC. Lưu ý: rò rỉ bộ nhớ *không* bị coi là vi phạm an toàn — vòng tham chiếu `Rc` hay `mem::forget` vẫn rò rỉ được. |
 | **Cạnh tranh dữ liệu (Data Race)** | Rất khó phát hiện lỗi đa luồng do AI viết thiếu cơ chế đồng bộ hóa. | Quy tắc Send/Sync của Rust ngăn chặn Data Race ngay tại thời điểm biên dịch. |
 | **Phản hồi lỗi để AI tự sửa** | Thông báo lỗi runtime thường chung chung, không kèm giải pháp. | Báo cáo lỗi của Rust cực kỳ chi tiết, kèm vị trí dòng, giải thích lý do, và đề xuất sửa chữa (`help:`). |
 
@@ -82,11 +82,11 @@ Các nhà nghiên cứu công nghệ thường nhận định: *"Ngôn ngữ l�
 
 ## Mã nguồn minh họa thực chiến
 
-Dưới đây là một ví dụ hoàn chỉnh, có thể biên dịch và thực thi trực tiếp bằng `rustc --edition=2021`, minh họa cách một Kiến trúc sư Hệ thống định hình hợp đồng thanh toán thương mại điện tử bằng Trait và Enum, sau đó để AI hiện thực hóa các cổng thanh toán giả lập và động cơ xử lý đơn hàng an toàn.
+Dưới đây là một ví dụ hoàn chỉnh, có thể biên dịch và thực thi trực tiếp bằng `rustc --edition=2024`, minh họa cách một Kiến trúc sư Hệ thống định hình hợp đồng thanh toán thương mại điện tử bằng Trait và Enum, sau đó để AI hiện thực hóa các cổng thanh toán giả lập và động cơ xử lý đơn hàng an toàn.
 
 ```rust
 // ============================================================================
-// CHƯƠNG 39: MINH HỌA TƯ DUY VIBE CODING & KIẾN TRÚC HỢP ĐỒNG GIAO ƯỚC (CONTRACT)
+// CHƯƠNG 43: MINH HỌA TƯ DUY VIBE CODING & KIẾN TRÚC HỢP ĐỒNG GIAO ƯỚC (CONTRACT)
 // Tác giả: Tổng Đạo Diễn Kiến Trúc Rust (System Architect)
 // ============================================================================
 
@@ -127,6 +127,7 @@ pub enum PaymentError {
     InsufficientFunds { available: u64, required: u64 },
     NetworkTimeout(String),
     InvalidCurrency(String),
+    InvalidAccount(String),
     CardExpired,
 }
 
@@ -146,7 +147,11 @@ impl PaymentGateway for MockBankingGateway {
     fn process_payment(&self, account_id: &str, amount_cents: u64) -> Result<String, PaymentError> {
         // Kiểm tra dữ liệu đầu vào: tài khoản không được để trống
         if account_id.is_empty() {
-            return Err(PaymentError::NetworkTimeout("Mã định danh tài khoản không hợp lệ".to_string()));
+            // Lưu ý: phải là `InvalidAccount`, không phải `NetworkTimeout` — gán nhầm
+            // biến thể lỗi là kiểu "ảo giác" mà trình biên dịch KHÔNG bắt được.
+            return Err(PaymentError::InvalidAccount(
+                "Mã tài khoản không được để trống".to_string(),
+            ));
         }
 
         // Kiểm tra số dư khả dụng
@@ -177,12 +182,17 @@ impl<'a, G: PaymentGateway> OrderProcessor<'a, G> {
 
     // Xử lý đơn hàng: Mượn khả biến (&mut) đơn hàng để cập nhật trạng thái
     pub fn checkout(&self, order: &mut Order, account_id: &str) -> Result<(), PaymentError> {
-        println!("[Hệ thống] Bắt đầu thanh toán đơn hàng #{} cho khách hàng: {}", order.id, order.customer_name);
+        println!(
+            "[Hệ thống] Bắt đầu thanh toán đơn hàng #{} cho khách hàng: {}",
+            order.id, order.customer_name
+        );
 
         match self.gateway.process_payment(account_id, order.amount_cents) {
             Ok(tx_id) => {
                 println!("[Hệ thống] Thanh toán thành công! Mã giao dịch: {}", tx_id);
-                order.status = OrderStatus::Paid { transaction_id: tx_id };
+                order.status = OrderStatus::Paid {
+                    transaction_id: tx_id,
+                };
                 Ok(())
             }
             Err(err) => {
@@ -222,7 +232,43 @@ fn main() {
     assert!(result_2.is_err());
     println!("Trạng thái sau thanh toán đơn #102: {:?}", order_2.status);
 
-    println!("\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!");
+    println!(
+        "\n[Tổng kết] Toàn bộ kịch bản nghiệp vụ hoạt động chính xác 100% theo bản vẽ kiến trúc!"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_account_is_invalid_account_not_timeout() {
+        let gateway = MockBankingGateway {
+            mock_balance_cents: 1_000,
+        };
+        let err = gateway.process_payment("", 10).unwrap_err();
+        assert!(matches!(err, PaymentError::InvalidAccount(_)));
+    }
+
+    #[test]
+    fn checkout_updates_status() {
+        let gateway = MockBankingGateway {
+            mock_balance_cents: 1_000,
+        };
+        let processor = OrderProcessor::new(&gateway);
+        let mut ok = Order::new(1, "A", 500);
+        assert!(processor.checkout(&mut ok, "ACC").is_ok());
+        assert!(matches!(ok.status, OrderStatus::Paid { .. }));
+        let mut too_big = Order::new(2, "B", 5_000);
+        assert_eq!(
+            processor.checkout(&mut too_big, "ACC"),
+            Err(PaymentError::InsufficientFunds {
+                available: 1_000,
+                required: 5_000
+            })
+        );
+        assert!(matches!(too_big.status, OrderStatus::Failed { .. }));
+    }
 }
 ```
 
@@ -245,7 +291,7 @@ Khi lập trình cùng trợ lý AI, AI có thể vô tình sinh ra mã vi phạ
 
 ### 4 Điểm cốt lõi cần ghi nhớ
 1. **Vibe Coding không phải là lập trình cẩu thả**: Đó là sự thăng hoa của tư duy kiến trúc, giải phóng kỹ sư khỏi việc gõ cú pháp để tập trung vào thiết kế hệ thống, xác định ranh giới và mô hình hóa nghiệp vụ.
-2. **Rust là đối tác hoàn hảo nhất của AI**: Trình biên dịch `rustc` đóng vai trò người gác cổng an toàn tối cao, tự động phát hiện và chặn đứng mọi ảo giác, lỗi kiểu dữ liệu và vi phạm an toàn bộ nhớ.
+2. **Rust là đối tác rất hợp với AI**: Trình biên dịch `rustc` đóng vai trò người gác cổng, tự động chặn đứng lỗi kiểu dữ liệu, phương thức bịa ra và vi phạm an toàn bộ nhớ trong safe Rust. Còn lỗi logic nghiệp vụ thì trình biên dịch không thấy — test và rà soát của bạn vẫn là tuyến phòng thủ không thể thiếu.
 3. **Nguyên tắc Hợp đồng trước (Contract-First)**: Luôn phác thảo `struct`, `enum`, và `trait` trước khi yêu cầu AI sinh mã chi tiết. Bản thiết kế càng chặt chẽ thì mã AI sinh ra càng hoàn hảo.
 4. **Quyền sở hữu và mượn tham chiếu**: Sử dụng tham chiếu mượn (borrow) hợp lý giúp mã nguồn tinh gọn, hiệu năng cao và tránh cấp phát bộ nhớ lãng phí.
 
@@ -335,27 +381,27 @@ pub trait InventoryService {
 
 // Một cài đặt tối giản để chứng minh hợp đồng dùng được.
 use std::collections::HashMap;
-struct MemoryInventory { kho: HashMap<String, u32> }
+struct MemoryInventory { stock: HashMap<String, u32> }
 impl InventoryService for MemoryInventory {
     fn add_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError> {
-        *self.kho.entry(sku.to_string()).or_insert(0) += amount;
+        *self.stock.entry(sku.to_string()).or_insert(0) += amount;
         Ok(())
     }
     fn deduct_stock(&mut self, sku: &str, amount: u32) -> Result<(), InventoryError> {
-        let ton = self.kho.get_mut(sku).ok_or(InventoryError::ItemNotFound)?;
-        if *ton < amount { return Err(InventoryError::OutOfStock); }
-        *ton -= amount;
+        let on_hand = self.stock.get_mut(sku).ok_or(InventoryError::ItemNotFound)?;
+        if *on_hand < amount { return Err(InventoryError::OutOfStock); }
+        *on_hand -= amount;
         Ok(())
     }
 }
 
 #[test]
-fn hop_dong_kho_hoat_dong() {
-    let mut kho = MemoryInventory { kho: HashMap::new() };
-    kho.add_stock("SKU1", 10).unwrap();
-    assert_eq!(kho.deduct_stock("SKU1", 4), Ok(()));
-    assert_eq!(kho.deduct_stock("SKU1", 100), Err(InventoryError::OutOfStock));
-    assert_eq!(kho.deduct_stock("SKU9", 1), Err(InventoryError::ItemNotFound));
+fn inventory_contract_works() {
+    let mut inv = MemoryInventory { stock: HashMap::new() };
+    inv.add_stock("SKU1", 10).unwrap();
+    assert_eq!(inv.deduct_stock("SKU1", 4), Ok(()));
+    assert_eq!(inv.deduct_stock("SKU1", 100), Err(InventoryError::OutOfStock));
+    assert_eq!(inv.deduct_stock("SKU9", 1), Err(InventoryError::ItemNotFound));
 }
 ```
 

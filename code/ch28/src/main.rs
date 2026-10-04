@@ -7,26 +7,22 @@ use std::collections::VecDeque;
 /// - Gặp dấu đóng ')', ']', '}': Rút phần tử trên đỉnh ra so khớp.
 ///   Nếu không khớp hoặc ngăn xếp rỗng -> Biểu thức sai cú pháp!
 /// - Kết thúc chuỗi, nếu ngăn xếp rỗng -> Biểu thức hợp lệ.
-pub fn is_balanced_brackets(bieu_thuc: &str) -> bool {
+pub fn is_balanced_brackets(expr: &str) -> bool {
     let mut stack: Vec<char> = Vec::new();
 
-    for ky_tu in bieu_thuc.chars() {
-        match ky_tu {
+    for ch in expr.chars() {
+        match ch {
             '(' | '[' | '{' => {
-                stack.push(ky_tu);
+                stack.push(ch);
             }
-            ')' => {
-                if stack.pop() != Some('(') {
-                    return false;
-                }
-            }
-            ']' => {
-                if stack.pop() != Some('[') {
-                    return false;
-                }
-            }
-            '}' => {
-                if stack.pop() != Some('{') {
+            ')' | ']' | '}' => {
+                // Dấu đóng phải khớp với dấu mở nằm trên đỉnh ngăn xếp
+                let expected = match ch {
+                    ')' => '(',
+                    ']' => '[',
+                    _ => '{',
+                };
+                if stack.pop() != Some(expected) {
                     return false;
                 }
             }
@@ -44,7 +40,7 @@ pub fn is_balanced_brackets(bieu_thuc: &str) -> bool {
 pub struct Order {
     pub order_code: u32,
     pub customer_name: String,
-    pub tong_tien: f64,
+    pub total_amount: f64,
 }
 
 /// ỨNG DỤNG 2 CỦA QUEUE: Hệ thống quản lý hàng đợi đơn hàng chuẩn FIFO
@@ -60,13 +56,13 @@ impl OrderQueue {
     }
 
     /// Khách đặt hàng: Xếp vào cuối hàng đợi - O(1)
-    pub fn them_don(&mut self, don: Order) {
-        self.list.push_back(don);
+    pub fn add_order(&mut self, order: Order) {
+        self.list.push_back(order);
     }
 
     /// Đơn hàng VIP (Ưu tiên khẩn cấp): Chèn thẳng vào đầu hàng đợi - O(1)
-    pub fn them_don_vip(&mut self, don: Order) {
-        self.list.push_front(don);
+    pub fn add_vip_order(&mut self, order: Order) {
+        self.list.push_front(order);
     }
 
     /// Nhà bếp / Kho xuất hàng: Phục vụ đơn đến trước - O(1)
@@ -75,11 +71,11 @@ impl OrderQueue {
     }
 
     /// Xem trước đơn sắp được phục vụ mà không xóa khỏi hàng đợi
-    pub fn first_view_don(&self) -> Option<&Order> {
+    pub fn peek_next_order(&self) -> Option<&Order> {
         self.list.front()
     }
 
-    pub fn so_don_dang_cho(&self) -> usize {
+    pub fn pending_count(&self) -> usize {
         self.list.len()
     }
 }
@@ -97,86 +93,86 @@ fn main() {
 
     // 1. Kiểm thử thuật toán kiểm tra dấu ngoặc với Stack
     println!("[1] Kiểm tra tính hợp lệ của biểu thức toán học:");
-    let bieu_thuc_1 = "{ a + [ b * ( c + d ) ] }";
-    let bieu_thuc_2 = "( a + b ]";
-    let bieu_thuc_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
+    let expr_1 = "{ a + [ b * ( c + d ) ] }";
+    let expr_2 = "( a + b ]";
+    let expr_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
     println!(
         "    - Biểu thức 1 '{}': {}",
-        bieu_thuc_1,
-        is_balanced_brackets(bieu_thuc_1)
+        expr_1,
+        is_balanced_brackets(expr_1)
     );
     println!(
         "    - Biểu thức 2 '{}': {}",
-        bieu_thuc_2,
-        is_balanced_brackets(bieu_thuc_2)
+        expr_2,
+        is_balanced_brackets(expr_2)
     );
     println!(
         "    - Biểu thức 3 '{}': {}",
-        bieu_thuc_3,
-        is_balanced_brackets(bieu_thuc_3)
+        expr_3,
+        is_balanced_brackets(expr_3)
     );
 
-    assert!(is_balanced_brackets(bieu_thuc_1));
-    assert!(!is_balanced_brackets(bieu_thuc_2));
-    assert!(!is_balanced_brackets(bieu_thuc_3));
+    assert!(is_balanced_brackets(expr_1));
+    assert!(!is_balanced_brackets(expr_2));
+    assert!(!is_balanced_brackets(expr_3));
 
     // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
     println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
-    let mut he_thong = OrderQueue::new();
+    let mut queue = OrderQueue::new();
 
     // Khách hàng thông thường đặt hàng lần lượt
-    he_thong.them_don(Order {
+    queue.add_order(Order {
         order_code: 101,
         customer_name: String::from("Nguyễn Văn A"),
-        tong_tien: 150.0,
+        total_amount: 150.0,
     });
-    he_thong.them_don(Order {
+    queue.add_order(Order {
         order_code: 102,
         customer_name: String::from("Trần Thị B"),
-        tong_tien: 80.0,
+        total_amount: 80.0,
     });
 
     println!(
         "    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}",
-        he_thong.so_don_dang_cho()
+        queue.pending_count()
     );
 
     // Đơn hàng hỏa tốc VIP xuất hiện! Đưa thẳng vào đầu hàng đợi
-    he_thong.them_don_vip(Order {
+    queue.add_vip_order(Order {
         order_code: 999,
         customer_name: String::from("Khách VIP Kim Cương"),
-        tong_tien: 500.0,
+        total_amount: 500.0,
     });
     println!("    - Nhận đơn hỏa tốc VIP 999 (chen lên đầu hàng)!");
 
     // Xem trước đơn hàng kế tiếp
-    if let Some(don_dau) = he_thong.first_view_don() {
+    if let Some(next_order) = queue.peek_next_order() {
         println!(
             "    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})",
-            don_dau.order_code, don_dau.customer_name
+            next_order.order_code, next_order.customer_name
         );
-        assert_eq!(don_dau.order_code, 999);
+        assert_eq!(next_order.order_code, 999);
     }
 
     // Tiến hành xuất kho lần lượt theo đúng thứ tự ưu tiên
     println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
-    let mut handles = Vec::new();
-    while let Some(don) = he_thong.process_next_order() {
+    let mut processed = Vec::new();
+    while let Some(order) = queue.process_next_order() {
         println!(
             "    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k",
-            don.order_code, don.customer_name, don.tong_tien
+            order.order_code, order.customer_name, order.total_amount
         );
-        handles.push(don.order_code);
+        processed.push(order.order_code);
     }
 
     // Xác nhận thứ tự xử lý: Đơn VIP 999 trước, sau đó là 101, rồi đến 102
-    assert_eq!(handles, vec![999, 101, 102]);
-    assert_eq!(he_thong.so_don_dang_cho(), 0);
+    assert_eq!(processed, vec![999, 101, 102]);
+    assert_eq!(queue.pending_count(), 0);
     println!("    => Toàn bộ hàng đợi đã được xử lý sạch sẽ!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 24               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 28               ");
     println!("============================================================");
 }
 
@@ -184,11 +180,11 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn don(id: u32, name: &str) -> Order {
+    fn order(id: u32, name: &str) -> Order {
         Order {
             order_code: id,
             customer_name: name.into(),
-            tong_tien: 100.0,
+            total_amount: 100.0,
         }
     }
 
@@ -203,17 +199,17 @@ mod tests {
 
     #[test]
     fn fifo_queue_and_vip_priority() {
-        let mut hd = OrderQueue::new();
-        hd.them_don(don(1, "A"));
-        hd.them_don(don(2, "B"));
-        hd.them_don_vip(don(9, "VIP")); // chen lên đầu
-        assert_eq!(hd.so_don_dang_cho(), 3);
-        assert_eq!(hd.first_view_don().map(|d| d.order_code), Some(9));
+        let mut queue = OrderQueue::new();
+        queue.add_order(order(1, "A"));
+        queue.add_order(order(2, "B"));
+        queue.add_vip_order(order(9, "VIP")); // chen lên đầu
+        assert_eq!(queue.pending_count(), 3);
+        assert_eq!(queue.peek_next_order().map(|d| d.order_code), Some(9));
 
         // VIP ra trước, phần còn lại giữ đúng thứ tự FIFO
-        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(9));
-        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(1));
-        assert_eq!(hd.process_next_order().map(|d| d.order_code), Some(2));
-        assert_eq!(hd.process_next_order().map(|d| d.order_code), None);
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(9));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(1));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(2));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), None);
     }
 }

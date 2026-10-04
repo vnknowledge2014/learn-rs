@@ -6,7 +6,7 @@ Chào mừng bạn đến với **Chủ đề 7: An toàn thông tin & Kỹ thu�
 
 Để trở thành một kỹ sư phần mềm hệ thống xuất sắc hay một chuyên gia kiểm thử bảo mật thâm nhập đạt chứng chỉ quốc tế OSCP, vũ khí quan trọng nhất không phải là các công cụ quét tự động, mà là **mô hình tư duy không gian bộ nhớ (Memory Mental Model)**. Mọi cuộc tấn công mạng nguy hiểm nhất lịch sử — từ việc chiếm quyền điều khiển máy chủ, leo thang đặc quyền, đến việc cài cắm mã độc gián điệp — đều bắt nguồn từ sự hiểu lầm hoặc sơ hở trong cách chương trình tương tác với các ô nhớ vật lý.
 
-Trong chương mở đầu của Topic 7, chúng ta sẽ khám phá:
+Trong chương mở đầu của Chủ đề 7, chúng ta sẽ khám phá:
 - Bản chất của **Không gian địa chỉ ảo (Virtual Address Space)** và cơ chế ánh xạ trang bộ nhớ (Memory Paging) do Hệ điều hành và Phần cứng (MMU) điều phối.
 - Cấu trúc chi tiết của một tiến trình đang chạy trong bộ nhớ: Phân vùng mã lệnh (`.text`), biến toàn cục (`.data`, `.bss`), vùng nhớ động (`Heap`), và ngăn xếp cuộc gọi hàm (`Stack`).
 - Khái niệm về bố cục bộ nhớ (memory layout) và cách các kiểu dữ liệu được căn lề byte (alignment) trong máy tính.
@@ -77,14 +77,15 @@ Trong hệ điều hành 64-bit hiện đại (Linux/macOS/Windows), mỗi tiế
 1. **Phân đoạn Mã lệnh (`.text segment`)**:
    - Chứa mã máy nhị phân (Machine Instructions) mà CPU sẽ trực tiếp nạp vào để thực thi.
    - **Quyền hạn**: Đọc và Thực thi (`R-X`), **tuyệt đối không được ghi** (`No-Write`). Bất kỳ hành vi nào cố tình ghi đè lên `.text` sẽ bị CPU kích hoạt ngoại lệ `Segmentation Fault` (SIGSEGV) ngay lập tức.
-2. **Phân đoạn Biến tĩnh đã khởi tạo (`.data segment`)**:
-   - Chứa các biến toàn cục và biến `static` đã được gán giá trị khởi tạo sẵn từ khi biên dịch.
+2. **Phân đoạn Biến tĩnh đã khởi tạo (`.data segment`)** và **dữ liệu chỉ đọc (`.rodata`)**:
+   - `.data` chứa các biến toàn cục *có thể ghi* đã được gán giá trị khởi tạo khác 0 từ khi biên dịch — trong Rust là `static mut` hoặc `static` có khả năng biến đổi nội tại như `AtomicI32`, `Mutex<T>`.
    - **Quyền hạn**: Đọc và Ghi (`RW-`).
+   - Một `static` bất biến thông thường (ví dụ `static X: i32 = 5;`) và các chuỗi hằng thì được xếp vào `.rodata` — chỉ đọc (`R--`), ghi vào là SIGSEGV.
 3. **Phân đoạn Biến tĩnh chưa khởi tạo (`.bss segment`)**:
    - Viết tắt của *Block Started by Symbol*. Chứa các biến toàn cục chưa được gán giá trị cụ thể. Khi tiến trình nạp vào RAM, hệ điều hành sẽ tự động điền toàn bộ vùng nhớ này bằng các byte `0`.
 4. **Vùng nhớ động (`Heap segment`)**:
    - Vùng nhớ dùng để cấp phát động trong lúc chương trình đang chạy (`runtime allocation`).
-   - Bắt đầu ngay sau `.bss` và **phát triển dần từ địa chỉ thấp lên địa chỉ cao** (Growing Upwards).
+   - Vùng heap truyền thống (`brk`) bắt đầu sau `.bss` (cách một khoảng ngẫu nhiên do ASLR) và **phát triển dần từ địa chỉ thấp lên địa chỉ cao** (Growing Upwards). Lưu ý đây là hướng *mở rộng vùng*, không phải lời hứa về thứ tự các khối: trình cấp phát hiện đại còn xin các vùng riêng qua `mmap` (khối lớn, mỗi luồng một "arena"), và có thể trả về khối ở địa chỉ thấp hơn khối trước nếu tái sử dụng chỗ trống.
    - Được quản lý thông qua trình cấp phát bộ nhớ (Memory Allocator như `jemalloc` hoặc trình cấp phát mặc định của hệ thống).
 5. **Vùng ánh xạ tệp & Thư viện chia sẻ (`Memory Mapping Segment`)**:
    - Vùng nhớ nằm giữa Heap và Stack, nơi hệ điều hành nạp các thư viện liên kết động (`.so` trên Linux, `.dylib` trên macOS, `.dll` trên Windows) và các tệp được ánh xạ qua lời gọi hệ thống `mmap`.
@@ -134,21 +135,25 @@ Trong Rust, mọi biến đều tuân thủ nghiêm ngặt các quy luật:
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là chương trình Rust hoàn chỉnh giúp bạn trực tiếp "chụp X-quang" toàn bộ không gian địa chỉ ảo của một tiến trình đang hoạt động. Chương trình sẽ in ra địa chỉ chính xác của các phân vùng `.text`, `.data`, Heap, và Stack, đồng thời chứng minh bằng thực nghiệm: **Stack phát triển đi xuống và Heap phát triển đi lên**:
+Dưới đây là chương trình Rust hoàn chỉnh giúp bạn trực tiếp "chụp X-quang" toàn bộ không gian địa chỉ ảo của một tiến trình đang hoạt động. Chương trình sẽ in ra địa chỉ chính xác của các phân vùng `.text`, `.data`, Heap, và Stack, đồng thời chứng minh bằng thực nghiệm: **Stack phát triển đi xuống** (mỗi khung gọi hàm sâu hơn nằm ở địa chỉ thấp hơn), còn các khối Heap cấp liên tiếp *thường* có địa chỉ tăng dần — một xu hướng của trình cấp phát chứ không phải bảo đảm. Lưu ý chỗ đặt biến tĩnh: `static` bất biến nằm trong `.rodata` chỉ đọc; muốn thấy `.data`/`.bss` phải dùng biến tĩnh *có thể ghi* (ở đây là kiểu nguyên tử):
 
 ```rust
-#![allow(dead_code, unused_variables, unused_imports)]
 use std::hint::black_box;
+use std::sync::atomic::{AtomicI32, AtomicU64};
 
-// 1. Biến tĩnh toàn cục nằm trong phân đoạn .data
-static GLOBAL_DATA_VAR: i32 = 2026;
+// 1. Biến tĩnh toàn cục CÓ THỂ GHI, khởi tạo khác 0 -> phân đoạn .data
+//    (một `static` thường, bất biến, sẽ được xếp vào .rodata chỉ đọc!)
+static GLOBAL_DATA_VAR: AtomicI32 = AtomicI32::new(2026);
+
+// 1b. Biến tĩnh có thể ghi, khởi tạo bằng 0 -> phân đoạn .bss (không chiếm chỗ trong tệp thực thi)
+static GLOBAL_BSS_VAR: AtomicU64 = AtomicU64::new(0);
 
 // 2. Hằng số tĩnh bất biến nằm trong phân đoạn dữ liệu chỉ đọc (.rodata)
-static READ_ONLY_STRING: &str = "Ban do bo nho Rust Masterclass";
+static READ_ONLY_STRING: &str = "Bản đồ bộ nhớ Rust Masterclass";
 
 // Một hàm đơn giản nằm trong phân đoạn mã máy (.text)
 fn sample_target_function() {
-    println!("    [Execute] Ham muc tieu dang chay ben trong phan segment .text!");
+    println!("    [Thực thi] Hàm mục tiêu đang chạy bên trong phân đoạn .text!");
 }
 
 // Hàm đệ quy mô phỏng việc đẩy nhiều khung ngăn xếp (Stack Frames) liên tiếp
@@ -157,7 +162,7 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
     let current_addr = &local_var as *const u64 as usize;
 
     println!(
-        "    - Stack Frame do sau {}: Bien cuc bo tai dia chi 0x{:012x}",
+        "    - Stack Frame độ sâu {}: Biến cục bộ tại địa chỉ 0x{:012x}",
         depth, current_addr
     );
 
@@ -165,12 +170,12 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
         if current_addr < prev_addr {
             let diff = prev_addr - current_addr;
             println!(
-                "      ==> Dia chi GIAM di {} bytes so voi khung truoc (Stack phat trien DI XUONG)!",
+                "      ==> Địa chỉ GIẢM đi {} bytes so với khung trước (Stack phát triển ĐI XUỐNG)!",
                 diff
             );
         } else {
             let diff = current_addr - prev_addr;
-            println!("      ==> Dia chi TANG len {} bytes!", diff);
+            println!("      ==> Địa chỉ TĂNG lên {} bytes!", diff);
         }
     }
 
@@ -184,23 +189,37 @@ fn demonstrate_stack_growth(depth: u32, prev_addr: usize) {
 
 fn main() {
     println!("==================================================================");
-    println!("   KHAM PHA BAN DO BO NHO & KHONG GIAN DIA CHI AO (VIRTUAL MEMORY)  ");
+    println!("   KHÁM PHÁ BẢN ĐỒ BỘ NHỚ & KHÔNG GIAN ĐỊA CHỈ ẢO (VIRTUAL MEMORY)  ");
     println!("==================================================================");
 
     // 1. Phân đoạn Mã lệnh (.text)
     let text_addr = sample_target_function as fn() as usize;
-    println!("\n[1] Phan segment Ma may (.text segment):");
-    println!("    - Dia chi ham sample_target_function: 0x{:012x}", text_addr);
+    println!("\n[1] Phân đoạn Mã máy (.text segment):");
+    println!(
+        "    - Địa chỉ hàm sample_target_function: 0x{:012x}",
+        text_addr
+    );
 
-    // 2. Phân đoạn Dữ liệu (.data & .rodata)
-    let data_addr = &GLOBAL_DATA_VAR as *const i32 as usize;
+    // 2. Phân đoạn Dữ liệu (.data, .bss     // 2. Phân đoạn Dữ liệu (.data & .rodata) .rodata)
+    let data_addr = &GLOBAL_DATA_VAR as *const AtomicI32 as usize;
+    let bss_addr = &GLOBAL_BSS_VAR as *const AtomicU64 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;
-    println!("\n[2] Phan segment Du lieu toan cuc (.data & .rodata segments):");
-    println!("    - Bien toan cuc GLOBAL_DATA_VAR (.data) : 0x{:012x}", data_addr);
-    println!("    - Text hang so READ_ONLY_STRING (.rodata): 0x{:012x}", rodata_addr);
+    println!("\n[2] Phân đoạn Dữ liệu toàn cục (.data, .bss & .rodata):");
+    println!(
+        "    - Biến toàn cục GLOBAL_DATA_VAR (.data)   : 0x{:012x}",
+        data_addr
+    );
+    println!(
+        "    - Biến toàn cục GLOBAL_BSS_VAR (.bss)     : 0x{:012x}",
+        bss_addr
+    );
+    println!(
+        "    - Chuỗi hằng READ_ONLY_STRING (.rodata): 0x{:012x}",
+        rodata_addr
+    );
 
     // 3. Phân đoạn Vùng nhớ động (Heap segment)
-    println!("\n[3] Phan segment Vung nho dong (Heap segment):");
+    println!("\n[3] Phân đoạn Vùng nhớ động (Heap segment):");
     let heap_box_1 = Box::new(1000u64);
     let heap_box_2 = Box::new(2000u64);
     let heap_box_3 = Box::new(3000u64);
@@ -209,39 +228,42 @@ fn main() {
     let heap_addr_2 = heap_box_2.as_ref() as *const u64 as usize;
     let heap_addr_3 = heap_box_3.as_ref() as *const u64 as usize;
 
-    println!("    - Khoi Heap #1: 0x{:012x}", heap_addr_1);
-    println!("    - Khoi Heap #2: 0x{:012x}", heap_addr_2);
-    println!("    - Khoi Heap #3: 0x{:012x}", heap_addr_3);
+    println!("    - Khối Heap #1: 0x{:012x}", heap_addr_1);
+    println!("    - Khối Heap #2: 0x{:012x}", heap_addr_2);
+    println!("    - Khối Heap #3: 0x{:012x}", heap_addr_3);
 
     if heap_addr_2 > heap_addr_1 {
         println!(
-            "    ==> Khoang cach Heap #2 so voi #1: +{} bytes (Heap phat trien DI LEN)!",
+            "    ==> Khoảng cách Heap #2 so với #1: +{} bytes (lần này trình cấp phát cấp địa chỉ TĂNG dần)",
             heap_addr_2 - heap_addr_1
         );
     }
 
     // 4. Phân đoạn Ngăn xếp (Stack segment)
-    println!("\n[4] Phan segment Ngan xep cuoc goi (Stack segment):");
+    println!("\n[4] Phân đoạn Ngăn xếp cuộc gọi (Stack segment):");
     let main_stack_var: u64 = 42;
     println!(
-        "    - Bien cuc bo trong ham main(): 0x{:012x}",
+        "    - Biến cục bộ trong hàm main(): 0x{:012x}",
         &main_stack_var as *const u64 as usize
     );
-    println!("    - Kiem tra huong dich chuyen cua Stack qua cac lan goi ham:");
+    println!("    - Kiểm tra hướng dịch chuyển của Stack qua các lần gọi hàm:");
     demonstrate_stack_growth(1, 0);
 
     // 5. Tổng kết so sánh khoảng cách địa chỉ ảo
-    println!("\n[5] So sanh tuong quan ban do dia chi ao:");
-    println!("    - Dinh cao nhat (Stack)   : ~0x{:012x}", &main_stack_var as *const u64 as usize);
-    println!("    - Vung trung tam (Heap)   : ~0x{:012x}", heap_addr_1);
-    println!("    - Vung thap (Data)        : ~0x{:012x}", data_addr);
-    println!("    - Vung day co so (Text)   : ~0x{:012x}", text_addr);
+    println!("\n[5] So sánh tương quan bản đồ địa chỉ ảo:");
+    println!(
+        "    - Đỉnh cao nhất (Stack)   : ~0x{:012x}",
+        &main_stack_var as *const u64 as usize
+    );
+    println!("    - Vùng trung tâm (Heap)   : ~0x{:012x}", heap_addr_1);
+    println!("    - Vùng thấp (Data)        : ~0x{:012x}", data_addr);
+    println!("    - Vùng đáy cơ sở (Text)   : ~0x{:012x}", text_addr);
 
     // Gọi hàm mẫu để đảm bảo logic chạy hoàn hảo
     sample_target_function();
 
     println!("\n==================================================================");
-    println!("   QUAN SAT THANH CONG: KHONG GIAN BO NHO HOAN TOAN CACH LY!     ");
+    println!("   QUAN SÁT THÀNH CÔNG: KHÔNG GIAN BỘ NHỚ HOÀN TOÀN CÁCH LY!     ");
     println!("==================================================================");
 }
 ```
@@ -254,23 +276,28 @@ Dưới đây là các lỗi biên dịch phổ biến nhất khi lập trình v
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0716** | `temporary value dropped while borrowed` | Bạn lấy địa chỉ tham chiếu `&` của một giá trị tạm thời (rvalue) được sinh ra trong biểu thức, giá trị này bị hủy ngay ở cuối dòng lệnh. | Gán giá trị tạm thời đó vào một biến `let` có tên cụ thể trước khi lấy địa chỉ tham chiếu của nó. |
-| **E0308** | `mismatched types: expected raw pointer, found reference` | Nhầm lẫn giữa kiểu tham chiếu an toàn (`&T`) và con trỏ thô (`*const T` hoặc `*mut T`). | Sử dụng cú pháp ép kiểu tường minh: `&val as *const T` hoặc phương thức `.as_ptr()`. |
+| **E0716** | `temporary value dropped while borrowed` | Bạn lấy tham chiếu `&` (ví dụ `.as_str()`) tới một giá trị tạm thời được sinh ra trong biểu thức rồi giữ nó lại, trong khi giá trị này bị hủy ngay ở cuối câu lệnh. | Gán giá trị tạm thời đó vào một biến `let` có tên cụ thể trước khi lấy địa chỉ tham chiếu của nó. |
+| **E0308** | `mismatched types: expected '&i32', found '*const i32'` | Gán con trỏ thô (`*const T`) vào biến kiểu tham chiếu (`&T`). Chiều ngược lại (`&T` → `*const T`) được tự động ép kiểu, nhưng con trỏ thô → tham chiếu thì không, vì trình biên dịch không thể tự chứng minh con trỏ còn hợp lệ. | Giữ nguyên kiểu con trỏ thô; chỉ khi chắc chắn con trỏ hợp lệ mới đổi bằng `unsafe { &*p }` (Chương 39). |
 | **E0384** | `cannot assign twice to immutable variable` | Cố gắng thay đổi con trỏ hoặc giá trị mà biến không được khai báo với từ khóa `mut`. | Thêm từ khóa `mut` vào khai báo biến: `let mut ptr = ...`. |
-| **E0507** | `cannot move out of a shared reference` | Cố gắng di chuyển quyền sở hữu của một giá trị nằm sau con trỏ mượn. | Sử dụng clone dữ liệu, hoặc chỉ mượn tham chiếu thay vì di chuyển giá trị gốc. |
+| **E0507** | `cannot move out of '*r' which is behind a shared reference` | Cố gắng di chuyển quyền sở hữu của một giá trị nằm sau con trỏ mượn (`let s: String = *r;`). | Sử dụng clone dữ liệu, hoặc chỉ mượn tham chiếu thay vì di chuyển giá trị gốc. |
 
-### Ví dụ phân tích lỗi `E0716` khi lấy địa chỉ của giá trị tạm thời:
+### Ví dụ phân tích lỗi `E0716` khi mượn giá trị tạm thời:
 
 ```rust
 // Đoạn mã lỗi minh họa E0716:
 fn e0716_broken() {
     // Lỗi: Chuỗi String được tạo ra tạm thời rồi lập tức bị giải phóng
+    // let s: &str = String::from("Rust Security").as_str(); // LỖI E0716
+    // println!("Chuỗi: {}", s); // Tham chiếu trỏ vào vùng nhớ đã chết!
+
+    // CẢNH GIÁC: viết bằng con trỏ thô thì KHÔNG có lỗi biên dịch nào,
+    // vì trình kiểm tra mượn không theo dõi con trỏ thô — chỉ có một cảnh báo
+    // `dangling_pointers_from_temporaries`. Con trỏ này đã lơ lửng ngay khi tạo ra:
     // let addr = String::from("Rust Security").as_ptr();
-    // println!("Địa chỉ: {:p}", addr); // Sử dụng con trỏ trỏ vào vùng nhớ đã chết!
 }
 
 // Cách sửa chữa đúng chuẩn:
-fn vi_du_dung_e0716() {
+fn e0716_correct() {
     let safe_string = String::from("Rust Security"); // Giữ quyền sở hữu rõ ràng
     let addr = safe_string.as_ptr(); // Con trỏ mượn hợp lệ chừng nào safe_string còn sống
     println!("Địa chỉ an toàn: {:p}", addr);
@@ -309,7 +336,7 @@ fn vi_du_dung_e0716() {
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
 ```rust
-fn do_khung_ngan_xep(x: u64, y: u64) {
+fn measure_stack_frame(x: u64, y: u64) {
     let buffer = [0u8; 128];
 
     let a_x = &x as *const u64 as usize;
@@ -320,18 +347,21 @@ fn do_khung_ngan_xep(x: u64, y: u64) {
     println!("y      : {a_y:#x}");
     println!("buffer : {a_b:#x}");
 
-    let cao = a_x.max(a_y).max(a_b);
-    let thap = a_x.min(a_y).min(a_b);
-    println!("khoảng cách cao-thấp : {} byte", cao - thap);
-    println!("khung tối thiểu      : ~{} byte", cao - thap + 8);
+    // (địa chỉ, kích thước) của từng biến
+    let vars = [(a_x, 8), (a_y, 8), (a_b, 128)];
+    let low = vars.iter().map(|&(addr, _)| addr).min().unwrap();
+    let (high, high_size) = vars.iter().copied().max_by_key(|&(addr, _)| addr).unwrap();
+    println!("khoảng cách cao-thấp : {} byte", high - low);
+    // vùng tối thiểu phải phủ từ biến thấp nhất tới HẾT biến cao nhất
+    println!("khung tối thiểu      : ~{} byte", high + high_size - low);
 }
 
-fn main() { do_khung_ngan_xep(1, 2); }
+fn main() { measure_stack_frame(1, 2); }
 ```
 
 **Phép tính tối thiểu:** `8 (x) + 8 (y) + 128 (buffer) = 144 byte`. Nhưng con số thật bạn in ra thường **lớn hơn**, vì ba lý do:
 
-1. **Căn chỉnh 16 byte.** ABI System V yêu cầu con trỏ ngăn xếp căn theo 16 byte tại mỗi lời gọi hàm, nên 144 bị làm tròn lên 144 hoặc 160.
+1. **Căn chỉnh 16 byte.** ABI System V yêu cầu con trỏ ngăn xếp căn theo 16 byte tại mỗi lời gọi hàm, nên kích thước khung luôn được làm tròn lên bội của 16 — 144 vừa khít, nhưng chỉ cần thêm một ô 8 byte (ví dụ thanh ghi được lưu tạm) là khung thành 160.
 2. **Con trỏ khung và địa chỉ trở về.** Mỗi lời gọi đẩy thêm ~16 byte mà mã của bạn không nhìn thấy.
 3. **Trình biên dịch có thể sắp xếp lại.** Ở bản `--release`, `x` và `y` có khả năng nằm hẳn trong thanh ghi và **không chiếm byte nào** trên ngăn xếp — lúc đó `&x` buộc trình biên dịch phải đổ chúng ra bộ nhớ chỉ để bạn lấy được địa chỉ.
 
@@ -349,14 +379,14 @@ fn main() { do_khung_ngan_xep(1, 2); }
 
 ```rust
 fn main() {
-    let nho: Vec<u8> = vec![0; 64];
-    let lon: Vec<u8> = vec![0; 1024];
+    let small: Vec<u8> = vec![0; 64];
+    let large: Vec<u8> = vec![0; 1024];
 
-    let a = nho.as_ptr() as usize;
-    let b = lon.as_ptr() as usize;
+    let a = small.as_ptr() as usize;
+    let b = large.as_ptr() as usize;
 
-    println!("nho (64B)   : {a:#x}");
-    println!("lon (1024B) : {b:#x}");
+    println!("small (64B)   : {a:#x}");
+    println!("large (1024B) : {b:#x}");
     println!("khoảng cách : {} byte", a.abs_diff(b));
     println!("liền kề?    : {}", a.abs_diff(b) == 64);
 }

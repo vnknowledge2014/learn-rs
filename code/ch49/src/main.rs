@@ -1,13 +1,19 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::pin::{Pin, pin};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Wake, Waker};
+use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-/// Một Future đếm ngược thời gian tùy chỉnh mô phỏng I/O bất đồng bộ
+/// Một Future hẹn giờ mô phỏng I/O bất đồng bộ.
+/// Đóng vai "Reactor" tí hon: lần đầu bị poll mà chưa tới giờ, nó giao cho một luồng
+/// hẹn giờ nền nhiệm vụ gọi `Waker` khi tới hạn — đúng hợp đồng của `Future`:
+/// **đã trả `Poll::Pending` thì phải sắp xếp để `Waker` được gọi về sau.**
 pub struct AsyncTimerFuture {
     target_time: Instant,
     polled_count: usize,
+    // Waker mới nhất mà luồng hẹn giờ sẽ gọi (None = chưa khởi động luồng hẹn giờ)
+    shared_waker: Option<Arc<Mutex<Waker>>>,
 }
 
 impl AsyncTimerFuture {
@@ -15,6 +21,7 @@ impl AsyncTimerFuture {
         Self {
             target_time: Instant::now() + duration,
             polled_count: 0,
+            shared_waker: None,
         }
     }
 }
@@ -22,36 +29,71 @@ impl AsyncTimerFuture {
 impl Future for AsyncTimerFuture {
     type Output = String;
 
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    // AsyncTimerFuture là `Unpin` (mọi trường đều Unpin), nên `Pin<&mut Self>`
+    // cho phép truy cập trường như `&mut Self` bình thường.
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.polled_count += 1;
-        let now = Instant::now();
 
-        if now >= self.target_time {
+        if Instant::now() >= self.target_time {
             // Tác vụ đã hoàn tất! Trả về kết quả
-            Poll::Ready(format!(
-                "Tac vu hoan thanh sau {} lan tham do (Poll)!",
+            return Poll::Ready(format!(
+                "Tác vụ hoàn thành sau {} lần thăm dò (Poll)!",
                 self.polled_count
-            ))
-        } else {
-            // Dữ liệu chưa sẵn sàng: Nhường quyền điều khiển
-            Poll::Pending
+            ));
         }
+
+        // Chưa tới giờ: ĐĂNG KÝ Waker trước khi trả Pending
+        match &self.shared_waker {
+            Some(shared) => {
+                // Executor có thể đổi Waker giữa các lần poll -> luôn giữ cái mới nhất
+                let mut current = shared.lock().unwrap();
+                if !current.will_wake(cx.waker()) {
+                    *current = cx.waker().clone();
+                }
+            }
+            None => {
+                let shared = Arc::new(Mutex::new(cx.waker().clone()));
+                let for_timer = Arc::clone(&shared);
+                let target = self.target_time;
+                thread::spawn(move || {
+                    let now = Instant::now();
+                    if target > now {
+                        thread::sleep(target - now);
+                    }
+                    for_timer.lock().unwrap().wake_by_ref(); // "Tít tít!" thẻ rung kêu
+                });
+                self.shared_waker = Some(shared);
+            }
+        }
+        Poll::Pending
     }
 }
 
-/// Mô phỏng máy trạng thái tổ hợp gồm 2 bước tuần tự (Composite State Machine)
-pub struct CompositeAsyncTask {
-    step: usize,
-    timer1: AsyncTimerFuture,
-    timer2: AsyncTimerFuture,
+/// Máy trạng thái tổ hợp gồm 2 bước TUẦN TỰ (Composite State Machine) — đúng thứ
+/// mà trình biên dịch sinh ra cho `async { timer1.await; timer2.await; }`.
+pub enum CompositeAsyncTask {
+    Step1 {
+        timer1: AsyncTimerFuture,
+        step2_duration: Duration,
+    },
+    // Đồng hồ bước 2 chỉ được tạo khi bước 1 xong, nên tổng thời gian = 30 + 40 ms
+    Step2 {
+        timer2: AsyncTimerFuture,
+    },
+    Done,
+}
+
+impl Default for CompositeAsyncTask {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CompositeAsyncTask {
     pub fn new() -> Self {
-        Self {
-            step: 0,
+        CompositeAsyncTask::Step1 {
             timer1: AsyncTimerFuture::new(Duration::from_millis(30)),
-            timer2: AsyncTimerFuture::new(Duration::from_millis(40)),
+            step2_duration: Duration::from_millis(40),
         }
     }
 }
@@ -61,58 +103,59 @@ impl Future for CompositeAsyncTask {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match self.step {
-                0 => {
-                    // Thăm dò bước 1
-                    let timer1_pin = unsafe { Pin::new_unchecked(&mut self.timer1) };
-                    match timer1_pin.poll(cx) {
+            match &mut *self {
+                CompositeAsyncTask::Step1 {
+                    timer1,
+                    step2_duration,
+                } => {
+                    // Thăm dò bước 1. Timer là Unpin nên dùng `Pin::new` an toàn,
+                    // không cần `unsafe { Pin::new_unchecked(..) }`.
+                    match Pin::new(timer1).poll(cx) {
                         Poll::Ready(msg) => {
-                            println!("    [CompositeTask] Buoc 1 xong: {}", msg);
-                            self.step = 1;
+                            println!("    [CompositeTask] Bước 1 xong: {}", msg);
+                            let timer2 = AsyncTimerFuture::new(*step2_duration);
+                            *self = CompositeAsyncTask::Step2 { timer2 };
                             // Tiếp tục vòng lặp sang bước 2
                         }
                         Poll::Pending => return Poll::Pending,
                     }
                 }
-                1 => {
-                    // Thăm dò bước 2
-                    let timer2_pin = unsafe { Pin::new_unchecked(&mut self.timer2) };
-                    match timer2_pin.poll(cx) {
-                        Poll::Ready(msg) => {
-                            println!("    [CompositeTask] Buoc 2 xong: {}", msg);
-                            self.step = 2;
-                        }
-                        Poll::Pending => return Poll::Pending,
+                CompositeAsyncTask::Step2 { timer2 } => match Pin::new(timer2).poll(cx) {
+                    Poll::Ready(msg) => {
+                        println!("    [CompositeTask] Bước 2 xong: {}", msg);
+                        *self = CompositeAsyncTask::Done;
+                        return Poll::Ready("Toàn bộ chuỗi tác vụ đã thành công!".to_string());
                     }
-                }
-                2 => {
-                    return Poll::Ready("Toan bo chuoi tac vu da thanh cong 100%!".to_string());
-                }
-                _ => unreachable!(),
+                    Poll::Pending => return Poll::Pending,
+                },
+                CompositeAsyncTask::Done => panic!("Future bị poll sau khi đã Ready"),
             }
         }
     }
 }
 
-/// Tạo một Waker đơn giản cho mục đích mô phỏng (No-op Dummy Waker)
-fn create_dummy_waker() -> Waker {
-    fn no_op(_: *const ()) {}
-    fn clone(p: *const ()) -> RawWaker {
-        RawWaker::new(p, &VTABLE)
-    }
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, no_op, no_op, no_op);
-    let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
-    unsafe { Waker::from_raw(raw_waker) }
+/// Waker đánh thức luồng đang chạy executor: `wake()` = `Thread::unpark()`
+struct ThreadWaker {
+    thread: Thread,
 }
 
-/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất
-pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
-    let waker = create_dummy_waker();
+impl Wake for ThreadWaker {
+    fn wake(self: Arc<Self>) {
+        self.thread.unpark();
+    }
+}
+
+/// Động cơ điều phối thu nhỏ thực thi một Future cho đến khi hoàn tất.
+/// Khi Future trả Pending, luồng NGỦ (park) cho tới khi Waker gọi unpark —
+/// không quay vòng thăm dò liên tục làm nóng CPU.
+pub fn block_on_mini_runtime<F: Future>(future: F) -> F::Output {
+    let waker = Waker::from(Arc::new(ThreadWaker {
+        thread: thread::current(),
+    }));
     let mut context = Context::from_waker(&waker);
 
-    // Ghim cố định Future vào bộ nhớ Stack (Pinning)
-    let mut pinned_future = unsafe { Pin::new_unchecked(&mut future) };
+    // Ghim cố định Future trên Stack bằng macro `pin!` an toàn (không cần unsafe)
+    let mut pinned_future = pin!(future);
 
     let mut poll_iterations = 0;
     loop {
@@ -120,44 +163,95 @@ pub fn block_on_mini_runtime<F: Future>(mut future: F) -> F::Output {
         match pinned_future.as_mut().poll(&mut context) {
             Poll::Ready(result) => {
                 println!(
-                    "    [MiniRuntime] Da nhan Poll::Ready o vong lap #{}",
+                    "    [MiniRuntime] Đã nhận Poll::Ready ở vòng lặp #{}",
                     poll_iterations
                 );
                 return result;
             }
-            Poll::Pending => {
-                // Nhường quyền CPU mô phỏng sự kiện I/O Epoll đang diễn ra
-                std::thread::sleep(Duration::from_millis(10));
-            }
+            // Ngủ chờ Waker. `park` có thể thức dậy giả (spurious) — vô hại,
+            // vì ta chỉ poll lại và Future sẽ trả Pending lần nữa nếu chưa xong.
+            Poll::Pending => thread::park(),
         }
     }
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   DONG CO BAT DONG BO TOKIO, EVENT LOOP & EPOLL MECHANICS RUST   ");
+    println!("   ĐỘNG CƠ BẤT ĐỒNG BỘ TOKIO, EVENT LOOP & EPOLL MECHANICS RUST   ");
     println!("==================================================================");
 
     // 1. Thử nghiệm Custom Future đơn lẻ
-    println!("\n[1] Thuc thi Custom Future don le tren Mini-Runtime:");
+    println!("\n[1] Thực thi Custom Future đơn lẻ trên Mini-Runtime:");
     let single_future = AsyncTimerFuture::new(Duration::from_millis(50));
     let outcome = block_on_mini_runtime(single_future);
-    println!("    - Ket qua Future: {}", outcome);
+    println!("    - Kết quả Future: {}", outcome);
 
     // 2. Thử nghiệm Composite State Machine
-    println!("\n[2] Thuc thi Composite State Machine gom 2 giai doan I/O:");
-    let composite_task = CompositeAsyncTask::new();
-    let final_report = block_on_mini_runtime(composite_task);
-    println!("    - Ket qua chuoi nhiem vu: {}", final_report);
+    println!("\n[2] Thực thi Composite State Machine gồm 2 giai đoạn I/O tuần tự:");
+    let started = Instant::now();
+    let final_report = block_on_mini_runtime(CompositeAsyncTask::new());
+    println!(
+        "    - Kết quả chuỗi nhiệm vụ: {} (mất ~{} ms)",
+        final_report,
+        started.elapsed().as_millis()
+    );
 
-    // 3. Phân tích so sánh tài nguyên
-    println!("\n[3] Phan tich so sanh kien truc tai nguyen bo nho:");
-    println!("    - Dung luong Stack cua 1 Luong he dieu hanh (OS Thread): ~2,097,152 bytes (2MB)");
-    println!("    - Dung luong RAM cua 1 Tokio Green Task               : ~300 bytes");
-    println!("    ==> Ty le tiet kiem bo nho: Tokio Task tieu thu RAM it hon ~7,000 LAN!");
-    println!("    ==> Cho phep 1 may chu duy tri hang trieu ket noi ma khong bao gio het RAM!");
+    // 3. Phân tích so sánh tài nguyên (số liệu cỡ độ điển hình)
+    println!("\n[3] Phân tích so sánh kiến trúc tài nguyên bộ nhớ:");
+    println!(
+        "    - Stack dành sẵn cho 1 luồng hệ điều hành : ~2 MB (bộ nhớ ảo, cấp vật lý theo trang)"
+    );
+    println!(
+        "    - Kích thước máy trạng thái của Future này: {} bytes",
+        std::mem::size_of::<CompositeAsyncTask>()
+    );
+    println!("    ==> Một task async chỉ tốn đúng kích thước máy trạng thái của nó (cộng chi phí");
+    println!("        quản lý của runtime), nhờ vậy một máy chủ giữ được rất nhiều kết nối.");
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: MO HINH ASYNC RUST HOAT DONG HOAN HAO - ZERO COST!  ");
+    println!("   XÁC NHẬN: MÔ HÌNH ASYNC RUST HOẠT ĐỘNG ĐÚNG HỢP ĐỒNG WAKER     ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingWaker(AtomicUsize);
+    impl Wake for CountingWaker {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn pending_timer_registers_waker_and_gets_woken() {
+        let counter = Arc::new(CountingWaker(AtomicUsize::new(0)));
+        let waker = Waker::from(Arc::clone(&counter));
+        let mut cx = Context::from_waker(&waker);
+        let mut timer = AsyncTimerFuture::new(Duration::from_millis(20));
+        assert!(Pin::new(&mut timer).poll(&mut cx).is_pending());
+        // Không ai poll lại, nhưng Waker vẫn PHẢI được gọi khi tới hạn
+        thread::sleep(Duration::from_millis(200));
+        assert!(counter.0.load(Ordering::SeqCst) >= 1);
+        assert!(Pin::new(&mut timer).poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn block_on_polls_few_times_instead_of_spinning() {
+        let msg = block_on_mini_runtime(AsyncTimerFuture::new(Duration::from_millis(30)));
+        // poll lần đầu (Pending) + poll sau khi được đánh thức (Ready);
+        // có thể thêm vài lần nếu luồng thức dậy giả, nhưng không phải hàng chục lần.
+        let polls: usize = msg.split_whitespace().find_map(|w| w.parse().ok()).unwrap();
+        assert!((2..=4).contains(&polls), "polls = {polls}");
+    }
+
+    #[test]
+    fn composite_steps_run_sequentially() {
+        let started = Instant::now();
+        block_on_mini_runtime(CompositeAsyncTask::new());
+        // 30ms + 40ms tuần tự (bản cũ tạo cả hai đồng hồ cùng lúc -> chỉ ~40ms)
+        assert!(started.elapsed() >= Duration::from_millis(70));
+    }
 }

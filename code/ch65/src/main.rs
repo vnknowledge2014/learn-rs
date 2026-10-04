@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Chương 65 — Mạng máy tính & Giao thức: đóng gói theo tầng, máy trạng thái TCP,
 //! điều khiển tắc nghẽn, tổng kiểm tra Internet, CIDR, và bản ghi DNS.
 
@@ -10,22 +9,22 @@ use std::fmt;
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Tang {
-    VatLy = 1,
-    LienKet = 2,     // Ethernet — địa chỉ MAC, trong một mạng LAN
-    Mang = 3,        // IP — địa chỉ IP, định tuyến giữa các mạng
+pub enum Layer {
+    Physical = 1,
+    DataLink = 2,    // Ethernet — địa chỉ MAC, trong một mạng LAN
+    Network = 3,     // IP — địa chỉ IP, định tuyến giữa các mạng
     Transport = 4,   // TCP/UDP — cổng, tin cậy
     Application = 7, // HTTP/DNS — ý nghĩa dữ liệu
 }
 
-impl fmt::Display for Tang {
+impl fmt::Display for Layer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t = match self {
-            Tang::VatLy => "Vật lý",
-            Tang::LienKet => "Liên kết",
-            Tang::Mang => "Mạng",
-            Tang::Transport => "Giao vận",
-            Tang::Application => "Ứng dụng",
+            Layer::Physical => "Vật lý",
+            Layer::DataLink => "Liên kết",
+            Layer::Network => "Mạng",
+            Layer::Transport => "Giao vận",
+            Layer::Application => "Ứng dụng",
         };
         write!(f, "L{} {}", *self as u8, t)
     }
@@ -34,42 +33,42 @@ impl fmt::Display for Tang {
 /// Mỗi tầng BỌC dữ liệu của tầng trên bằng phần đầu (header) của mình.
 /// Giống gửi thư: thư → phong bì → túi bưu chính → xe tải.
 #[derive(Debug, Clone, PartialEq)]
-pub struct GoiTin {
-    pub tang: Tang,
+pub struct Packet {
+    pub layer: Layer,
     pub header: Vec<u8>,
-    pub tai: Vec<u8>, // payload — chính là gói của tầng trên đã tuần tự hóa
+    pub payload: Vec<u8>, // payload — chính là gói của tầng trên đã tuần tự hóa
 }
 
-impl GoiTin {
+impl Packet {
     pub fn serialize(&self) -> Vec<u8> {
         let mut v = self.header.clone();
-        v.extend_from_slice(&self.tai);
+        v.extend_from_slice(&self.payload);
         v
     }
     /// Bọc gói này vào một tầng thấp hơn.
-    pub fn boc(self, tang_duoi: Tang, header: Vec<u8>) -> GoiTin {
-        GoiTin {
-            tang: tang_duoi,
+    pub fn wrap(self, lower: Layer, header: Vec<u8>) -> Packet {
+        Packet {
+            layer: lower,
             header,
-            tai: self.serialize(),
+            payload: self.serialize(),
         }
     }
-    /// Tổng chi phí phần đầu khi biết kích thước từng header đã dùng.
+    /// Tổng số byte trên dây: header của tầng này + mọi thứ nó bọc bên trong.
     pub fn size(&self) -> usize {
-        self.header.len() + self.tai.len()
+        self.header.len() + self.payload.len()
     }
 }
 
 /// Dựng chồng giao thức: dữ liệu ứng dụng đi xuống, mỗi tầng thêm header.
-pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
-    let http = GoiTin {
-        tang: Tang::Application,
+pub fn encapsulate(app_data: &[u8]) -> Packet {
+    let http = Packet {
+        layer: Layer::Application,
         header: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
-        tai: du_lieu_ung_dung.to_vec(),
+        payload: app_data.to_vec(),
     };
-    let tcp = http.boc(Tang::Transport, vec![0u8; 20]); // TCP header tối thiểu 20 byte
-    let ip = tcp.boc(Tang::Mang, vec![0u8; 20]); // IPv4 header tối thiểu 20 byte
-    ip.boc(Tang::LienKet, vec![0u8; 14]) // Ethernet header 14 byte
+    let tcp = http.wrap(Layer::Transport, vec![0u8; 20]); // TCP header tối thiểu 20 byte
+    let ip = tcp.wrap(Layer::Network, vec![0u8; 20]); // IPv4 header tối thiểu 20 byte
+    ip.wrap(Layer::DataLink, vec![0u8; 14]) // Ethernet header 14 byte (chưa tính FCS 4 byte)
 }
 
 // ============================================================================
@@ -78,68 +77,70 @@ pub fn dong_goi_xuong(du_lieu_ung_dung: &[u8]) -> GoiTin {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpState {
-    Dong,       // CLOSED
-    Nghe,       // LISTEN
-    SynSent,    // SYN_SENT
-    DaNhanSyn,  // SYN_RECEIVED
-    DaThietLap, // ESTABLISHED
-    ChoDong1,   // FIN_WAIT_1
-    ChoDong2,   // FIN_WAIT_2
-    LastAck,    // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
-    CloseWait,  // CLOSE_WAIT
-    TimeWait,   // LAST_ACK
+    Closed,      // CLOSED
+    Listen,      // LISTEN
+    SynSent,     // SYN_SENT
+    SynReceived, // SYN_RECEIVED
+    Established, // ESTABLISHED
+    FinWait1,    // FIN_WAIT_1
+    FinWait2,    // FIN_WAIT_2
+    Closing,     // CLOSING — hai bên cùng gửi FIN một lúc
+    TimeWait,    // TIME_WAIT — chờ 2×MSL để gói lạc đường chết hẳn
+    CloseWait,   // CLOSE_WAIT
+    LastAck,     // LAST_ACK
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpEvent {
     ActiveOpen,  // ứng dụng gọi connect()
     PassiveOpen, // ứng dụng gọi listen()
-    NhanSyn,
-    NhanSynAck,
-    NhanAck,
-    NhanFin,
+    RecvSyn,
+    RecvSynAck,
+    RecvAck,
+    RecvFin,
     AppClose, // ứng dụng gọi close()
-    HetGio,   // hết 2×MSL
+    Timeout,  // hết 2×MSL
 }
 
-/// Chuyển trạng thái TCP — bảng này lấy thẳng từ RFC 793.
+/// Chuyển trạng thái TCP — theo sơ đồ trạng thái của RFC 793 (nay là RFC 9293).
 /// Trả về `None` nghĩa là sự kiện không hợp lệ ở trạng thái đó (gói bị bỏ).
-pub fn transfer_state(tt: TcpState, sk: TcpEvent) -> Option<TcpState> {
+pub fn transition(state: TcpState, event: TcpEvent) -> Option<TcpState> {
     use TcpEvent::*;
     use TcpState::*;
-    Some(match (tt, sk) {
+    Some(match (state, event) {
         // --- Mở kết nối: bắt tay ba bước ---
-        (Dong, ActiveOpen) => SynSent, // gửi SYN
-        (Dong, PassiveOpen) => Nghe,
-        (Nghe, NhanSyn) => DaNhanSyn,        // gửi SYN+ACK
-        (SynSent, NhanSynAck) => DaThietLap, // gửi ACK  ← bước 3
-        (SynSent, NhanSyn) => DaNhanSyn,     // mở đồng thời (hiếm)
-        (DaNhanSyn, NhanAck) => DaThietLap,
+        (Closed, ActiveOpen) => SynSent, // gửi SYN
+        (Closed, PassiveOpen) => Listen,
+        (Listen, RecvSyn) => SynReceived,     // gửi SYN+ACK
+        (SynSent, RecvSynAck) => Established, // gửi ACK  ← bước 3
+        (SynSent, RecvSyn) => SynReceived,    // mở đồng thời (hiếm)
+        (SynReceived, RecvAck) => Established,
 
         // --- Đóng chủ động: bắt tay bốn bước ---
-        (DaThietLap, AppClose) => ChoDong1, // gửi FIN
-        (ChoDong1, NhanAck) => ChoDong2,
-        (ChoDong2, NhanFin) => LastAck, // gửi ACK
-        (ChoDong1, NhanFin) => LastAck, // đóng đồng thời
-        (LastAck, HetGio) => Dong,      // sau 2×MSL
+        (Established, AppClose) => FinWait1, // gửi FIN
+        (FinWait1, RecvAck) => FinWait2,
+        (FinWait2, RecvFin) => TimeWait, // gửi ACK
+        (FinWait1, RecvFin) => Closing,  // đóng đồng thời: gửi ACK, chờ ACK cho FIN của ta
+        (Closing, RecvAck) => TimeWait,
+        (TimeWait, Timeout) => Closed, // sau 2×MSL
 
         // --- Đóng thụ động ---
-        (DaThietLap, NhanFin) => CloseWait, // gửi ACK
-        (CloseWait, AppClose) => TimeWait,  // gửi FIN
-        (TimeWait, NhanAck) => Dong,
+        (Established, RecvFin) => CloseWait, // gửi ACK
+        (CloseWait, AppClose) => LastAck,    // gửi FIN
+        (LastAck, RecvAck) => Closed,
         _ => return None,
     })
 }
 
 /// Chạy một chuỗi sự kiện; trả về trạng thái cuối hoặc lỗi tại bước nào.
 pub fn run_session(
-    mut tt: TcpState,
-    cac_sk: &[TcpEvent],
+    mut state: TcpState,
+    events: &[TcpEvent],
 ) -> Result<TcpState, (usize, TcpState, TcpEvent)> {
-    for (i, &sk) in cac_sk.iter().enumerate() {
-        tt = transfer_state(tt, sk).ok_or((i, tt, sk))?;
+    for (i, &event) in events.iter().enumerate() {
+        state = transition(state, event).ok_or((i, state, event))?;
     }
-    Ok(tt)
+    Ok(state)
 }
 
 // ============================================================================
@@ -148,57 +149,57 @@ pub fn run_session(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CongestionPhase {
-    KhoiDongCham,
-    TranhTacNghen,
+    SlowStart,
+    CongestionAvoidance,
 }
 
 /// Mô phỏng TCP Reno: cửa sổ tắc nghẽn `cwnd` tính bằng số MSS.
 #[derive(Debug, Clone)]
 pub struct CongestionControl {
     pub cwnd: f64,
-    pub threshold: f64, // ssthresh
-    pub pha: CongestionPhase,
+    pub ssthresh: f64, // ngưỡng khởi động chậm (slow start threshold)
+    pub phase: CongestionPhase,
     pub history: Vec<f64>,
 }
 
 impl CongestionControl {
-    pub fn new(nguong_ban_dau: f64) -> Self {
+    pub fn new(initial_ssthresh: f64) -> Self {
         CongestionControl {
             cwnd: 1.0,
-            threshold: nguong_ban_dau,
-            pha: CongestionPhase::KhoiDongCham,
+            ssthresh: initial_ssthresh,
+            phase: CongestionPhase::SlowStart,
             history: vec![1.0],
         }
     }
 
     /// Nhận ACK: khởi động chậm nhân đôi mỗi RTT; tránh tắc nghẽn cộng 1 mỗi RTT.
-    pub fn nhan_ack(&mut self) {
-        match self.pha {
-            CongestionPhase::KhoiDongCham => {
+    pub fn on_ack(&mut self) {
+        match self.phase {
+            CongestionPhase::SlowStart => {
                 self.cwnd *= 2.0; // TĂNG THEO CẤP SỐ NHÂN
-                if self.cwnd >= self.threshold {
-                    self.cwnd = self.threshold;
-                    self.pha = CongestionPhase::TranhTacNghen;
+                if self.cwnd >= self.ssthresh {
+                    self.cwnd = self.ssthresh;
+                    self.phase = CongestionPhase::CongestionAvoidance;
                 }
             }
-            CongestionPhase::TranhTacNghen => self.cwnd += 1.0, // TĂNG TUYẾN TÍNH
+            CongestionPhase::CongestionAvoidance => self.cwnd += 1.0, // TĂNG TUYẾN TÍNH
         }
         self.history.push(self.cwnd);
     }
 
     /// Mất gói phát hiện qua 3 ACK trùng: giảm một nửa (Fast Recovery).
-    pub fn mat_call_light(&mut self) {
-        self.threshold = (self.cwnd / 2.0).max(2.0);
-        self.cwnd = self.threshold;
-        self.pha = CongestionPhase::TranhTacNghen;
+    pub fn on_triple_dup_ack(&mut self) {
+        self.ssthresh = (self.cwnd / 2.0).max(2.0);
+        self.cwnd = self.ssthresh;
+        self.phase = CongestionPhase::CongestionAvoidance;
         self.history.push(self.cwnd);
     }
 
     /// Hết giờ (timeout): mạng có thể đã sập — về vạch xuất phát.
-    pub fn het_gio(&mut self) {
-        self.threshold = (self.cwnd / 2.0).max(2.0);
+    pub fn on_timeout(&mut self) {
+        self.ssthresh = (self.cwnd / 2.0).max(2.0);
         self.cwnd = 1.0;
-        self.pha = CongestionPhase::KhoiDongCham;
+        self.phase = CongestionPhase::SlowStart;
         self.history.push(self.cwnd);
     }
 }
@@ -210,23 +211,23 @@ impl CongestionControl {
 /// Cộng bù-1 16-bit rồi lấy bù. Tính chất vàng: checksum của dữ liệu ĐÃ kèm
 /// checksum luôn bằng 0 — máy nhận chỉ cần cộng hết và so với 0.
 pub fn checksum(data: &[u8]) -> u16 {
-    let mut tong: u32 = 0;
+    let mut sum: u32 = 0;
     let mut i = 0;
     while i + 1 < data.len() {
-        tong += u16::from_be_bytes([data[i], data[i + 1]]) as u32;
+        sum += u16::from_be_bytes([data[i], data[i + 1]]) as u32;
         i += 2;
     }
     if i < data.len() {
-        tong += (data[i] as u32) << 8; // byte lẻ được đệm 0 bên phải
+        sum += (data[i] as u32) << 8; // byte lẻ được đệm 0 bên phải
     }
-    while tong >> 16 != 0 {
-        tong = (tong & 0xFFFF) + (tong >> 16); // gấp phần nhớ vòng lại
+    while sum >> 16 != 0 {
+        sum = (sum & 0xFFFF) + (sum >> 16); // gấp phần nhớ vòng lại
     }
-    !(tong as u16)
+    !(sum as u16)
 }
 
-pub fn verify_checksum(du_lieu_kem_checksum: &[u8]) -> bool {
-    checksum(du_lieu_kem_checksum) == 0
+pub fn verify_checksum(data_with_checksum: &[u8]) -> bool {
+    checksum(data_with_checksum) == 0
 }
 
 // ============================================================================
@@ -234,31 +235,31 @@ pub fn verify_checksum(du_lieu_kem_checksum: &[u8]) -> bool {
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MangCon {
+pub struct Subnet {
     pub address: u32,
     pub prefix: u8, // /24, /16 ...
 }
 
-impl MangCon {
-    pub fn analyze(s: &str) -> Option<MangCon> {
-        let (ip, tt) = s.split_once('/')?;
-        let o: Vec<u8> = ip
+impl Subnet {
+    pub fn parse(s: &str) -> Option<Subnet> {
+        let (ip, len) = s.split_once('/')?;
+        let octets: Vec<u8> = ip
             .split('.')
             .map(|x| x.parse().ok())
             .collect::<Option<_>>()?;
-        if o.len() != 4 {
+        if octets.len() != 4 {
             return None;
         }
-        let prefix: u8 = tt.parse().ok()?;
+        let prefix: u8 = len.parse().ok()?;
         if prefix > 32 {
             return None;
         }
-        Some(MangCon {
-            address: u32::from_be_bytes([o[0], o[1], o[2], o[3]]),
+        Some(Subnet {
+            address: u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]]),
             prefix,
         })
     }
-    pub fn mat_na(&self) -> u32 {
+    pub fn mask(&self) -> u32 {
         if self.prefix == 0 {
             0
         } else {
@@ -266,13 +267,13 @@ impl MangCon {
         }
     }
     pub fn network_address(&self) -> u32 {
-        self.address & self.mat_na()
+        self.address & self.mask()
     }
-    pub fn quang_ba(&self) -> u32 {
-        self.network_address() | !self.mat_na()
+    pub fn broadcast(&self) -> u32 {
+        self.network_address() | !self.mask()
     }
-    /// Số máy chủ gán được = tổng địa chỉ - 2 (địa chỉ mạng + quảng bá).
-    pub fn num_servers(&self) -> u64 {
+    /// Số địa chỉ máy gán được = tổng địa chỉ - 2 (địa chỉ mạng + quảng bá).
+    pub fn usable_hosts(&self) -> u64 {
         match self.prefix {
             32 => 1,
             31 => 2, // RFC 3021: liên kết điểm-điểm
@@ -280,7 +281,7 @@ impl MangCon {
         }
     }
     pub fn contains(&self, ip: u32) -> bool {
-        ip & self.mat_na() == self.network_address()
+        ip & self.mask() == self.network_address()
     }
     pub fn display(ip: u32) -> String {
         let b = ip.to_be_bytes();
@@ -289,15 +290,16 @@ impl MangCon {
 }
 
 /// Định tuyến "khớp tiền tố dài nhất" — quy tắc CỐT LÕI của mọi bộ định tuyến.
-pub fn match_route<'a>(bang: &'a [(MangCon, &'a str)], ip: u32) -> Option<&'a str> {
-    bang.iter()
+pub fn match_route<'a>(table: &'a [(Subnet, &'a str)], ip: u32) -> Option<&'a str> {
+    table
+        .iter()
         .filter(|(m, _)| m.contains(ip))
         .max_by_key(|(m, _)| m.prefix) // tiền tố DÀI NHẤT thắng
-        .map(|(_, gate)| *gate)
+        .map(|(_, iface)| *iface)
 }
 
 // ============================================================================
-// 6. DNS — phân giải tên bằng đệ quy có bộ nhớ đệm
+// 6. DNS — phân giải tên, đi theo chuỗi CNAME
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,7 +320,7 @@ impl DnsServer {
         for _ in 0..8 {
             match self.records.iter().find(|(n, _)| *n == current) {
                 Some((_, DnsRecord::A(ip))) => return Ok(ip.clone()),
-                Some((_, DnsRecord::CNAME(dich))) => current = dich.clone(),
+                Some((_, DnsRecord::CNAME(target))) => current = target.clone(),
                 Some((_, DnsRecord::NS(_))) => {
                     return Err(format!("cần hỏi máy chủ khác cho {current}"));
                 }
@@ -335,36 +337,41 @@ impl DnsServer {
 
 #[derive(Debug, PartialEq)]
 pub struct TransferResult {
-    pub da_nhan: Vec<u32>,
+    pub delivered: Vec<u32>, // các gói máy nhận chấp nhận, theo thứ tự
     pub send_count: usize,
 }
 
-/// Go-Back-N: gửi tối đa `window` gói chưa được xác nhận. Gói nào mất thì
-/// gửi lại TỪ ĐÓ TRỞ ĐI — đơn giản nhưng lãng phí băng thông.
-pub fn go_back_n(tong_goi: u32, window: u32, mat_tai: &[u32]) -> TransferResult {
-    let mut da_nhan = Vec::new();
+/// Go-Back-N (mô hình theo lượt): mỗi lượt gửi CẢ cửa sổ `window` gói.
+/// Máy nhận chỉ nhận gói ĐÚNG THỨ TỰ: gặp một gói mất thì bỏ mọi gói sau nó
+/// trong lượt đó, và máy gửi phải gửi lại TỪ gói mất TRỞ ĐI — đơn giản nhưng
+/// lãng phí băng thông. `lost` liệt kê các gói bị mất ở lần gửi ĐẦU TIÊN.
+pub fn go_back_n(total: u32, window: u32, lost: &[u32]) -> TransferResult {
+    let mut delivered = Vec::new();
     let mut send_count = 0;
     let mut base = 0u32; // gói đầu tiên chưa được ACK
-    let mut da_mat: VecDeque<u32> = mat_tai.iter().copied().collect();
+    let mut pending_losses: VecDeque<u32> = lost.iter().copied().collect();
 
-    while base < tong_goi {
-        let mut lost_in_window = None;
-        for stt in base..(base + window).min(tong_goi) {
-            send_count += 1;
-            if da_mat.front() == Some(&stt) {
-                da_mat.pop_front(); // gói này mất, chỉ mất MỘT LẦN
-                lost_in_window = Some(stt);
-                break; // các gói sau sẽ bị bỏ (ngoài thứ tự)
+    while base < total {
+        let mut first_lost = None;
+        for seq in base..(base + window).min(total) {
+            send_count += 1; // gói nào trong cửa sổ cũng được phát lên dây
+            if first_lost.is_some() {
+                continue; // tới nơi nhưng NGOÀI THỨ TỰ -> máy nhận vứt bỏ
             }
-            da_nhan.push(stt);
+            if pending_losses.front() == Some(&seq) {
+                pending_losses.pop_front(); // gói này mất, chỉ mất MỘT LẦN
+                first_lost = Some(seq);
+                continue;
+            }
+            delivered.push(seq);
         }
-        base = match lost_in_window {
-            Some(stt) => stt, // quay lại N — gửi lại từ gói mất
-            None => (base + window).min(tong_goi),
+        base = match first_lost {
+            Some(seq) => seq, // quay lại N — gửi lại từ gói mất
+            None => (base + window).min(total),
         };
     }
     TransferResult {
-        da_nhan,
+        delivered,
         send_count,
     }
 }
@@ -375,102 +382,105 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. ĐÓNG GÓI THEO TẦNG — 5 byte dữ liệu đi hết chồng giao thức");
-    let goi = dong_goi_xuong(b"hello");
-    println!("   Gói cuối ở {} — tổng {} byte", goi.tang, goi.size());
+    let frame = encapsulate(b"hello");
+    println!("   Gói cuối ở {} — tổng {} byte", frame.layer, frame.size());
     println!(
         "   Chi phí phần đầu = {} byte cho 5 byte dữ liệu ({}% là bao bì)",
-        goi.size() - 5,
-        (goi.size() - 5) * 100 / goi.size()
+        frame.size() - 5,
+        (frame.size() - 5) * 100 / frame.size()
     );
 
     println!("\n2. BẮT TAY BA BƯỚC");
     use TcpEvent::*;
-    let kq = run_session(TcpState::Dong, &[ActiveOpen, NhanSynAck]);
+    let result = run_session(TcpState::Closed, &[ActiveOpen, RecvSynAck]);
     println!(
-        "   Máy khách: Dong -SYN-> SynSent -SYN/ACK-> {:?}",
-        kq.unwrap()
+        "   Máy khách: Closed -SYN-> SynSent -SYN/ACK-> {:?}",
+        result.unwrap()
     );
-    let kq = run_session(TcpState::Dong, &[PassiveOpen, NhanSyn, NhanAck]);
+    let result = run_session(TcpState::Closed, &[PassiveOpen, RecvSyn, RecvAck]);
     println!(
-        "   Máy chủ  : Dong -listen-> Nghe -SYN-> DaNhanSyn -ACK-> {:?}",
-        kq.unwrap()
+        "   Máy chủ  : Closed -listen-> Listen -SYN-> SynReceived -ACK-> {:?}",
+        result.unwrap()
     );
     println!(
         "   Sự kiện sai: {:?}",
-        run_session(TcpState::Dong, &[NhanAck]).unwrap_err()
+        run_session(TcpState::Closed, &[RecvAck]).unwrap_err()
     );
 
     println!("\n3. ĐIỀU KHIỂN TẮC NGHẼN (TCP Reno)");
-    let mut bt = CongestionControl::new(16.0);
+    let mut cc = CongestionControl::new(16.0);
     for _ in 0..5 {
-        bt.nhan_ack();
+        cc.on_ack();
     }
-    println!("   Khởi động chậm : {:?}", &bt.history);
-    bt.mat_call_light();
+    println!("   Khởi động chậm : {:?}", cc.history);
+    cc.on_triple_dup_ack();
     for _ in 0..3 {
-        bt.nhan_ack();
+        cc.on_ack();
     }
-    println!("   Sau mất gói nhẹ: {:?}", &bt.history[5..]);
-    bt.het_gio();
+    println!("   Sau mất gói nhẹ: {:?}", &cc.history[5..]);
+    cc.on_timeout();
     println!(
         "   Sau hết giờ    : cwnd = {} (về 1, quay lại khởi động chậm)",
-        bt.cwnd
+        cc.cwnd
     );
 
     println!("\n4. TỔNG KIỂM TRA INTERNET");
-    let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
-    let cs = checksum(&than);
-    let mut kem = than.to_vec();
-    kem.extend_from_slice(&cs.to_be_bytes());
+    let data = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
+    let cs = checksum(&data);
+    let mut with_cs = data.to_vec();
+    with_cs.extend_from_slice(&cs.to_be_bytes());
     println!(
         "   checksum = 0x{:04X} | gói kèm checksum hợp lệ: {}",
         cs,
-        verify_checksum(&kem)
+        verify_checksum(&with_cs)
     );
-    kem[0] ^= 0x01; // làm hỏng 1 bit
+    with_cs[0] ^= 0x01; // làm hỏng 1 bit
     println!(
         "   sau khi lật 1 bit                         : {}",
-        verify_checksum(&kem)
+        verify_checksum(&with_cs)
     );
 
     println!("\n5. CIDR & ĐỊNH TUYẾN KHỚP TIỀN TỐ DÀI NHẤT");
-    let m = MangCon::analyze("192.168.10.130/26").unwrap();
+    let m = Subnet::parse("192.168.10.130/26").unwrap();
     println!(
-        "   192.168.10.130/26 → mạng {} · quảng bá {} · {} máy chủ",
-        MangCon::display(m.network_address()),
-        MangCon::display(m.quang_ba()),
-        m.num_servers()
+        "   192.168.10.130/26 → mạng {} · quảng bá {} · {} địa chỉ máy dùng được",
+        Subnet::display(m.network_address()),
+        Subnet::display(m.broadcast()),
+        m.usable_hosts()
     );
-    let bang = [
-        (MangCon::analyze("0.0.0.0/0").unwrap(), "cong-mac-dinh"),
-        (MangCon::analyze("10.0.0.0/8").unwrap(), "eth0"),
-        (MangCon::analyze("10.1.0.0/16").unwrap(), "eth1"),
-        (MangCon::analyze("10.1.2.0/24").unwrap(), "eth2"),
+    let table = [
+        (Subnet::parse("0.0.0.0/0").unwrap(), "default-gw"),
+        (Subnet::parse("10.0.0.0/8").unwrap(), "eth0"),
+        (Subnet::parse("10.1.0.0/16").unwrap(), "eth1"),
+        (Subnet::parse("10.1.2.0/24").unwrap(), "eth2"),
     ];
     for ip in ["10.1.2.5", "10.1.9.9", "10.5.0.1", "8.8.8.8"] {
-        let n = MangCon::analyze(&format!("{ip}/32")).unwrap().address;
-        println!("   {:<12} → {}", ip, match_route(&bang, n).unwrap());
+        let n = Subnet::parse(&format!("{ip}/32")).unwrap().address;
+        println!("   {:<12} → {}", ip, match_route(&table, n).unwrap());
     }
 
     println!("\n6. DNS");
     let dns = DnsServer {
         records: vec![
             (
-                "www.vidu.vn".into(),
-                DnsRecord::CNAME("may-chu.vidu.vn".into()),
+                "www.example.vn".into(),
+                DnsRecord::CNAME("server.example.vn".into()),
             ),
-            ("may-chu.vidu.vn".into(), DnsRecord::A("203.0.113.7".into())),
+            (
+                "server.example.vn".into(),
+                DnsRecord::A("203.0.113.7".into()),
+            ),
         ],
     };
-    println!("   www.vidu.vn  → {:?}", dns.resolve("www.vidu.vn"));
-    println!("   khong-co.vn  → {:?}", dns.resolve("khong-co.vn"));
+    println!("   www.example.vn → {:?}", dns.resolve("www.example.vn"));
+    println!("   missing.vn     → {:?}", dns.resolve("missing.vn"));
 
     println!("\n7. CỬA SỔ TRƯỢT GO-BACK-N (10 gói, cửa sổ 4, mất gói #2 và #6)");
-    let kq = go_back_n(10, 4, &[2, 6]);
+    let result = go_back_n(10, 4, &[2, 6]);
     println!(
         "   Đã gửi {} lần cho 10 gói → hiệu suất {}%",
-        kq.send_count,
-        10 * 100 / kq.send_count
+        result.send_count,
+        10 * 100 / result.send_count
     );
 
     println!("\n═══════════════════════════════════════════════════════════");
@@ -485,78 +495,93 @@ mod tests {
     use TcpState::*;
 
     #[test]
-    fn encapsulation_adds_exactly_54_header_bytes() {
-        let g = dong_goi_xuong(b"hello");
+    fn encapsulation_adds_72_header_bytes() {
+        let g = encapsulate(b"hello");
         // HTTP 18 + TCP 20 + IP 20 + Ethernet 14 = 72 byte header cho 5 byte dữ liệu
-        assert_eq!(g.tang, Tang::LienKet);
+        assert_eq!(g.layer, Layer::DataLink);
         assert_eq!(g.size(), 18 + 20 + 20 + 14 + 5);
     }
 
     #[test]
     fn payload_survives_decapsulation() {
-        let g = dong_goi_xuong(b"hello");
-        let byte = g.serialize();
+        let g = encapsulate(b"hello");
+        let bytes = g.serialize();
         assert!(
-            byte.ends_with(b"hello"),
+            bytes.ends_with(b"hello"),
             "tải trọng phải nguyên vẹn dưới đáy các header"
         );
     }
 
     #[test]
     fn three_way_handshake_client_side() {
-        assert_eq!(run_session(Dong, &[ActiveOpen, NhanSynAck]), Ok(DaThietLap));
+        assert_eq!(
+            run_session(Closed, &[ActiveOpen, RecvSynAck]),
+            Ok(Established)
+        );
     }
 
     #[test]
     fn three_way_handshake_server_side() {
         assert_eq!(
-            run_session(Dong, &[PassiveOpen, NhanSyn, NhanAck]),
-            Ok(DaThietLap)
+            run_session(Closed, &[PassiveOpen, RecvSyn, RecvAck]),
+            Ok(Established)
         );
     }
 
     #[test]
     fn active_close_passes_through_time_wait() {
-        let kq = run_session(Dong, &[ActiveOpen, NhanSynAck, AppClose, NhanAck, NhanFin]);
-        assert_eq!(kq, Ok(LastAck), "phải dừng ở TIME_WAIT chứ không đóng ngay");
-        assert_eq!(transfer_state(LastAck, HetGio), Some(Dong));
+        let result = run_session(
+            Closed,
+            &[ActiveOpen, RecvSynAck, AppClose, RecvAck, RecvFin],
+        );
+        assert_eq!(
+            result,
+            Ok(TimeWait),
+            "phải dừng ở TIME_WAIT chứ không đóng ngay"
+        );
+        assert_eq!(transition(TimeWait, Timeout), Some(Closed));
     }
 
     #[test]
     fn passive_close_passes_through_close_wait() {
-        let kq = run_session(
-            Dong,
-            &[PassiveOpen, NhanSyn, NhanAck, NhanFin, AppClose, NhanAck],
-        );
-        assert_eq!(kq, Ok(Dong));
+        let result = run_session(Closed, &[PassiveOpen, RecvSyn, RecvAck, RecvFin, AppClose]);
+        assert_eq!(result, Ok(LastAck), "bên đóng thụ động KHÔNG qua TIME_WAIT");
+        assert_eq!(transition(LastAck, RecvAck), Some(Closed));
     }
 
     #[test]
-    fn call_no_hop_le_is_reject_use_pos_value() {
+    fn simultaneous_close_goes_through_closing() {
+        let result = run_session(Established, &[AppClose, RecvFin, RecvAck]);
+        assert_eq!(result, Ok(TimeWait));
+        assert_eq!(transition(FinWait1, RecvFin), Some(Closing));
+    }
+
+    #[test]
+    fn invalid_event_reports_its_position() {
         // ACK tới khi chưa có kết nối nào -> sai ngay từ sự kiện thứ 0
-        let e = run_session(Dong, &[NhanAck]).unwrap_err();
-        assert_eq!(e, (0, Dong, NhanAck));
+        let e = run_session(Closed, &[RecvAck]).unwrap_err();
+        assert_eq!(e, (0, Closed, RecvAck));
     }
 
     #[test]
     fn slow_start_doubles_then_switches_at_threshold() {
         let mut b = CongestionControl::new(16.0);
         for _ in 0..4 {
-            b.nhan_ack();
+            b.on_ack();
         }
         // 1 -> 2 -> 4 -> 8 -> 16: nhân đôi mỗi RTT, dừng nhân đúng tại ngưỡng
         assert_eq!(&b.history[..], &[1.0, 2.0, 4.0, 8.0, 16.0]);
         assert_eq!(b.cwnd, 16.0);
         assert_eq!(
-            b.pha,
-            CongestionPhase::TranhTacNghen,
+            b.phase,
+            CongestionPhase::CongestionAvoidance,
             "chạm ngưỡng thì đổi pha"
         );
 
         // Ngưỡng KHÔNG phải trần cứng: qua ngưỡng, cửa sổ vẫn lớn dần — nhưng
         // theo cấp số CỘNG. Đây chính là chữ "AI" trong AIMD.
         for _ in 0..6 {
-            b.nhan_ack();
+            b.on_ack();
         }
         assert_eq!(b.cwnd, 22.0, "16 + 6 lần cộng 1");
     }
@@ -565,10 +590,10 @@ mod tests {
     fn congestion_avoidance_grows_linearly() {
         let mut b = CongestionControl::new(4.0);
         for _ in 0..2 {
-            b.nhan_ack();
+            b.on_ack();
         } // 1 -> 2 -> 4 (chạm ngưỡng)
         let prev = b.cwnd;
-        b.nhan_ack();
+        b.on_ack();
         assert_eq!(
             b.cwnd,
             prev + 1.0,
@@ -580,33 +605,33 @@ mod tests {
     fn timeout_resets_to_one_while_light_loss_halves() {
         let mut a = CongestionControl::new(64.0);
         for _ in 0..5 {
-            a.nhan_ack();
+            a.on_ack();
         } // cwnd = 32
         let mut b = a.clone();
-        a.mat_call_light();
-        b.het_gio();
+        a.on_triple_dup_ack();
+        b.on_timeout();
         assert_eq!(a.cwnd, 16.0, "3 ACK trùng: giảm một nửa");
         assert_eq!(b.cwnd, 1.0, "hết giờ: về vạch xuất phát");
-        assert_eq!(b.pha, CongestionPhase::KhoiDongCham);
+        assert_eq!(b.phase, CongestionPhase::SlowStart);
     }
 
     #[test]
     fn checksum_over_data_plus_checksum_is_zero() {
-        let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06];
-        let cs = checksum(&than);
-        let mut kem = than.to_vec();
-        kem.extend_from_slice(&cs.to_be_bytes());
-        assert!(verify_checksum(&kem), "tính chất vàng của tổng bù-1");
+        let data = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06];
+        let cs = checksum(&data);
+        let mut with_cs = data.to_vec();
+        with_cs.extend_from_slice(&cs.to_be_bytes());
+        assert!(verify_checksum(&with_cs), "tính chất vàng của tổng bù-1");
     }
 
     #[test]
     fn checksum_catches_single_bit_flip() {
-        let than = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
-        let cs = checksum(&than);
-        let mut hong = than.to_vec();
-        hong.extend_from_slice(&cs.to_be_bytes());
-        hong[3] ^= 0x08;
-        assert!(!verify_checksum(&hong));
+        let data = [0x45u8, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00];
+        let cs = checksum(&data);
+        let mut corrupted = data.to_vec();
+        corrupted.extend_from_slice(&cs.to_be_bytes());
+        corrupted[3] ^= 0x08;
+        assert!(!verify_checksum(&corrupted));
     }
 
     #[test]
@@ -620,34 +645,34 @@ mod tests {
 
     #[test]
     fn cidr_computes_network_and_broadcast() {
-        let m = MangCon::analyze("192.168.10.130/26").unwrap();
-        assert_eq!(MangCon::display(m.network_address()), "192.168.10.128");
-        assert_eq!(MangCon::display(m.quang_ba()), "192.168.10.191");
-        assert_eq!(m.num_servers(), 62); // 2^6 - 2
+        let m = Subnet::parse("192.168.10.130/26").unwrap();
+        assert_eq!(Subnet::display(m.network_address()), "192.168.10.128");
+        assert_eq!(Subnet::display(m.broadcast()), "192.168.10.191");
+        assert_eq!(m.usable_hosts(), 62); // 2^6 - 2
     }
 
     #[test]
     fn cidr_edge_cases() {
-        assert_eq!(MangCon::analyze("10.0.0.1/32").unwrap().num_servers(), 1);
-        assert_eq!(MangCon::analyze("10.0.0.0/31").unwrap().num_servers(), 2);
-        assert_eq!(MangCon::analyze("10.0.0.0/24").unwrap().num_servers(), 254);
-        assert_eq!(MangCon::analyze("0.0.0.0/0").unwrap().mat_na(), 0);
-        assert!(MangCon::analyze("10.0.0.0/33").is_none());
+        assert_eq!(Subnet::parse("10.0.0.1/32").unwrap().usable_hosts(), 1);
+        assert_eq!(Subnet::parse("10.0.0.0/31").unwrap().usable_hosts(), 2);
+        assert_eq!(Subnet::parse("10.0.0.0/24").unwrap().usable_hosts(), 254);
+        assert_eq!(Subnet::parse("0.0.0.0/0").unwrap().mask(), 0);
+        assert!(Subnet::parse("10.0.0.0/33").is_none());
     }
 
     #[test]
     fn routing_picks_longest_prefix() {
-        let bang = [
-            (MangCon::analyze("0.0.0.0/0").unwrap(), "mac-dinh"),
-            (MangCon::analyze("10.0.0.0/8").unwrap(), "eth0"),
-            (MangCon::analyze("10.1.0.0/16").unwrap(), "eth1"),
-            (MangCon::analyze("10.1.2.0/24").unwrap(), "eth2"),
+        let table = [
+            (Subnet::parse("0.0.0.0/0").unwrap(), "default"),
+            (Subnet::parse("10.0.0.0/8").unwrap(), "eth0"),
+            (Subnet::parse("10.1.0.0/16").unwrap(), "eth1"),
+            (Subnet::parse("10.1.2.0/24").unwrap(), "eth2"),
         ];
-        let ip = |s: &str| MangCon::analyze(&format!("{s}/32")).unwrap().address;
-        assert_eq!(match_route(&bang, ip("10.1.2.5")), Some("eth2")); // /24 thắng /16 và /8
-        assert_eq!(match_route(&bang, ip("10.1.9.9")), Some("eth1"));
-        assert_eq!(match_route(&bang, ip("10.5.0.1")), Some("eth0"));
-        assert_eq!(match_route(&bang, ip("8.8.8.8")), Some("mac-dinh"));
+        let ip = |s: &str| Subnet::parse(&format!("{s}/32")).unwrap().address;
+        assert_eq!(match_route(&table, ip("10.1.2.5")), Some("eth2")); // /24 thắng /16 và /8
+        assert_eq!(match_route(&table, ip("10.1.9.9")), Some("eth1"));
+        assert_eq!(match_route(&table, ip("10.5.0.1")), Some("eth0"));
+        assert_eq!(match_route(&table, ip("8.8.8.8")), Some("default"));
     }
 
     #[test]
@@ -677,7 +702,7 @@ mod tests {
     fn dns_reports_nxdomain() {
         let d = DnsServer { records: vec![] };
         assert!(
-            d.resolve("khong-ton-tai.vn")
+            d.resolve("does-not-exist.vn")
                 .unwrap_err()
                 .contains("NXDOMAIN")
         );
@@ -685,9 +710,9 @@ mod tests {
 
     #[test]
     fn go_back_n_delivers_every_packet_in_order() {
-        let kq = go_back_n(10, 4, &[2, 6]);
+        let result = go_back_n(10, 4, &[2, 6]);
         assert_eq!(
-            kq.da_nhan,
+            result.delivered,
             (0..10).collect::<Vec<u32>>(),
             "phải giao đủ và đúng thứ tự"
         );
@@ -696,11 +721,13 @@ mod tests {
     #[test]
     fn go_back_n_wastes_bandwidth_on_loss() {
         let clean = go_back_n(10, 4, &[]);
-        let mat = go_back_n(10, 4, &[2, 6]);
+        let lossy = go_back_n(10, 4, &[2, 6]);
         assert_eq!(clean.send_count, 10, "kênh sạch: mỗi gói gửi đúng 1 lần");
         assert!(
-            mat.send_count > clean.send_count,
+            lossy.send_count > clean.send_count,
             "Go-Back-N gửi lại cả các gói KHÔNG mất — đó là cái giá của sự đơn giản"
         );
+        // Lượt 1: 0..4 (mất 2, vứt 3) · lượt 2: 2..6 · lượt 3: 6..10 (mất 6) · lượt 4: 6..10
+        assert_eq!(lossy.send_count, 16);
     }
 }

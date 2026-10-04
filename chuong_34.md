@@ -7,7 +7,7 @@ Trong các chương trước, bạn đã thấy cấu trúc B+ Tree hoạt độ
 Làm thế nào để các kỹ sư hệ thống vừa đạt được tốc độ ghi dữ liệu thần tốc, vừa đảm bảo dữ liệu không bao giờ bị mất mát dù máy chủ có nổ cầu chì?
 
 Giải pháp kinh điển mang tính cách mạng gồm hai thành phần:
-1. **Nhật ký ghi trước (Write-Ahead Logging - WAL)**: Một nguyên tắc bất di bất dịch: *"Luôn luôn ghi chép nối đuôi tuần tự hành động xuống đĩa trước khi dám sửa bất kỳ byte nào trên thanh RAM"*. Nhờ đó, việc phục hồi (crash recovery) sau tai nạn trở nên dễ dàng tuyệt đối.
+1. **Nhật ký ghi trước (Write-Ahead Logging - WAL)**: Một nguyên tắc bất di bất dịch: *"Mô tả thay đổi phải được ghi nối đuôi xuống nhật ký và **đồng bộ chắc chắn xuống đĩa** trước khi trang dữ liệu bị sửa được ghi ra đĩa, và trước khi báo cho người dùng rằng thao tác đã thành công"*. Nhờ đó, việc phục hồi (crash recovery) sau tai nạn trở nên dễ dàng tuyệt đối.
 2. **Động cơ cây sáp nhập có cấu trúc nhật ký (Log-Structured Merge-Tree - LSM-Tree)**: Kiến trúc đứng sau sự thành công của Google Bigtable, Apache Cassandra, RocksDB, và TiKV, biến 100% thao tác ghi thành ghi tuần tự (Sequential I/O) thông qua bộ đôi **MemTable** (trên RAM) và **SSTable** (trên đĩa).
 
 Mục tiêu học tập của chương này:
@@ -85,7 +85,9 @@ Hãy quan sát hai câu chuyện đời thực vô cùng gần gũi để hình 
 ### 1. Nguyên lý vàng của WAL: Độ bền vững trước khi biến đổi
 
 Trong mọi hệ thống cơ sở dữ liệu quan hệ và phi quan hệ, quy tắc bất biến là:
-$$\text{Ghi WAL xuống đĩa cứng} \longrightarrow \text{Ép đĩa (flush/fsync)} \longrightarrow \text{Mới được phép cập nhật RAM}$$
+$$\text{Ghi bản ghi WAL} \longrightarrow \text{Ép xuống đĩa (fsync / sync\_data)} \longrightarrow \text{Mới được báo "thành công" và ghi trang dữ liệu ra đĩa}$$
+
+Lưu ý: quy tắc ràng buộc thứ tự **trên đĩa** và thời điểm **xác nhận** với người dùng. Nhiều hệ (PostgreSQL, InnoDB) vẫn sửa trang trong buffer pool trên RAM trước — miễn là trang bẩn đó không được ghi ra đĩa trước bản ghi WAL tương ứng. Động cơ Mini-LSM bên dưới chọn cách đơn giản và chặt nhất: đồng bộ WAL xong mới đụng tới MemTable.
 
 Cấu trúc của một bản ghi trong tệp WAL:
 ```
@@ -93,8 +95,8 @@ Cấu trúc của một bản ghi trong tệp WAL:
 │ Mã CRC32 (4B) │ Chiều dài (4B) │ Kiểu lệnh(1B) │ Khóa (Key)  │ Giá trị (Val)│
 └───────────────┴────────────────┴───────────────┴─────────────┴──────────────┘
 ```
-- **Mã kiểm tra toàn vẹn CRC32 (4 bytes)**: Ngăn chặn lỗi khi máy tính sập nguồn giữa lúc đang ghi dở một dòng nhật ký. Khi khởi động lại, nếu mã CRC32 không khớp, hệ thống biết ngay dòng nhật ký đó bị rách (corrupted) và an toàn cắt bỏ nó.
-- **Hàm `fsync` / `flush`**: Hệ điều hành thường giữ dữ liệu trong bộ nhớ đệm (buffer cache) của kernel. Hàm `flush()` trong Rust ép buộc dữ liệu phải rời khỏi RAM và ghi thực sự vào các chip nhớ vật lý của đĩa SSD.
+- **Mã kiểm tra toàn vẹn CRC32 (4 bytes)**: Ngăn chặn lỗi khi máy tính sập nguồn giữa lúc đang ghi dở một dòng nhật ký. Khi khởi động lại, nếu mã CRC32 không khớp, hệ thống biết ngay dòng nhật ký đó bị rách (corrupted) và an toàn cắt bỏ nó. (Mã minh hoạ bên dưới dùng định dạng văn bản đơn giản hơn: mỗi bản ghi là một dòng, và dấu `'\n'` cuối dòng đóng vai trò "dấu kết thúc" — dòng cuối thiếu `'\n'` là dòng bị rách và bị cắt bỏ. CRC mạnh hơn vì còn phát hiện được byte rác ở *giữa* bản ghi.)
+- **Hàm `fsync` — KHÔNG phải `flush`**: Hệ điều hành giữ dữ liệu vừa ghi trong **page cache** của kernel (vẫn là RAM). Trong Rust, `File::flush()` **không** đẩy dữ liệu xuống đĩa (với `File` nó thậm chí không làm gì, vì `File` không có bộ đệm phía người dùng — xem Chương 31). Phải gọi `File::sync_data()` (`fdatasync`) hoặc `File::sync_all()` (`fsync`) thì dữ liệu mới thực sự nằm trên thiết bị lưu trữ. Đây là thao tác đắt nhất của WAL; hệ thống thật gom nhiều giao dịch vào một lần fsync (*group commit*).
 
 ### 2. Giải phẫu kiến trúc 4 tầng của LSM-Tree
 
@@ -102,7 +104,7 @@ LSM-Tree phân tách rạch ròi quy trình xử lý dữ liệu theo thời gia
 
 1. **Tầng 1: MemTable (Memory Table)**:
    - Nằm trên RAM, duy trì dữ liệu luôn luôn được sắp xếp theo thứ tự khóa tăng dần.
-   - Trong Rust, `std::collections::BTreeMap` là sự lựa chọn hoàn hảo nhất cho MemTable nhờ tính chất tự sắp xếp $O(\log N)$ và thân thiện với bộ nhớ đệm (buffer) của CPU.
+   - Trong Rust, `std::collections::BTreeMap` là sự lựa chọn hoàn hảo nhất cho MemTable nhờ tính chất tự sắp xếp $O(\log N)$ và thân thiện với bộ nhớ đệm (cache) của CPU.
 2. **Tầng 2: Write-Ahead Log (WAL)**:
    - Nằm trên đĩa SSD, nhận các bản ghi tuần tự song song với MemTable để phòng ngừa rủi ro mất điện.
 3. **Tầng 3: SSTable (Sorted String Table)**:
@@ -121,7 +123,7 @@ Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, mô
 ```rust
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 
 /// ĐỘNG CƠ MINI LSM-TREE KẾT HỢP GHI NHẬT KÝ WAL
@@ -135,33 +137,52 @@ impl MiniLsmEngine {
     /// Khởi động động cơ: Mở tệp WAL và tự động phục hồi nếu tệp đã tồn tại
     pub fn open(wal_path: &str) -> io::Result<Self> {
         let mut memtable = BTreeMap::new();
+        // Số byte hợp lệ của WAL (kết thúc ở dấu '\n' cuối cùng)
+        let mut valid_len: u64 = 0;
 
         // 1. TIẾN TRÌNH PHỤC HỒI SAU SỰ CỐ (Crash Recovery):
         // Nếu tệp WAL đã có sẵn từ phiên chạy trước, đọc lại toàn bộ nhật ký
         if Path::new(wal_path).exists() {
-            let file_doc = File::open(wal_path)?;
-            let reader = BufReader::new(file_doc);
-            for line_res in reader.lines() {
-                let line = line_res?;
-                if let Some((order, phan_con_lai)) = line.split_once(':') {
-                    if order == "SET" {
-                        if let Some((k, v)) = phan_con_lai.split_once('=') {
+            let mut reader = BufReader::new(File::open(wal_path)?);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                let n = reader.read_until(b'\n', &mut line)?;
+                // Dòng cuối không có '\n' = dòng bị RÁCH do sập nguồn giữa lúc ghi:
+                // bỏ qua, không được áp dụng một nửa bản ghi.
+                if n == 0 || line.last() != Some(&b'\n') {
+                    break;
+                }
+                valid_len += n as u64;
+                let text = String::from_utf8_lossy(&line[..n - 1]);
+                if let Some((op, rest)) = text.split_once(':') {
+                    if op == "SET" {
+                        if let Some((k, v)) = rest.split_once('=') {
                             memtable.insert(k.to_string(), v.to_string());
                         }
-                    } else if order == "DEL" {
-                        memtable.remove(phan_con_lai);
+                    } else if op == "DEL" {
+                        memtable.remove(rest);
                     }
                 }
             }
-            println!("    [RECOVERY]: Đã phục hồi thành công {} khóa từ tệp WAL!", memtable.len());
+            println!(
+                "    [RECOVERY]: Đã phục hồi thành công {} khóa từ tệp WAL!",
+                memtable.len()
+            );
         }
 
-        // 2. Mở tệp WAL ở chế độ ghi chèn (Append-only)
+        // 2. Mở tệp WAL ở chế độ ghi nối đuôi (Append-only).
+        //    (append(true) đã bao hàm quyền ghi, không cần write(true))
         let wal_file = OpenOptions::new()
             .create(true)
-            .write(true)
             .append(true)
             .open(wal_path)?;
+        // Cắt bỏ phần đuôi bị rách (nếu có), nếu không bản ghi mới sẽ dính
+        // vào sau mảnh rác và chính nó cũng bị hỏng ở lần phục hồi sau.
+        if wal_file.metadata()?.len() > valid_len {
+            wal_file.set_len(valid_len)?;
+            wal_file.sync_all()?;
+        }
 
         Ok(Self {
             memtable,
@@ -170,13 +191,21 @@ impl MiniLsmEngine {
         })
     }
 
-    /// Thao tác Ghi: BẮT BUỘC ghi WAL trước, sau đó mới cập nhật MemTable
+    /// Ghi một dòng vào WAL và ÉP xuống đĩa trước khi trả về.
+    fn append_to_wal(&mut self, log_line: &str) -> io::Result<()> {
+        self.wal_file.write_all(log_line.as_bytes())?;
+        // write_all chỉ đưa dữ liệu vào page cache của hệ điều hành (vẫn là RAM!).
+        // `File::flush()` không làm gì cả; sync_data() (fdatasync) mới thực sự
+        // chờ dữ liệu nằm trên thiết bị lưu trữ.
+        self.wal_file.sync_data()
+    }
+
+    /// Thao tác Ghi: BẮT BUỘC ghi WAL (và đồng bộ xuống đĩa) trước, sau đó mới cập nhật MemTable.
+    /// Giới hạn của định dạng văn bản đơn giản: khoá không được chứa '=' hay '\n',
+    /// giá trị không được chứa '\n'.
     pub fn set(&mut self, key: &str, value: &str) -> io::Result<()> {
         // BƯỚC 1: Ghi tuần tự vào WAL (Write-Ahead)
-        let close_log = format!("SET:{}={}\n", key, value);
-        self.wal_file.write_all(close_log.as_bytes())?;
-        // Ép dữ liệu từ bộ đệm phần mềm xuống phần cứng đĩa
-        self.wal_file.flush()?;
+        self.append_to_wal(&format!("SET:{}={}\n", key, value))?;
 
         // BƯỚC 2: Cập nhật MemTable trên RAM
         self.memtable.insert(key.to_string(), value.to_string());
@@ -187,9 +216,7 @@ impl MiniLsmEngine {
     pub fn delete(&mut self, key: &str) -> io::Result<bool> {
         if self.memtable.contains_key(key) {
             // Ghi nhận bia mộ (Tombstone) vào WAL
-            let close_log = format!("DEL:{}\n", key);
-            self.wal_file.write_all(close_log.as_bytes())?;
-            self.wal_file.flush()?;
+            self.append_to_wal(&format!("DEL:{}\n", key))?;
 
             self.memtable.remove(key);
             Ok(true)
@@ -213,7 +240,8 @@ fn main() -> io::Result<()> {
     println!("   NHẬT KÝ GHI TRƯỚC WAL & ĐỘNG CƠ LƯU TRỮ HIỆN ĐẠI LSM-TREE ");
     println!("============================================================");
 
-    let wal_path = "mini_engine.wal";
+    let wal_path_buf = std::env::temp_dir().join("ch34_mini_engine.wal");
+    let wal_path = wal_path_buf.to_str().expect("đường dẫn tạm phải là UTF-8");
 
     // Đảm bảo dọn dẹp tệp cũ trước khi bắt đầu thử nghiệm
     let _ = std::fs::remove_file(wal_path);
@@ -222,23 +250,26 @@ fn main() -> io::Result<()> {
     println!("[1] Khởi động động cơ MiniLsmEngine lần đầu:");
     {
         let mut engine = MiniLsmEngine::open(wal_path)?;
-        
+
         println!("    - Ghi khóa 'user:1' -> 'Alice'");
         engine.set("user:1", "Alice")?;
-        
+
         println!("    - Ghi khóa 'user:2' -> 'Bob'");
         engine.set("user:2", "Bob")?;
-        
+
         println!("    - Ghi đè khóa 'user:1' -> 'Alice Nguyen'");
         engine.set("user:1", "Alice Nguyen")?;
-        
+
         println!("    - Ghi khóa 'user:3' -> 'Charlie'");
         engine.set("user:3", "Charlie")?;
-        
+
         println!("    - Xóa khóa 'user:2' (Ghi Tombstone vào WAL)");
         engine.delete("user:2")?;
 
-        println!("    - Tổng số khóa hợp lệ trên RAM: {}", engine.total_keys());
+        println!(
+            "    - Tổng số khóa hợp lệ trên RAM: {}",
+            engine.total_keys()
+        );
         assert_eq!(engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
         assert_eq!(engine.get("user:2"), None);
         assert_eq!(engine.get("user:3"), Some(&"Charlie".to_string()));
@@ -251,18 +282,21 @@ fn main() -> io::Result<()> {
     println!("\n[2] Bật lại máy chủ và khởi động lại MiniLsmEngine:");
     {
         let recovered_engine = MiniLsmEngine::open(wal_path)?;
-        
+
         println!("    - Kiểm tra dữ liệu sau phục hồi:");
         println!("      + 'user:1' = {:?}", recovered_engine.get("user:1"));
         println!("      + 'user:2' = {:?}", recovered_engine.get("user:2"));
         println!("      + 'user:3' = {:?}", recovered_engine.get("user:3"));
 
         // Xác nhận dữ liệu được phục hồi chuẩn xác 100%
-        assert_eq!(recovered_engine.get("user:1"), Some(&"Alice Nguyen".to_string()));
+        assert_eq!(
+            recovered_engine.get("user:1"),
+            Some(&"Alice Nguyen".to_string())
+        );
         assert_eq!(recovered_engine.get("user:2"), None);
         assert_eq!(recovered_engine.get("user:3"), Some(&"Charlie".to_string()));
         assert_eq!(recovered_engine.total_keys(), 2);
-        
+
         println!("    => Toàn bộ trạng thái dữ liệu đã được phục hồi hoàn hảo nhờ WAL!");
     }
 
@@ -270,7 +304,7 @@ fn main() -> io::Result<()> {
     let _ = std::fs::remove_file(wal_path);
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 30               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 34               ");
     println!("============================================================");
     Ok(())
 }
@@ -305,7 +339,7 @@ fn read_record_broken(f: File) {
 // Cách sửa chữa đúng chuẩn: Import trait BufRead
 use std::io::BufRead;
 
-fn doc_dong_dung(f: File) -> std::io::Result<()> {
+fn read_lines_correct(f: File) -> std::io::Result<()> {
     let reader = BufReader::new(f);
     for line in reader.lines() {
         println!("Dòng nhật ký: {}", line?);
@@ -316,10 +350,76 @@ fn doc_dong_dung(f: File) -> std::io::Result<()> {
 
 ---
 
+## Kiểm thử tự động (Automated Tests)
+
+Phục hồi sau sự cố là thứ khó kiểm thử bằng tay nhất — bạn không thể rút phích cắm máy mỗi lần chạy `cargo test`. Nhưng ta có thể **giả lập** hậu quả của nó: tự tay viết một tệp WAL có dòng cuối bị rách (thiếu `'\n'`) rồi mở động cơ trên tệp đó. Module dưới đây kiểm ba điều: phát lại đúng thứ tự (kể cả bia mộ), không bao giờ áp dụng nửa bản ghi, và bản ghi mới không bị dính vào mảnh rác còn sót lại.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_wal(name: &str) -> String {
+        let p = std::env::temp_dir().join(format!("ch34_test_{name}.wal"));
+        let _ = std::fs::remove_file(&p);
+        p.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn recovery_replays_sets_and_tombstones() -> io::Result<()> {
+        let path = temp_wal("replay");
+        {
+            let mut e = MiniLsmEngine::open(&path)?;
+            e.set("a", "10")?;
+            e.set("b", "20")?;
+            e.set("a", "30")?;
+            assert!(e.delete("b")?);
+            e.set("c", "40")?;
+        }
+        let e = MiniLsmEngine::open(&path)?;
+        assert_eq!(e.get("a"), Some(&"30".to_string()));
+        assert_eq!(e.get("b"), None);
+        assert_eq!(e.get("c"), Some(&"40".to_string()));
+        assert_eq!(e.total_keys(), 2);
+        std::fs::remove_file(&path)
+    }
+
+    #[test]
+    fn torn_last_line_is_ignored_and_truncated() -> io::Result<()> {
+        let path = temp_wal("torn");
+        // Giả lập sập nguồn giữa lúc ghi: dòng cuối thiếu '\n'
+        std::fs::write(&path, "SET:a=1\nSET:b=2\nSET:c=12")?;
+        {
+            let mut e = MiniLsmEngine::open(&path)?;
+            assert_eq!(e.get("c"), None, "không được áp dụng nửa bản ghi");
+            assert_eq!(e.total_keys(), 2);
+            // Bản ghi mới phải nằm trên một dòng sạch, không dính vào mảnh rác
+            e.set("d", "4")?;
+        }
+        assert_eq!(
+            std::fs::read_to_string(&path)?,
+            "SET:a=1\nSET:b=2\nSET:d=4\n"
+        );
+        let e = MiniLsmEngine::open(&path)?;
+        assert_eq!(e.get("d"), Some(&"4".to_string()));
+        std::fs::remove_file(&path)
+    }
+
+    #[test]
+    fn deleting_missing_key_writes_nothing() -> io::Result<()> {
+        let path = temp_wal("missing");
+        let mut e = MiniLsmEngine::open(&path)?;
+        assert!(!e.delete("ghost")?);
+        assert_eq!(std::fs::metadata(&path)?.len(), 0);
+        std::fs::remove_file(&path)
+    }
+}
+```
+
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Nguyên lý WAL tối thượng**: Không bao giờ được phép sửa dữ liệu trên RAM trước khi ghi nhận thành công thao tác vào tệp nhật ký nối đuôi (Append-only) trên đĩa cứng.
+1. **Nguyên lý WAL tối thượng**: Bản ghi nhật ký phải được ghi nối đuôi **và `fsync` xuống đĩa** trước khi thay đổi được báo thành công hay được ghi vào tệp dữ liệu. `flush()` không đủ — phải là `sync_data()`/`sync_all()`.
 2. **Sức mạnh ghi tuần tự của LSM-Tree**: Bằng cách tiếp nhận dữ liệu trên RAM (`MemTable`) và ghi tuần tự (`WAL`), LSM-Tree đạt thông lượng ghi vượt trội hàng chục lần so với B+ Tree.
 3. **Tính chất bất biến của SSTable**: Các tệp trên đĩa không bao giờ bị ghi đè; các bản ghi cập nhật hoặc bị xóa được đánh dấu bằng khóa mới hoặc cờ Tombstone.
 4. **Tiến trình Compaction**: Đóng vai trò như người dọn dẹp vệ sinh chạy ngầm, sáp nhập nhiều tệp SSTable nhỏ thành tệp lớn và loại bỏ rác để giải phóng dung lượng đĩa.
@@ -382,8 +482,7 @@ Ba điều bài này dạy:
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-use std::io::Write;
-
+// (dùng `Write` đã được import ở đầu main.rs)
 impl MiniLsmEngine {
     pub fn flush_to_sstable(&mut self, sstable_path: &str) -> io::Result<()> {
         if self.memtable.len() <= 5 { return Ok(()); }
@@ -403,15 +502,14 @@ impl MiniLsmEngine {
         //    Làm ngược lại rồi mất điện -> mất trắng: WAL đã rỗng mà
         //    SSTable thì chưa kịp ghi.
         self.memtable.clear();
-        self.wal_file = std::fs::File::options()
-            .create(true).write(true).truncate(true).read(true)
-            .open(&self.wal_path)?;
+        self.wal_file.set_len(0)?;   // làm rỗng WAL (tệp vẫn mở ở chế độ append)
+        self.wal_file.sync_all()?;
         Ok(())
     }
 }
 
 #[test]
-fn xa_khi_vuot_nguong_va_lam_moi_wal() -> io::Result<()> {
+fn flushes_over_threshold_and_resets_wal() -> io::Result<()> {
     let tmp = std::env::temp_dir();
     let wal = tmp.join("ch34_flush_test.wal");
     let sst = tmp.join("ch34_flush_test.sst");
@@ -424,15 +522,15 @@ fn xa_khi_vuot_nguong_va_lam_moi_wal() -> io::Result<()> {
     assert_eq!(e.total_keys(), 0, "memtable phải rỗng sau khi xả");
 
     // SSTable phải ĐÃ SẮP XẾP — đó là điều làm nó tra cứu nhanh được.
-    let noi_dung = std::fs::read_to_string(&sst)?;
-    let khoa: Vec<&str> = noi_dung.lines().map(|l| l.split('=').next().unwrap()).collect();
-    let mut sap = khoa.clone(); sap.sort();
-    assert_eq!(khoa, sap, "SSTable phải sắp xếp theo khoá");
+    let contents = std::fs::read_to_string(&sst)?;
+    let keys: Vec<&str> = contents.lines().map(|l| l.split('=').next().unwrap()).collect();
+    let mut sorted = keys.clone(); sorted.sort();
+    assert_eq!(keys, sorted, "SSTable phải sắp xếp theo khoá");
     Ok(())
 }
 ```
 
-Chi tiết quyết định đúng/sai: **`sync_all()` trước khi làm mới WAL**. Không có nó, dữ liệu mới còn nằm trong bộ đệm của hệ điều hành; mất điện lúc đó thì SSTable trống mà WAL cũng đã bị cắt. Đây là lý do mọi động cơ lưu trữ đều có một điểm `fsync` mà bạn không được phép bỏ qua vì lý do hiệu năng.
+Chi tiết quyết định đúng/sai: **`sync_all()` trước khi làm mới WAL**. Không có nó, dữ liệu mới còn nằm trong bộ đệm của hệ điều hành; mất điện lúc đó thì SSTable trống mà WAL cũng đã bị cắt. Đây là lý do mọi động cơ lưu trữ đều có một điểm `fsync` mà bạn không được phép bỏ qua vì lý do hiệu năng. (Còn một chi tiết nữa: tệp SSTable *mới tạo* chỉ thực sự "tồn tại" sau khi mục của nó trong **thư mục** cũng được fsync — Chương 36 sẽ làm điều đó khi nén gộp.)
 </details>
 
 <details>
@@ -458,7 +556,7 @@ Với tải ghi nặng — ghi log, dữ liệu chuỗi thời gian, bảng tin 
 **Nhược điểm khi ĐỌC NGẪU NHIÊN:** dữ liệu của một khoá có thể ở MemTable, hoặc SSTable mới nhất, hoặc cũ hơn, hoặc cũ hơn nữa. Không thấy ở tầng này thì phải xuống tầng dưới. Đọc một khoá **không tồn tại** là tệ nhất — phải kiểm **mọi** SSTable rồi mới kết luận là không có:
 
 ```
-get("khoa_khong_ton_tai"):
+get("missing_key"):
     MemTable   -> không thấy
     SSTable-1  -> đọc đĩa, không thấy
     SSTable-2  -> đọc đĩa, không thấy
@@ -470,7 +568,7 @@ get("khoa_khong_ton_tai"):
 **Bộ lọc Bloom chữa đúng chỗ đó.** Mỗi SSTable kèm một cấu trúc bit nhỏ trả lời được *"khoá này CHẮC CHẮN không có trong tệp"* mà không chạm đĩa. Nó có thể báo nhầm "có thể có" (dương tính giả), nhưng **không bao giờ báo nhầm "không có"** — và tính bất đối xứng đó là toàn bộ giá trị:
 
 ```
-get("khoa_khong_ton_tai") có Bloom filter:
+get("missing_key") có Bloom filter:
     Bloom-1    -> "chắc chắn không có"  -> BỎ QUA, không đọc đĩa
     Bloom-2    -> "chắc chắn không có"  -> BỎ QUA
     => 0 lần đọc đĩa

@@ -71,21 +71,21 @@ Hãy quan sát cách chiếc máy lọc nước RO trong ngôi nhà bạn vận 
 Trong lập trình mệnh lệnh truyền thống (như C, C++, Python cơ bản), lập trình viên tập trung vào việc **thay đổi trạng thái bộ nhớ theo thời gian**:
 ```rust
 // Phong cách mệnh lệnh (Imperative)
-let mut tong = 0;
+let mut total = 0;
 let mut i = 0;
 while i < list.len() {
     if list[i] > 10 {
-        tong += list[i];
+        total += list[i];
     }
     i += 1;
 }
 ```
-Ở đoạn mã trên, có đến 2 biến mang cờ `mut`: `tong` và `i`. Bộ não của lập trình viên phải hoạt động như một bộ vi xử lý CPU thu nhỏ để theo dõi: "Ở vòng 1, `i` là mấy? `tong` là bao nhiêu? Có bị tràn chỉ mục ngoài mảng (index out of bounds) hay không?".
+Ở đoạn mã trên, có đến 2 biến mang cờ `mut`: `total` và `i`. Bộ não của lập trình viên phải hoạt động như một bộ vi xử lý CPU thu nhỏ để theo dõi: "Ở vòng 1, `i` là mấy? `total` là bao nhiêu? Có bị tràn chỉ mục ngoài mảng (index out of bounds) hay không?".
 
 Ngược lại, trong phong cách lập trình hàm (khai báo):
 ```rust
 // Phong cách khai báo đường ống (Declarative)
-let tong: i32 = list.iter()
+let total: i32 = list.iter()
     .filter(|&&x| x > 10)
     .sum();
 ```
@@ -128,20 +128,20 @@ Trong Rust, mọi biến khai báo bằng `let` đều **mặc định là bất
 > **Định nghĩa**: một biểu thức là *minh bạch tham chiếu* nếu bạn có thể **thay nó bằng chính giá trị nó trả về** mà chương trình không đổi nghĩa.
 
 ```rust
-let x = to_money(&queue);   // giả sử trả về 90.0
-let tong = x + x;                 // 180.0
+let x = subtotal(&item); // giả sử trả về 90_000
+let total = x + x;       // 180_000
 
-// Nếu `to_money` là hàm thuần túy, ba dòng dưới đây HOÀN TOÀN tương đương:
-let tong = to_money(&queue) + to_money(&queue);
-let tong = 90.0 + 90.0;
-let tong = 180.0;
+// Nếu `subtotal` là hàm thuần túy, ba dòng dưới đây HOÀN TOÀN tương đương:
+let total = subtotal(&item) + subtotal(&item);
+let total = 90_000 + 90_000;
+let total = 180_000;
 ```
 
 Vì sao điều này quan trọng đến vậy? Vì nó chính là **giấy phép để bạn tái cấu trúc mã nguồn**. Mỗi khi bạn tách một hàm dài thành hai hàm nhỏ, gộp hai biến thành một, hay để trình biên dịch nhớ tạm một kết quả — bạn đang dựa vào tính minh bạch tham chiếu mà có thể chưa biết tên nó. Cách suy luận bằng cách thay thế biểu thức như trên gọi là **suy luận bằng đẳng thức (equational reasoning)**.
 
 Ngược lại, những thứ sau **phá vỡ** tính chất này: đọc đồng hồ hệ thống (`Instant::now()`), sinh số ngẫu nhiên, đọc biến toàn cục có thể thay đổi, đọc tệp. Gọi hai lần cho hai kết quả khác nhau, nên **không thể thay bằng giá trị**.
 
-> **Liên hệ với Rust**: từ khóa `const fn` đánh dấu những hàm thuần túy đến mức trình biên dịch tính được kết quả ngay lúc biên dịch. Còn thuộc tính `#[must_use]` là lời nhắc rằng "hàm này thuần túy — nếu bạn vứt kết quả đi thì nó chẳng làm gì cả".
+> **Liên hệ với Rust**: từ khóa `const fn` đánh dấu những hàm có thể được trình biên dịch tính ra kết quả ngay lúc biên dịch — một dạng thuần túy rất chặt. Còn thuộc tính `#[must_use]` báo rằng bỏ qua kết quả gần như chắc chắn là lỗi — điển hình là với hàm thuần túy: nếu bạn vứt kết quả đi thì nó chẳng làm gì cả.
 
 ### 5. Hàm toàn phần và Hàm bộ phận (Total vs Partial Functions)
 
@@ -150,20 +150,20 @@ Ngược lại, những thứ sau **phá vỡ** tính chất này: đọc đồn
 - **Hàm toàn phần (total function)**: với **mọi** giá trị đầu vào hợp lệ về kiểu, hàm đều trả về một kết quả. Không sập, không treo.
 - **Hàm bộ phận (partial function)**: có những đầu vào mà hàm **không có câu trả lời** — nó sập, panic, hoặc trả về giá trị vô nghĩa.
 
-Chữ ký hàm (Function selector) thường **nói dối** về điều này:
+Chữ ký hàm (function signature) thường **nói dối** về điều này:
 
 ```rust
-fn chia(a: i32, b: i32) -> i32 { a / b }
+fn divide(a: i32, b: i32) -> i32 { a / b }
 ```
 
-Chữ ký hứa hẹn: "đưa tôi hai `i32` bất kỳ, tôi trả về một `i32`". Nhưng `chia(10, 0)` thì sập chương trình. Đây là **hàm bộ phận đội lốt hàm toàn phần** — loại hàm nguy hiểm nhất.
+Chữ ký hứa hẹn: "đưa tôi hai `i32` bất kỳ, tôi trả về một `i32`". Nhưng `divide(10, 0)` thì sập chương trình. Đây là **hàm bộ phận đội lốt hàm toàn phần** — loại hàm nguy hiểm nhất.
 
 Có đúng **hai cách** biến một hàm bộ phận thành hàm toàn phần:
 
 | Cách | Ý tưởng | Ví dụ trong Rust |
 |---|---|---|
-| **Mở rộng đầu ra** | Thêm một "chỗ" cho trường hợp không có câu trả lời | `fn chia(a: i32, b: i32) -> Option<i32>` |
-| **Thu hẹp đầu vào** | Làm cho đầu vào xấu không thể biểu diễn được | `fn chia(a: i32, b: NonZeroI32) -> i32` |
+| **Mở rộng đầu ra** | Thêm một "chỗ" cho trường hợp không có câu trả lời | `fn divide(a: i32, b: i32) -> Option<i32>` |
+| **Thu hẹp đầu vào** | Làm cho đầu vào xấu không thể biểu diễn được | `fn divide(a: i32, b: NonZeroI32) -> i32` |
 
 Cách thứ hai mạnh hơn nhiều — và nó chính là chủ đề trung tâm của Chương 20.
 
@@ -174,7 +174,7 @@ Bảng dưới đây liệt kê các "hàm bộ phận đội lốt" phổ biế
 | `v[i]` | `v.get(i) -> Option<&T>` |
 | `.unwrap()` / `.expect()` | `match`, `unwrap_or`, `unwrap_or_else`, toán tử `?` |
 | `a / b`, `a % b` | `a.checked_div(b) -> Option<i32>` |
-| `a + b` (tràn số ở bản release) | `a.checked_add(b)`, `saturating_add`, `wrapping_add` |
+| `a + b` (tràn số: panic ở bản debug, âm thầm quay vòng ở bản release) | `a.checked_add(b)`, `saturating_add`, `wrapping_add` |
 | `s[0..5]` trên chuỗi UTF-8 | `s.get(0..5) -> Option<&str>` |
 
 > **Quy tắc thực chiến**: mỗi lần bạn gõ `.unwrap()`, bạn đang biến một hàm toàn phần thành hàm bộ phận. Hãy tự hỏi: *"tôi có chứng minh được trường hợp này không bao giờ xảy ra không?"* Nếu không chứng minh được, đừng dùng `.unwrap()`.
@@ -189,7 +189,7 @@ Khối `if/else`, khối so khớp `match`, và thậm chí khối mã `{ ... }`
 
 ```rust
 // Khởi tạo biến bất biến trực tiếp từ biểu thức rẽ nhánh
-let state = if diem_so >= 50 { "Đạt" } else { "Thi lại" };
+let state = if score >= 50 { "Đạt" } else { "Thi lại" };
 ```
 
 ---
@@ -201,15 +201,19 @@ Dưới đây là một chương trình hoàn chỉnh, minh họa bài toán th�
 ```rust
 // Tệp: src/main.rs
 // Chương trình minh họa tư duy Lập trình hàm và Xây dựng Đường ống (Data Pipelines) trong Rust
+// (Tiền tính bằng u64 — đơn vị đồng — chứ không dùng f64, theo cảnh báo ở Chương 03.)
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
-    pub ma_san_pham: String,
+    pub sku: String,
     pub product_name: String,
-    pub unit_price: f64,
+    pub unit_price: u64,
     pub quantity: u32,
     pub is_paid: bool,
 }
+
+// Ngưỡng giá trị tối thiểu của một dòng hàng để được tính vào báo cáo
+const MIN_LINE_TOTAL: u64 = 50_000;
 
 // ============================================================================
 // HÀM THUẦN TÚY (PURE FUNCTIONS) - KHÔNG TÁC DỤNG PHỤ
@@ -217,18 +221,16 @@ pub struct Item {
 
 /// Hàm thuần túy: Tính thành tiền của một mặt hàng
 /// Nhận dữ liệu đầu vào và trả về giá trị mới, không thay đổi bất kỳ trạng thái nào
-pub fn to_money(queue: &Item) -> f64 {
-    queue.unit_price * (queue.quantity as f64)
+pub fn subtotal(item: &Item) -> u64 {
+    item.unit_price * item.quantity as u64
 }
 
-/// Hàm thuần túy: Áp dụng phiếu giảm giá tỷ lệ phần trăm
-pub fn apply_down_price(base_price: f64, phan_tram_giam: f64) -> f64 {
-    if phan_tram_giam <= 0.0 {
-        base_price
-    } else if phan_tram_giam >= 100.0 {
-        0.0
+/// Hàm thuần túy: Áp dụng phiếu giảm giá theo tỷ lệ phần trăm (0..=100)
+pub fn apply_discount(base_price: u64, discount_percent: u64) -> u64 {
+    if discount_percent >= 100 {
+        0
     } else {
-        base_price * (1.0 - (phan_tram_giam / 100.0))
+        base_price * (100 - discount_percent) / 100
     }
 }
 
@@ -238,19 +240,22 @@ pub fn apply_down_price(base_price: f64, phan_tram_giam: f64) -> f64 {
 
 /// CÁCH 1: Phong cách Mệnh lệnh (Imperative)
 /// Dùng vòng lặp thủ công, biến cờ mut tạm thời, dễ xảy ra lỗi ngoài ý muốn
-pub fn xu_ly_menh_lenh(list: &[Item]) -> (f64, Vec<String>) {
-    let mut total_revenue: f64 = 0.0;
+// Vòng lặp theo chỉ số được giữ CỐ Ý để làm đối chứng với cách 2,
+// nên tắt lint `needless_range_loop` của Clippy cho riêng hàm này.
+#[allow(clippy::needless_range_loop)]
+pub fn process_imperative(list: &[Item]) -> (u64, Vec<String>) {
+    let mut total_revenue: u64 = 0;
     let mut names: Vec<String> = Vec::new();
 
     // Vòng lặp thủ công với nhiều bước điều kiện lồng nhau
     for i in 0..list.len() {
-        let queue = &list[i];
-        // Chỉ xử lý các đơn hàng đã thanh toán và có giá trị trên 50.0
-        if queue.is_paid {
-            let line_total = to_money(queue);
-            if line_total >= 50.0 {
+        let item = &list[i];
+        // Chỉ xử lý các mặt hàng đã thanh toán và có thành tiền từ 50.000đ trở lên
+        if item.is_paid {
+            let line_total = subtotal(item);
+            if line_total >= MIN_LINE_TOTAL {
                 total_revenue += line_total;
-                names.push(queue.product_name.clone());
+                names.push(item.product_name.clone());
             }
         }
     }
@@ -260,23 +265,56 @@ pub fn xu_ly_menh_lenh(list: &[Item]) -> (f64, Vec<String>) {
 
 /// CÁCH 2: Phong cách Lập trình Hàm Khai báo (Declarative Pipeline)
 /// Dữ liệu chảy qua chuỗi lọc và ánh xạ, không dùng biến mut nào trong quá trình xử lý!
-pub fn handle_declaration(list: &[Item]) -> (f64, Vec<String>) {
+pub fn process_declarative(list: &[Item]) -> (u64, Vec<String>) {
     // 1. Nhánh tính tổng doanh thu thông qua đường ống (Pipeline)
-    let total_revenue: f64 = list
+    let total_revenue: u64 = list
         .iter()
-        .filter(|queue| queue.is_paid)             // Bước 1: Lọc hàng đã trả tiền
-        .map(|queue| to_money(queue))             // Bước 2: Chuyển đổi thành tiền
-        .filter(|&tien| tien >= 50.0)                  // Bước 3: Chỉ lấy món từ 50k trở lên
-        .sum();                                        // Bước 4: Gom tụ tính tổng
+        .filter(|item| item.is_paid) // Bước 1: Lọc hàng đã trả tiền
+        .map(subtotal) // Bước 2: Chuyển đổi thành tiền
+        .filter(|&amount| amount >= MIN_LINE_TOTAL) // Bước 3: Chỉ lấy món từ 50k trở lên
+        .sum(); // Bước 4: Gom tụ tính tổng
 
     // 2. Nhánh trích xuất danh sách tên mặt hàng
     let names: Vec<String> = list
         .iter()
-        .filter(|queue| queue.is_paid && to_money(queue) >= 50.0)
-        .map(|queue| queue.product_name.clone())             // Ánh xạ sang chuỗi tên
-        .collect();                                    // Gom vào vector mới
+        .filter(|item| item.is_paid && subtotal(item) >= MIN_LINE_TOTAL)
+        .map(|item| item.product_name.clone()) // Ánh xạ sang chuỗi tên
+        .collect(); // Gom vào vector mới
 
     (total_revenue, names)
+}
+
+fn sample_cart() -> Vec<Item> {
+    vec![
+        Item {
+            sku: String::from("SP-01"),
+            product_name: String::from("Sổ tay Lập trình Rust"),
+            unit_price: 45_000,
+            quantity: 2,
+            is_paid: true, // Thành tiền = 90.000 (Thỏa mãn >= 50.000)
+        },
+        Item {
+            sku: String::from("SP-02"),
+            product_name: String::from("Bút bi kỹ thuật"),
+            unit_price: 15_000,
+            quantity: 1,
+            is_paid: true, // Thành tiền = 15.000 (Bị loại do < 50.000)
+        },
+        Item {
+            sku: String::from("SP-03"),
+            product_name: String::from("Bàn phím cơ không dây"),
+            unit_price: 120_000,
+            quantity: 1,
+            is_paid: false, // Chưa thanh toán (Bị loại)
+        },
+        Item {
+            sku: String::from("SP-04"),
+            product_name: String::from("Chuột công thái học"),
+            unit_price: 75_000,
+            quantity: 1,
+            is_paid: true, // Thành tiền = 75.000 (Thỏa mãn >= 50.000)
+        },
+    ]
 }
 
 fn main() {
@@ -285,59 +323,59 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo tập dữ liệu ban đầu bất biến
-    let cart: Vec<Item> = vec![
-        Item {
-            ma_san_pham: String::from("SP-01"),
-            product_name: String::from("Sổ tay Lập trình Rust"),
-            unit_price: 45.0,
-            quantity: 2,
-            is_paid: true, // Thành tiền = 90.0 (Thỏa mãn >= 50)
-        },
-        Item {
-            ma_san_pham: String::from("SP-02"),
-            product_name: String::from("Bút bi kỹ thuật"),
-            unit_price: 15.0,
-            quantity: 1,
-            is_paid: true, // Thành tiền = 15.0 (Bị loại do < 50)
-        },
-        Item {
-            ma_san_pham: String::from("SP-03"),
-            product_name: String::from("Bàn phím cơ không dây"),
-            unit_price: 120.0,
-            quantity: 1,
-            is_paid: false, // Chưa thanh toán (Bị loại)
-        },
-        Item {
-            ma_san_pham: String::from("SP-04"),
-            product_name: String::from("Chuột công thái học"),
-            unit_price: 75.0,
-            quantity: 1,
-            is_paid: true, // Thành tiền = 75.0 (Thỏa mãn >= 50)
-        },
-    ];
+    let cart: Vec<Item> = sample_cart();
 
     println!("Tổng số mặt hàng đưa vào xử lý: {}", cart.len());
 
     // 1. Chạy theo phong cách mệnh lệnh
-    let (doanh_thu_1, ten_1) = xu_ly_menh_lenh(&cart);
+    let (revenue_1, names_1) = process_imperative(&cart);
     println!("\n[Kết quả Mệnh lệnh]:");
-    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_1);
-    println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_1);
+    println!("- Tổng doanh thu đạt chuẩn : {} đồng", revenue_1);
+    println!("- Danh sách mặt hàng hợp lệ: {:?}", names_1);
 
     // 2. Chạy theo phong cách khai báo đường ống
-    let (doanh_thu_2, ten_2) = handle_declaration(&cart);
+    let (revenue_2, names_2) = process_declarative(&cart);
     println!("\n[Kết quả Khai báo Đường ống]:");
-    println!("- Tổng doanh thu đạt chuẩn : {:.2} nghìn đồng", doanh_thu_2);
-    println!("- Danh sách mặt hàng hợp lệ: {:?}", ten_2);
+    println!("- Tổng doanh thu đạt chuẩn : {} đồng", revenue_2);
+    println!("- Danh sách mặt hàng hợp lệ: {:?}", names_2);
 
     // Xác thực hai cách tiếp cận cho ra cùng một kết quả nhất quán
-    assert_eq!(doanh_thu_1, doanh_thu_2);
-    assert_eq!(ten_1, ten_2);
+    assert_eq!(revenue_1, revenue_2);
+    assert_eq!(names_1, names_2);
 
     // Minh họa hàm thuần túy tính chiết khấu khuyến mãi độc lập
-    let total_next_down = apply_down_price(doanh_thu_2, 10.0); // Giảm giá 10%
-    println!("\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {:.2} nghìn đồng", total_next_down);
+    let discounted_total = apply_discount(revenue_2, 10); // Giảm giá 10%
+    println!(
+        "\n-> Doanh thu sau khi áp dụng phiếu giảm giá 10%: {} đồng",
+        discounted_total
+    );
     println!("============================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn both_styles_agree() {
+        let cart = sample_cart();
+        let expected = (
+            165_000,
+            vec![
+                String::from("Sổ tay Lập trình Rust"),
+                String::from("Chuột công thái học"),
+            ],
+        );
+        assert_eq!(process_imperative(&cart), expected);
+        assert_eq!(process_declarative(&cart), expected);
+    }
+
+    #[test]
+    fn discount_is_exact_and_clamped() {
+        assert_eq!(apply_discount(165_000, 10), 148_500);
+        assert_eq!(apply_discount(165_000, 0), 165_000);
+        assert_eq!(apply_discount(165_000, 150), 0);
+    }
 }
 ```
 
@@ -351,7 +389,7 @@ Dưới đây là các lỗi biên dịch điển hình nhất mà người họ
 |---|---|---|---|
 | **E0384** | `cannot assign twice to immutable variable` | Bạn cố tình gán đè giá trị mới lên một biến bất biến khai báo bằng `let`. Tư duy biến đổi trạng thái của lập trình mệnh lệnh đang chi phối. | Cân nhắc chuyển sang phong cách biểu thức hoặc trả về giá trị mới. Nếu bắt buộc phải thay đổi trạng thái, thêm từ khóa `mut` (`let mut ...`). |
 | **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gọi một phương thức sửa đổi dữ liệu (như `.push()`) trên một tập hợp bất biến trong thân hàm. | Khai báo lại biến với `let mut` hoặc chuyển sang sử dụng các hàm bộ điều hợp không làm biến đổi dữ liệu gốc như `.map()` hay `.filter()`. |
-| **E0308** | `mismatched types: expected 'bool', found '()'` | Bạn đưa một câu lệnh kết thúc bằng dấu chấm phẩy `;` vào vị trí đòi hỏi biểu thức điều kiện (ví dụ trong closure của `.filter()`). | Bỏ dấu chấm phẩy `;` ở cuối mệnh đề để khối mã trả về giá trị `bool` thực sự cho bộ lọc. |
+| **E0308** | `mismatched types` (kèm `expected 'bool', found '()'`) | Bạn đưa một câu lệnh kết thúc bằng dấu chấm phẩy `;` vào vị trí đòi hỏi biểu thức điều kiện (ví dụ trong closure của `.filter()`). | Bỏ dấu chấm phẩy `;` ở cuối mệnh đề để khối mã trả về giá trị `bool` thực sự cho bộ lọc. |
 | **E0507** | `cannot move out of '...' which is behind a shared reference` | Bạn cố lấy quyền sở hữu (ownership) của một phần tử trong danh sách khi đang duyệt qua tham chiếu mượn (`.iter()`). | Sử dụng tham chiếu `&` thay vì đoạt quyền sở hữu, hoặc gọi phương thức `.clone()` nếu thực sự cần một bản sao độc lập. |
 
 ### Ví dụ phân tích lỗi `E0384` thực tế:
@@ -359,17 +397,17 @@ Dưới đây là các lỗi biên dịch điển hình nhất mà người họ
 ```rust
 // Đoạn mã lỗi minh họa: Cố tình gán lại giá trị cho biến bất biến
 fn broken_version() {
-    let tong_tien = 100;
-    // tong_tien = tong_tien + 50; // LỖI E0384: cannot assign twice to immutable variable `tong_tien`
+    let total_price = 100;
+    // total_price = total_price + 50; // LỖI E0384: cannot assign twice to immutable variable `total_price`
 }
 
 // Cách sửa chữa đúng chuẩn lập trình hàm:
 fn correct_version() {
     let base_price = 100;
-    let phu_phi = 50;
+    let surcharge = 50;
     // Tạo biến mới bằng một biểu thức tính toán rõ ràng
-    let tong_tien = base_price + phu_phi; 
-    println!("Tổng tiền: {}", tong_tien);
+    let total_price = base_price + surcharge;
+    println!("Tổng tiền: {}", total_price);
 }
 ```
 
@@ -395,7 +433,7 @@ fn correct_version() {
    *(Yêu cầu: Không sử dụng bất kỳ biến `mut` nào).*
 
 2. **Bài tập 2 (Xây dựng Hàm thuần túy)**:  
-   Định nghĩa một hàm thuần túy `chuan_hoa_ten(full_name: &str) -> String` nhận vào một chuỗi họ tên bị thừa khoảng trắng ở hai đầu (ví dụ: `"   nguyễn văn an   "`), thực hiện cắt tỉa khoảng trắng thừa và viết in hoa toàn bộ chuỗi ký tự trả về (`"NGUYỄN VĂN AN"`). Kiểm tra tính thuần túy: gọi hàm này 3 lần liên tiếp với cùng tham số và xác nhận kết quả trả về luôn giống nhau.
+   Định nghĩa một hàm thuần túy `normalize_name(full_name: &str) -> String` nhận vào một chuỗi họ tên bị thừa khoảng trắng ở hai đầu (ví dụ: `"   nguyễn văn an   "`), thực hiện cắt tỉa khoảng trắng thừa và viết in hoa toàn bộ chuỗi ký tự trả về (`"NGUYỄN VĂN AN"`). Kiểm tra tính thuần túy: gọi hàm này 3 lần liên tiếp với cùng tham số và xác nhận kết quả trả về luôn giống nhau.
 
 3. **Bài tập 3 (Tư duy thiết kế)**:  
    Tại sao trong các hệ thống xử lý phân tán hoặc tài chính ngân hàng có tính chất quan trọng sống còn, các kiến trúc sư phần mềm luôn ưu tiên sử dụng lập trình hàm và dữ liệu bất biến thay vì cho phép các luồng tiến trình tự do sửa đổi một biến chung trên thanh RAM?
@@ -417,14 +455,14 @@ Ba bước của đề bài ứng đúng ba mắt xích: lọc số lẻ là `.f
 fn main() {
     let list = vec![3, 8, 12, 5, 20, 7];
 
-    let tong: i32 = list
+    let total: i32 = list
         .iter()
-        .filter(|&&x| x % 2 != 0)   // giữ số lẻ: 3, 5, 7
-        .map(|&x| x * 2)            // nhân đôi : 6, 10, 14
-        .sum();                     // cộng lại : 30
+        .filter(|&&x| x % 2 != 0) // giữ số lẻ: 3, 5, 7
+        .map(|&x| x * 2)          // nhân đôi : 6, 10, 14
+        .sum();                   // cộng lại : 30
 
-    assert_eq!(tong, 30);
-    println!("Tổng sau khi lọc lẻ và nhân đôi: {}", tong);
+    assert_eq!(total, 30);
+    println!("Tổng sau khi lọc lẻ và nhân đôi: {}", total);
 }
 ```
 Không một biến `mut` nào, không một chỉ số mảng nào — nên cũng không có cơ hội truy cập ngoài biên.
@@ -446,19 +484,19 @@ pub fn normalize_name(full_name: &str) -> String {
 }
 
 fn main() {
-    let tho = "   nguyễn văn an   ";
+    let raw = "   nguyễn văn an   ";
 
     // Gọi 3 lần với cùng đầu vào -> luôn cùng kết quả (tính tất định)
-    let a = normalize_name(tho);
-    let b = normalize_name(tho);
-    let c = normalize_name(tho);
+    let a = normalize_name(raw);
+    let b = normalize_name(raw);
+    let c = normalize_name(raw);
     assert_eq!(a, b);
     assert_eq!(b, c);
     assert_eq!(a, "NGUYỄN VĂN AN");
 
     // Đầu vào gốc KHÔNG hề bị thay đổi:
-    assert_eq!(tho, "   nguyễn văn an   ");
-    println!("{:?} -> {:?}", tho, a);
+    assert_eq!(raw, "   nguyễn văn an   ");
+    println!("{:?} -> {:?}", raw, a);
 }
 ```
 

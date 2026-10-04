@@ -1,14 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // File: src/main.rs
 // Chương trình thực chiến làm chủ Quy tắc Sở hữu & Cơ chế Di chuyển (Move Semantics)
 
 // 1. Hàm tiếp nhận quyền sở hữu: Biến truyền vào sẽ bị "nuốt chửng" tại đây!
-fn consume_series(chuoi_nhan_vao: String) {
-    println!(
-        "-> [Trong hàm tieu_thu_chuoi]: Đã nhận được: '{}'",
-        chuoi_nhan_vao
-    );
-    // Khi hàm này kết thúc tại dấu ngoặc nhọn dưới, chuoi_nhan_vao đi ra khỏi scope
+fn consume_string(text: String) {
+    println!("-> [Trong hàm consume_string]: Đã nhận được: '{}'", text);
+    // Khi hàm này kết thúc tại dấu ngoặc nhọn dưới, text đi ra khỏi scope
     // Bộ nhớ Heap của chuỗi này sẽ tự động bị giải phóng (DROP) ngay lập tức!
 }
 
@@ -19,8 +15,8 @@ fn append_suffix(mut text: String) -> String {
 }
 
 // 3. Hàm nhận kiểu Copy trên Stack: Không ảnh hưởng gì đến biến gốc
-fn print_int(so: i32) {
-    println!("-> [Trong hàm in_so_nguyen]: Giá trị số là: {}", so);
+fn print_int(n: i32) {
+    println!("-> [Trong hàm print_int]: Giá trị số là: {}", n);
 }
 
 fn main() {
@@ -31,11 +27,11 @@ fn main() {
     // --- PHẦN 1: CƠ CHẾ SAO CHÉP TRÊN STACK (COPY TRAIT) ---
     println!("\n1. Kiểm tra kiểu dữ liệu Copy trên Stack:");
     let base_score = 100;
-    let point_num_copy = base_score; // Tự động nhân bản trên Stack
+    let copied_score = base_score; // Tự động nhân bản trên Stack
 
     println!(
         "- Điểm gốc: {}, Điểm sao chép: {}",
-        base_score, point_num_copy
+        base_score, copied_score
     );
     print_int(base_score);
     // Biến base_score vẫn sử dụng hoàn toàn bình thường sau khi truyền vào hàm!
@@ -43,8 +39,8 @@ fn main() {
 
     // --- PHẦN 2: CƠ CHẾ DI CHUYỂN TRÊN HEAP (MOVE SEMANTICS) ---
     println!("\n2. Kiểm tra cơ chế Di chuyển quyền sở hữu (Move):");
-    let security_certificate = String::from("CHUNG_THU_BAO_MAT_2026");
-    println!("- Biến 'chung_thu_so' đang là chủ sở hữu hợp pháp duy nhất.");
+    let security_certificate = String::from("CHỨNG THƯ BẢO MẬT 2026");
+    println!("- Biến 'security_certificate' đang là chủ sở hữu hợp pháp duy nhất.");
 
     // Chuyển giao quyền sở hữu từ security_certificate sang new_owner:
     let new_owner = security_certificate;
@@ -58,9 +54,9 @@ fn main() {
     let greeting = String::from("Xin chào từ Hà Nội");
 
     // Khi gọi hàm này, greeting bị Move vào hàm con và biến mất khỏi main!
-    consume_series(greeting);
+    consume_string(greeting);
 
-    // Dòng sau cũng bị lỗi E0382 vì greeting đã bị Drop bên trong hàm con:
+    // Dòng sau cũng bị lỗi E0382 vì greeting đã bị move vào hàm con (và bị Drop ở cuối hàm đó):
     // println!("Thử in lại thông điệp: {}", greeting);
 
     // --- PHẦN 4: LẤY LẠI QUYỀN SỞ HỮU THÔNG QUA GIÁ TRỊ TRẢ VỀ ---
@@ -73,9 +69,9 @@ fn main() {
     // --- PHẦN 5: NHÂN BẢN SÂU BẰNG .clone() KHI CẦN THIẾT ---
     println!("\n5. Nhân bản sâu toàn diện bằng phương thức .clone():");
     let original_data = String::from("Bản quyền sở hữu trí tuệ");
-    let tai_lieu_nhan_ban = original_data.clone(); // Cấp phát thêm một vùng nhớ Heap mới
+    let cloned_data = original_data.clone(); // Cấp phát thêm một vùng nhớ Heap mới
 
     println!("- Bản gốc     : {}", original_data);
-    println!("- Bản nhân bản: {}", tai_lieu_nhan_ban);
+    println!("- Bản nhân bản: {}", cloned_data);
     println!("=> Cả hai biến đều cùng tồn tại và hoạt động độc lập trên 2 vùng Heap riêng biệt!");
 }

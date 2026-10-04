@@ -24,43 +24,43 @@ pub type Price = i64; // tick, 1 tick = 0,01 đơn vị tiền
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Candle {
     pub timestamp: u64,
-    pub mo: Price,
+    pub open: Price,
     pub high: Price,
     pub low: Price,
-    pub dong: Price,
-    pub quantity: u64,
+    pub close: Price,
+    pub volume: u64,
 }
 
 impl Candle {
     /// Thân nến: khoảng cách giữa giá mở và giá đóng.
-    pub fn than(&self) -> Price {
-        (self.dong - self.mo).abs()
+    pub fn body(&self) -> Price {
+        (self.close - self.open).abs()
     }
     /// Toàn bộ biên độ trong phiên.
-    pub fn bien_do(&self) -> Price {
+    pub fn range(&self) -> Price {
         self.high - self.low
     }
     pub fn upper_wick(&self) -> Price {
-        self.high - self.mo.max(self.dong)
+        self.high - self.open.max(self.close)
     }
     pub fn lower_wick(&self) -> Price {
-        self.mo.min(self.dong) - self.low
+        self.open.min(self.close) - self.low
     }
-    pub fn tang(&self) -> bool {
-        self.dong > self.mo
+    pub fn is_bullish(&self) -> bool {
+        self.close > self.open
     }
-    pub fn down(&self) -> bool {
-        self.dong < self.mo
+    pub fn is_bearish(&self) -> bool {
+        self.close < self.open
     }
 
     /// Nến có hợp lệ không. Dữ liệu thị trường thật CÓ lỗi, và một nến sai
     /// làm hỏng mọi chỉ báo phía sau mà không báo gì.
     pub fn is_valid(&self) -> bool {
         self.high >= self.low
-            && self.high >= self.mo
-            && self.high >= self.dong
-            && self.low <= self.mo
-            && self.low <= self.dong
+            && self.high >= self.open
+            && self.high >= self.close
+            && self.low <= self.open
+            && self.low <= self.close
             && self.low > 0
     }
 }
@@ -75,47 +75,47 @@ impl Candle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pattern {
     Doji,
-    BuaTang,
-    SaoBangGiam,
-    NhanChimTang,
-    NhanChimGiam,
-    KhongCo,
+    Hammer,
+    ShootingStar,
+    BullishEngulfing,
+    BearishEngulfing,
+    NoPattern,
 }
 
 /// Doji: giá mở gần bằng giá đóng — hai phe giằng co, không ai thắng.
-pub fn la_doji(n: &Candle, threshold_bps: i64) -> bool {
-    if n.bien_do() == 0 {
+pub fn is_doji(n: &Candle, threshold_bps: i64) -> bool {
+    if n.range() == 0 {
         return true;
     }
-    n.than() * 10_000 <= n.bien_do() * threshold_bps
+    n.body() * 10_000 <= n.range() * threshold_bps
 }
 
 /// Búa: thân nhỏ ở TRÊN, bóng dưới dài — người bán đẩy giá xuống nhưng bị
 /// người mua kéo lại hết. Chỉ có ý nghĩa khi xuất hiện SAU một đợt giảm.
-pub fn la_bua(n: &Candle) -> bool {
-    n.bien_do() > 0 && n.than() > 0 && n.lower_wick() >= n.than() * 2 && n.upper_wick() <= n.than()
+pub fn is_hammer(n: &Candle) -> bool {
+    n.range() > 0 && n.body() > 0 && n.lower_wick() >= n.body() * 2 && n.upper_wick() <= n.body()
 }
 
 /// Sao băng: đối xứng của búa — bóng TRÊN dài, xuất hiện sau đợt tăng.
-pub fn la_sao_bang(n: &Candle) -> bool {
-    n.bien_do() > 0 && n.than() > 0 && n.upper_wick() >= n.than() * 2 && n.lower_wick() <= n.than()
+pub fn is_shooting_star(n: &Candle) -> bool {
+    n.range() > 0 && n.body() > 0 && n.upper_wick() >= n.body() * 2 && n.lower_wick() <= n.body()
 }
 
 /// Nhấn chìm tăng: nến tăng hôm nay bao trọn thân nến giảm hôm qua.
-pub fn la_nhan_chim_tang(hom_qua: &Candle, hom_nay: &Candle) -> bool {
-    hom_qua.down()
-        && hom_nay.tang()
-        && hom_nay.dong >= hom_qua.mo
-        && hom_nay.mo <= hom_qua.dong
-        && hom_nay.than() > hom_qua.than()
+pub fn is_bullish_engulfing(prev: &Candle, curr: &Candle) -> bool {
+    prev.is_bearish()
+        && curr.is_bullish()
+        && curr.close >= prev.open
+        && curr.open <= prev.close
+        && curr.body() > prev.body()
 }
 
-pub fn is_bearish_engulfing(hom_qua: &Candle, hom_nay: &Candle) -> bool {
-    hom_qua.tang()
-        && hom_nay.down()
-        && hom_nay.mo >= hom_qua.dong
-        && hom_nay.dong <= hom_qua.mo
-        && hom_nay.than() > hom_qua.than()
+pub fn is_bearish_engulfing(prev: &Candle, curr: &Candle) -> bool {
+    prev.is_bullish()
+        && curr.is_bearish()
+        && curr.open >= prev.close
+        && curr.close <= prev.open
+        && curr.body() > prev.body()
 }
 
 /// Nhận diện mẫu hình tại nến CUỐI của `history`.
@@ -123,26 +123,26 @@ pub fn is_bearish_engulfing(hom_qua: &Candle, hom_nay: &Candle) -> bool {
 pub fn detect_pattern(history: &[Candle]) -> Pattern {
     let n = match history.last() {
         Some(n) => n,
-        None => return Pattern::KhongCo,
+        None => return Pattern::NoPattern,
     };
     if let Some(q) = history.len().checked_sub(2).map(|i| &history[i]) {
-        if la_nhan_chim_tang(q, n) {
-            return Pattern::NhanChimTang;
+        if is_bullish_engulfing(q, n) {
+            return Pattern::BullishEngulfing;
         }
         if is_bearish_engulfing(q, n) {
-            return Pattern::NhanChimGiam;
+            return Pattern::BearishEngulfing;
         }
     }
-    if la_doji(n, 500) {
+    if is_doji(n, 500) {
         return Pattern::Doji;
     } // thân ≤ 5% biên độ
-    if la_bua(n) {
-        return Pattern::BuaTang;
+    if is_hammer(n) {
+        return Pattern::Hammer;
     }
-    if la_sao_bang(n) {
-        return Pattern::SaoBangGiam;
+    if is_shooting_star(n) {
+        return Pattern::ShootingStar;
     }
-    Pattern::KhongCo
+    Pattern::NoPattern
 }
 
 // ============================================================================
@@ -170,19 +170,19 @@ pub fn sma_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
 /// EMA phản ứng nhanh hơn SMA vì nó cho dữ liệu mới trọng số cao hơn — nhưng
 /// cũng vì thế mà nhiễu hơn.
 pub fn ema_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
-    let mut ra = vec![None; price.len()];
+    let mut out = vec![None; price.len()];
     if period == 0 || price.len() < period {
-        return ra;
+        return out;
     }
     let alpha = 2.0 / (period as f64 + 1.0);
     // Mồi bằng SMA của `period` giá trị đầu — cách chuẩn của ngành
     let mut e = price[..period].iter().sum::<f64>() / period as f64;
-    ra[period - 1] = Some(e);
+    out[period - 1] = Some(e);
     for i in period..price.len() {
         e = price[i] * alpha + e * (1.0 - alpha);
-        ra[i] = Some(e);
+        out[i] = Some(e);
     }
-    ra
+    out
 }
 
 /// Trung bình động có trọng số tuyến tính: giá mới nhất có trọng số n,
@@ -212,9 +212,9 @@ pub fn wma(price: &[f64], period: usize) -> Option<f64> {
 // một mình để đoán đảo chiều là cách mất tiền nhanh nhất.
 
 pub fn rsi_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
-    let mut ra = vec![None; price.len()];
+    let mut out = vec![None; price.len()];
     if period == 0 || price.len() <= period {
-        return ra;
+        return out;
     }
 
     let mut up_avg = 0.0;
@@ -229,7 +229,7 @@ pub fn rsi_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
     }
     up_avg /= period as f64;
     down_avg /= period as f64;
-    ra[period] = Some(from_up_down(up_avg, down_avg));
+    out[period] = Some(from_up_down(up_avg, down_avg));
 
     // Làm mượt kiểu Wilder: giống EMA với α = 1/n
     for i in (period + 1)..price.len() {
@@ -237,17 +237,17 @@ pub fn rsi_series(price: &[f64], period: usize) -> Vec<Option<f64>> {
         let (t, g) = if d > 0.0 { (d, 0.0) } else { (0.0, -d) };
         up_avg = (up_avg * (period - 1) as f64 + t) / period as f64;
         down_avg = (down_avg * (period - 1) as f64 + g) / period as f64;
-        ra[i] = Some(from_up_down(up_avg, down_avg));
+        out[i] = Some(from_up_down(up_avg, down_avg));
     }
-    ra
+    out
 }
 
-fn from_up_down(tang: f64, down: f64) -> f64 {
+fn from_up_down(up: f64, down: f64) -> f64 {
     // Không có phiên giảm nào → RSI = 100. Phải xử lý riêng để không chia cho 0.
     if down < 1e-12 {
-        return if tang < 1e-12 { 50.0 } else { 100.0 };
+        return if up < 1e-12 { 50.0 } else { 100.0 };
     }
-    100.0 - 100.0 / (1.0 + tang / down)
+    100.0 - 100.0 / (1.0 + up / down)
 }
 
 // ============================================================================
@@ -266,36 +266,36 @@ pub struct MacdValue {
 pub fn macd_series(
     price: &[f64],
     fast: usize,
-    cham: usize,
+    slow: usize,
     signal: usize,
 ) -> Vec<Option<MacdValue>> {
-    let mut ra = vec![None; price.len()];
-    if cham == 0 || price.len() < cham {
-        return ra;
+    let mut out = vec![None; price.len()];
+    if slow == 0 || price.len() < slow {
+        return out;
     }
-    let e_nhanh = ema_series(price, fast);
-    let e_cham = ema_series(price, cham);
+    let ema_fast = ema_series(price, fast);
+    let ema_slow = ema_series(price, slow);
 
     // Chuỗi MACD chỉ có giá trị từ khi CẢ HAI đường EMA đã sẵn sàng
     let mut macd_line: Vec<f64> = Vec::new();
-    let mut root_indices: Vec<usize> = Vec::new();
+    let mut source_indices: Vec<usize> = Vec::new();
     for i in 0..price.len() {
-        if let (Some(a), Some(b)) = (e_nhanh[i], e_cham[i]) {
+        if let (Some(a), Some(b)) = (ema_fast[i], ema_slow[i]) {
             macd_line.push(a - b);
-            root_indices.push(i);
+            source_indices.push(i);
         }
     }
-    let e_tin_hieu = ema_series(&macd_line, signal);
-    for (k, &i) in root_indices.iter().enumerate() {
-        if let Some(s) = e_tin_hieu[k] {
-            ra[i] = Some(MacdValue {
+    let signal_ema = ema_series(&macd_line, signal);
+    for (k, &i) in source_indices.iter().enumerate() {
+        if let Some(s) = signal_ema[k] {
+            out[i] = Some(MacdValue {
                 macd: macd_line[k],
                 signal: s,
                 histogram: macd_line[k] - s,
             });
         }
     }
-    ra
+    out
 }
 
 // ============================================================================
@@ -304,40 +304,40 @@ pub fn macd_series(
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BollingerBands {
-    pub above: f64,
-    pub mid: f64,
-    pub below: f64,
+    pub upper: f64,
+    pub middle: f64,
+    pub lower: f64,
 }
 
 impl BollingerBands {
-    pub fn do_rong(&self) -> f64 {
-        if self.mid.abs() < 1e-12 {
+    pub fn bandwidth(&self) -> f64 {
+        if self.middle.abs() < 1e-12 {
             0.0
         } else {
-            (self.above - self.below) / self.mid
+            (self.upper - self.lower) / self.middle
         }
     }
     /// Vị trí của giá trong dải: 0 = chạm đáy, 1 = chạm đỉnh.
     pub fn percent_b(&self, price: f64) -> f64 {
-        let d = self.above - self.below;
+        let d = self.upper - self.lower;
         if d.abs() < 1e-12 {
             0.5
         } else {
-            (price - self.below) / d
+            (price - self.lower) / d
         }
     }
 }
 
-pub fn bollinger(price: &[f64], period: usize, so_do_lech: f64) -> Option<BollingerBands> {
-    let mid = sma(price, period)?;
+pub fn bollinger(price: &[f64], period: usize, num_std: f64) -> Option<BollingerBands> {
+    let middle = sma(price, period)?;
     let window = &price[price.len() - period..];
     // Độ lệch chuẩn TỔNG THỂ (chia n) — quy ước chuẩn của dải Bollinger
-    let ps = window.iter().map(|x| (x - mid).powi(2)).sum::<f64>() / period as f64;
-    let sd = ps.max(0.0).sqrt();
+    let var = window.iter().map(|x| (x - middle).powi(2)).sum::<f64>() / period as f64;
+    let sd = var.max(0.0).sqrt();
     Some(BollingerBands {
-        above: mid + so_do_lech * sd,
-        mid,
-        below: mid - so_do_lech * sd,
+        upper: middle + num_std * sd,
+        middle,
+        lower: middle - num_std * sd,
     })
 }
 
@@ -349,51 +349,51 @@ pub fn bollinger(price: &[f64], period: usize, so_do_lech: f64) -> Option<Bollin
 // điều chỉnh theo trạng thái thị trường.
 
 /// Biên độ thật: lớn nhất trong ba khoảng cách. Nó tính cả KHOẢNG NHẢY giữa
-/// hai phiên — điều mà `cao − thap` bỏ sót hoàn toàn.
-pub fn bien_do_that(nay: &Candle, prev: Option<&Candle>) -> Price {
+/// hai phiên — điều mà `high − low` bỏ sót hoàn toàn.
+pub fn true_range(curr: &Candle, prev: Option<&Candle>) -> Price {
     match prev {
-        None => nay.high - nay.low,
-        Some(t) => (nay.high - nay.low)
-            .max((nay.high - t.dong).abs())
-            .max((nay.low - t.dong).abs()),
+        None => curr.high - curr.low,
+        Some(t) => (curr.high - curr.low)
+            .max((curr.high - t.close).abs())
+            .max((curr.low - t.close).abs()),
     }
 }
 
 pub fn atr_series(candle: &[Candle], period: usize) -> Vec<Option<f64>> {
-    let mut ra = vec![None; candle.len()];
+    let mut out = vec![None; candle.len()];
     if period == 0 || candle.len() < period {
-        return ra;
+        return out;
     }
-    let bdt: Vec<f64> = candle
+    let tr: Vec<f64> = candle
         .iter()
         .enumerate()
-        .map(|(i, n)| bien_do_that(n, i.checked_sub(1).map(|j| &candle[j])) as f64)
+        .map(|(i, n)| true_range(n, i.checked_sub(1).map(|j| &candle[j])) as f64)
         .collect();
-    let mut a = bdt[..period].iter().sum::<f64>() / period as f64;
-    ra[period - 1] = Some(a);
+    let mut a = tr[..period].iter().sum::<f64>() / period as f64;
+    out[period - 1] = Some(a);
     for i in period..candle.len() {
-        a = (a * (period - 1) as f64 + bdt[i]) / period as f64; // làm mượt Wilder
-        ra[i] = Some(a);
+        a = (a * (period - 1) as f64 + tr[i]) / period as f64; // làm mượt Wilder
+        out[i] = Some(a);
     }
-    ra
+    out
 }
 
 /// Định cỡ vị thế theo ATR: rủi ro mỗi lệnh cố định bằng tiền, nên mã dao
 /// động mạnh thì mua ít. Đây là công thức nền của mọi hệ thống theo xu hướng.
-pub fn co_theo_atr(von_rui_ro: i64, atr: f64, so_atr_cat_lo: f64) -> i64 {
-    let risk_new_don_pos = atr * so_atr_cat_lo;
-    if risk_new_don_pos < 1e-9 {
+pub fn atr_position_size(risk_capital: i64, atr: f64, stop_atr_multiple: f64) -> i64 {
+    let risk_per_unit = atr * stop_atr_multiple;
+    if risk_per_unit < 1e-9 {
         return 0;
     }
-    (von_rui_ro as f64 / risk_new_don_pos) as i64
+    (risk_capital as f64 / risk_per_unit) as i64
 }
 
 // ============================================================================
 // 8. SINH DỮ LIỆU TẤT ĐỊNH
 // ============================================================================
 
-pub fn gen_candle(n: usize, hat_giong: u64) -> Vec<Candle> {
-    let mut s = hat_giong;
+pub fn gen_candle(n: usize, seed: u64) -> Vec<Candle> {
+    let mut s = seed;
     let mut price: Price = 10_000;
     (0..n)
         .map(|i| {
@@ -401,23 +401,23 @@ pub fn gen_candle(n: usize, hat_giong: u64) -> Vec<Candle> {
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
             let step = ((s >> 33) % 201) as i64 - 100;
-            let mo = price;
+            let open = price;
             price = (price + step).max(100);
-            let bien = ((s >> 45) % 80) as i64;
+            let wick = ((s >> 45) % 80) as i64;
             Candle {
                 timestamp: i as u64,
-                mo,
-                high: mo.max(price) + bien,
-                low: (mo.min(price) - bien).max(1),
-                dong: price,
-                quantity: 1_000 + (s >> 50) % 9_000,
+                open,
+                high: open.max(price) + wick,
+                low: (open.min(price) - wick).max(1),
+                close: price,
+                volume: 1_000 + (s >> 50) % 9_000,
             }
         })
         .collect()
 }
 
 pub fn close_price(candle: &[Candle]) -> Vec<f64> {
-    candle.iter().map(|n| n.dong as f64).collect()
+    candle.iter().map(|n| n.close as f64).collect()
 }
 
 fn main() {
@@ -432,15 +432,15 @@ fn main() {
     let n = &candle[100];
     println!(
         "   Nến #100: mở {} cao {} thấp {} đóng {}",
-        n.mo, n.high, n.low, n.dong
+        n.open, n.high, n.low, n.close
     );
     println!(
         "   thân {} · biên độ {} · bóng trên {} · bóng dưới {} · {}",
-        n.than(),
-        n.bien_do(),
+        n.body(),
+        n.range(),
         n.upper_wick(),
         n.lower_wick(),
-        if n.tang() { "TĂNG" } else { "GIẢM" }
+        if n.is_bullish() { "TĂNG" } else { "GIẢM" }
     );
     println!(
         "   Toàn bộ {} nến đều hợp lệ: {}",
@@ -479,22 +479,22 @@ fn main() {
 
     println!("\n4. RSI");
     let r14 = rsi_series(&price, 14);
-    let qua_buy = r14.iter().filter(|x| x.is_some_and(|v| v > 70.0)).count();
-    let qua_ban = r14.iter().filter(|x| x.is_some_and(|v| v < 30.0)).count();
+    let overbought = r14.iter().filter(|x| x.is_some_and(|v| v > 70.0)).count();
+    let oversold = r14.iter().filter(|x| x.is_some_and(|v| v < 30.0)).count();
     println!("   RSI(14) tại nến 499: {:.1}", r14[499].unwrap());
     println!(
         "   Số phiên > 70 (quá mua): {} · < 30 (quá bán): {}",
-        qua_buy, qua_ban
+        overbought, oversold
     );
-    let tang_deu: Vec<f64> = (1..=50).map(|i| i as f64 * 100.0).collect();
-    let giam_deu: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
+    let steady_rise: Vec<f64> = (1..=50).map(|i| i as f64 * 100.0).collect();
+    let steady_fall: Vec<f64> = (1..=50).rev().map(|i| i as f64 * 100.0).collect();
     println!(
         "   Chuỗi tăng đều  → RSI = {:.0}",
-        rsi_series(&tang_deu, 14)[49].unwrap()
+        rsi_series(&steady_rise, 14)[49].unwrap()
     );
     println!(
         "   Chuỗi giảm đều  → RSI = {:.0}",
-        rsi_series(&giam_deu, 14)[49].unwrap()
+        rsi_series(&steady_fall, 14)[49].unwrap()
     );
     println!("   → Trong xu hướng mạnh, RSI dính sát 100 hoặc 0 rất lâu.");
     println!("     Dùng RSI một mình để đoán đảo chiều là cách mất tiền nhanh nhất.");
@@ -503,10 +503,10 @@ fn main() {
     let m = macd_series(&price, 12, 26, 9);
     let mut crossover = 0;
     for i in 1..m.len() {
-        if let (Some(a), Some(b)) = (m[i - 1], m[i]) {
-            if a.histogram.signum() != b.histogram.signum() {
-                crossover += 1;
-            }
+        if let (Some(a), Some(b)) = (m[i - 1], m[i])
+            && a.histogram.signum() != b.histogram.signum()
+        {
+            crossover += 1;
         }
     }
     let last = m[499].unwrap();
@@ -527,16 +527,16 @@ fn main() {
         println!(
             "   Nến {:>3}: dưới {:>8.1} · giữa {:>8.1} · trên {:>8.1} · giá ở {:>5.0}% dải",
             i,
-            b.below,
-            b.mid,
-            b.above,
+            b.lower,
+            b.middle,
+            b.upper,
             b.percent_b(price[i]) * 100.0
         );
     }
     let outside = (20..price.len())
         .filter(|&i| {
             let b = bollinger(&price[..=i], 20, 2.0).unwrap();
-            price[i] > b.above || price[i] < b.below
+            price[i] > b.upper || price[i] < b.lower
         })
         .count();
     println!(
@@ -545,8 +545,10 @@ fn main() {
         price.len() - 20,
         outside as f64 * 100.0 / (price.len() - 20) as f64
     );
-    println!("   → Lý thuyết nói ~5% nằm ngoài 2σ. Thực tế thị trường thường nhiều hơn:");
-    println!("     phân bố giá có ĐUÔI DÀY hơn phân bố chuẩn.");
+    println!("   → Con số ~5% ngoài 2σ chỉ đúng khi các giá trị trong cửa sổ ĐỘC LẬP và");
+    println!("     phân phối chuẩn. Giá là một bước ngẫu nhiên — giá mới nhất hay nằm ở");
+    println!("     mép cửa sổ — nên tỉ lệ cao hơn hẳn, dù dữ liệu giả lập này KHÔNG có");
+    println!("     đuôi béo. Thị trường thật còn cộng thêm đuôi béo.");
 
     println!("\n7. ATR & ĐỊNH CỠ VỊ THẾ");
     let a14 = atr_series(&candle, 14);
@@ -560,7 +562,7 @@ fn main() {
             "   {:>16} {:>12.0} {:>16}",
             100_000,
             atr,
-            co_theo_atr(100_000, atr, 2.0)
+            atr_position_size(100_000, atr, 2.0)
         );
     }
     println!("   → Cùng mức rủi ro bằng tiền. Mã dao động mạnh gấp 10 thì mua ít đi 10 lần.");
@@ -574,14 +576,14 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn simple_candle(mo: Price, high: Price, low: Price, dong: Price) -> Candle {
+    fn simple_candle(open: Price, high: Price, low: Price, close: Price) -> Candle {
         Candle {
             timestamp: 0,
-            mo,
+            open,
             high,
             low,
-            dong,
-            quantity: 100,
+            close,
+            volume: 100,
         }
     }
 
@@ -589,11 +591,11 @@ mod tests {
     #[test]
     fn computes_body_range_and_wicks() {
         let n = simple_candle(100, 120, 90, 110);
-        assert_eq!(n.than(), 10);
-        assert_eq!(n.bien_do(), 30);
+        assert_eq!(n.body(), 10);
+        assert_eq!(n.range(), 30);
         assert_eq!(n.upper_wick(), 10, "120 − max(100,110)");
         assert_eq!(n.lower_wick(), 10, "min(100,110) − 90");
-        assert!(n.tang() && !n.down());
+        assert!(n.is_bullish() && !n.is_bearish());
     }
 
     #[test]
@@ -619,8 +621,8 @@ mod tests {
 
     #[test]
     fn every_generated_candle_is_valid() {
-        for hat in [1u64, 42, 2024] {
-            for n in gen_candle(1_000, hat) {
+        for seed in [1u64, 42, 2024] {
+            for n in gen_candle(1_000, seed) {
                 assert!(n.is_valid(), "nến sinh ra phải luôn hợp lệ: {:?}", n);
             }
         }
@@ -629,13 +631,13 @@ mod tests {
     // ---------- Mẫu hình ----------
     #[test]
     fn doji_when_open_nearly_equals_close() {
-        assert!(la_doji(&simple_candle(100, 120, 80, 100), 500), "mở = đóng");
+        assert!(is_doji(&simple_candle(100, 120, 80, 100), 500), "mở = đóng");
         assert!(
-            la_doji(&simple_candle(100, 120, 80, 101), 500),
+            is_doji(&simple_candle(100, 120, 80, 101), 500),
             "thân 1 trên biên độ 40"
         );
         assert!(
-            !la_doji(&simple_candle(100, 120, 80, 115), 500),
+            !is_doji(&simple_candle(100, 120, 80, 115), 500),
             "thân 15 là quá lớn"
         );
     }
@@ -643,56 +645,67 @@ mod tests {
     #[test]
     fn a_zero_range_candle_counts_as_a_doji() {
         // Phiên không giao dịch — phải xử lý được, không chia cho 0.
-        assert!(la_doji(&simple_candle(100, 100, 100, 100), 500));
+        assert!(is_doji(&simple_candle(100, 100, 100, 100), 500));
     }
 
     #[test]
     fn hammer_and_shooting_star_are_mirror_images() {
         // Búa: bóng dưới dài, thân nhỏ ở trên
-        let bua = simple_candle(110, 112, 90, 111);
+        let hammer = simple_candle(110, 112, 90, 111);
         assert!(
-            la_bua(&bua),
+            is_hammer(&hammer),
             "bóng dưới {} thân {}",
-            bua.lower_wick(),
-            bua.than()
+            hammer.lower_wick(),
+            hammer.body()
         );
-        assert!(!la_sao_bang(&bua));
+        assert!(!is_shooting_star(&hammer));
         // Sao băng: bóng trên dài, thân nhỏ ở dưới
-        let sao = simple_candle(91, 112, 90, 92);
-        assert!(la_sao_bang(&sao));
-        assert!(!la_bua(&sao));
+        let star = simple_candle(91, 112, 90, 92);
+        assert!(is_shooting_star(&star));
+        assert!(!is_hammer(&star));
     }
 
     #[test]
     fn bullish_engulfing_must_cover_the_prior_body() {
-        let hom_qua = simple_candle(110, 112, 98, 100); // giảm
-        let hom_nay = simple_candle(99, 116, 98, 115); // tăng, bao trọn
-        assert!(la_nhan_chim_tang(&hom_qua, &hom_nay));
+        let prev = simple_candle(110, 112, 98, 100); // giảm
+        let curr = simple_candle(99, 116, 98, 115); // tăng, bao trọn
+        assert!(is_bullish_engulfing(&prev, &curr));
         // Không bao trọn thì không tính
-        let hep = simple_candle(102, 110, 101, 108);
-        assert!(!la_nhan_chim_tang(&hom_qua, &hep));
+        let narrow = simple_candle(102, 110, 101, 108);
+        assert!(!is_bullish_engulfing(&prev, &narrow));
         // Hôm qua phải là nến GIẢM
-        assert!(!la_nhan_chim_tang(
+        assert!(!is_bullish_engulfing(
             &simple_candle(100, 116, 98, 112),
-            &hom_nay
+            &curr
         ));
     }
 
     #[test]
     fn detection_is_deterministic_and_never_looks_ahead() {
-        // Bất biến sống còn: thêm nến phía sau KHÔNG được đổi kết quả tại
-        // nến trước. Vi phạm điều này là "vẽ lại" (repainting).
-        let candle = gen_candle(300, 7);
-        for i in 0..candle.len() {
-            let ngan = detect_pattern(&candle[..=i]);
-            let long = detect_pattern(&candle[..=i]); // cùng lát cắt
-            assert_eq!(ngan, long, "phải tất định tại nến {}", i);
+        // Bất biến sống còn: thay đổi các nến SAU nến i không được đổi kết quả
+        // tại nến i. Vi phạm điều này là "vẽ lại" (repainting).
+        let candles = gen_candle(300, 7);
+        let mut other_future = candles.clone();
+        for c in other_future.iter_mut().skip(150) {
+            *c = Candle {
+                open: c.close,
+                close: c.open,
+                ..*c
+            }; // đảo hướng mọi nến từ 150 trở đi
+        }
+        for i in 0..150 {
+            assert_eq!(
+                detect_pattern(&candles[..=i]),
+                detect_pattern(&other_future[..=i]),
+                "tương lai khác nhau không được đổi kết quả tại nến {}",
+                i
+            );
         }
     }
 
     #[test]
     fn an_empty_series_has_no_patterns() {
-        assert_eq!(detect_pattern(&[]), Pattern::KhongCo);
+        assert_eq!(detect_pattern(&[]), Pattern::NoPattern);
     }
 
     // ---------- Trung bình động ----------
@@ -799,8 +812,8 @@ mod tests {
 
     #[test]
     fn rsi_always_stays_within_0_and_100() {
-        for hat in [1u64, 42, 2024, 31337] {
-            let price = close_price(&gen_candle(500, hat));
+        for seed in [1u64, 42, 2024, 31337] {
+            let price = close_price(&gen_candle(500, seed));
             for x in rsi_series(&price, 14).into_iter().flatten() {
                 assert!((0.0..=100.0).contains(&x), "RSI ra ngoài thang: {}", x);
             }
@@ -855,7 +868,7 @@ mod tests {
     fn the_bollinger_middle_band_equals_the_sma() {
         let price: Vec<f64> = (1..=30).map(|i| i as f64).collect();
         let b = bollinger(&price, 20, 2.0).unwrap();
-        assert_eq!(b.mid, sma(&price, 20).unwrap());
+        assert_eq!(b.middle, sma(&price, 20).unwrap());
     }
 
     #[test]
@@ -863,42 +876,42 @@ mod tests {
         let price = close_price(&gen_candle(100, 9));
         let b = bollinger(&price, 20, 2.0).unwrap();
         assert!(
-            ((b.above - b.mid) - (b.mid - b.below)).abs() < 1e-9,
+            ((b.upper - b.middle) - (b.middle - b.lower)).abs() < 1e-9,
             "hai dải phải cách đều đường giữa"
         );
-        assert!(b.above >= b.mid && b.mid >= b.below);
+        assert!(b.upper >= b.middle && b.middle >= b.lower);
     }
 
     #[test]
     fn the_bands_narrow_when_volatility_falls() {
-        let em = vec![100.0; 30];
-        let xoc: Vec<f64> = (0..30).map(|i| 100.0 + ((i % 2) as f64) * 50.0).collect();
-        let a = bollinger(&em, 20, 2.0).unwrap();
-        let b = bollinger(&xoc, 20, 2.0).unwrap();
+        let calm = vec![100.0; 30];
+        let choppy: Vec<f64> = (0..30).map(|i| 100.0 + ((i % 2) as f64) * 50.0).collect();
+        let a = bollinger(&calm, 20, 2.0).unwrap();
+        let b = bollinger(&choppy, 20, 2.0).unwrap();
         assert!(
-            a.do_rong() < b.do_rong(),
+            a.bandwidth() < b.bandwidth(),
             "giá đứng yên → dải hẹp gần bằng 0"
         );
-        assert!(a.do_rong() < 1e-9);
+        assert!(a.bandwidth() < 1e-9);
     }
 
     #[test]
     fn percent_b_is_exact_at_both_bands() {
         let b = BollingerBands {
-            above: 120.0,
-            mid: 100.0,
-            below: 80.0,
+            upper: 120.0,
+            middle: 100.0,
+            lower: 80.0,
         };
         assert!((b.percent_b(80.0) - 0.0).abs() < 1e-9);
         assert!((b.percent_b(100.0) - 0.5).abs() < 1e-9);
         assert!((b.percent_b(120.0) - 1.0).abs() < 1e-9);
         // Dải rỗng không được chia cho 0
-        let hep = BollingerBands {
-            above: 100.0,
-            mid: 100.0,
-            below: 100.0,
+        let narrow = BollingerBands {
+            upper: 100.0,
+            middle: 100.0,
+            lower: 100.0,
         };
-        assert_eq!(hep.percent_b(100.0), 0.5);
+        assert_eq!(narrow.percent_b(100.0), 0.5);
     }
 
     // ---------- ATR ----------
@@ -907,10 +920,10 @@ mod tests {
         let prev = simple_candle(100, 105, 95, 100);
         // Phiên sau nhảy vọt lên: biên độ trong phiên chỉ 5, nhưng khoảng
         // cách so với giá đóng hôm trước là 30 — ATR phải thấy điều đó.
-        let nay = simple_candle(128, 130, 125, 129);
-        assert_eq!(nay.bien_do(), 5);
+        let curr = simple_candle(128, 130, 125, 129);
+        assert_eq!(curr.range(), 5);
         assert_eq!(
-            bien_do_that(&nay, Some(&prev)),
+            true_range(&curr, Some(&prev)),
             30,
             "phải bắt được khoảng nhảy"
         );
@@ -919,13 +932,13 @@ mod tests {
     #[test]
     fn the_first_candle_true_range_is_the_plain_range() {
         let n = simple_candle(100, 110, 90, 105);
-        assert_eq!(bien_do_that(&n, None), 20);
+        assert_eq!(true_range(&n, None), 20);
     }
 
     #[test]
     fn atr_is_always_positive() {
-        for hat in [1u64, 42, 2024] {
-            let candle = gen_candle(300, hat);
+        for seed in [1u64, 42, 2024] {
+            let candle = gen_candle(300, seed);
             for a in atr_series(&candle, 14).into_iter().flatten() {
                 assert!(a > 0.0, "ATR phải dương, thực tế {}", a);
             }
@@ -934,28 +947,28 @@ mod tests {
 
     #[test]
     fn atr_rises_with_volatility() {
-        let em: Vec<Candle> = (0..50)
+        let calm: Vec<Candle> = (0..50)
             .map(|i| Candle {
                 timestamp: i,
-                mo: 10_000,
+                open: 10_000,
                 high: 10_010,
                 low: 9_990,
-                dong: 10_000,
-                quantity: 1,
+                close: 10_000,
+                volume: 1,
             })
             .collect();
-        let xoc: Vec<Candle> = (0..50)
+        let choppy: Vec<Candle> = (0..50)
             .map(|i| Candle {
                 timestamp: i,
-                mo: 10_000,
+                open: 10_000,
                 high: 10_500,
                 low: 9_500,
-                dong: 10_000,
-                quantity: 1,
+                close: 10_000,
+                volume: 1,
             })
             .collect();
-        let a = atr_series(&em, 14)[49].unwrap();
-        let b = atr_series(&xoc, 14)[49].unwrap();
+        let a = atr_series(&calm, 14)[49].unwrap();
+        let b = atr_series(&choppy, 14)[49].unwrap();
         assert!(
             b > a * 10.0,
             "thị trường xóc gấp 50 lần phải cho ATR lớn hơn hẳn"
@@ -972,17 +985,21 @@ mod tests {
     fn atr_sizing_shrinks_as_volatility_rises() {
         let mut prev = i64::MAX;
         for atr in [20.0f64, 50.0, 100.0, 200.0] {
-            let c = co_theo_atr(100_000, atr, 2.0);
+            let c = atr_position_size(100_000, atr, 2.0);
             assert!(c < prev, "ATR {} phải cho cỡ nhỏ hơn", atr);
             prev = c;
         }
-        assert_eq!(co_theo_atr(100_000, 20.0, 2.0), 2_500, "100000 / (20 × 2)");
+        assert_eq!(
+            atr_position_size(100_000, 20.0, 2.0),
+            2_500,
+            "100000 / (20 × 2)"
+        );
     }
 
     #[test]
     fn atr_sizing_is_safe_on_bad_input() {
-        assert_eq!(co_theo_atr(100_000, 0.0, 2.0), 0, "không chia cho 0");
-        assert_eq!(co_theo_atr(100_000, 20.0, 0.0), 0);
+        assert_eq!(atr_position_size(100_000, 0.0, 2.0), 0, "không chia cho 0");
+        assert_eq!(atr_position_size(100_000, 20.0, 0.0), 0);
     }
 
     // ---------- Không nhìn trước tương lai ----------
@@ -1003,9 +1020,10 @@ mod tests {
             macd_series(&price[..=i], 12, 26, 9)[i],
             macd_series(&price, 12, 26, 9)[i]
         );
+        // Bollinger chỉ được dùng đúng 20 giá cuối tính tới i
         assert_eq!(
             bollinger(&price[..=i], 20, 2.0),
-            bollinger(&price[..i + 1], 20, 2.0)
+            bollinger(&price[i - 19..=i], 20, 2.0)
         );
     }
 

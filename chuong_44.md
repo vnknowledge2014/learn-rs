@@ -10,7 +10,7 @@ Rất nhiều người mới bắt đầu thường nhầm lẫn rằng: *"Muố
 
 Mục tiêu học tập của chương:
 - Thấu hiểu cơ chế hoạt động của Cửa sổ ngữ cảnh (Context Window) và hiện tượng suy giảm chú ý trong LLM.
-- Nắm vững công thức 5 thành phần để thiết kế một System Prompt kỹ thuật chuẩn công nghiệp, loại bỏ 99% ảo giác của AI.
+- Nắm vững công thức 5 thành phần để thiết kế một System Prompt kỹ thuật chuẩn công nghiệp, giảm mạnh ảo giác của AI (không thể loại bỏ hoàn toàn — vẫn phải có biên dịch, test và rà soát).
 - Thiết lập tệp quy chuẩn dự án tự động (`.cursorrules` hoặc `AGENTS.md`) để kiểm soát hành vi sinh mã của AI trong các IDE hiện đại.
 - Xây dựng tư duy chắt lọc ngữ cảnh: Chỉ cung cấp đúng dữ liệu, đúng kiểu giao ước và đúng thời điểm.
 
@@ -47,8 +47,8 @@ Bác thợ mộc nhìn vào mặt bàn sạch sẽ, hiểu ngay 100% yêu cầu 
 ### 1. Bản chất cơ học của Token và Cửa sổ ngữ cảnh (Context Window)
 Trong khoa học máy tính, các mô hình ngôn ngữ lớn (LLM) không đọc văn bản theo từng chữ cái hay từng từ nguyên vẹn như con người, mà chia nhỏ văn bản thành các đơn vị gọi là **Tokens** (thường từ 3-4 ký tự tiếng Anh hoặc 1-2 ký tự tiếng Việt có dấu).
 
-Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **Cửa sổ ngữ cảnh (Context Window)** — ví dụ: 8,000 tokens, 32,000 tokens hoặc 128,000 tokens. Cửa sổ này tương đương với bộ nhớ truy xuất nhanh (RAM) tạm thời của mô hình trong một phiên làm việc:
-- Khi tổng số tokens của Prompt + Lịch sử hội thoại + Mã nguồn tải lên vượt quá giới hạn, những thông tin ở phần đầu sẽ bị đẩy ra ngoài (bị lãng quên vĩnh viễn).
+Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **Cửa sổ ngữ cảnh (Context Window)** — ví dụ: 8.000, 128.000, 200.000 tokens, thậm chí cả triệu tokens ở các mô hình mới. Cửa sổ này tương đương với bộ nhớ truy xuất nhanh (RAM) tạm thời của mô hình trong một phiên làm việc:
+- Khi tổng số tokens của Prompt + Lịch sử hội thoại + Mã nguồn tải lên vượt quá giới hạn, mô hình không thể "nhìn" thêm: tùy công cụ, yêu cầu bị từ chối, hoặc phần cũ bị cắt bỏ/tóm tắt lại — chi tiết đã mất thì mô hình không còn biết.
 - Ngay cả khi chưa vượt quá giới hạn, hiện tượng **"Lost in the Middle" (Bị lãng quên ở giữa)** vẫn diễn ra: LLM ghi nhớ rất tốt thông tin ở phần đầu (System Prompt) và phần cuối (câu lệnh vừa gõ), nhưng dễ bỏ qua những chỉ thị nằm ở lưng chừng hàng ngàn dòng code.
 
 ### 2. Cấu trúc 5 thành phần của một Systems Prompt chuẩn mực
@@ -69,7 +69,7 @@ Mỗi LLM đều có một giới hạn vật lý nghiêm ngặt gọi là **C�
 ```
 
 #### Chi tiết 5 thành phần:
-1. **Persona & Role**: Xác định tầm nhận thức: *"Bạn là một Kỹ sư Hệ thống Rust cao cấp (Senior Rust Systems Engineer) tuân thủ tiêu chuẩn Rust 2021 Edition"*.
+1. **Persona & Role**: Xác định tầm nhận thức: *"Bạn là một Kỹ sư Hệ thống Rust cao cấp (Senior Rust Systems Engineer) tuân thủ tiêu chuẩn Rust 2024 Edition"*.
 2. **Hard Constraints**: Các lằn ranh đỏ kỹ thuật:
    - Nghiêm cấm sử dụng từ khóa `unsafe` trừ khi có sự phê duyệt tường minh.
    - Nghiêm cấm dùng `.unwrap()` hoặc `.expect()` trong mã nguồn thương mại; bắt buộc lan truyền lỗi bằng `Result<T, E>` và toán tử `?`.
@@ -91,24 +91,22 @@ Trong các môi trường làm việc hiện đại (như Cursor IDE, Windsurf, 
 
 ## Mã nguồn minh họa thực chiến
 
-Dưới đây là một mô-đun Rust hoàn chỉnh, có thể biên dịch và chạy bằng `rustc --edition=2021`. Chương trình này mô phỏng một **Động cơ điều phối ngữ cảnh (Context Engine)** chuyên nghiệp: Tự động phân tích dung lượng token, quản lý ngân sách bộ nhớ ngữ cảnh (token budget), ghép nối các thành phần System Prompt có trọng số, và cắt gọt ngữ cảnh thừa thãi trước khi chuyển giao cho trợ lý AI.
+Dưới đây là một mô-đun Rust hoàn chỉnh, có thể biên dịch và chạy bằng `rustc --edition=2024`. Chương trình này mô phỏng một **Động cơ điều phối ngữ cảnh (Context Engine)** chuyên nghiệp: Tự động phân tích dung lượng token, quản lý ngân sách bộ nhớ ngữ cảnh (token budget), ghép nối các thành phần System Prompt có trọng số, và cắt gọt ngữ cảnh thừa thãi trước khi chuyển giao cho trợ lý AI.
 
 ```rust
 // ============================================================================
-// CHƯƠNG 40: HỆ THỐNG QUẢN LÝ CỬA SỔ NGỮ CẢNH & ĐÓNG GÓI SYSTEM PROMPT CHUẨN MỰC
+// CHƯƠNG 44: HỆ THỐNG QUẢN LÝ CỬA SỔ NGỮ CẢNH & ĐÓNG GÓI SYSTEM PROMPT CHUẨN MỰC
 // Tác giả: Kỹ Sư Kiến Trúc Hệ Thống Rust
 // ============================================================================
-
-use std::collections::VecDeque;
 
 // 1. ĐỊNH NGHĨA CÁC PHÂN ĐOẠN NGỮ CẢNH (CONTEXT SEGMENT)
 // Mỗi phần của ngữ cảnh có mức độ ưu tiên khác nhau khi ngân sách bộ nhớ bị giới hạn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PriorityTier {
-    Critical,   // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
-    High,       // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
-    Medium,     // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
-    Low,        // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
+    Critical, // Bắt buộc phải có: Quy chuẩn an toàn, Traits giao ước
+    High,     // Ưu tiên cao: Kiểu dữ liệu trực tiếp, Chữ ký hàm
+    Medium,   // Ưu tiên trung bình: Ví dụ mẫu (Few-shot examples)
+    Low,      // Ưu tiên thấp: Lịch sử trò chuyện cũ, ghi chú phụ trợ
 }
 
 #[derive(Debug, Clone)]
@@ -121,8 +119,9 @@ pub struct ContextSegment {
 
 impl ContextSegment {
     pub fn new(name: &str, content: &str, priority: PriorityTier) -> Self {
-        // Ước tính số token sơ bộ: trung bình khoảng 4 ký tự tương đương 1 token
-        let estimated_tokens = (content.len() + 3) / 4;
+        // Ước tính số token sơ bộ: khoảng 4 byte UTF-8 ~ 1 token (chỉ là ước lượng thô;
+        // muốn chính xác phải dùng đúng bộ tách token của mô hình).
+        let estimated_tokens = content.len().div_ceil(4);
         Self {
             name: name.to_string(),
             content: content.to_string(),
@@ -133,8 +132,8 @@ impl ContextSegment {
 }
 
 // 2. ĐỘNG CƠ QUẢN LÝ CỬA SỔ NGỮ CẢNH (CONTEXT WINDOW ENGINE)
-// Sử dụng con trỏ thông minh (smart pointer) hoặc cấu trúc sở hữu chặt chẽ
-// để quản lý bộ nhớ đệm (buffer) chứa các chỉ thị prompt an toàn.
+// Engine sở hữu toàn bộ các phân đoạn; khi ghép prompt chỉ mượn (&) chúng,
+// không sao chép nội dung thừa.
 pub struct ContextEngine {
     pub max_token_budget: usize,
     segments: Vec<ContextSegment>,
@@ -174,14 +173,18 @@ impl ContextEngine {
         let mut assembled_prompt = String::with_capacity(4096);
         let mut used_tokens = 0;
 
-        // Hàm nội bộ an toàn để nạp các segment theo thứ tự ưu tiên
+        // Closure nạp các segment theo thứ tự ưu tiên (tham lam: segment nào
+        // không còn vừa ngân sách thì bị bỏ, segment nhỏ hơn phía sau vẫn có thể vào)
         let mut try_include = |segs: &[&ContextSegment]| {
             for seg in segs {
                 if used_tokens + seg.estimated_tokens <= self.max_token_budget {
                     assembled_prompt.push_str(&format!("### [{}]\n{}\n\n", seg.name, seg.content));
                     used_tokens += seg.estimated_tokens;
                 } else {
-                    println!("[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!", seg.name);
+                    println!(
+                        "[Bộ lọc ngữ cảnh] Đã lược bỏ phân đoạn '{}' để không vượt quá ngân sách!",
+                        seg.name
+                    );
                 }
             }
         };
@@ -196,17 +199,18 @@ impl ContextEngine {
     }
 }
 
-// 3. HÀM MAIN THỰC CHỨC MINH HỌA QUY TRÌNH QUẢN LÝ NGỮ CẢNH
+// 3. HÀM MAIN MINH HỌA QUY TRÌNH QUẢN LÝ NGỮ CẢNH
 fn main() {
-    println!("=== CHƯƠNG 40: MINH HỌA ĐỘNG CƠ QUẢN LÝ NGỮ CẢNH & PROMPT HỆ THỐNG ===");
+    println!("=== CHƯƠNG 44: MINH HỌA ĐỘNG CƠ QUẢN LÝ NGỮ CẢNH & PROMPT HỆ THỐNG ===");
 
-    // Giả sử chúng ta đặt ngân sách ngữ cảnh rất chặt chẽ: chỉ 300 tokens
-    let mut engine = ContextEngine::new(300);
+    // Giả sử chúng ta đặt ngân sách ngữ cảnh rất chặt chẽ: chỉ 150 tokens
+    // (3 segment đầu tốn ~139 token, nên lịch sử chat ~38 token sẽ bị loại)
+    let mut engine = ContextEngine::new(150);
 
     // Segment 1: Ràng buộc an toàn cốt lõi (Critical)
     engine.add_segment(ContextSegment::new(
         "RÀNG BUỘC KỸ THUẬT BẤT BIẾN",
-        "1. Ngôn ngữ: Rust 2021 Edition.\n2. CẤM tuyệt đối dùng `unsafe`.\n3. CẤM dùng `.unwrap()`; bắt buộc xử lý lỗi bằng `Result<T, E>`.\n4. Đảm bảo an toàn quyền sở hữu (ownership) và mượn (borrow).",
+        "1. Ngôn ngữ: Rust 2024 Edition.\n2. CẤM tuyệt đối dùng `unsafe`.\n3. CẤM dùng `.unwrap()`; bắt buộc xử lý lỗi bằng `Result<T, E>`.\n4. Đảm bảo an toàn quyền sở hữu (ownership) và mượn (borrow).",
         PriorityTier::Critical,
     ));
 
@@ -236,14 +240,53 @@ fn main() {
 
     println!("\n--- KẾT QUẢ PROMPT HOÀN CHỈNH ĐƯỢC CHẮT LỌC ---");
     println!("{}", final_prompt);
-    println!("Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa", total_tokens, engine.max_token_budget);
+    println!(
+        "Tổng số tokens ước tính đã dùng: {} / {} tokens tối đa",
+        total_tokens, engine.max_token_budget
+    );
 
     // Kiểm tra tính đúng đắn của logic
     assert!(total_tokens <= engine.max_token_budget);
     assert!(final_prompt.contains("RÀNG BUỘC KỸ THUẬT BẤT BIẾN"));
     assert!(final_prompt.contains("GIAO ƯỚC DỮ LIỆU & TRAIT NGHIỆP VỤ"));
+    assert!(!final_prompt.contains("LỊCH SỬ CHAT CŨ"));
 
-    println!("\n[Kiểm chứng thành công] Prompt đã được tối ưu hóa hoàn hảo, loại bỏ 100% tạp âm ngữ cảnh!");
+    println!(
+        "\n[Kiểm chứng thành công] Prompt nằm trong ngân sách; phân đoạn ưu tiên thấp đã bị loại."
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_priority_is_dropped_first_when_over_budget() {
+        let mut engine = ContextEngine::new(10);
+        engine.add_segment(ContextSegment::new(
+            "low",
+            &"x".repeat(20),
+            PriorityTier::Low,
+        ));
+        engine.add_segment(ContextSegment::new(
+            "crit",
+            &"y".repeat(32),
+            PriorityTier::Critical,
+        ));
+        let (prompt, used) = engine.assemble_system_prompt();
+        assert_eq!(used, 8);
+        assert!(prompt.contains("[crit]"));
+        assert!(!prompt.contains("[low]"));
+    }
+
+    #[test]
+    fn token_estimate_counts_bytes() {
+        // "ệ" chiếm 3 byte UTF-8 -> ước lượng theo byte, không theo ký tự
+        assert_eq!(
+            ContextSegment::new("a", "ệệệệ", PriorityTier::Low).estimated_tokens,
+            3
+        );
+    }
 }
 ```
 
@@ -268,7 +311,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 1. **Chất lượng đầu ra của AI tỷ lệ thuận với độ sạch của ngữ cảnh**: Đưa càng nhiều thông tin rác vào prompt thì AI càng dễ sinh ảo giác và quên lãng các quy tắc quan trọng.
 2. **Cấu trúc System Prompt 5 phần**: Định danh vai trò -> Lằn ranh đỏ (Hard Constraints) -> Hợp đồng dữ liệu (Contracts) -> Đặc tả I/O -> Ví dụ mẫu (Few-shot).
 3. **Ưu tiên phân tầng thông tin**: Luôn ưu tiên các quy tắc an toàn bộ nhớ và giao ước Trait lên hàng đầu (`Critical`); lịch sử hội thoại rườm rà phải được dọn dẹp thường xuyên (`Low`).
-4. **Tự động hóa với `.cursorrules`**: Biến các tiêu chuẩn dự án thành luật lệ bất di bất dịch được nạp tự động, giảm thiểu 80% công sức giao tiếp lặp lại.
+4. **Tự động hóa với `.cursorrules`**: Biến các tiêu chuẩn dự án thành luật lệ bất di bất dịch được nạp tự động, giảm đáng kể công sức nhắc đi nhắc lại.
 
 ### Bài tập rèn luyện tư duy
 
@@ -321,7 +364,7 @@ VAI TRÒ: Bạn là một kỹ sư Rust cấp cao, viết mã sản xuất an to
 NHIỆM VỤ: Viết hàm đọc tệp cấu hình và trả về danh sách cổng mạng.
 
 CHỮ KÝ HÀM BẮT BUỘC:
-    fn doc_danh_sach_cong(path: &str) -> Result<Vec<u16>, std::io::Error>
+    fn read_port_list(path: &str) -> Result<Vec<u16>, std::io::Error>
 
 RÀNG BUỘC CỨNG:
 - TUYỆT ĐỐI KHÔNG dùng .unwrap() hay .expect(). Mọi lỗi phải lan qua toán tử `?`.

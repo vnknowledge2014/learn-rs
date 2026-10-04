@@ -13,7 +13,7 @@ Mục tiêu học tập của chương này:
 - Nhận diện các hiện tượng nguy hiểm khi thiếu kiểm soát đồng thời: Đọc rác (Dirty Read), Đọc không thể lặp lại (Non-repeatable Read), và Đọc bóng ma (Phantom Read).
 - Phân biệt cơ chế Khóa bi quan (Pessimistic Locking / 2PL) và triết lý tiến bộ của **MVCC**: *"Người đọc không bao giờ chặn người ghi, người ghi không bao giờ chặn người đọc"*.
 - Hiểu sâu sắc mối quan hệ cộng sinh giữa MVCC và động cơ **LSM-Tree** (`MemTable`, `SSTable`, và tiến trình `Compaction`).
-- Tự tay lập trình một hệ thống lưu trữ đa phiên bản MVCC hoàn chỉnh bằng Rust, kiểm soát tầm nhìn bản ghi (Snapshot Visibility) thông qua mã định danh giao dịch (`tx_id`).
+- Tự tay lập trình một hệ thống lưu trữ đa phiên bản MVCC hoàn chỉnh bằng Rust, kiểm soát tầm nhìn bản ghi (Snapshot Visibility) thông qua mã định danh giao dịch (`tx_id`) kết hợp trạng thái commit, và phát hiện xung đột ghi–ghi.
 
 ---
 
@@ -82,15 +82,20 @@ Khi nhiều giao dịch chạy song song, nếu không cô lập tốt sẽ nả
 - **Non-repeatable Read (Đọc không nhất quán)**: Giao dịch A đọc dòng số 1 ra giá trị 100. Giao dịch B vào sửa thành 200 và Commit. Giao dịch A đọc lại dòng số 1 thì thấy giá trị biến thành 200.
 - **Phantom Read (Bóng ma xuất hiện)**: Giao dịch A đếm có 5 đơn hàng. Giao dịch B chèn thêm đơn hàng thứ 6. Giao dịch A đếm lại thì thấy xuất hiện thêm dòng mới.
 
+Ngoài ba hiện tượng đọc, còn một hiểm hoạ về **ghi**:
+- **Lost Update (Mất cập nhật)**: Giao dịch A và B cùng đọc số dư 1000. A ghi 1100 (nạp 100) và commit; B ghi 1200 (nạp 200) và commit. Kết quả 1200 — khoản nạp của A biến mất không dấu vết.
+
 Hội đồng chuẩn SQL định nghĩa 4 cấp độ cô lập từ yếu đến mạnh:
 1. `Read Uncommitted`: Cho phép đọc dữ liệu chưa commit (nguy hiểm nhất).
 2. `Read Committed`: Chỉ đọc dữ liệu đã commit (chống Dirty Read).
 3. `Repeatable Read`: Đảm bảo đọc một dòng nhiều lần luôn ra cùng kết quả (chuẩn mặc định của MySQL).
 4. `Serializable`: Các giao dịch chạy như thể tuần tự từng cái một (an toàn nhất nhưng chậm nhất).
 
+MVCC thường hiện thực một mức nằm giữa 3 và 4 gọi là **Snapshot Isolation (SI)**: mỗi giao dịch đọc từ một *ảnh chụp* các giao dịch **đã commit** tại thời điểm nó bắt đầu, và hai giao dịch đồng thời không được cùng commit thay đổi trên một khoá (**first-committer-wins**). SI chặn được Dirty Read, Non-repeatable Read, Phantom (trong ảnh chụp) và Lost Update — nhưng vẫn để lọt một dị thường tinh vi gọi là *write skew* (hai giao dịch đọc chung dữ liệu rồi ghi vào hai khoá *khác nhau*), nên SI chưa phải Serializable.
+
 ### 3. Cơ chế hoạt động của MVCC trong Động cơ lưu trữ
 
-Trong mô hình MVCC, mỗi giao dịch khi bắt đầu được gán một con số nguyên tự tăng đại diện cho dấu mốc thời gian: `tx_id` (Transaction ID).
+Trong mô hình MVCC, mỗi giao dịch khi bắt đầu được gán một con số nguyên tự tăng đại diện cho dấu mốc thời gian: `tx_id` (Transaction ID). Hệ thống còn nhớ **trạng thái** của từng giao dịch: đang chạy (`Active`), đã commit (`Committed`) hay đã huỷ (`Aborted`).
 
 Mỗi bản ghi trong cơ sở dữ liệu được đính kèm hai trường siêu dữ liệu (metadata):
 - `created_by_tx`: Mã của giao dịch đã tạo ra bản ghi này.
@@ -105,10 +110,17 @@ Khóa: "user:101"
 └──────────────────────┴──────────────────────┴───────────────────────────────┘
 ```
 
-**Quy tắc khả kiến (Snapshot Visibility Rule)**:
-Khi Giao dịch có mã số `current_tx = 3` thực hiện đọc khóa `"user:101"`:
-- Nó kiểm tra phiên bản 1: Được tạo bởi `tx = 1 <= 3` (hợp lệ) và bị xóa bởi `tx = 5 > 3` (tại thời điểm `tx = 3`, hành động xóa của `tx = 5` chưa hề xảy ra!). Do đó, Giao dịch 3 nhìn thấy phiên bản 1!
-- Giao dịch 3 hoàn toàn không nhìn thấy phiên bản 2 (vì phiên bản 2 sinh ra ở tương lai `tx = 5`).
+**Ảnh chụp (Snapshot)**: lúc bắt đầu, giao dịch `T` chụp lại hai thứ: `xmax` = mã của chính nó (mọi giao dịch có mã `>= xmax` bắt đầu sau `T`), và tập `active` = các giao dịch **còn đang chạy** ngay lúc đó.
+
+**Quy tắc khả kiến (Snapshot Visibility Rule)**: `T` *nhìn thấy* tác động của giao dịch `X` khi và chỉ khi `X` là chính `T`, **hoặc** `X` đã commit **và** `X < xmax` **và** `X` không nằm trong `active`. Một phiên bản hiện ra với `T` khi `T` nhìn thấy giao dịch đã tạo ra nó, và **không** nhìn thấy giao dịch đã xoá nó.
+
+Khi Giao dịch có mã số `3` (bắt đầu lúc giao dịch 1 đã commit) đọc khóa `"user:101"`:
+- Phiên bản 1: tạo bởi `tx = 1` (đã commit trước khi 3 bắt đầu → thấy), bị xóa bởi `tx = 5` (`5 >= xmax = 3`, bắt đầu sau → không thấy lệnh xoá). Do đó, Giao dịch 3 nhìn thấy phiên bản 1!
+- Phiên bản 2: tạo bởi `tx = 5` → vô hình với giao dịch 3.
+
+> **Cái bẫy kinh điển:** chỉ so sánh `created_by_tx <= current_tx` là **chưa đủ**. Giả sử giao dịch 2 ghi một phiên bản rồi *chưa commit* (hoặc sẽ bị huỷ). Giao dịch 3 có `2 <= 3` nên sẽ đọc được phiên bản đó — đó chính là **Dirty Read**. Ngược lại, giao dịch 2 commit *sau khi* 3 bắt đầu cũng không được hiện ra với 3, nếu không ảnh chụp sẽ "trôi". Vì vậy ảnh chụp phải ghi nhớ tập giao dịch đang chạy, và hệ thống phải biết trạng thái commit của từng giao dịch.
+
+**Chống Lost Update**: trước khi ghi đè một khoá, giao dịch kiểm tra phiên bản mới nhất của khoá đó. Nếu nó do một giao dịch mà ta **không nhìn thấy** tạo ra (đang chạy, hoặc commit sau khi ta bắt đầu) thì ta đang định ghi đè lên một thay đổi mình chưa từng đọc — giao dịch bị từ chối với lỗi xung đột ghi–ghi và phải thử lại với ảnh chụp mới. PostgreSQL ở mức `REPEATABLE READ` làm đúng như vậy (*"could not serialize access due to concurrent update"*).
 
 ### 4. Mối liên hệ tự nhiên giữa MVCC và LSM-Tree
 
@@ -121,97 +133,246 @@ Tại sao các hệ thống cơ sở dữ liệu hiện đại sử dụng **LSM
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cài đặt một hệ thống lưu trữ đa phiên bản **MVCC Store** an toàn luồng dữ liệu, hỗ trợ giao dịch đọc cô lập Snapshot Isolation:
+Dưới đây là một chương trình Rust hoàn chỉnh và độc lập, cài đặt một hệ thống lưu trữ đa phiên bản **MVCC Store** với Snapshot Isolation đúng nghĩa: ảnh chụp các giao dịch đã commit, trạng thái giao dịch (`Active`/`Committed`/`Aborted`), phát hiện xung đột ghi–ghi, và dọn rác theo "đường chân trời" của giao dịch cũ nhất còn chạy. Để tập trung vào thuật toán, đây là mô hình **đơn luồng**: nhiều giao dịch chạy *xen kẽ* nhau, mỗi lời gọi là nguyên tử. Lưu ý cách thiết kế dùng hệ thống kiểu của Rust: `commit`/`abort` nhận `Transaction` *theo giá trị*, nên trình biên dịch cấm dùng lại một giao dịch đã kết thúc:
 
 ```rust
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::{HashMap, HashSet};
 
-/// Bộ đếm giao dịch toàn cục tự tăng an toàn luồng
-static GLOBAL_TX_COUNTER: AtomicU64 = AtomicU64::new(1);
+/// Mã giao dịch: số nguyên tự tăng, cấp theo thứ tự BẮT ĐẦU giao dịch
+pub type TxId = u64;
 
-/// Cấu trúc một bản ghi dữ liệu có gắn phiên bản thời gian (Versioned Record)
-#[derive(Clone, Debug, PartialEq)]
-pub struct VersionedRecord {
-    pub created_by_tx: u64,         // Giao dịch tạo ra bản ghi
-    pub deleted_by_tx: Option<u64>, // Giao dịch xóa bản ghi (None nếu còn hiệu lực)
-    pub value: String,            // Dữ liệu thực tế
+/// Trạng thái của một giao dịch
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TxStatus {
+    Active,
+    Committed,
+    Aborted,
 }
 
-/// Hệ thống lưu trữ dữ liệu đa phiên bản MVCC Store
+/// Ảnh chụp (snapshot) chụp lúc giao dịch bắt đầu:
+/// - `xmax`: mọi giao dịch có mã >= xmax bắt đầu SAU ta -> vô hình
+/// - `active`: các giao dịch còn đang chạy lúc ta bắt đầu -> vô hình,
+///   kể cả khi sau này chúng commit
+#[derive(Clone, Debug)]
+pub struct Snapshot {
+    xmax: TxId,
+    active: HashSet<TxId>,
+}
+
+/// Một giao dịch đang mở. Không `Clone`, và `commit`/`abort` nhận nó THEO GIÁ TRỊ:
+/// trình biên dịch cấm dùng lại một giao dịch đã kết thúc.
+#[derive(Debug)]
+pub struct Transaction {
+    pub id: TxId,
+    snapshot: Snapshot,
+}
+
+/// Cấu trúc một bản ghi dữ liệu có gắn phiên bản (Versioned Record)
+#[derive(Clone, Debug, PartialEq)]
+pub struct VersionedRecord {
+    pub created_by_tx: TxId,         // Giao dịch tạo ra phiên bản này
+    pub deleted_by_tx: Option<TxId>, // Giao dịch xoá/ghi đè phiên bản này (None nếu chưa)
+    pub value: String,               // Dữ liệu thực tế
+}
+
+/// Lỗi xung đột ghi–ghi: giao dịch khác đã (hoặc đang) sửa cùng khoá
+#[derive(Debug, PartialEq, Eq)]
+pub enum MvccError {
+    WriteConflict { key: String, other_tx: TxId },
+}
+
+/// Hệ thống lưu trữ dữ liệu đa phiên bản MVCC Store với Snapshot Isolation.
+/// Mô hình đơn luồng: nhiều giao dịch chạy XEN KẼ nhau, mỗi thao tác là nguyên tử.
 pub struct MvccStore {
     data: HashMap<String, Vec<VersionedRecord>>,
+    statuses: HashMap<TxId, TxStatus>,
+    /// Với mỗi giao dịch đang chạy: mã nhỏ nhất mà nó có thể KHÔNG nhìn thấy (xmin)
+    active_xmins: HashMap<TxId, TxId>,
+    next_tx_id: TxId,
 }
 
 impl MvccStore {
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
+            statuses: HashMap::new(),
+            active_xmins: HashMap::new(),
+            next_tx_id: 1,
         }
     }
 
-    /// Khởi động một giao dịch mới - Nhận một mã định danh thời gian duy nhất
-    pub fn start_trade(&self) -> u64 {
-        GLOBAL_TX_COUNTER.fetch_add(1, Ordering::SeqCst)
+    fn status(&self, tx_id: TxId) -> TxStatus {
+        // Mã không có trong bảng = chưa từng tồn tại -> coi như bị huỷ
+        self.statuses
+            .get(&tx_id)
+            .copied()
+            .unwrap_or(TxStatus::Aborted)
     }
 
-    /// THAO TÁC GHI TRONG GIAO DỊCH (Write)
-    pub fn record(&mut self, key: &str, value: &str, tx_id: u64) {
-        let versions = self.data.entry(key.to_string()).or_default();
+    /// Khởi động một giao dịch mới: cấp mã và chụp ảnh các giao dịch đang chạy
+    pub fn begin(&mut self) -> Transaction {
+        let id = self.next_tx_id;
+        self.next_tx_id += 1;
+        let active: HashSet<TxId> = self.active_xmins.keys().copied().collect();
+        let xmin = active.iter().copied().min().unwrap_or(id);
+        self.statuses.insert(id, TxStatus::Active);
+        self.active_xmins.insert(id, xmin);
+        Transaction {
+            id,
+            snapshot: Snapshot { xmax: id, active },
+        }
+    }
 
-        // Nếu đã có phiên bản trước đó chưa bị xóa, đánh dấu bị xóa bởi giao dịch hiện tại
-        for pb in versions.iter_mut().rev() {
-            if pb.deleted_by_tx.is_none() {
-                pb.deleted_by_tx = Some(tx_id);
-                break;
+    /// Giao dịch `tx` có nhìn thấy tác động của giao dịch `other` không?
+    fn sees(&self, tx: &Transaction, other: TxId) -> bool {
+        other == tx.id
+            || (self.status(other) == TxStatus::Committed
+                && other < tx.snapshot.xmax
+                && !tx.snapshot.active.contains(&other))
+    }
+
+    /// QUY TẮC KHẢ KIẾN: phiên bản hiện ra với `tx` khi người tạo được `tx` nhìn thấy
+    /// và lệnh xoá (nếu có) thì KHÔNG được `tx` nhìn thấy.
+    fn is_visible(&self, tx: &Transaction, version: &VersionedRecord) -> bool {
+        self.sees(tx, version.created_by_tx)
+            && !version.deleted_by_tx.is_some_and(|d| self.sees(tx, d))
+    }
+
+    /// THAO TÁC ĐỌC CÔ LẬP THEO ẢNH CHỤP (Snapshot Read)
+    pub fn read(&self, tx: &Transaction, key: &str) -> Option<&str> {
+        self.data
+            .get(key)?
+            .iter()
+            .rev()
+            .find(|v| self.is_visible(tx, v))
+            .map(|v| v.value.as_str())
+    }
+
+    /// Chỉ số của phiên bản "đầu" của khoá: phiên bản mới nhất không do giao dịch bị huỷ tạo ra
+    fn head_index(&self, key: &str) -> Option<usize> {
+        self.data
+            .get(key)?
+            .iter()
+            .rposition(|v| self.status(v.created_by_tx) != TxStatus::Aborted)
+    }
+
+    /// Kiểm xung đột ghi–ghi trên phiên bản đầu của khoá. Ghi đè lên một thay đổi mà ta
+    /// KHÔNG nhìn thấy (chưa commit, hoặc commit sau khi ta bắt đầu) chính là "lost update".
+    /// Ta từ chối ngay lúc ghi (giống PostgreSQL ở mức REPEATABLE READ): nhờ vậy không bao giờ
+    /// có hai giao dịch đồng thời cùng commit thay đổi trên một khoá (first-committer-wins).
+    fn check_write_conflict(&self, tx: &Transaction, key: &str) -> Result<(), MvccError> {
+        let Some(i) = self.head_index(key) else {
+            return Ok(());
+        };
+        let head = &self.data[key][i];
+        let conflict = |other: TxId| MvccError::WriteConflict {
+            key: key.to_string(),
+            other_tx: other,
+        };
+        if !self.sees(tx, head.created_by_tx) {
+            return Err(conflict(head.created_by_tx));
+        }
+        if let Some(d) = head.deleted_by_tx
+            && self.status(d) != TxStatus::Aborted
+            && !self.sees(tx, d)
+        {
+            return Err(conflict(d));
+        }
+        Ok(())
+    }
+
+    /// THAO TÁC GHI TRONG GIAO DỊCH (Write): tạo phiên bản mới, đánh dấu phiên bản cũ
+    pub fn write(&mut self, tx: &Transaction, key: &str, value: &str) -> Result<(), MvccError> {
+        self.check_write_conflict(tx, key)?;
+        let head = self.head_index(key);
+        let head_dead = head.is_some_and(|i| {
+            self.data[key][i]
+                .deleted_by_tx
+                .is_some_and(|d| self.status(d) != TxStatus::Aborted)
+        });
+        let versions = self.data.entry(key.to_string()).or_default();
+        if let Some(i) = head {
+            let h = &mut versions[i];
+            if h.created_by_tx == tx.id && h.deleted_by_tx.is_none() {
+                // Ghi lần hai trong cùng giao dịch: sửa luôn phiên bản riêng của mình
+                h.value = value.to_string();
+                return Ok(());
+            }
+            if !head_dead {
+                // Phiên bản cũ bị "xoá" bởi giao dịch hiện tại (ghi đè dấu của tx đã huỷ nếu có)
+                h.deleted_by_tx = Some(tx.id);
             }
         }
-
-        // Thêm phiên bản mới vào danh sách
         versions.push(VersionedRecord {
-            created_by_tx: tx_id,
+            created_by_tx: tx.id,
             deleted_by_tx: None,
             value: value.to_string(),
         });
+        Ok(())
     }
 
-    /// THAO TÁC ĐỌC CÔ LẬP THEO PHIÊN BẢN (Snapshot Read)
-    /// Áp dụng quy tắc khả kiến: Chỉ đọc bản ghi được tạo TRƯỚC tx_id và CHƯA BỊ XÓA trước tx_id
-    pub fn doc(&self, key: &str, current_tx_id: u64) -> Option<&str> {
-        if let Some(versions) = self.data.get(key) {
-            // Duyệt từ phiên bản mới nhất lùi về phiên bản cũ nhất
-            for pb in versions.iter().rev() {
-                // Điều kiện 1: Bản ghi phải được tạo trước hoặc cùng thời điểm giao dịch này
-                let hop_le_ve_make = pb.created_by_tx <= current_tx_id;
-                // Điều kiện 2: Bản ghi chưa bị xóa, hoặc bị xóa bởi một giao dịch xảy ra trong tương lai
-                let hop_le_ve_remove = match pb.deleted_by_tx {
-                    None => true,
-                    Some(del_tx) => del_tx > current_tx_id,
-                };
+    /// THAO TÁC XOÁ: đánh dấu phiên bản đang thấy là bị xoá bởi giao dịch hiện tại
+    pub fn delete(&mut self, tx: &Transaction, key: &str) -> Result<bool, MvccError> {
+        self.check_write_conflict(tx, key)?;
+        let Some(i) = self.head_index(key) else {
+            return Ok(false);
+        };
+        if !self.is_visible(tx, &self.data[key][i]) {
+            return Ok(false); // khoá đã bị xoá trong ảnh chụp của ta
+        }
+        if let Some(versions) = self.data.get_mut(key) {
+            versions[i].deleted_by_tx = Some(tx.id);
+        }
+        Ok(true)
+    }
 
-                if hop_le_ve_make && hop_le_ve_remove {
-                    return Some(&pb.value);
+    /// COMMIT: từ giờ mọi giao dịch BẮT ĐẦU SAU sẽ nhìn thấy thay đổi của `tx`
+    pub fn commit(&mut self, tx: Transaction) {
+        self.statuses.insert(tx.id, TxStatus::Committed);
+        self.active_xmins.remove(&tx.id);
+    }
+
+    /// ABORT: chỉ đánh dấu trạng thái (giống PostgreSQL). Quy tắc khả kiến tự bỏ qua
+    /// mọi phiên bản/dấu xoá của giao dịch bị huỷ; VACUUM sẽ dọn chúng sau.
+    pub fn abort(&mut self, tx: Transaction) {
+        self.statuses.insert(tx.id, TxStatus::Aborted);
+        self.active_xmins.remove(&tx.id);
+    }
+
+    /// Dọn rác (Vacuum/Compaction): bỏ các phiên bản mà KHÔNG giao dịch nào —
+    /// đang chạy hay sẽ bắt đầu — còn có thể nhìn thấy. Trả về số phiên bản đã dọn.
+    pub fn vacuum(&mut self) -> usize {
+        // Mọi giao dịch đã kết thúc với mã < horizon đều được MỌI giao dịch đang chạy nhìn thấy
+        let horizon = self
+            .active_xmins
+            .values()
+            .copied()
+            .min()
+            .unwrap_or(self.next_tx_id);
+        let statuses = &self.statuses;
+        let status = |id: TxId| statuses.get(&id).copied().unwrap_or(TxStatus::Aborted);
+        let mut removed = 0;
+        for versions in self.data.values_mut() {
+            let before = versions.len();
+            versions.retain(|v| {
+                let creator_aborted = status(v.created_by_tx) == TxStatus::Aborted;
+                let dead_for_everyone = v
+                    .deleted_by_tx
+                    .is_some_and(|d| status(d) == TxStatus::Committed && d < horizon);
+                !creator_aborted && !dead_for_everyone
+            });
+            removed += before - versions.len();
+            // Dấu xoá của giao dịch đã huỷ là vô nghĩa -> gỡ bỏ
+            for v in versions.iter_mut() {
+                if v.deleted_by_tx
+                    .is_some_and(|d| status(d) == TxStatus::Aborted)
+                {
+                    v.deleted_by_tx = None;
                 }
             }
         }
-        None
-    }
-
-    /// Thao tác dọn rác (Vacuum/Compaction): Xóa bỏ các phiên bản cũ không còn giao dịch nào cần đến
-    pub fn don_dep_rac(&mut self, oldest_active_tx: u64) -> usize {
-        let mut num_sell_record_da_remove = 0;
-        for list in self.data.values_mut() {
-            let first_sell = list.len();
-            // Giữ lại các bản ghi: Chưa bị xóa HOẶC bị xóa sau mốc giao dịch cũ nhất còn sống
-            list.retain(|pb| {
-                match pb.deleted_by_tx {
-                    None => true,
-                    Some(del_tx) => del_tx >= oldest_active_tx,
-                }
-            });
-            num_sell_record_da_remove += first_sell - list.len();
-        }
-        num_sell_record_da_remove
+        self.data.retain(|_, v| !v.is_empty());
+        removed
     }
 }
 
@@ -226,52 +387,117 @@ fn main() {
     println!("  GIAO DỊCH, ĐẢM BẢO ACID & KIỂM SOÁT ĐỒNG THỜI MVCC TRONG RUST");
     println!("============================================================");
 
-    let mut mvcc_store = MvccStore::new();
+    let mut store = MvccStore::new();
 
-    // 1. Dữ liệu ban đầu được nạp bởi Giao dịch số 1 (Giao dịch khởi tạo hệ thống)
-    let tx_block_make = 1;
-    mvcc_store.record("tai_khoan:A", "1000", tx_block_make);
-    println!("[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000", tx_block_make);
+    // 1. Dữ liệu ban đầu được nạp bởi một giao dịch khởi tạo (#1) và commit ngay
+    let init = store.begin();
+    assert_eq!(init.id, 1);
+    store.write(&init, "account:A", "1000").unwrap();
+    println!(
+        "[1] Giao dịch #{}: Khởi tạo số dư tài khoản A = 1000 rồi COMMIT",
+        init.id
+    );
+    store.commit(init);
 
     // 2. Kịch bản chạy đồng thời hai giao dịch:
-    // - Giao dịch Đọc (TX_DOC = 2): Bắt đầu kiểm toán báo cáo tài chính
-    // - Giao dịch Ghi  (TX_GHI = 3): Khách hàng nạp thêm tiền vào tài khoản
-    let tx_read = mvcc_store.start_trade(); // tx = 2
-    let tx_record = mvcc_store.start_trade(); // tx = 3
+    // - Giao dịch Đọc (#2): Bắt đầu kiểm toán báo cáo tài chính
+    // - Giao dịch Ghi (#3): Khách hàng nạp thêm tiền vào tài khoản
+    let reader = store.begin();
+    let writer = store.begin();
+    assert_eq!((reader.id, writer.id), (2, 3));
     println!("\n[2] Hai giao dịch đồng thời xuất hiện:");
-    println!("    - Giao dịch Đọc khởi động tại mốc: tx_id = {}", tx_read);
-    println!("    - Giao dịch Ghi khởi động tại mốc : tx_id = {}", tx_record);
+    println!("    - Giao dịch Đọc khởi động: tx_id = {}", reader.id);
+    println!("    - Giao dịch Ghi khởi động: tx_id = {}", writer.id);
 
-    // Giao dịch Ghi cập nhật số dư lên 1500 (Tạo phiên bản mới)
-    println!("\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500...", tx_record);
-    mvcc_store.record("tai_khoan:A", "1500", tx_record);
+    println!(
+        "\n    -> Giao dịch Ghi #{} cập nhật tài khoản A thành 1500 (CHƯA commit)...",
+        writer.id
+    );
+    store.write(&writer, "account:A", "1500").unwrap();
 
-    // 3. Kiểm tra tính cô lập Snapshot Isolation của MVCC:
-    // Giao dịch Đọc (tx = 2) đọc lại tài khoản A
+    // 3. Không có Dirty Read: chưa commit thì không ai khác thấy, kể cả giao dịch mới hơn
     println!("\n[3] Kiểm tra tính cô lập Snapshot Isolation:");
-    let balance_read = mvcc_store.doc("tai_khoan:A", tx_read);
-    println!("    - Giao dịch Đọc #{} nhìn thấy số dư: {:?}", tx_read, balance_read);
+    let early = store.begin(); // #4 — bắt đầu khi #3 còn đang chạy
+    println!(
+        "    - Giao dịch Đọc #{} thấy: {:?}",
+        reader.id,
+        store.read(&reader, "account:A")
+    );
+    println!(
+        "    - Giao dịch #{} (bắt đầu khi #{} chưa commit) thấy: {:?}",
+        early.id,
+        writer.id,
+        store.read(&early, "account:A")
+    );
+    println!(
+        "    - Chính Giao dịch Ghi #{} thấy thay đổi của mình: {:?}",
+        writer.id,
+        store.read(&writer, "account:A")
+    );
+    assert_eq!(store.read(&reader, "account:A"), Some("1000"));
+    assert_eq!(store.read(&early, "account:A"), Some("1000"));
+    assert_eq!(store.read(&writer, "account:A"), Some("1500"));
 
-    // Giao dịch tương lai (tx = 4) bước vào hệ thống và đọc
-    let future_tx = mvcc_store.start_trade(); // tx = 4
-    let new_balance = mvcc_store.doc("tai_khoan:A", future_tx);
-    println!("    - Giao dịch mới #{} nhìn thấy số dư : {:?}", future_tx, new_balance);
+    store.commit(writer);
+    // Repeatable Read: dù #3 đã commit, ảnh chụp của #2 và #4 không đổi
+    assert_eq!(store.read(&reader, "account:A"), Some("1000"));
+    assert_eq!(store.read(&early, "account:A"), Some("1000"));
+    let late = store.begin(); // #5 — bắt đầu sau khi #3 commit
+    println!(
+        "    - Sau khi #3 commit: #{} vẫn thấy {:?}, giao dịch mới #{} thấy {:?}",
+        reader.id,
+        store.read(&reader, "account:A"),
+        late.id,
+        store.read(&late, "account:A")
+    );
+    assert_eq!(store.read(&late, "account:A"), Some("1500"));
+    println!(
+        "    => Người đọc không bị người ghi chặn, và không bao giờ thấy dữ liệu chưa commit!"
+    );
+    store.commit(reader);
+    store.commit(early);
+    store.commit(late);
 
-    // Xác nhận tính chính xác tuyệt đối:
-    // Người đọc cũ (tx = 2) nhìn thấy phiên bản cũ "1000" mà không bị chặn bởi người ghi!
-    assert_eq!(balance_read, Some("1000"));
-    assert_eq!(new_balance, Some("1500"));
-    println!("    => KẾT LUẬN: Người đọc không hề bị người ghi chặn, dữ liệu luôn nhất quán!");
+    // 4. Chống Lost Update: hai giao dịch cùng đọc 1500 rồi cùng cộng thêm tiền
+    println!("\n[4] Chống mất cập nhật (Lost Update) — first-committer-wins:");
+    let t_a = store.begin();
+    let t_b = store.begin();
+    let seen_a: i64 = store.read(&t_a, "account:A").unwrap().parse().unwrap();
+    let seen_b: i64 = store.read(&t_b, "account:A").unwrap().parse().unwrap();
+    store
+        .write(&t_a, "account:A", &(seen_a + 100).to_string())
+        .unwrap();
+    let result_b = store.write(&t_b, "account:A", &(seen_b + 200).to_string());
+    println!("    - #{} ghi 1600: thành công", t_a.id);
+    println!("    - #{} ghi 1700: {:?}", t_b.id, result_b);
+    assert!(matches!(result_b, Err(MvccError::WriteConflict { .. })));
+    store.commit(t_a);
+    store.abort(t_b);
+    // Giao dịch bị từ chối thử lại với ảnh chụp MỚI
+    let retry = store.begin();
+    let seen: i64 = store.read(&retry, "account:A").unwrap().parse().unwrap();
+    store
+        .write(&retry, "account:A", &(seen + 200).to_string())
+        .unwrap();
+    store.commit(retry);
+    let check = store.begin();
+    println!(
+        "    - Sau khi thử lại: số dư = {:?} (không mất khoản nạp nào)",
+        store.read(&check, "account:A")
+    );
+    assert_eq!(store.read(&check, "account:A"), Some("1800"));
+    store.commit(check);
 
-    // 4. Kiểm thử tính năng dọn rác Vacuum / Compaction
-    println!("\n[4] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Compaction):");
-    // Khi giao dịch cũ tx=2 đã kết thúc, giao dịch cũ nhất hiện tại là tx=4
-    let so_rac_da_don = mvcc_store.don_dep_rac(4);
-    println!("    - Đã dọn dẹp thành công {} phiên bản dữ liệu rác cũ!", so_rac_da_don);
-    assert_eq!(so_rac_da_don, 1); // Phiên bản v1 đã bị dọn dẹp
+    // 5. Dọn rác: không còn giao dịch nào đang chạy -> mọi phiên bản cũ đều là rác
+    println!("\n[5] Kiểm thử dọn rác các phiên bản dữ liệu cũ (Vacuum):");
+    let removed = store.vacuum();
+    println!("    - Đã dọn dẹp {} phiên bản cũ/bị huỷ!", removed);
+    // 1000, 1500, 1600 đã bị ghi đè = 3 phiên bản rác; còn lại 1800.
+    // (Bản 1700 của giao dịch bị xung đột bị từ chối ngay lúc ghi nên chưa từng tồn tại.)
+    assert_eq!(removed, 3);
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 31               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 35               ");
     println!("============================================================");
 }
 ```
@@ -284,48 +510,195 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0502** | `cannot borrow 'kho_mvcc' as mutable because it is also borrowed as immutable` | Bạn đang giữ kết quả tham chiếu mượn của hàm `doc()` (`let val = kho.doc(...)`) nhưng lại gọi phương thức `kho.ghi(...)` làm thay đổi bản đồ bộ nhớ. | Sao chép giá trị chuỗi `.to_string()` hoặc kết thúc phạm vi mượn đọc trước khi thực hiện ghi dữ liệu. |
-| **E0382** | `use of moved value: 'versions'` | Bạn di chuyển quyền sở hữu của vector phiên bản trong vòng lặp bằng cách duyệt qua giá trị thay vì tham chiếu mượn. | Dùng `.iter()` hoặc `.iter_mut()` khi duyệt qua các phiên bản để tránh di chuyển quyền sở hữu (ownership). |
-| **E0596** | `cannot borrow field '...' as mutable` | Bạn cố thay đổi trường `deleted_by_tx` trong khi đang duyệt bằng iterator bất biến `.iter()`. | Chuyển sang sử dụng phương thức `.iter_mut()`. |
-| **E0277** | `the trait bound 'AtomicU64: Clone' is not satisfied` | Kiểu dữ liệu nguyên tử `AtomicU64` đại diện cho một ô nhớ phần cứng cụ thể, không hỗ trợ sao chép (Clone). | Sử dụng tham chiếu `&AtomicU64` hoặc chia sẻ qua con trỏ đếm tham chiếu đa luồng `Arc<AtomicU64>`. |
+| **E0502** | `cannot borrow '*store' as mutable because it is also borrowed as immutable` | Bạn đang giữ kết quả tham chiếu mượn của hàm `read()` (`let val = store.read(&tx, ...)`, kiểu `Option<&str>` mượn từ `store`) nhưng lại gọi `store.write(...)` làm thay đổi kho. | Sao chép giá trị chuỗi `.to_string()` hoặc kết thúc phạm vi mượn đọc trước khi thực hiện ghi dữ liệu. |
+| **E0382** | `borrow of moved value: 'versions'` | Bạn di chuyển quyền sở hữu của vector phiên bản trong vòng lặp (`for v in versions`) thay vì duyệt qua tham chiếu mượn, rồi lại dùng `versions` sau vòng lặp. | Dùng `.iter()` hoặc `.iter_mut()` khi duyệt qua các phiên bản để tránh di chuyển quyền sở hữu (ownership). |
+| **E0594** | `cannot assign to 'v.deleted_by_tx', which is behind a '&' reference` | Bạn cố thay đổi trường `deleted_by_tx` trong khi đang duyệt bằng iterator bất biến `.iter()`. | Chuyển sang sử dụng phương thức `.iter_mut()`. |
+| **E0382** | `borrow of moved value: 'tx'` | Bạn gọi `store.commit(tx)` rồi lại `store.read(&tx, ...)`. `commit` nhận `Transaction` theo giá trị nên `tx` đã bị di chuyển — đây là lỗi **có chủ đích**: giao dịch đã kết thúc thì không được đọc/ghi nữa. | Bắt đầu giao dịch mới bằng `store.begin()`. |
 
 ### Ví dụ phân tích lỗi `E0502` khi vừa đọc vừa ghi trong MVCC:
 
 ```rust
 // Đoạn mã lỗi minh họa E0502: Xung đột mượn đọc và mượn ghi
-fn broken_mvcc(store: &mut MvccStore) {
-    // let ket_qua = store.doc("key", 2); // Mượn bất biến store
-    // store.ghi("key", "val_moi", 3);    // LỖI E0502: Mượn khả biến store khi đang bị mượn đọc!
-    // println!("Đã đọc: {:?}", ket_qua);
+fn broken_mvcc(store: &mut MvccStore, tx: &Transaction) {
+    // let result = store.read(tx, "key");       // Mượn bất biến store
+    // store.write(tx, "key", "new_value");      // LỖI E0502: Mượn khả biến store khi đang bị mượn đọc!
+    // println!("Đã đọc: {:?}", result);
+    let _ = (store, tx);
 }
 
 // Cách sửa chữa đúng chuẩn: Chuyển dữ liệu mượn thành kiểu sở hữu độc lập
-fn correct_mvcc(store: &mut MvccStore) {
+fn correct_mvcc(store: &mut MvccStore, tx: &Transaction) -> Result<(), MvccError> {
     // Bước 1: Sao chép kết quả ra biến String độc lập
-    let ket_qua = store.doc("key", 2).map(|s| s.to_string());
-    
+    let result = store.read(tx, "key").map(|s| s.to_string());
+
     // Bước 2: Tự do thực hiện thao tác ghi mà không vi phạm quy tắc mượn
-    store.record("key", "val_moi", 3);
-    
-    println!("Dữ liệu đọc trước đó: {:?}", ket_qua);
+    store.write(tx, "key", "new_value")?;
+
+    println!("Dữ liệu đọc trước đó: {:?}", result);
+    Ok(())
 }
 ```
 
 ---
+
+## Kiểm thử tự động (Automated Tests)
+
+Kiểm soát đồng thời là nơi lỗi **không** lộ ra khi chạy thử một luồng đơn giản: phiên bản trước của chương này chỉ so `created_by_tx <= current`, và chương trình mẫu vẫn chạy "đúng" — trong khi nó cho phép Dirty Read và Lost Update. Mỗi test dưới đây dựng đúng một kịch bản xen kẽ giữa các giao dịch và khẳng định điều Snapshot Isolation hứa hẹn.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store_with(key: &str, value: &str) -> MvccStore {
+        let mut store = MvccStore::new();
+        let t = store.begin();
+        store.write(&t, key, value).unwrap();
+        store.commit(t);
+        store
+    }
+
+    #[test]
+    fn no_dirty_read_even_for_younger_transactions() {
+        // Lỗi cũ: chỉ so created_by_tx <= current nên giao dịch có mã LỚN HƠN
+        // đọc được phiên bản CHƯA commit của giao dịch có mã nhỏ hơn.
+        let mut store = store_with("k", "old");
+        let writer = store.begin();
+        store.write(&writer, "k", "uncommitted").unwrap();
+        let younger = store.begin();
+        assert_eq!(store.read(&younger, "k"), Some("old"));
+        store.abort(writer);
+        assert_eq!(store.read(&younger, "k"), Some("old"));
+    }
+
+    #[test]
+    fn repeatable_read_within_snapshot() {
+        let mut store = store_with("k", "v1");
+        let reader = store.begin();
+        assert_eq!(store.read(&reader, "k"), Some("v1"));
+        let writer = store.begin();
+        store.write(&writer, "k", "v2").unwrap();
+        store.commit(writer);
+        assert_eq!(
+            store.read(&reader, "k"),
+            Some("v1"),
+            "ảnh chụp không được đổi"
+        );
+        let after = store.begin();
+        assert_eq!(store.read(&after, "k"), Some("v2"));
+    }
+
+    #[test]
+    fn transaction_active_at_begin_stays_invisible_after_commit() {
+        // #2 bắt đầu trước #3, nhưng commit SAU khi #3 bắt đầu -> #3 không được thấy
+        let mut store = MvccStore::new();
+        let t2 = store.begin();
+        let t3 = store.begin();
+        store.write(&t2, "k", "from_t2").unwrap();
+        store.commit(t2);
+        assert_eq!(store.read(&t3, "k"), None);
+    }
+
+    #[test]
+    fn lost_update_is_prevented() {
+        let mut store = store_with("counter", "0");
+        let a = store.begin();
+        let b = store.begin();
+        store.write(&a, "counter", "1").unwrap();
+        // b ghi đè thay đổi chưa commit của a -> xung đột
+        assert_eq!(
+            store.write(&b, "counter", "1"),
+            Err(MvccError::WriteConflict {
+                key: "counter".into(),
+                other_tx: a.id
+            })
+        );
+        store.commit(a);
+        // kể cả sau khi a đã commit, b vẫn không được ghi đè (a commit sau ảnh chụp của b)
+        assert!(store.write(&b, "counter", "1").is_err());
+        store.abort(b);
+        let c = store.begin();
+        store.write(&c, "counter", "2").unwrap();
+        store.commit(c);
+        let d = store.begin();
+        assert_eq!(store.read(&d, "counter"), Some("2"));
+    }
+
+    #[test]
+    fn aborted_writes_and_deletes_are_invisible() {
+        let mut store = store_with("k", "keep");
+        let t = store.begin();
+        store.write(&t, "k", "discard").unwrap();
+        store.write(&t, "k", "discard again").unwrap(); // ghi hai lần trong cùng giao dịch
+        assert_eq!(store.read(&t, "k"), Some("discard again"));
+        store.abort(t);
+        let t = store.begin();
+        assert!(store.delete(&t, "k").unwrap());
+        assert_eq!(store.read(&t, "k"), None);
+        store.abort(t);
+        let after = store.begin();
+        assert_eq!(store.read(&after, "k"), Some("keep"));
+        // và giao dịch sau vẫn ghi được (không bị dấu vết của tx đã huỷ chặn)
+        store.write(&after, "k", "new").unwrap();
+        store.commit(after);
+    }
+
+    #[test]
+    fn committed_delete_hides_key_for_later_snapshots_only() {
+        let mut store = store_with("k", "v");
+        let old_reader = store.begin();
+        let deleter = store.begin();
+        assert!(store.delete(&deleter, "k").unwrap());
+        store.commit(deleter);
+        assert_eq!(store.read(&old_reader, "k"), Some("v"));
+        let new_reader = store.begin();
+        assert_eq!(store.read(&new_reader, "k"), None);
+    }
+
+    #[test]
+    fn vacuum_keeps_versions_needed_by_active_snapshots() {
+        let mut store = store_with("k", "v1");
+        let old_reader = store.begin();
+        let w = store.begin();
+        store.write(&w, "k", "v2").unwrap();
+        store.commit(w);
+        assert_eq!(store.vacuum(), 0, "old_reader vẫn cần v1");
+        assert_eq!(store.read(&old_reader, "k"), Some("v1"));
+        store.commit(old_reader);
+        assert_eq!(store.vacuum(), 1);
+        let t = store.begin();
+        assert_eq!(store.read(&t, "k"), Some("v2"));
+    }
+
+    #[test]
+    fn transaction_ids_are_unique_and_increasing() {
+        let mut store = MvccStore::new();
+        let ids: Vec<TxId> = (0..5)
+            .map(|_| {
+                let t = store.begin();
+                let id = t.id;
+                store.commit(t);
+                id
+            })
+            .collect();
+        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+    }
+}
+```
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Tiêu chuẩn ACID**: Là nền móng bảo đảm tính toàn vẹn và độ tin cậy của mọi hệ thống dữ liệu; đảm bảo các giao dịch diễn ra nguyên tử, nhất quán, cô lập và bền vững vĩnh viễn.
 2. **Triết lý MVCC đỉnh cao**: Bằng cách lưu trữ nhiều phiên bản kèm dấu mốc thời gian giao dịch (`tx_id`), MVCC triệt tiêu việc khóa bảng, giúp người đọc và người ghi không bao giờ cản trở lẫn nhau.
-3. **Quy tắc khả kiến (Visibility)**: Một giao dịch chỉ được phép nhìn thấy các bản ghi được tạo ra trước thời điểm nó bắt đầu và chưa bị xóa trước thời điểm đó.
+3. **Quy tắc khả kiến (Visibility)**: Một giao dịch chỉ nhìn thấy các phiên bản do giao dịch **đã commit trước khi nó bắt đầu** (hoặc do chính nó) tạo ra, và chưa bị một giao dịch như thế xoá. So sánh mã giao dịch thôi là chưa đủ — phải biết trạng thái commit và tập giao dịch đang chạy lúc chụp ảnh. Ghi đè lên thay đổi mình không nhìn thấy phải bị từ chối (chống Lost Update).
 4. **Cộng sinh hoàn hảo với LSM-Tree**: Tính chất bất biến (Immutable) của các tệp `SSTable` trong LSM-Tree biến nó thành động cơ tự nhiên tối ưu nhất để triển khai MVCC.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Phân tích kịch bản chuyển tiền ACID)**:  
    Giao dịch $T_1$ chuyển 200 nghìn từ tài khoản A sang tài khoản B gồm hai bước: `A = A - 200` và `B = B + 200`. Nếu máy tính sập nguồn ngay sau khi bước 1 hoàn thành, thuộc tính ACID nào sẽ đảm bảo tài khoản A không bị mất oan 200 nghìn? Quy trình khôi phục diễn ra như thế nào?
-2. **Bài tập 2 (Xử lý Rollback trong MVCC)**:  
-   Hãy thiết kế thêm phương thức `fn rollback(&mut self, tx_id: u64)` cho `MvccStore`: Tìm tất cả các bản ghi có `created_by_tx == tx_id` và xóa chúng khỏi hệ thống, đồng thời khôi phục lại các bản ghi cũ bị đánh dấu `deleted_by_tx == Some(tx_id)` về trạng thái `None`.
+2. **Bài tập 2 (Hoàn tác vật lý — Rollback trong MVCC)**:  
+   Phương thức `abort` của `MvccStore` chỉ đánh dấu giao dịch là `Aborted` (giống PostgreSQL): các phiên bản nó tạo ra vẫn nằm đó, chỉ bị quy tắc khả kiến bỏ qua, chờ `vacuum` dọn. Hãy thiết kế thêm phương thức `fn rollback(&mut self, tx: Transaction)` hoàn tác **ngay lập tức**: đánh dấu giao dịch bị huỷ, xóa mọi phiên bản có `created_by_tx == tx.id`, đồng thời khôi phục các phiên bản cũ bị đánh dấu `deleted_by_tx == Some(tx.id)` về trạng thái `None`.
 3. **Bài tập 3 (Tư duy mở rộng)**:  
    Trong các hệ quản trị cơ sở dữ liệu lớn như PostgreSQL, hiện tượng gì sẽ xảy ra nếu một giao dịch đọc kéo dài hàng tuần lễ mà không chịu đóng lại (`commit`/`abort`)? Giao dịch này sẽ gây ảnh hưởng tiêu cực như thế nào đến tiến trình dọn rác (Vacuum / Compaction) của MVCC?
 
@@ -382,20 +755,22 @@ Hoàn tác cần làm hai việc ngược nhau: **bỏ** những bản ghi giao 
 
 ```rust
 impl MvccStore {
-    /// Hoàn tác một giao dịch chưa commit.
+    /// Hoàn tác NGAY một giao dịch chưa commit.
     /// HAI việc ngược nhau, đều bắt buộc:
     ///   1. bỏ những phiên bản do tx này TẠO RA
     ///   2. hồi sinh những phiên bản do tx này ĐÁNH DẤU XOÁ
-    pub fn rollback(&mut self, tx_id: u64) {
-        for cac_ban in self.data.values_mut() {
-            // 1. Bỏ phiên bản do chính tx này tạo — chúng chưa từng hợp lệ
+    pub fn rollback(&mut self, tx: Transaction) {
+        let tx_id = tx.id;
+        self.abort(tx); // trạng thái Aborted + rời danh sách đang chạy
+        for versions in self.data.values_mut() {
+            // 1. Bỏ phiên bản do chính tx này tạo — chúng chưa từng hiện ra
             //    với ai khác, nên bỏ đi là an toàn tuyệt đối.
-            cac_ban.retain(|b| b.created_by_tx != tx_id);
+            versions.retain(|v| v.created_by_tx != tx_id);
 
             // 2. Gỡ dấu xoá: bản ghi cũ phải sống lại nguyên trạng.
-            for b in cac_ban.iter_mut() {
-                if b.deleted_by_tx == Some(tx_id) {
-                    b.deleted_by_tx = None;
+            for v in versions.iter_mut() {
+                if v.deleted_by_tx == Some(tx_id) {
+                    v.deleted_by_tx = None;
                 }
             }
         }
@@ -405,27 +780,33 @@ impl MvccStore {
 }
 
 #[test]
-fn rollback_tra_lai_trang_thai_truoc_giao_dich() {
-    let mut kho = MvccStore::new();
-    let t1 = kho.start_trade();
-    kho.record("a", "ban_dau", t1);
+fn rollback_restores_state_before_tx() {
+    let mut store = MvccStore::new();
+    let t1 = store.begin();
+    store.write(&t1, "a", "original").unwrap();
+    store.commit(t1);
 
-    let t2 = kho.start_trade();
-    kho.record("a", "sua_boi_t2", t2);      // tạo phiên bản mới
-    assert_eq!(kho.doc("a", t2 + 1), Some("sua_boi_t2"));
+    let t2 = store.begin();
+    store.write(&t2, "a", "changed_by_t2").unwrap(); // tạo phiên bản mới
+    assert_eq!(store.read(&t2, "a"), Some("changed_by_t2"));
+    let t2_id = t2.id;
+    store.rollback(t2);
 
-    kho.rollback(t2);
-    assert_eq!(kho.doc("a", t2 + 1), Some("ban_dau"),
+    let t3 = store.begin();
+    assert_eq!(store.read(&t3, "a"), Some("original"),
                "hoàn tác phải trả về đúng giá trị trước giao dịch");
+    // Không còn dấu vết vật lý nào của t2
+    assert!(store.data["a"].iter()
+        .all(|v| v.created_by_tx != t2_id && v.deleted_by_tx != Some(t2_id)));
 
     // Hoàn tác một tx chưa từng chạm gì -> không được làm hỏng gì.
-    let t3 = kho.start_trade();
-    kho.rollback(t3);
-    assert_eq!(kho.doc("a", t3 + 1), Some("ban_dau"));
+    let t4 = store.begin();
+    store.rollback(t4);
+    assert_eq!(store.read(&t3, "a"), Some("original"));
 }
 ```
 
-**Vì sao bước 2 dễ quên nhưng chí mạng:** nếu chỉ làm bước 1, một bản ghi bị T2 đánh dấu xoá sẽ **vĩnh viễn không đọc được nữa**, dù T2 đã bị hoàn tác. Dữ liệu không mất khỏi đĩa, nhưng mất khỏi tầm nhìn — dạng mất dữ liệu tệ nhất vì nó im lặng.
+**Vì sao bước 2 dễ quên nhưng chí mạng:** nếu chỉ làm bước 1, bản ghi cũ vẫn mang dấu `deleted_by_tx = Some(T2)`. Trong store này quy tắc khả kiến tạm thời cứu bạn (T2 có trạng thái `Aborted` nên dấu xoá bị bỏ qua) — nhưng chỉ cần một tối ưu "vô hại" như xoá trạng thái của các giao dịch cũ khỏi bảng `statuses` cho đỡ tốn RAM, hay mã giao dịch bị tái sử dụng sau khi quấn vòng (PostgreSQL dùng mã 32 bit), là bản ghi đó **vĩnh viễn không đọc được nữa**. Dữ liệu không mất khỏi đĩa, nhưng mất khỏi tầm nhìn — dạng mất dữ liệu tệ nhất vì nó im lặng.
 
 **Vì sao hoàn tác trong MVCC rẻ:** nó không đụng gì tới dữ liệu *cũ*. Giao dịch chưa commit chỉ ghi vào phiên bản riêng của nó, nên hoàn tác chỉ là vứt phiên bản đó đi. So với hoàn tác kiểu ghi-đè-tại-chỗ — nơi bạn phải đọc ảnh cũ từ WAL rồi ghi ngược lại — thì đây gần như miễn phí.
 </details>

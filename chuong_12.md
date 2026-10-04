@@ -49,12 +49,12 @@ Chiếc khuôn bánh chính là **Generics `<T>`** (với `T` là loại bột).
 ### 2. Chuẩn chân cắm sạc USB Type-C (Giao ước hành vi - Trait)
 Hãy quan sát chuẩn kết nối Type-C hiện đại:
 - Bất kể đó là chiếc điện thoại thông minh, máy tính xách tay bảng mạch lớn, hay chiếc tai nghe không dây tí hon:
-- Chỉ cần nhà sản xuất cam kết thiết bị của họ có cổng Type-C (`impl ChuanTypeC for ThietBi`), bạn đều có thể cắm chung một sợi dây sạc duy nhất để truyền điện và truyền dữ liệu.
+- Chỉ cần nhà sản xuất cam kết thiết bị của họ có cổng Type-C (`impl UsbTypeC for Device`), bạn đều có thể cắm chung một sợi dây sạc duy nhất để truyền điện và truyền dữ liệu.
 - Trong Rust, **Trait giống như một bản hợp đồng cam kết**: Nếu một kiểu dữ liệu đồng ý ký vào bản hợp đồng đó, nó phải thực hiện đúng những hành vi đã hứa.
 
 ### 3. Tủ tài liệu công ty nhiều tầng có khóa bảo mật (Modules và `pub`)
 Trong một văn phòng công ty lớn:
-- Phòng kế toán có tủ hồ sơ riêng (`mod phong_ke_toan`), Phòng nhân sự có tủ hồ sơ riêng (`mod phong_nhan_su`).
+- Phòng kế toán có tủ hồ sơ riêng (`mod accounting`), Phòng nhân sự có tủ hồ sơ riêng (`mod human_resources`).
 - **Quy tắc riêng tư mặc định (Private)**: Theo mặc định, ngăn kéo bàn làm việc của ai thì chỉ người đó có chìa khóa mở. Người ngoài bước vào phòng không được tự ý lục lọi.
 - **Quy tắc công khai (`pub`)**: Khi trưởng phòng dán một thông báo lên bảng tin có chữ "Công khai" (`pub`), mọi nhân viên trong toàn công ty đều có quyền đọc thông tin đó.
 
@@ -69,11 +69,11 @@ Nhiều người e ngại rằng việc sử dụng Generics sẽ làm chậm ch
 Làm thế nào Rust làm được điều kỳ diệu này?
 Khi bạn viết một hàm generic:
 ```rust
-fn in_du_lieu<T: std::fmt::Display>(value: T) {
+fn print_value<T: std::fmt::Display>(value: T) {
     println!("{}", value);
 }
 ```
-Khi bạn gọi `in_du_lieu(100)` (số nguyên) và `in_du_lieu("Chào")` (chuỗi ký tự), trong quá trình biên dịch, trình biên dịch `rustc` sẽ tự động thực hiện quy trình **Đơn hình hóa (Monomorphization)**:
+Khi bạn gọi `print_value(100)` (số nguyên) và `print_value("Chào")` (chuỗi ký tự), trong quá trình biên dịch, trình biên dịch `rustc` sẽ tự động thực hiện quy trình **Đơn hình hóa (Monomorphization)**:
 - Nó tự động sinh ra hai hàm mã máy độc lập:
   - Một hàm tối ưu chuyên biệt cho kiểu số nguyên `i32`.
   - Một hàm tối ưu chuyên biệt cho kiểu chuỗi `&str`.
@@ -85,11 +85,11 @@ Một Trait định nghĩa một tập hợp các phương thức mà các kiể
 ```rust
 trait AlarmDevice {
     // Phương thức bắt buộc phải tự cài đặt
-    fn ma_thiet_bi(&self) -> &str;
+    fn device_id(&self) -> &str;
 
     // Phương thức có sẵn mặc định: Các struct có thể dùng ngay hoặc ghi đè (override)
     fn raise_alarm(&self) {
-        println!("[CÒI BÁO ĐỘNG] Reng reng! Thiết bị {} phát tín hiệu nguy hiểm!", self.ma_thiet_bi());
+        println!("[CÒI BÁO ĐỘNG] Reng reng! Thiết bị {} phát tín hiệu nguy hiểm!", self.device_id());
     }
 }
 ```
@@ -99,15 +99,15 @@ trait AlarmDevice {
 Khi viết hàm generic, bạn có thể yêu cầu: "Kiểu `T` phải là một kiểu biết tự in ấn (`Display`) và biết tự nhân bản (`Clone`)":
 - **Cú pháp ngắn gọn**:
   ```rust
-  fn thong_report(item: &(impl Display + Clone)) { ... }
+  fn report(item: &(impl Display + Clone)) { ... }
   ```
 - **Cú pháp đầy đủ**:
   ```rust
-  fn thong_report<T: Display + Clone>(item: &T) { ... }
+  fn report<T: Display + Clone>(item: &T) { ... }
   ```
 - **Cú pháp mệnh đề `where` (khi có nhiều kiểu phức tạp)**:
   ```rust
-  fn so_sanh_he_thong<T, U>(thiet_bi_a: &T, thiet_bi_b: &U) -> bool
+  fn compare_devices<T, U>(a: &T, b: &U) -> bool
   where
       T: Display + Clone,
       U: Debug + PartialEq,
@@ -127,7 +127,7 @@ pub trait Iterator {
 }
 ```
 
-Khác với generic `trait Iterator<T>`, kiểu liên kết bảo đảm **mỗi kiểu chỉ cài đặt trait đúng một lần** với một `Item` duy nhất. Nhờ vậy bạn viết `v.iter().sum()` mà không phải chỉ rõ kiểu phần tử. Chương 16 sẽ khai thác triệt để điều này.
+Khác với generic `trait Iterator<T>`, kiểu liên kết bảo đảm **mỗi kiểu chỉ cài đặt trait đúng một lần** với một `Item` duy nhất. Nhờ vậy khi bạn viết `for x in v.iter()` hay `v.iter().map(|x| ...)`, trình biên dịch tự biết kiểu của phần tử `x` mà bạn không phải chỉ rõ. Chương 16 sẽ khai thác triệt để điều này.
 
 **b) Cài đặt bao trùm (Blanket Implementation)** — cài trait cho *tất cả* kiểu thỏa một điều kiện:
 
@@ -139,7 +139,7 @@ Chỉ một dòng, và **mọi** kiểu biết tự in ấn đều có ngay `.to
 
 **c) Quy tắc mồ côi (Orphan Rule)** — luật quan trọng nhất mà người mới hay vấp:
 
-> Để `impl Trait for Kieu`, bạn phải sở hữu **ít nhất một trong hai**: hoặc `Trait` là của bạn, hoặc `Kieu` là của bạn.
+> Để `impl Trait for Type`, bạn phải sở hữu **ít nhất một trong hai**: hoặc `Trait` là của bạn, hoặc `Type` là của bạn.
 
 Nghĩa là bạn **không thể** viết `impl Display for Vec<i32>` — cả `Display` lẫn `Vec` đều thuộc thư viện chuẩn. Trình biên dịch báo `E0117`.
 
@@ -172,8 +172,7 @@ Rust chuẩn hóa việc chuyển đổi giữa các kiểu bằng bốn trait �
 | `TryInto<U>` | Bản lật ngược của `TryFrom` | `fn try_into(self) -> Result<U, E>` |
 
 ```rust
-use std::convert::TryFrom;
-
+// TryFrom/TryInto đã có sẵn trong prelude từ edition 2021, không cần `use`.
 struct Age(u8);
 
 impl TryFrom<i64> for Age {
@@ -213,17 +212,17 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống kiểm
 // ============================================================================
 // MÔ-ĐUN 1: CÁC GIAO ƯỚC VÀ THIẾT BỊ PHẦN CỨNG
 // ============================================================================
-mod thiet_bi_thong_minh {
+mod smart_devices {
     use std::fmt::Display;
 
     // 1. Định nghĩa Trait giao ước cho mọi cảm biến trong tòa nhà
     pub trait Sensor: Display {
         // Phương thức bắt buộc mọi cảm biến phải tự hiện thực
         fn read_value(&self) -> f64;
-        fn don_pos_do(&self) -> &str;
+        fn unit(&self) -> &str;
 
         // Phương thức mặc định (Default implementation): Dùng chung cho tất cả cảm biến
-        fn check_computed_state(&self) {
+        fn report_status(&self) {
             println!("-> Cảm biến [{}] đang hoạt động bình thường.", self);
         }
     }
@@ -231,7 +230,7 @@ mod thiet_bi_thong_minh {
     // 2. Struct Cảm biến Nhiệt độ phòng
     pub struct TempSensor {
         pub location: String,
-        pub do_c: f64,
+        pub celsius: f64,
     }
 
     // Cài đặt Display cho TempSensor (thỏa mãn điều kiện Sensor: Display)
@@ -243,52 +242,62 @@ mod thiet_bi_thong_minh {
 
     // Triển khai Trait Sensor cho TempSensor
     impl Sensor for TempSensor {
-        fn read_value(&self) -> f64 { self.do_c }
-        fn don_pos_do(&self) -> &str { "°C" }
+        fn read_value(&self) -> f64 {
+            self.celsius
+        }
+        fn unit(&self) -> &str {
+            "°C"
+        }
     }
 
     // 3. Struct Cảm biến Khói báo cháy
     pub struct SmokeSensor {
-        pub khu_vuc: String,
-        pub mat_do_khoi_ppm: f64,
+        pub area: String,
+        pub smoke_ppm: f64,
     }
 
     impl Display for SmokeSensor {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "Cảm biến Khói tại {}", self.khu_vuc)
+            write!(f, "Cảm biến Khói tại {}", self.area)
         }
     }
 
     impl Sensor for SmokeSensor {
-        fn read_value(&self) -> f64 { self.mat_do_khoi_ppm }
-        fn don_pos_do(&self) -> &str { "PPM" }
+        fn read_value(&self) -> f64 {
+            self.smoke_ppm
+        }
+        fn unit(&self) -> &str {
+            "PPM"
+        }
     }
 }
 
 // ============================================================================
 // MÔ-ĐUN 2: TRUNG TÂM GIÁM SÁT TỔNG HỢP VÀ HÀM GENERICS
 // ============================================================================
-mod trung_tam_dieu_khien {
-    use super::thiet_bi_thong_minh::Sensor;
+mod control_center {
+    use super::smart_devices::Sensor;
 
     // Hàm Generics nhận bất kỳ cảm biến nào tuân thủ Trait Sensor
     // Sử dụng mệnh đề 'where' để cấu trúc mã sạch đẹp và chuyên nghiệp
-    pub fn monitor_metrics<T>(cam_bien: &T, nguong_canh_bao: f64)
+    pub fn monitor_metrics<T>(sensor: &T, alert_threshold: f64)
     where
         T: Sensor,
     {
         println!("------------------------------------------------------------");
         // Gọi phương thức mặc định của Trait
-        cam_bien.check_computed_state();
+        sensor.report_status();
 
-        let value = cam_bien.read_value();
-        let unit = cam_bien.don_pos_do();
+        let value = sensor.read_value();
+        let unit = sensor.unit();
 
         println!("Chỉ số đo được : {:.2} {}", value, unit);
 
-        if value >= nguong_canh_bao {
-            println!("[CẢNH BÁO NGUY HIỂM] Chỉ số vượt ngưỡng an toàn ({:.2} {})!", 
-                     nguong_canh_bao, unit);
+        if value >= alert_threshold {
+            println!(
+                "[CẢNH BÁO NGUY HIỂM] Chỉ số vượt ngưỡng an toàn ({:.2} {})!",
+                alert_threshold, unit
+            );
         } else {
             println!("[AN TOÀN] Chỉ số nằm trong giới hạn cho phép.");
         }
@@ -296,8 +305,8 @@ mod trung_tam_dieu_khien {
 }
 
 // Sử dụng lệnh 'use' để đưa các thành phần cần thiết vào phạm vi làm việc
-use thiet_bi_thong_minh::{TempSensor, SmokeSensor};
-use trung_tam_dieu_khien::monitor_metrics;
+use control_center::monitor_metrics;
+use smart_devices::{SmokeSensor, TempSensor};
 
 fn main() {
     println!("============================================================");
@@ -305,24 +314,24 @@ fn main() {
     println!("============================================================");
 
     // Khởi tạo cảm biến nhiệt độ phòng máy chủ
-    let cb_nhiet = TempSensor {
+    let temp_sensor = TempSensor {
         location: String::from("Phòng Máy Chủ Tầng 5"),
-        do_c: 28.5,
+        celsius: 28.5,
     };
 
     // Khởi tạo cảm biến khói khu nhà bếp
-    let cb_khoi = SmokeSensor {
-        khu_vuc: String::from("Khu Bếp Nhà Hàng Tầng 1"),
-        mat_do_khoi_ppm: 65.0,
+    let smoke_sensor = SmokeSensor {
+        area: String::from("Khu Bếp Nhà Hàng Tầng 1"),
+        smoke_ppm: 65.0,
     };
 
     // Cùng một hàm monitor_metrics nhưng nhận hai kiểu dữ liệu khác nhau!
     // Trình biên dịch Rust áp dụng Monomorphization tối ưu hóa mã máy hoàn hảo:
     println!("\n1. Giám sát hệ thống cảm biến nhiệt độ:");
-    monitor_metrics(&cb_nhiet, 35.0); // Ngưỡng cảnh báo nhiệt độ là 35°C
+    monitor_metrics(&temp_sensor, 35.0); // Ngưỡng cảnh báo nhiệt độ là 35°C
 
     println!("\n2. Giám sát hệ thống cảm biến khói báo cháy:");
-    monitor_metrics(&cb_khoi, 50.0);  // Ngưỡng cảnh báo mật độ khói là 50 PPM
+    monitor_metrics(&smoke_sensor, 50.0); // Ngưỡng cảnh báo mật độ khói là 50 PPM
 
     println!("\n============================================================");
     println!("   CHÚC MỪNG BẠN ĐÃ HOÀN THÀNH TOÀN BỘ 12 CHƯƠNG NỀN TẢNG!  ");
@@ -338,8 +347,8 @@ Dưới đây là các lỗi thường gặp nhất khi làm việc với Generi
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait bound 'T: Display' is not satisfied` | Bạn cố dùng `{}` để in một biến có kiểu generic `T` nhưng chưa thêm ràng buộc `T: Display` vào định nghĩa hàm. | Thêm Trait Bound cho kiểu generic: `<T: std::fmt::Display>` hoặc thêm vào mệnh đề `where`. |
-| **E0603** | `struct/function '...' is private` | Bạn cố truy cập một hàm, struct hoặc trường dữ liệu nằm trong một module khác nhưng nó chưa được đánh dấu từ khóa `pub`. | Thêm từ khóa `pub` vào phía trước struct, hàm hoặc trường dữ liệu trong module đó (`pub fn ...`, `pub struct ...`). |
+| **E0277** | ``'T' doesn't implement 'std::fmt::Display'`` | Bạn cố dùng `{}` để in một biến có kiểu generic `T` nhưng chưa thêm ràng buộc `T: Display` vào định nghĩa hàm. | Thêm Trait Bound cho kiểu generic: `<T: std::fmt::Display>` hoặc thêm vào mệnh đề `where`. |
+| **E0603** | `function 'g' is private` (hoặc `struct '...' is private`) | Bạn cố truy cập một hàm, struct hoặc trường dữ liệu nằm trong một module khác nhưng nó chưa được đánh dấu từ khóa `pub`. | Thêm từ khóa `pub` vào phía trước struct, hàm hoặc trường dữ liệu trong module đó (`pub fn ...`, `pub struct ...`). |
 | **E0432** | `unresolved import 'super::...'` | Đường dẫn trong câu lệnh `use` bị sai lệch cấp bậc thư mục hoặc tên module không tồn tại. | Kiểm tra lại cây thư mục module, dùng `crate::` cho đường dẫn từ gốc hoặc `super::` để lùi ra một cấp cha. |
 | **E0046** | `not all trait items implemented, missing: '...'` | Bạn viết `impl Trait for Type` nhưng quên chưa viết mã cho các phương thức bắt buộc của Trait đó. | Kiểm tra định nghĩa của Trait và triển khai đầy đủ tất cả các phương thức còn thiếu. |
 
@@ -354,9 +363,9 @@ Dưới đây là các lỗi thường gặp nhất khi làm việc với Generi
 4. **Kiểm soát phạm vi với `mod` & `pub`**: Mặc định mọi thứ là riêng tư (Private) để bảo mật thông tin nội bộ; chỉ sử dụng `pub` cho những giao diện thực sự cần công khai ra bên ngoài.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập thực hành 1**: Định nghĩa một Trait mang tên `CoDienTich` có một phương thức `fn tinh_dien_tich(&self) -> f64;`. Hãy triển khai Trait này cho hai struct: `HinhTron { ban_kinh: f64 }` và `HinhVuong { canh: f64 }`. Sau đó viết một hàm generic `in_dien_tich<T: CoDienTich>(hinh: &T)` để in diện tích của cả hai hình.
+1. **Bài tập thực hành 1**: Định nghĩa một Trait mang tên `HasArea` có một phương thức `fn area(&self) -> f64;`. Hãy triển khai Trait này cho hai struct: `Circle { radius: f64 }` (hình tròn) và `Square { side: f64 }` (hình vuông). Sau đó viết một hàm generic `print_area<T: HasArea>(shape: &T)` để in diện tích của cả hai hình.
 2. **Bài tập tư duy 2**: Cơ chế Monomorphization của Rust mang lại tốc độ thực thi tuyệt đỉnh, nhưng nó có thể dẫn đến nhược điểm gì về kích thước tệp thực thi nhị phân (Binary Size) và thời gian biên dịch nếu có quá nhiều kiểu dữ liệu cùng dùng chung một hàm generic đồ sộ?
-3. **Bài tập tổ chức mô-đun 3**: Hãy tổ chức một dự án nhỏ gồm 2 module: `mod quan_ly_kho` (chứa struct `HangHoa` có trường `ten` và `gia` được đánh dấu `pub`) và `mod ban_hang` (chứa hàm `xuat_hoa_don`). Thực hành sử dụng từ khóa `pub` và `use` để hai module tương tác trơn tru với nhau trong hàm `main`.
+3. **Bài tập tổ chức mô-đun 3**: Hãy tổ chức một dự án nhỏ gồm 2 module: `mod inventory` (quản lý kho — chứa struct `Product` có trường `name` và `price` được đánh dấu `pub`) và `mod sales` (bán hàng — chứa hàm `make_invoice` xuất hóa đơn). Thực hành sử dụng từ khóa `pub` và `use` để hai module tương tác trơn tru với nhau trong hàm `main`.
 
 ---
 
@@ -365,7 +374,7 @@ Dưới đây là các lỗi thường gặp nhất khi làm việc với Generi
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Trait định nghĩa một *hành vi chung*; nhiều kiểu cùng `impl` nó. Hàm generic `<T: CoDienTich>` nhận bất kỳ kiểu nào có hành vi đó.
+Trait định nghĩa một *hành vi chung*; nhiều kiểu cùng `impl` nó. Hàm generic `<T: HasArea>` nhận bất kỳ kiểu nào có hành vi đó.
 </details>
 
 <details>
@@ -373,42 +382,42 @@ Trait định nghĩa một *hành vi chung*; nhiều kiểu cùng `impl` nó. H�
 
 ```rust
 // Trait = hợp đồng hành vi: "kiểu nào cũng biết tự tính diện tích của mình".
-trait CoDienTich {
-    fn tinh_dien_tich(&self) -> f64;
+trait HasArea {
+    fn area(&self) -> f64;
 }
 
-struct HinhTron { ban_kinh: f64 }
-struct HinhVuong { canh: f64 }
+struct Circle { radius: f64 }
+struct Square { side: f64 }
 
-impl CoDienTich for HinhTron {
-    fn tinh_dien_tich(&self) -> f64 {
-        std::f64::consts::PI * self.ban_kinh * self.ban_kinh
+impl HasArea for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
     }
 }
-impl CoDienTich for HinhVuong {
-    fn tinh_dien_tich(&self) -> f64 {
-        self.canh * self.canh
+impl HasArea for Square {
+    fn area(&self) -> f64 {
+        self.side * self.side
     }
 }
 
-// Generic: nhận BẤT KỲ kiểu T nào có triển khai CoDienTich.
-fn in_dien_tich<T: CoDienTich>(hinh: &T) {
-    println!("Diện tích = {:.2}", hinh.tinh_dien_tich());
+// Generic: nhận BẤT KỲ kiểu T nào có triển khai HasArea.
+fn print_area<T: HasArea>(shape: &T) {
+    println!("Diện tích = {:.2}", shape.area());
 }
 
 fn main() {
-    in_dien_tich(&HinhTron { ban_kinh: 2.0 });
-    in_dien_tich(&HinhVuong { canh: 3.0 });
+    print_area(&Circle { radius: 2.0 });
+    print_area(&Square { side: 3.0 });
 }
 
 #[test]
-fn dien_tich_hai_hinh() {
-    assert!((HinhTron { ban_kinh: 2.0 }.tinh_dien_tich() - 12.566).abs() < 0.001);
-    assert_eq!(HinhVuong { canh: 3.0 }.tinh_dien_tich(), 9.0);
+fn area_of_two_shapes() {
+    assert!((Circle { radius: 2.0 }.area() - 12.566).abs() < 0.001);
+    assert_eq!(Square { side: 3.0 }.area(), 9.0);
 }
 ```
 
-Điểm cốt lõi: trait tách **"làm gì"** (tính diện tích) khỏi **"làm thế nào"** (công thức của từng hình). Hàm `in_dien_tich` không cần biết nó đang in hình tròn hay hình vuông — chỉ cần kiểu đó *hứa* có `tinh_dien_tich`. Ràng buộc `<T: CoDienTich>` là lời hứa ấy được ép lúc biên dịch: truyền vào một kiểu chưa `impl CoDienTich` sẽ không biên dịch được.
+Điểm cốt lõi: trait tách **"làm gì"** (tính diện tích) khỏi **"làm thế nào"** (công thức của từng hình). Hàm `print_area` không cần biết nó đang in hình tròn hay hình vuông — chỉ cần kiểu đó *hứa* có `area`. Ràng buộc `<T: HasArea>` là lời hứa ấy được ép lúc biên dịch: truyền vào một kiểu chưa `impl HasArea` sẽ không biên dịch được.
 </details>
 
 <details>
@@ -422,7 +431,7 @@ Monomorphization sinh **một bản sao mã máy riêng cho mỗi kiểu** dùng
 
 Monomorphization đổi tốc-độ-chạy lấy **kích thước tệp nhị phân và thời gian biên dịch** — một đánh đổi thật, không phải bữa trưa miễn phí.
 
-**Cơ chế:** khi bạn viết `fn xu_ly<T>(x: T)` rồi gọi với `i32`, `String`, `f64`, trình biên dịch **sinh ba bản sao riêng biệt** của hàm — mỗi bản mã máy chuyên cho một kiểu, như thể bạn viết tay `xu_ly_i32`, `xu_ly_string`, `xu_ly_f64`. Nhờ đó lúc chạy không có chi phí điều phối động (không tra bảng ảo), nhanh ngang mã viết tay. Đó là mặt lợi.
+**Cơ chế:** khi bạn viết `fn process<T>(x: T)` rồi gọi với `i32`, `String`, `f64`, trình biên dịch **sinh ba bản sao riêng biệt** của hàm — mỗi bản mã máy chuyên cho một kiểu, như thể bạn viết tay `process_i32`, `process_string`, `process_f64`. Nhờ đó lúc chạy không có chi phí điều phối động (không tra bảng ảo), nhanh ngang mã viết tay. Đó là mặt lợi.
 
 **Mặt hại khi lạm dụng:**
 
@@ -445,39 +454,39 @@ Monomorphization đổi tốc-độ-chạy lấy **kích thước tệp nhị ph
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
-mod quan_ly_kho {
+mod inventory {
     // pub struct: kiểu công khai, NHƯNG trường phải pub RIÊNG mới cho ngoài đọc.
-    pub struct HangHoa {
-        pub ten: String,
-        pub gia: u64,
+    pub struct Product {
+        pub name: String,
+        pub price: u64,
     }
-    impl HangHoa {
-        pub fn moi(ten: &str, gia: u64) -> Self {
-            Self { ten: ten.to_string(), gia }
+    impl Product {
+        pub fn new(name: &str, price: u64) -> Self {
+            Self { name: name.to_string(), price }
         }
     }
 }
 
-mod ban_hang {
+mod sales {
     // use kéo đường dẫn từ module anh em vào cho gọn (super = module cha).
-    use super::quan_ly_kho::HangHoa;
-    pub fn xuat_hoa_don(mon: &HangHoa) -> String {
-        format!("HÓA ĐƠN: {} - {}đ", mon.ten, mon.gia)
+    use super::inventory::Product;
+    pub fn make_invoice(item: &Product) -> String {
+        format!("HÓA ĐƠN: {} - {}đ", item.name, item.price)
     }
 }
 
 fn main() {
-    use quan_ly_kho::HangHoa;
-    let mon = HangHoa::moi("Bàn phím", 850_000);
-    println!("{}", ban_hang::xuat_hoa_don(&mon));
+    use inventory::Product;
+    let item = Product::new("Bàn phím", 850_000);
+    println!("{}", sales::make_invoice(&item));
 }
 
 #[test]
-fn hai_module_tuong_tac() {
-    let mon = quan_ly_kho::HangHoa::moi("Chuột", 320_000);
-    assert_eq!(ban_hang::xuat_hoa_don(&mon), "HÓA ĐƠN: Chuột - 320000đ");
+fn two_modules_interact() {
+    let item = inventory::Product::new("Chuột", 320_000);
+    assert_eq!(sales::make_invoice(&item), "HÓA ĐƠN: Chuột - 320000đ");
 }
 ```
 
-Ba từ khóa, ba vai trò rõ ràng: **`mod`** dựng một không gian tên riêng (tránh đụng tên); **`pub`** quyết định cái gì lọt ra ngoài — mặc định mọi thứ *riêng tư*, nên phải đánh dấu `pub` cho cả `struct` *lẫn từng trường* muốn cho bên ngoài chạm tới; **`use`** chỉ là lối tắt gõ tên ngắn, không thay đổi quyền truy cập. Chi tiết dễ vấp: `pub struct HangHoa` mà trường `ten` *không* `pub` thì module `ban_hang` thấy được kiểu nhưng **không đọc được `.ten`** — đóng gói của Rust chặt tới từng trường, không chỉ tới cả struct.
+Ba từ khóa, ba vai trò rõ ràng: **`mod`** dựng một không gian tên riêng (tránh đụng tên); **`pub`** quyết định cái gì lọt ra ngoài — mặc định mọi thứ *riêng tư*, nên phải đánh dấu `pub` cho cả `struct` *lẫn từng trường* muốn cho bên ngoài chạm tới; **`use`** chỉ là lối tắt gõ tên ngắn, không thay đổi quyền truy cập. Chi tiết dễ vấp: `pub struct Product` mà trường `name` *không* `pub` thì module `sales` thấy được kiểu nhưng **không đọc được `.name`** — đóng gói của Rust chặt tới từng trường, không chỉ tới cả struct.
 </details>

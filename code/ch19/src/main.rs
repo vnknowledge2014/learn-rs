@@ -1,6 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // Tệp: src/main.rs
 // Chương trình thực chiến: Functor, Applicative, Monad và bản đồ sang Rust
+
+// Chương này CỐ Ý viết `x.map(|a| a)`, `x.map(f).flatten()`, `m.and_then(Some)`
+// để kiểm chứng luật Functor/Monad; clippy coi các dạng đó là thừa nên ta tắt
+// đúng ba lint này cho cả tệp.
+#![allow(clippy::map_identity, clippy::map_flatten, clippy::bind_instead_of_map)]
 
 // ============================================================================
 // PHẦN 1: MÔ PHỎNG KIỂU BẬC CAO (HKT) THEO CÁCH CỦA fp-core.rs
@@ -10,25 +14,25 @@
 /// sang kiểu U thì nó trở thành kiểu gì?"
 pub trait HKT<U> {
     type Current; // T trong Option<T>
-    type DichDen; // Option<U>
+    type Target; // Option<U>
 }
 
 impl<T, U> HKT<U> for Option<T> {
     type Current = T;
-    type DichDen = Option<U>;
+    type Target = Option<U>;
 }
 impl<T, U> HKT<U> for Vec<T> {
     type Current = T;
-    type DichDen = Vec<U>;
+    type Target = Vec<U>;
 }
 impl<T, U, E> HKT<U> for Result<T, E> {
     type Current = T;
-    type DichDen = Result<U, E>;
+    type Target = Result<U, E>;
 }
 
 /// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
 pub trait Functor<U>: HKT<U> {
-    fn fmap<F>(self, f: F) -> Self::DichDen
+    fn fmap<F>(self, f: F) -> Self::Target
     where
         F: FnMut(Self::Current) -> U;
 }
@@ -65,52 +69,52 @@ impl<T, U, E> Functor<U> for Result<T, E> {
 /// Khác `Result`: khi hỏng, `Validation` giữ lại TOÀN BỘ danh sách lỗi.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Validation<T> {
-    Set(T),
-    Hong(Vec<String>),
+    Valid(T),
+    Invalid(Vec<String>),
 }
 
 impl<T> Validation<T> {
     /// FUNCTOR: sơn lại giá trị bên trong mà không đụng tới danh sách lỗi.
     pub fn fmap<U>(self, f: impl FnOnce(T) -> U) -> Validation<U> {
         match self {
-            Validation::Set(x) => Validation::Set(f(x)),
-            Validation::Hong(error) => Validation::Hong(error),
+            Validation::Valid(x) => Validation::Valid(f(x)),
+            Validation::Invalid(errors) => Validation::Invalid(errors),
         }
     }
 
     /// Chuyển từ Result sang Validation để bắt đầu tích lũy lỗi.
-    pub fn tu_ket_qua(kq: Result<T, String>) -> Self {
-        match kq {
-            Ok(x) => Validation::Set(x),
-            Err(e) => Validation::Hong(vec![e]),
+    pub fn from_result(result: Result<T, String>) -> Self {
+        match result {
+            Ok(x) => Validation::Valid(x),
+            Err(e) => Validation::Invalid(vec![e]),
         }
     }
 
-    pub fn is_set(&self) -> bool {
-        matches!(self, Validation::Set(_))
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Validation::Valid(_))
     }
 }
 
 /// APPLICATIVE: gộp 2 kết quả ĐỘC LẬP. Nếu cả hai hỏng, giữ lại CẢ HAI lỗi.
-pub fn ghep2<A, B>(a: Validation<A>, b: Validation<B>) -> Validation<(A, B)> {
+pub fn zip2<A, B>(a: Validation<A>, b: Validation<B>) -> Validation<(A, B)> {
     match (a, b) {
-        (Validation::Set(x), Validation::Set(y)) => Validation::Set((x, y)),
-        (Validation::Hong(mut e1), Validation::Hong(e2)) => {
+        (Validation::Valid(x), Validation::Valid(y)) => Validation::Valid((x, y)),
+        (Validation::Invalid(mut e1), Validation::Invalid(e2)) => {
             e1.extend(e2); // ← đây chính là chỗ LỖI ĐƯỢC TÍCH LŨY
-            Validation::Hong(e1)
+            Validation::Invalid(e1)
         }
-        (Validation::Hong(e), _) => Validation::Hong(e),
-        (_, Validation::Hong(e)) => Validation::Hong(e),
+        (Validation::Invalid(e), _) => Validation::Invalid(e),
+        (_, Validation::Invalid(e)) => Validation::Invalid(e),
     }
 }
 
-/// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
-pub fn ghep3<A, B, C>(
+/// Gộp 3 kết quả độc lập — xây trên `zip2`, đúng tinh thần ghép hàm ở Chương 14.
+pub fn zip3<A, B, C>(
     a: Validation<A>,
     b: Validation<B>,
     c: Validation<C>,
 ) -> Validation<(A, B, C)> {
-    ghep2(ghep2(a, b), c).fmap(|((x, y), z)| (x, y, z))
+    zip2(zip2(a, b), c).fmap(|((x, y), z)| (x, y, z))
 }
 
 // ============================================================================
@@ -118,7 +122,7 @@ pub fn ghep3<A, B, C>(
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DonTho {
+pub struct RawForm {
     pub name: String,
     pub email: String,
     pub age: String,
@@ -131,8 +135,8 @@ pub struct User {
     pub age: u32,
 }
 
-pub fn check_name(tho: &str) -> Result<String, String> {
-    let s = tho.trim();
+pub fn check_name(raw: &str) -> Result<String, String> {
+    let s = raw.trim();
     if s.chars().count() < 4 {
         Err(format!("Tên {:?} quá ngắn (cần ít nhất 4 ký tự)", s))
     } else if s.chars().count() > 30 {
@@ -142,8 +146,8 @@ pub fn check_name(tho: &str) -> Result<String, String> {
     }
 }
 
-pub fn validate_email(tho: &str) -> Result<String, String> {
-    let s = tho.trim().to_lowercase();
+pub fn validate_email(raw: &str) -> Result<String, String> {
+    let s = raw.trim().to_lowercase();
     if !s.contains('@') {
         Err(format!("Email {:?} thiếu ký tự @", s))
     } else if !s.contains('.') {
@@ -153,8 +157,8 @@ pub fn validate_email(tho: &str) -> Result<String, String> {
     }
 }
 
-pub fn check_age(tho: &str) -> Result<u32, String> {
-    let s = tho.trim();
+pub fn check_age(raw: &str) -> Result<u32, String> {
+    let s = raw.trim();
     match s.parse::<u32>() {
         Err(_) => Err(format!("Tuổi {:?} không phải số nguyên", s)),
         Ok(n) if !(16..=100).contains(&n) => {
@@ -167,33 +171,33 @@ pub fn check_age(tho: &str) -> Result<u32, String> {
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC A — MONAD: toán tử `?` dừng ngay ở lỗi ĐẦU TIÊN
 // ---------------------------------------------------------------------------
-pub fn register_short_circuit(don: &DonTho) -> Result<User, String> {
-    let name = check_name(&don.name)?;
-    let email = validate_email(&don.email)?;
-    let age = check_age(&don.age)?;
+pub fn register_short_circuit(form: &RawForm) -> Result<User, String> {
+    let name = check_name(&form.name)?;
+    let email = validate_email(&form.email)?;
+    let age = check_age(&form.age)?;
     Ok(User { name, email, age })
 }
 
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC B — APPLICATIVE: chạy cả ba, gom TẤT CẢ lỗi
 // ---------------------------------------------------------------------------
-pub fn register_accumulate(don: &DonTho) -> Validation<User> {
-    let name = Validation::tu_ket_qua(check_name(&don.name));
-    let email = Validation::tu_ket_qua(validate_email(&don.email));
-    let age = Validation::tu_ket_qua(check_age(&don.age));
+pub fn register_accumulate(form: &RawForm) -> Validation<User> {
+    let name = Validation::from_result(check_name(&form.name));
+    let email = Validation::from_result(validate_email(&form.email));
+    let age = Validation::from_result(check_age(&form.age));
 
-    ghep3(name, email, age).fmap(|(name, email, age)| User { name, email, age })
+    zip3(name, email, age).fmap(|(name, email, age)| User { name, email, age })
 }
 
 // ============================================================================
 // PHẦN 4: HÀM PHỤ TRỢ CHO PHẦN MONAD TUẦN TỰ
 // ============================================================================
 
-pub fn doc_ma_don(s: &str) -> Option<u32> {
+pub fn parse_order_id(s: &str) -> Option<u32> {
     s.strip_prefix("ORD-")?.parse::<u32>().ok()
 }
 
-pub fn return_price(id: u32) -> Option<u64> {
+pub fn lookup_price(id: u32) -> Option<u64> {
     match id {
         8891 => Some(250_000),
         8892 => Some(1_200_000),
@@ -201,7 +205,7 @@ pub fn return_price(id: u32) -> Option<u64> {
     }
 }
 
-pub fn ap_thue(price: u64) -> Option<u64> {
+pub fn apply_tax(price: u64) -> Option<u64> {
     price.checked_mul(110)?.checked_div(100)
 }
 
@@ -218,35 +222,35 @@ fn main() {
     // 1. FUNCTOR: cùng một `map` cho ba chiếc hộp khác nhau
     // ------------------------------------------------------------------
     println!("\n1. HÀM TỬ (Functor) — MỘT `map`, BA CHIẾC HỘP");
-    let hop_option: Option<i32> = Some(21);
-    let hop_result: Result<i32, String> = Ok(21);
-    let hop_vec: Vec<i32> = vec![1, 2, 3];
+    let boxed_option: Option<i32> = Some(21);
+    let boxed_result: Result<i32, String> = Ok(21);
+    let boxed_vec: Vec<i32> = vec![1, 2, 3];
 
     println!(
         "   Option : {:?} -> {:?}",
-        hop_option,
-        hop_option.map(|x| x * 2)
+        boxed_option,
+        boxed_option.map(|x| x * 2)
     );
     println!(
         "   Result : {:?} -> {:?}",
-        hop_result.clone(),
-        hop_result.map(|x| x * 2)
+        boxed_result.clone(),
+        boxed_result.map(|x| x * 2)
     );
     println!(
         "   Vec    : {:?} -> {:?}",
-        hop_vec.clone(),
-        hop_vec.iter().map(|x| x * 2).collect::<Vec<_>>()
+        boxed_vec.clone(),
+        boxed_vec.iter().map(|x| x * 2).collect::<Vec<_>>()
     );
 
-    let hop_rong: Option<i32> = None;
+    let empty_box: Option<i32> = None;
     println!(
         "   Hộp rỗng vẫn rỗng: {:?} -> {:?}",
-        hop_rong,
-        hop_rong.map(|x| x * 2)
+        empty_box,
+        empty_box.map(|x| x * 2)
     );
 
     // Dùng trait Functor tổng quát tự viết (mô phỏng HKT)
-    println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
+    println!("\n   Qua trait `Functor` tổng quát (mô phỏng HKT):");
     println!("   Option: {:?}", Some(5i32).fmap(|x| x + 1));
     println!("   Vec   : {:?}", vec![1i32, 2, 3].fmap(|x| x * 10));
     let r: Result<i32, String> = Ok(7);
@@ -270,12 +274,12 @@ fn main() {
     // 3. BIFUNCTOR: Result có hai chân
     // ------------------------------------------------------------------
     println!("\n3. BIFUNCTOR — `Result` CÓ HAI CHÂN");
-    let into_sum: Result<i32, String> = Ok(5);
-    let that_bai: Result<i32, String> = Err("mất kết nối".into());
-    println!("   map     (chân Ok) : {:?}", into_sum.map(|v| v * 100));
+    let success: Result<i32, String> = Ok(5);
+    let failure: Result<i32, String> = Err("mất kết nối".into());
+    println!("   map     (chân Ok) : {:?}", success.map(|v| v * 100));
     println!(
         "   map_err (chân Err): {:?}",
-        that_bai.map_err(|e| format!("[HỆ THỐNG] {}", e))
+        failure.map_err(|e| format!("[HỆ THỐNG] {}", e))
     );
 
     // ------------------------------------------------------------------
@@ -283,8 +287,10 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n4. ĐƠN NGUYÊN — `and_then` CHÍNH LÀ `bind`");
     for id in ["ORD-8891", "ORD-9999", "SAI-DINH-DANG"] {
-        let ket_qua = doc_ma_don(id).and_then(return_price).and_then(ap_thue);
-        println!("   {:>14} -> {:?}", id, ket_qua);
+        let result = parse_order_id(id)
+            .and_then(lookup_price)
+            .and_then(apply_tax);
+        println!("   {:>14} -> {:?}", id, result);
     }
 
     println!("\n   Đẳng thức định nghĩa: bind(x,f) == x.map(f).flatten()");
@@ -313,15 +319,15 @@ fn main() {
     // 6. TRAVERSABLE: đảo ngữ cảnh Vec<Result> -> Result<Vec>
     // ------------------------------------------------------------------
     println!("\n6. TRAVERSABLE — CÔNG CỤ BỊ BỎ QUÊN NHẤT CỦA RUST");
-    let tot = vec!["10", "20", "30"];
-    let hong = vec!["10", "hai mươi", "30"];
+    let good = ["10", "20", "30"];
+    let bad = ["10", "hai mươi", "30"];
 
-    let result_good: Result<Vec<i32>, _> = tot.iter().map(|s| s.parse::<i32>()).collect();
-    let result_hong: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
+    let result_good: Result<Vec<i32>, _> = good.iter().map(|s| s.parse::<i32>()).collect();
+    let result_bad: Result<Vec<i32>, _> = bad.iter().map(|s| s.parse::<i32>()).collect();
     println!("   Vec<Result> -> Result<Vec> (tốt) : {:?}", result_good);
     println!(
         "   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}",
-        result_hong.is_err()
+        result_bad.is_err()
     );
 
     let has_empty: Option<Vec<i32>> = vec![Some(1), None, Some(3)].into_iter().collect();
@@ -329,61 +335,61 @@ fn main() {
     println!("   Vec<Option> -> Option<Vec> (có None): {:?}", has_empty);
     println!("   Vec<Option> -> Option<Vec> (đủ)     : {:?}", no_empty);
 
-    let lat: Option<Result<i32, String>> = Some(Ok(9));
+    let nested: Option<Result<i32, String>> = Some(Ok(9));
     println!(
         "   Option<Result> --transpose--> Result<Option>: {:?}",
-        lat.transpose()
+        nested.transpose()
     );
 
     // ------------------------------------------------------------------
     // 7. ALTERNATIVE: chuỗi phương án dự phòng
     // ------------------------------------------------------------------
     println!("\n7. ALTERNATIVE — CHUỖI PHƯƠNG ÁN DỰ PHÒNG");
-    let missing_field: Option<&str> = None;
+    let from_env: Option<&str> = None;
     let from_config_file: Option<&str> = Some("8080");
-    let gate = missing_field.or(from_config_file).unwrap_or("3000");
+    let port = from_env.or(from_config_file).unwrap_or("3000");
     println!(
         "   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)",
-        gate
+        port
     );
 
     // ------------------------------------------------------------------
     // 8. SO SÁNH TRỰC DIỆN: MONAD NGẮN MẠCH vs APPLICATIVE TÍCH LŨY
     // ------------------------------------------------------------------
     println!("\n8. NGẮN MẠCH (Monad) vs TÍCH LŨY LỖI (Applicative)");
-    let don_hong = DonTho {
+    let bad_form = RawForm {
         name: "An".into(),            // quá ngắn
         email: "an-tai-gmail".into(), // thiếu @
         age: "mười tám".into(),       // không phải số
     };
 
     println!("\n   [A] Dùng toán tử `?` (Monad — dừng ở lỗi đầu tiên):");
-    match register_short_circuit(&don_hong) {
-        Ok(nd) => println!("       Thành công: {:?}", nd),
+    match register_short_circuit(&bad_form) {
+        Ok(user) => println!("       Thành công: {:?}", user),
         Err(e) => println!("       Báo về 1 lỗi duy nhất: {}", e),
     }
 
-    println!("\n   [B] Dùng `XacThuc` (Applicative — gom hết lỗi):");
-    match register_accumulate(&don_hong) {
-        Validation::Set(nd) => println!("       Thành công: {:?}", nd),
-        Validation::Hong(error) => {
-            println!("       Báo về {} lỗi cùng lúc:", error.len());
-            for (i, l) in error.iter().enumerate() {
-                println!("         {}. {}", i + 1, l);
+    println!("\n   [B] Dùng `Validation` (Applicative — gom hết lỗi):");
+    match register_accumulate(&bad_form) {
+        Validation::Valid(user) => println!("       Thành công: {:?}", user),
+        Validation::Invalid(errors) => {
+            println!("       Báo về {} lỗi cùng lúc:", errors.len());
+            for (i, msg) in errors.iter().enumerate() {
+                println!("         {}. {}", i + 1, msg);
             }
         }
     }
 
     println!("\n   [C] Đơn hợp lệ đi qua cả hai chiến lược:");
-    let don_tot = DonTho {
+    let good_form = RawForm {
         name: "Nguyễn Văn An".into(),
         email: "  An.Nguyen@Example.COM ".into(),
         age: " 28 ".into(),
     };
-    println!("       Ngắn mạch: {:?}", register_short_circuit(&don_tot));
+    println!("       Ngắn mạch: {:?}", register_short_circuit(&good_form));
     println!(
         "       Tích lũy : hợp lệ = {}",
-        register_accumulate(&don_tot).is_set()
+        register_accumulate(&good_form).is_valid()
     );
 
     println!("\n============================================================");
@@ -439,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn bind_bang_map_roi_flatten() {
+    fn bind_equals_map_then_flatten() {
         let f = |n: i32| if n > 0 { Some(n * 10) } else { None };
         for x in [Some(4i32), Some(-1), None] {
             assert_eq!(x.and_then(f), x.map(f).flatten());
@@ -448,53 +454,53 @@ mod tests {
 
     #[test]
     fn traversable_swaps_contexts() {
-        let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
-        assert_eq!(tot, Ok(vec![1, 2, 3]));
+        let good: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert_eq!(good, Ok(vec![1, 2, 3]));
 
-        let hong: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
-        assert!(hong.is_err());
+        let bad: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert!(bad.is_err());
 
-        let co_none: Option<Vec<i32>> = vec![Some(1), None].into_iter().collect();
-        assert_eq!(co_none, None);
+        let with_none: Option<Vec<i32>> = vec![Some(1), None].into_iter().collect();
+        assert_eq!(with_none, None);
 
-        let lat: Option<Result<i32, String>> = Some(Ok(9));
-        assert_eq!(lat.transpose(), Ok(Some(9)));
+        let nested: Option<Result<i32, String>> = Some(Ok(9));
+        assert_eq!(nested.transpose(), Ok(Some(9)));
     }
 
     #[test]
     fn applicative_collects_all_three_errors() {
-        let don = DonTho {
+        let form = RawForm {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
             age: "abc".into(),
         };
-        match register_accumulate(&don) {
-            Validation::Hong(error) => {
-                assert_eq!(error.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", error)
+        match register_accumulate(&form) {
+            Validation::Invalid(errors) => {
+                assert_eq!(errors.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", errors)
             }
-            Validation::Set(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
+            Validation::Valid(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
         }
     }
 
     #[test]
     fn monad_reports_only_first_error() {
-        let don = DonTho {
+        let form = RawForm {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
             age: "abc".into(),
         };
         // Toán tử `?` dừng ngay ở lỗi đầu tiên: chỉ nhận được 1 thông báo.
-        let error = register_short_circuit(&don).unwrap_err();
+        let err = register_short_circuit(&form).unwrap_err();
         assert!(
-            error.contains("quá ngắn"),
+            err.contains("quá ngắn"),
             "Phải là lỗi ĐẦU TIÊN, nhận: {}",
-            error
+            err
         );
     }
 
     #[test]
     fn valid_order_passes_both_strategies() {
-        let don = DonTho {
+        let form = RawForm {
             name: "Nguyễn Văn An".into(),
             email: " An.Nguyen@Example.COM ".into(),
             age: " 28 ".into(),
@@ -504,8 +510,8 @@ mod tests {
             email: "an.nguyen@example.com".to_string(),
             age: 28,
         };
-        assert_eq!(register_short_circuit(&don), Ok(expected.clone()));
-        assert_eq!(register_accumulate(&don), Validation::Set(expected));
+        assert_eq!(register_short_circuit(&form), Ok(expected.clone()));
+        assert_eq!(register_accumulate(&form), Validation::Valid(expected));
     }
 
     #[test]

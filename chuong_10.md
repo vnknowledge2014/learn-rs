@@ -64,9 +64,9 @@ Bác bưu tá ngồi trước 10 chiếc sọt đựng thư tương ứng với 
 
 Năm 1965, nhà khoa học máy tính lỗi lạc Sir Tony Hoare phát minh ra giá trị `null` (con trỏ trỏ vào số không) cho ngôn ngữ ALGOL W. Nhiều năm sau, chính ông đã công khai lên tiếng xin lỗi toàn nhân loại:
 
-> *"Tôi gọi đó là sai lầm tỷ đô của đời mình... Nó đã dẫn đến vô số lỗi, lỗ hổng bảo mật và sự cố sập hệ thống phần mềm, gây thiệt hại hàng tỷ đô la trong suốt 50 năm qua."*
+> *"Tôi gọi đó là sai lầm tỷ đô của đời mình... Nó đã dẫn đến vô số lỗi, lỗ hổng bảo mật và sự cố sập hệ thống phần mềm, gây thiệt hại hàng tỷ đô la trong suốt 40 năm qua."* (phát biểu năm 2009)
 
-Trong hầu hết các ngôn ngữ (C++, Java, Python, C#), bất kỳ biến đối tượng nào cũng có thể bí mật mang giá trị `null`. Nếu bạn viết `nguoi.gui_tin_nhan()` mà biến `nguoi` lại vô tình bị rỗng (`null`), cả hệ thống máy chủ sẽ lập tức lăn đùng ra chết với lỗi `NullPointerException`!
+Trong hầu hết các ngôn ngữ (C++, Java, Python, C#), bất kỳ biến đối tượng nào cũng có thể bí mật mang giá trị `null`. Nếu bạn viết `user.send_message()` mà biến `user` lại vô tình bị rỗng (`null`), cả hệ thống máy chủ sẽ lập tức lăn đùng ra chết với lỗi `NullPointerException`!
 
 **Giải pháp triệt để của Rust**:
 Rust **không hề có từ khóa `null`**!
@@ -82,7 +82,7 @@ Vì kiểu `Option<String>` và kiểu `String` là hai kiểu dữ liệu hoàn
 ### 2. Bố cục ô nhớ của Enum (Tag và Payload)
 
 Dưới góc nhìn phần cứng, Rust bố trí một `enum` trên RAM như thế nào?
-- **Thẻ định danh (Discriminant / Tag)**: 1 byte nhỏ dùng để đánh dấu xem nhánh nào đang hoạt động (nhánh 0, 1 hay 2).
+- **Thẻ định danh (Discriminant / Tag)**: một con số nhỏ (thường chỉ 1 byte) dùng để đánh dấu xem nhánh nào đang hoạt động (nhánh 0, 1 hay 2).
 - **Vùng chứa dữ liệu (Payload)**: Rust đo kích thước của nhánh lớn nhất trong enum rồi dành ra một vùng vừa đủ bằng nhánh lớn nhất đó. Vùng này nằm **ngay tại chỗ enum được lưu** (trên Stack nếu biến nằm trên Stack, bên trong `Box` nếu enum nằm trong `Box`) — bản thân `enum` **không bao giờ tự cấp phát thêm bộ nhớ Heap**.
 
 > **Kỹ thuật tối ưu hóa con trỏ rỗng (Null Pointer Optimization - NPO)**:
@@ -115,7 +115,7 @@ struct Order { is_paid: bool, transaction_id: Option<String> }
 //   (false, Some(..)) -> chưa trả tiền mà đã có mã?!
 
 // ✅ Kiểu TỔNG: KHÔNG CÒN tổ hợp vô nghĩa nào
-enum PaymentState { ChuaTra, DaTra { transaction_id: String } }
+enum PaymentState { Unpaid, Paid { transaction_id: String } }
 ```
 
 Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** để loại bỏ cả một lớp lỗi khỏi chương trình.
@@ -125,12 +125,12 @@ Chúng ta sẽ khai thác triệt để ý tưởng này ở **Chương 20** đ�
 `match` của Rust mạnh hơn nhiều so với `switch` của các ngôn ngữ khác. Đây là những dạng mẫu bạn sẽ dùng thường xuyên:
 
 ```rust
-let diem = 85;
-let so = Some(7);
-let mang = [1, 2, 3, 4, 5];
+let score = 85;
+let num = Some(7);
+let arr = [1, 2, 3, 4, 5];
 
 // 1) MẪU KHOẢNG (range pattern)
-let grade = match diem {
+let grade = match score {
     90..=100 => "Xuất sắc",
     80..=89  => "Giỏi",
     50..=79  => "Đạt",
@@ -144,7 +144,7 @@ let is_weekend = match "Thứ 7" {
 };
 
 // 3) ĐIỀU KIỆN BẢO VỆ (match guard) — thêm `if` vào nhánh
-let description = match so {
+let description = match num {
     Some(n) if n % 2 == 0 => "số chẵn",
     Some(n) if n > 5      => "số lẻ lớn",
     Some(_)               => "số lẻ nhỏ",
@@ -152,21 +152,21 @@ let description = match so {
 };
 
 // 4) RÀNG BUỘC `@` — vừa kiểm tra vừa GIỮ LẠI giá trị
-let thong_report = match so {
+let report = match num {
     Some(n @ 1..=9) => format!("Chữ số đơn: {}", n),  // n vẫn dùng được!
     Some(n)         => format!("Số lớn: {}", n),
     None            => "Rỗng".to_string(),
 };
 
 // 5) MẪU LÁT CẮT — bóc tách mảng
-let tom_tat = match &mang[..] {
+let summary = match &arr[..] {
     []              => "rỗng".to_string(),
     [x]             => format!("một phần tử: {}", x),
     [first, .., last] => format!("từ {} đến {}", first, last),
 };
 
 // 6) `matches!` — kiểm tra nhanh, trả về bool
-let co_gia_tri = matches!(so, Some(_));
+let has_value = matches!(num, Some(_));
 
 // 7) `let ... else` — bóc tách hoặc THOÁT SỚM, giữ mã phẳng phiu
 fn handle(input: Option<i32>) -> i32 {
@@ -184,31 +184,32 @@ fn handle(input: Option<i32>) -> i32 {
 Khi bạn so khớp một biểu thức với `match`, Rust bắt buộc bạn phải liệt kê **đầy đủ tất cả các trường hợp có thể xảy ra**.
 Nếu bạn quên một nhánh, trình biên dịch sẽ từ chối dịch mã với lỗi `E0004`:
 ```rust
-enum Gender { Nam, Nu, Khac }
+enum Gender { Male, Female, Other }
 
-let gender = Gender::Nam;
+let gender = Gender::Male;
 
-// ĐOẠN MÃ NÀY BỊ LỖI E0004 VÌ QUÊN CHƯA XỬ LÝ NHÁNH 'Khac':
+// ĐOẠN MÃ NÀY BỊ LỖI E0004 VÌ QUÊN CHƯA XỬ LÝ NHÁNH 'Other':
 match gender {
-    Gender::Nam => println!("Nam giới"),
-    Gender::Nu => println!("Nữ giới"),
+    Gender::Male => println!("Nam giới"),
+    Gender::Female => println!("Nữ giới"),
 }
 ```
 Khi biên dịch đoạn mã trên, trình biên dịch Rust sẽ từ chối dịch mã với thông báo:
 ```text
-error[E0004]: non-exhaustive patterns: `GioiTinh::Khac` not covered
+error[E0004]: non-exhaustive patterns: `Gender::Other` not covered
  --> src/main.rs:6:11
   |
-6 |     match gioi_tinh {
-  |           ^^^^^^^^^ pattern `GioiTinh::Khac` not covered
-help: ensure that all possible cases are being handled by adding a match arm
+6 |     match gender {
+  |           ^^^^^^ pattern `Gender::Other` not covered
+...
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
 ```
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử lý trạng thái Đơn hàng Thương mại Điện tử, kết hợp giữa Enum chứa dữ liệu phong phú, hàm an toàn trả về `Option`, cấu trúc `match` vét cạn có Match Guards, `if let` và `let else`:
+Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử lý trạng thái Đơn hàng Thương mại Điện tử, kết hợp giữa Enum chứa dữ liệu phong phú, hàm an toàn trả về `Option`, cấu trúc `match` vét cạn có Match Guards và `if let` (còn `let else` đã được minh hoạ ở mục 4):
 
 ```rust
 // File: src/main.rs
@@ -218,46 +219,66 @@ Chương trình hoàn chỉnh dưới đây minh họa một hệ thống xử l
 // Mỗi nhánh có thể cõng theo những thông tin hoàn toàn khác nhau!
 enum OrderStatus {
     AwaitingPayment,
-    DangDongGoi { store_export_queue: String },
-    InTransit { ma_van_don: String, ten_tai_xe: String },
-    Delivered { recipient: String, time_time_recv: String },
+    Packing {
+        warehouse: String,
+    },
+    InTransit {
+        tracking_code: String,
+        driver_name: String,
+    },
+    Delivered {
+        recipient: String,
+        received_at: String,
+    },
     Cancelled(String), // Cõng theo một chuỗi String chứa lý do hủy đơn
 }
 
 // 2. Hàm chia kẹo an toàn: Trả về Option<u32> để ngăn chặn lỗi chia cho 0
-fn safe_divide(so_keo: u32, so_tre_em: u32) -> Option<u32> {
-    if so_tre_em == 0 {
+// (Thư viện chuẩn đã có sẵn `candies.checked_div(children)` làm đúng việc này;
+// ở đây ta tự viết tay để thấy rõ Option hoạt động thế nào, nên tắt lint gợi ý của Clippy.)
+#[allow(clippy::manual_checked_ops)]
+fn safe_divide(candies: u32, children: u32) -> Option<u32> {
+    if children == 0 {
         // Không thể chia cho 0 em bé: Trả về None báo hiệu không có kết quả
         None
     } else {
         // Chia thành công: Bọc kết quả vào trong hộp Some
-        Some(so_keo / so_tre_em)
+        Some(candies / children)
     }
 }
 
 // 3. Hàm xử lý trạng thái đơn hàng bằng cấu trúc so khớp mẫu 'match' toàn diện
-fn update_progress(don_hang: &OrderStatus) {
+fn update_progress(order: &OrderStatus) {
     println!("------------------------------------------------------------");
-    match don_hang {
+    match order {
         OrderStatus::AwaitingPayment => {
             println!("[TRẠNG THÁI] Đơn hàng đang chờ khách thanh toán qua thẻ...");
         }
-        OrderStatus::DangDongGoi { store_export_queue } => {
-            println!("[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}", store_export_queue);
+        OrderStatus::Packing { warehouse } => {
+            println!(
+                "[TRẠNG THÁI] Đơn hàng đang được đóng gói tại kho: {}",
+                warehouse
+            );
         }
         // Bóc tách cả 2 trường dữ liệu từ nhánh InTransit
-        OrderStatus::InTransit { ma_van_don, ten_tai_xe } => {
+        OrderStatus::InTransit {
+            tracking_code,
+            driver_name,
+        } => {
             println!("[VẬN CHUYỂN] Đơn đang trên đường giao!");
-            println!("  + Mã vận đơn : {}", ma_van_don);
-            println!("  + Shipper    : {}", ten_tai_xe);
+            println!("  + Mã vận đơn : {}", tracking_code);
+            println!("  + Shipper    : {}", driver_name);
         }
-        OrderStatus::Delivered { recipient, time_time_recv } => {
+        OrderStatus::Delivered {
+            recipient,
+            received_at,
+        } => {
             println!("[THÀNH CÔNG] Đơn hàng đã giao thành công!");
             println!("  + Người ký nhận: {}", recipient);
-            println!("  + Thời điểm    : {}", time_time_recv);
+            println!("  + Thời điểm    : {}", received_at);
         }
-        OrderStatus::Cancelled(ly_do) => {
-            println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", ly_do);
+        OrderStatus::Cancelled(reason) => {
+            println!("[HỦY BỎ] Đơn hàng đã bị hủy. Lý do ghi nhận: '{}'", reason);
         }
     }
 }
@@ -268,50 +289,50 @@ fn main() {
     println!("============================================================");
 
     // --- PHẦN 1: SO KHỚP MẪU VỚI ENUM CHỨA DỮ LIỆU ---
-    let don_cho = OrderStatus::AwaitingPayment;
-    let don_dong_goi = OrderStatus::DangDongGoi {
-        store_export_queue: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
+    let awaiting = OrderStatus::AwaitingPayment;
+    let packing = OrderStatus::Packing {
+        warehouse: String::from("Kho Tổng Cầu Giấy, Hà Nội"),
     };
-    let don_van_transfer = OrderStatus::InTransit {
-        ma_van_don: String::from("SPX-987654321"),
-        ten_tai_xe: String::from("Bác Ba Giao Hàng"),
+    let in_transit = OrderStatus::InTransit {
+        tracking_code: String::from("SPX-987654321"),
+        driver_name: String::from("Bác Ba Giao Hàng"),
     };
-    let order_delivered = OrderStatus::Delivered {
+    let delivered = OrderStatus::Delivered {
         recipient: String::from("Trần Thị Bình"),
-        time_time_recv: String::from("14:30 ngày 05/09/2026"),
+        received_at: String::from("14:30 ngày 05/09/2026"),
     };
-    let don_cancel = OrderStatus::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
+    let cancelled = OrderStatus::Cancelled(String::from("Khách hàng đổi ý muốn chọn màu khác"));
 
-    update_progress(&don_cho);
-    update_progress(&don_dong_goi);
-    update_progress(&don_van_transfer);
-    update_progress(&order_delivered);
-    update_progress(&don_cancel);
+    update_progress(&awaiting);
+    update_progress(&packing);
+    update_progress(&in_transit);
+    update_progress(&delivered);
+    update_progress(&cancelled);
 
     // --- PHẦN 2: LÀM VIỆC VỚI OPTION<T> VÀ TRIỆT TIÊU NULL ---
     println!("\n=== KIỂM THỬ TÍNH TOÁN AN TOÀN VỚI OPTION ===");
-    let result_hop_le = safe_divide(20, 4);
-    let result_error = safe_divide(20, 0);
+    let valid_result = safe_divide(20, 4);
+    let zero_result = safe_divide(20, 0);
 
     // Dùng match để mở hộp quà Option
-    match result_hop_le {
-        Some(keo) => println!("- Chia 20 kẹo cho 4 bé: Mỗi bé được {} cái kẹo.", keo),
+    match valid_result {
+        Some(each) => println!("- Chia 20 kẹo cho 4 bé: Mỗi bé được {} cái kẹo.", each),
         None => println!("- Lỗi: Số trẻ em không thể bằng 0!"),
     }
 
-    match result_error {
-        Some(keo) => println!("- Mỗi bé được: {} cái kẹo.", keo),
+    match zero_result {
+        Some(each) => println!("- Mỗi bé được: {} cái kẹo.", each),
         None => println!("- [Được bảo vệ an toàn] Không thể chia cho 0 bé! Hệ thống không bị sập!"),
     }
 
     // --- PHẦN 3: MATCH GUARDS (ĐIỀU KIỆN BẢO VỆ PHỤ) VÀ KHOẢNG GIÁ TRỊ ---
     println!("\n=== PHÂN LOẠI TUỔI KHÁCH HÀNG VỚI MATCH GUARDS ===");
     let age = 17;
-    let co_the_can_cuoc = true;
+    let has_id_card = true;
 
     match age {
         0..=12 => println!("Khách hàng thuộc lứa tuổi Thiếu nhi"),
-        13..=17 if co_the_can_cuoc => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
+        13..=17 if has_id_card => println!("Lứa tuổi vị thành niên (ĐÃ có thẻ CCCD hợp lệ)"),
         13..=17 => println!("Lứa tuổi vị thành niên (chưa làm thẻ CCCD)"),
         18..=60 => println!("Khách hàng trong độ tuổi lao động trưởng thành"),
         _ => println!("Khách hàng cao tuổi ưu tiên"),
@@ -319,11 +340,24 @@ fn main() {
 
     // --- PHẦN 4: CÚ PHÁP RÚT GỌN 'if let' ---
     println!("\n=== DÙNG 'if let' KHI CHỈ QUAN TÂM 1 TRƯỜNG HỢP ===");
-    let info_recv_send_to: Option<&str> = Some("Xin chào, bạn có nhà không?");
+    let incoming_message: Option<&str> = Some("Xin chào, bạn có nhà không?");
 
     // Thay vì viết match dài dòng với cả nhánh None, ta chỉ bắt nhánh Some:
-    if let Some(content) = info_recv_send_to {
+    if let Some(content) = incoming_message {
         println!("Tin nhắn mới nhận được: '{}'", content);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_divide_handles_zero() {
+        assert_eq!(safe_divide(20, 4), Some(5));
+        assert_eq!(safe_divide(20, 0), None);
+        // Cùng hành vi với hàm có sẵn của thư viện chuẩn:
+        assert_eq!(safe_divide(7, 2), 7u32.checked_div(2));
     }
 }
 ```
@@ -337,9 +371,9 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0004** | `non-exhaustive patterns: 'None' not covered` | Bạn dùng `match` trên một biến `Option` hoặc `Enum` nhưng quên không viết nhánh xử lý cho một số trường hợp. | Bổ sung thêm các nhánh còn thiếu vào khối `match`, hoặc thêm nhánh đại diện `_ => ...` để bắt toàn bộ các trường hợp còn lại. |
-| **E0308** | `mismatched types: expected integer, found 'Option<{integer}>'` | Bạn cố tình lấy một biến `Option<i32>` ra cộng trừ nhân chia trực tiếp với một số nguyên mà quên mở nắp hộp. | Dùng `match`, `if let`, hoặc phương thức `.unwrap_or(0)` để lấy giá trị số nguyên thực sự bên trong hộp ra trước khi tính toán. |
-| **E0425** | `cannot find value 'ChoThanhToan' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `OrderStatus::ChoThanhToan`. |
-| **E0005** | `refutable pattern in local binding` | Bạn dùng `let Some(x) = bien_option;` để gán biến. Rust từ chối vì nếu `bien_option` là `None` thì lệnh gán sẽ thất bại. | Chuyển sang sử dụng cú pháp `if let Some(x) = ...` hoặc `let Some(x) = ... else { return; };`. |
+| **E0369** | `cannot add '{integer}' to 'Option<i32>'` | Bạn cố tình lấy một biến `Option<i32>` ra cộng trừ nhân chia trực tiếp với một số nguyên mà quên mở nắp hộp. (Nếu gán thẳng `let x: i32 = option;` thì lỗi là `E0308: mismatched types`.) | Dùng `match`, `if let`, hoặc phương thức `.unwrap_or(0)` để lấy giá trị số nguyên thực sự bên trong hộp ra trước khi tính toán. |
+| **E0425** | `cannot find value 'AwaitingPayment' in this scope` | Bạn viết tên nhánh của Enum một cách cộc lốc mà không chỉ định tên Enum cha. | Thêm tiền tố tên Enum phía trước: `OrderStatus::AwaitingPayment` (hoặc `use OrderStatus::*;`). |
+| **E0005** | `refutable pattern in local binding` | Bạn dùng `let Some(x) = maybe_value;` để gán biến. Rust từ chối vì nếu `maybe_value` là `None` thì lệnh gán sẽ thất bại. | Chuyển sang sử dụng cú pháp `if let Some(x) = ...` hoặc `let Some(x) = ... else { return; };`. |
 
 ---
 
@@ -352,14 +386,14 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
 4. **Cú pháp `if let`**: Lối viết ngắn gọn, tiện lợi khi bạn chỉ muốn thực hiện hành động cho một nhánh duy nhất mà bỏ qua các nhánh còn lại.
 
 ### Bài tập rèn luyện tự giải:
-1. **Bài tập thực hành 1**: Định nghĩa một `enum PhepTinh` gồm 4 nhánh:
-   - `Cong(f64, f64)`
-   - `Tru(f64, f64)`
-   - `Nhan(f64, f64)`
-   - `Chia(f64, f64)`
-   Viết hàm `tinh_toan(pt: PhepTinh) -> Option<f64>` sử dụng cấu trúc `match`. Lưu ý nhánh `Chia` nếu mẫu số bằng `0.0` thì phải trả về `None`, ngược lại trả về `Some(kết_quả)`.
+1. **Bài tập thực hành 1**: Định nghĩa một `enum Operation` gồm 4 nhánh:
+   - `Add(f64, f64)` (cộng)
+   - `Sub(f64, f64)` (trừ)
+   - `Mul(f64, f64)` (nhân)
+   - `Div(f64, f64)` (chia)
+   Viết hàm `calculate(op: Operation) -> Option<f64>` sử dụng cấu trúc `match`. Lưu ý nhánh `Div` nếu mẫu số bằng `0.0` thì phải trả về `None`, ngược lại trả về `Some(result)`.
 2. **Bài tập tư duy 2**: Tại sao nói kiểu `Option<T>` giúp loại bỏ lỗi sập hệ thống tốt hơn việc hàm trả về một con số quy ước đặc biệt (ví dụ trả về số `-1` để báo lỗi)?
-3. **Bài tập `if let` 3**: Cho biến `let diem_danh: Option<&str> = Some("Có mặt");`. Hãy dùng cú pháp `if let` để in ra dòng chữ `"Học viên: Có mặt"`, và thử đổi giá trị thành `None` để kiểm tra xem chương trình chạy êm đẹp ra sao.
+3. **Bài tập `if let` 3**: Cho biến `let attendance: Option<&str> = Some("Có mặt");`. Hãy dùng cú pháp `if let` để in ra dòng chữ `"Học viên: Có mặt"`, và thử đổi giá trị thành `None` để kiểm tra xem chương trình chạy êm đẹp ra sao.
 
 ---
 
@@ -368,43 +402,47 @@ Dưới đây là các lỗi kinh điển khi sử dụng Enum và Pattern Match
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-`enum` gom các biến thể có mang dữ liệu; `match` bắt buộc xử lý đủ mọi nhánh. Nhánh `Chia` cho mẫu 0 trả `None` để báo phép tính vô nghĩa mà không sập.
+`enum` gom các biến thể có mang dữ liệu; `match` bắt buộc xử lý đủ mọi nhánh. Nhánh `Div` cho mẫu 0 trả `None` để báo phép tính vô nghĩa mà không sập.
 </details>
 
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
 ```rust
-enum PhepTinh {
-    Cong(f64, f64),
-    Tru(f64, f64),
-    Nhan(f64, f64),
-    Chia(f64, f64),
+#[derive(Debug)]
+enum Operation {
+    Add(f64, f64),
+    Sub(f64, f64),
+    Mul(f64, f64),
+    Div(f64, f64),
 }
 
 // Trả Option: Some(kết quả) khi hợp lệ, None khi chia cho 0.
-fn tinh_toan(pt: PhepTinh) -> Option<f64> {
-    match pt {
-        PhepTinh::Cong(a, b) => Some(a + b),
-        PhepTinh::Tru(a, b) => Some(a - b),
-        PhepTinh::Nhan(a, b) => Some(a * b),
+fn calculate(op: Operation) -> Option<f64> {
+    match op {
+        Operation::Add(a, b) => Some(a + b),
+        Operation::Sub(a, b) => Some(a - b),
+        Operation::Mul(a, b) => Some(a * b),
         // Chia cho 0.0 là vô nghĩa -> None thay vì để sinh ra vô cực/NaN.
-        PhepTinh::Chia(_, b) if b == 0.0 => None,
-        PhepTinh::Chia(a, b) => Some(a / b),
+        Operation::Div(_, b) if b == 0.0 => None,
+        Operation::Div(a, b) => Some(a / b),
     }
 }
 
 fn main() {
-    println!("{:?}", tinh_toan(PhepTinh::Cong(2.0, 3.0)));   // Some(5.0)
-    println!("{:?}", tinh_toan(PhepTinh::Chia(1.0, 0.0)));   // None
+    println!("{:?}", calculate(Operation::Add(2.0, 3.0))); // Some(5.0)
+    println!("{:?}", calculate(Operation::Sub(2.0, 3.0))); // Some(-1.0)
+    println!("{:?}", calculate(Operation::Mul(2.0, 3.0))); // Some(6.0)
+    println!("{:?}", calculate(Operation::Div(1.0, 0.0))); // None
 }
 
 #[test]
-fn phep_tinh_co_ban() {
-    assert_eq!(tinh_toan(PhepTinh::Cong(2.0, 3.0)), Some(5.0));
-    assert_eq!(tinh_toan(PhepTinh::Nhan(4.0, 5.0)), Some(20.0));
-    assert_eq!(tinh_toan(PhepTinh::Chia(10.0, 2.0)), Some(5.0));
-    assert_eq!(tinh_toan(PhepTinh::Chia(1.0, 0.0)), None);   // không sập, trả None
+fn basic_operations() {
+    assert_eq!(calculate(Operation::Add(2.0, 3.0)), Some(5.0));
+    assert_eq!(calculate(Operation::Sub(5.0, 3.0)), Some(2.0));
+    assert_eq!(calculate(Operation::Mul(4.0, 5.0)), Some(20.0));
+    assert_eq!(calculate(Operation::Div(10.0, 2.0)), Some(5.0));
+    assert_eq!(calculate(Operation::Div(1.0, 0.0)), None); // không sập, trả None
 }
 ```
 
@@ -424,9 +462,9 @@ So sánh hai cách báo lỗi: trả `-1` (một con số trông như dữ liệ
 
 **Vấn đề của quy ước `-1`:**
 ```text
-fn tim_vi_tri(...) -> i32 { ... }   // trả -1 nếu không thấy
-let vt = tim_vi_tri(...);
-let ket_qua = mang[vt as usize];    // QUÊN kiểm tra -1 -> đọc mang[-1] -> sập/rác
+fn find_index(...) -> i32 { ... }   // trả -1 nếu không thấy
+let idx = find_index(...);
+let value = arr[idx as usize];    // QUÊN kiểm tra -1 -> đọc arr[-1] -> sập/rác
 ```
 Con số `-1` **trông y hệt một kết quả hợp lệ**. Không gì ngăn bạn quên kiểm tra; trình biên dịch cũng chẳng nhắc, vì `-1` vẫn là một `i32` đúng kiểu. Lỗi chỉ lộ ra lúc chạy, trên máy người dùng.
 
@@ -434,11 +472,11 @@ Tệ hơn, `-1` chỉ dùng được khi nó *không* phải giá trị hợp l�
 
 **Vì sao `Option<T>` chặn được lỗi sập:**
 ```text
-fn tim_vi_tri(...) -> Option<usize> { ... }
-let vt = tim_vi_tri(...);
-// let x = mang[vt];   // KHÔNG biên dịch: vt là Option<usize>, không phải usize
-match vt {
-    Some(i) => mang[i],   // buộc phải mở hộp -> buộc phải nghĩ tới ca "không thấy"
+fn find_index(...) -> Option<usize> { ... }
+let idx = find_index(...);
+// let x = arr[idx];   // KHÔNG biên dịch: idx là Option<usize>, không phải usize
+match idx {
+    Some(i) => arr[i],   // buộc phải mở hộp -> buộc phải nghĩ tới ca "không thấy"
     None => { /* xử lý đàng hoàng */ }
 }
 ```
@@ -456,33 +494,33 @@ match vt {
 
 ```rust
 fn main() {
-    let diem_danh: Option<&str> = Some("Có mặt");
+    let attendance: Option<&str> = Some("Có mặt");
     // if let: chỉ quan tâm ca Some, bỏ qua None gọn gàng.
-    if let Some(trang_thai) = diem_danh {
-        println!("Học viên: {trang_thai}");   // in "Học viên: Có mặt"
+    if let Some(status) = attendance {
+        println!("Học viên: {status}");   // in "Học viên: Có mặt"
     }
 
-    let vang: Option<&str> = None;
-    if let Some(trang_thai) = vang {
-        println!("Học viên: {trang_thai}");   // KHÔNG chạy vì là None
+    let absent: Option<&str> = None;
+    if let Some(status) = absent {
+        println!("Học viên: {status}");   // KHÔNG chạy vì là None
     }
     println!("Chương trình vẫn chạy tiếp bình thường.");
 }
 
 #[test]
-fn if_let_bat_dung_some() {
-    let mut ket_qua = String::new();
-    let diem_danh: Option<&str> = Some("Có mặt");
-    if let Some(t) = diem_danh {
-        ket_qua = format!("Học viên: {t}");
+fn if_let_matches_only_some() {
+    let mut output = String::new();
+    let attendance: Option<&str> = Some("Có mặt");
+    if let Some(t) = attendance {
+        output = format!("Học viên: {t}");
     }
-    assert_eq!(ket_qua, "Học viên: Có mặt");
+    assert_eq!(output, "Học viên: Có mặt");
 
-    // Với None, thân if let không chạy -> ket_qua giữ nguyên, không sập.
-    let mut kq2 = String::from("chưa gán");
-    let vang: Option<&str> = None;
-    if let Some(t) = vang { kq2 = t.to_string(); }
-    assert_eq!(kq2, "chưa gán");
+    // Với None, thân if let không chạy -> output giữ nguyên, không sập.
+    let mut output2 = String::from("chưa gán");
+    let absent: Option<&str> = None;
+    if let Some(t) = absent { output2 = t.to_string(); }
+    assert_eq!(output2, "chưa gán");
 }
 ```
 

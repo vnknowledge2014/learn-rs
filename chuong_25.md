@@ -13,7 +13,7 @@ Mục tiêu học tập của chương này:
 - Hiểu rõ ký hiệu Big-O như một thước đo "độ tốn công" khi quy mô công việc $N$ bùng nổ.
 - Nhận diện trực quan các cấp bậc Big-O phổ biến: $O(1)$, $O(\log N)$, $O(N)$, $O(N \log N)$, $O(N^2)$, và $O(2^N)$.
 - Biết cách sử dụng `std::time::Instant` trong Rust để thực nghiệm đo đạc thời gian thực thi của mã nguồn.
-- Rèn luyện phản xạ phát hiện các "nút thắt cổ chai" (bottlenecks) làm tiêu hao bộ nhớ đệm (buffer) và chu kỳ vi xử lý CPU.
+- Rèn luyện phản xạ phát hiện các "nút thắt cổ chai" (bottlenecks) làm tiêu hao bộ nhớ đệm (cache) và chu kỳ vi xử lý CPU.
 
 ---
 
@@ -68,7 +68,7 @@ Bộ vi xử lý trung tâm CPU của máy tính hiện đại hoạt động th
 
 Tuy nhiên, tài nguyên phần cứng không phải là vô tận:
 1. **Truy xuất bộ nhớ (Memory Access Latency)**: CPU truy xuất thanh ghi (registers) tốn dưới 1 nanosecond, nhưng truy xuất thanh RAM chính tốn tới 50-100 nanoseconds (chậm hơn hàng trăm lần).
-2. **Bộ nhớ đệm (buffer) Cache L1/L2/L3**: Khi dữ liệu nằm gọn trong cache CPU, thuật toán chạy cực nhanh. Nhưng khi thuật toán bắt CPU nhảy cóc lung tung qua hàng triệu ô nhớ rải rác trên RAM, hiện tượng trượt cache (Cache Miss) xảy ra liên tục, kéo tụt hiệu năng xuống đáy vực.
+2. **Bộ nhớ đệm (cache) L1/L2/L3**: Khi dữ liệu nằm gọn trong cache CPU, thuật toán chạy cực nhanh. Nhưng khi thuật toán bắt CPU nhảy cóc lung tung qua hàng triệu ô nhớ rải rác trên RAM, hiện tượng trượt cache (Cache Miss) xảy ra liên tục, kéo tụt hiệu năng xuống đáy vực.
 
 Ký hiệu Big-O không đo lường bằng giây hay mili-giây tuyệt đối (vì mỗi cỗ máy tính có phần cứng mạnh yếu khác nhau), mà đo lường **xu hướng tăng trưởng số lượng chỉ thị lệnh của CPU** khi kích thước đầu vào $N$ tiến tới vô cực:
 
@@ -101,14 +101,14 @@ Bảng dưới đây minh họa số phép toán mà CPU cần thực hiện khi
 | **$O(N)$** | 10 | 100 | 1.000 | 1.000.000 | Tốt, chấp nhận được |
 | **$O(N \log N)$** | ~33 | ~664 | ~9.965 | ~20.000.000 | Chuẩn mực của sắp xếp |
 | **$O(N^2)$** | 100 | 10.000 | 1.000.000 | 1.000.000.000.000 ($10^{12}$) | Nguy hiểm, đơ máy |
-| **$O(2^N)$** | 1.024 | $1.26 \times 10^{30}$ | Vô tận | Không thể tính toán | Bùng nổ hàm mũ |
+| **$O(2^N)$** | 1.024 | $1.27 \times 10^{30}$ | Vô tận | Không thể tính toán | Bùng nổ hàm mũ |
 
 > **Quy tắc bỏ qua hằng số**: Trong Big-O, chúng ta chỉ quan tâm đến tốc độ tăng trưởng bậc cao nhất. Ví dụ thuật toán tốn $2N + 100$ bước tính vẫn được quy về $O(N)$, và thuật toán tốn $0.5N^2 + 3N$ bước tính sẽ được quy về $O(N^2)$. Khi $N$ lên tới 1 tỷ, con số cộng thêm 100 hay nhân 2 trở nên hoàn toàn không đáng kể so với sức ảnh hưởng của $N^2$.
 
 ### 3. Độ phức tạp không gian (Space Complexity)
 
 Bên cạnh thời gian chạy, thuật toán còn tiêu tốn bộ nhớ RAM để lưu trữ biến số, cấu trúc dữ liệu phụ trợ hoặc các khung ngăn xếp gọi hàm (call stack frames):
-- **$O(1)$ Space**: Thuật toán chỉ sử dụng một vài biến đơn lẻ cố định (`let mut tong = 0;`), không xin thêm bất kỳ ô nhớ nào dù $N$ có lớn bao nhiêu.
+- **$O(1)$ Space**: Thuật toán chỉ sử dụng một vài biến đơn lẻ cố định (`let mut sum = 0;`), không xin thêm bất kỳ ô nhớ nào dù $N$ có lớn bao nhiêu.
 - **$O(N)$ Space**: Thuật toán tạo ra một mảng phụ sao chép toàn bộ $N$ phần tử, hoặc đệ quy sâu $N$ tầng khiến ngăn xếp Stack phình to theo tỷ lệ thuận.
 
 ---
@@ -123,9 +123,9 @@ use std::time::Instant;
 /// Minh họa giải thuật O(1) - Truy cập phần tử qua chỉ số mảng
 /// Bất kể danh sách có 10 phần tử hay 10 triệu phần tử,
 /// CPU chỉ cần 1 phép tính cộng địa chỉ bộ nhớ là lấy được giá trị ngay!
-pub fn index_access_o1(list: &[i32], chi_so: usize) -> Option<i32> {
+pub fn index_access_o1(list: &[i32], index: usize) -> Option<i32> {
     // Thao tác kiểm tra biên giới và đọc ô nhớ diễn ra trong thời gian hằng số O(1)
-    list.get(chi_so).copied()
+    list.get(index).copied()
 }
 
 /// Minh họa giải thuật O(N) - Tìm kiếm tuyến tính (Linear Search)
@@ -176,20 +176,20 @@ pub fn binary_search_ologn(list: &[i32], target: i32) -> Option<usize> {
 /// Minh họa độ phức tạp không gian O(1) vs O(N)
 /// Hàm 1: Tính tổng tích lũy tại chỗ - Tiêu tốn O(1) bộ nhớ phụ
 pub fn sum_in_place_o1(list: &[i32]) -> i64 {
-    let mut tong: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
-    for &so in list {
-        tong += so as i64;
+    let mut sum: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
+    for &x in list {
+        sum += x as i64;
     }
-    tong
+    sum
 }
 
 /// Hàm 2: Tạo mảng nhân đôi - Tiêu tốn O(N) bộ nhớ phụ trên Heap
 pub fn grow_doubling(list: &[i32]) -> Vec<i32> {
-    let mut ket_qua = Vec::with_capacity(list.len());
-    for &so in list {
-        ket_qua.push(so * 2);
+    let mut result = Vec::with_capacity(list.len());
+    for &x in list {
+        result.push(x * 2);
     }
-    ket_qua
+    result
 }
 
 fn main() {
@@ -206,44 +206,50 @@ fn main() {
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
     let start_o1 = Instant::now();
-    let ket_qua_o1 = index_access_o1(&list, scale - 1);
+    let result_o1 = index_access_o1(&list, scale - 1);
     let elapsed_o1 = start_o1.elapsed();
     println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
-    println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
+    println!("    - Giá trị tìm được: {:?}", result_o1);
     println!("    - Thời gian thực thi: {:?}", elapsed_o1);
 
     // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
     let start_on = Instant::now();
-    let ket_qua_on = linear_search_on(&list, target);
+    let result_on = linear_search_on(&list, target);
     let elapsed_on = start_on.elapsed();
     println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_on);
+    println!("    - Vị trí tìm được: {:?}", result_on);
     println!("    - Thời gian thực thi: {:?}", elapsed_on);
 
     // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
     let start_ologn = Instant::now();
-    let ket_qua_ologn = binary_search_ologn(&list, target);
+    let result_ologn = binary_search_ologn(&list, target);
     let elapsed_ologn = start_ologn.elapsed();
     println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
+    println!("    - Vị trí tìm được: {:?}", result_ologn);
     println!("    - Thời gian thực thi: {:?}", elapsed_ologn);
 
     // Xác nhận tính nhất quán của kết quả
-    assert_eq!(ket_qua_on, Some(scale - 1));
-    assert_eq!(ket_qua_ologn, Some(scale - 1));
+    assert_eq!(result_on, Some(scale - 1));
+    assert_eq!(result_ologn, Some(scale - 1));
 
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
     if elapsed_ologn.as_nanos() > 0 {
-        let ti_le = elapsed_on.as_nanos() as f64 / elapsed_ologn.as_nanos() as f64;
-        println!("\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
+        let ratio = elapsed_on.as_nanos() as f64 / elapsed_ologn.as_nanos() as f64;
+        println!(
+            "\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!",
+            ratio
+        );
     }
 
     // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian
-    let tong_o1 = sum_in_place_o1(&list[0..100]);
-    let mang_on = grow_doubling(&list[0..100]);
+    let sum_o1 = sum_in_place_o1(&list[0..100]);
+    let doubled = grow_doubling(&list[0..100]);
     println!("\n[4] Không gian bộ nhớ:");
-    println!("    - Tổng O(1) Space: {}", tong_o1);
-    println!("    - Kích thước mảng phụ O(N) Space: {} phần tử", mang_on.len());
+    println!("    - Tổng O(1) Space: {}", sum_o1);
+    println!(
+        "    - Kích thước mảng phụ O(N) Space: {} phần tử",
+        doubled.len()
+    );
     println!("============================================================");
 }
 ```
@@ -257,8 +263,8 @@ Khi lập trình các thuật toán tìm kiếm và đo đạc độ phức tạ
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0382** | `use of moved value: '...'` | Bạn truyền một `Vec` lớn vào hàm giải thuật bằng giá trị (by value) thay vì mượn tham chiếu `&[T]`. Quyền sở hữu đã bị chuyển đi, khiến biến gốc không dùng lại được. | Đổi chữ ký hàm nhận lát cắt tham chiếu `&[T]` thay vì sở hữu `Vec<T>`. |
-| **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng thay đổi các biến chỉ số biên (`left`, `right`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut left = 0;`. |
-| **E0308** | `mismatched types: expected 'usize', found 'i32'` | Chỉ số mảng trong Rust luôn mang kiểu số nguyên không dấu `usize`. Việc dùng kiểu `i32` làm chỉ số truy cập sẽ bị trình biên dịch từ chối ngay lập tức. | Chuyển đổi kiểu tường minh bằng từ khóa `as usize` hoặc khai báo biến chỉ số ngay từ đầu là `usize`. |
+| **E0384** | `cannot assign twice to immutable variable '...'` | Bạn cố gắng gán lại các biến chỉ số biên (`left`, `right`) trong thuật toán tìm kiếm mà quên khai báo từ khóa `mut`. | Thêm từ khóa `mut` khi khai báo biến: `let mut left = 0;`. |
+| **E0277** | `the type '[i32]' cannot be indexed by 'i32'` | Chỉ số mảng trong Rust luôn mang kiểu số nguyên không dấu `usize`. Việc dùng kiểu `i32` làm chỉ số truy cập sẽ bị trình biên dịch từ chối ngay lập tức (lát cắt không cài `Index<i32>`). | Chuyển đổi kiểu tường minh bằng từ khóa `as usize` hoặc khai báo biến chỉ số ngay từ đầu là `usize`. |
 | **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn vừa mượn bất biến `&list` để lặp, vừa gọi phương thức làm biến đổi danh sách (như `.push()`) trong cùng một phạm vi. | Tách rời thao tác đọc và thao tác ghi thành hai bước độc lập để tôn trọng quy tắc mượn của Rust. |
 
 ### Ví dụ phân tích lỗi `E0382` và cách khắc phục:
@@ -295,7 +301,7 @@ fn correct_example() {
 
 ## Kiểm thử tự động (Automated Tests)
 
-Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả của thuật toán tinh vi với một cài đặt hiển nhiên đúng (ở đây: tìm kiếm nhị phân đối chiếu tìm tuyến tính; ở các chương sau: `quicksort` đối chiếu `slice::sort`).
 
 ```rust
 #[cfg(test)]
@@ -324,7 +330,8 @@ mod tests {
             assert_eq!(
                 binary_search_ologn(&list, target).is_some(),
                 linear_search_on(&list, target).is_some(),
-                "bất đồng ở {}", target
+                "bất đồng ở {}",
+                target
             );
         }
         assert_eq!(binary_search_ologn(&list, 297), Some(99));
@@ -433,14 +440,14 @@ pub fn has_duplicate_on2(list: &[i32]) -> bool {
 /// Bản O(N) — đổi thời gian lấy BỘ NHỚ.
 /// `insert` trả false nếu phần tử đã có -> phát hiện trùng ngay.
 pub fn has_duplicate_on(list: &[i32]) -> bool {
-    let mut da_thay = HashSet::with_capacity(list.len());
-    !list.iter().all(|x| da_thay.insert(*x))
+    let mut seen = HashSet::with_capacity(list.len());
+    !list.iter().all(|x| seen.insert(*x))
 }
 
 #[test]
-fn hai_ban_cho_cung_ket_qua() {
-    for mau in [vec![], vec![1], vec![1, 2, 3], vec![1, 2, 1], vec![5, 5]] {
-        assert_eq!(has_duplicate_on2(&mau), has_duplicate_on(&mau), "{mau:?}");
+fn both_versions_agree() {
+    for sample in [vec![], vec![1], vec![1, 2, 3], vec![1, 2, 1], vec![5, 5]] {
+        assert_eq!(has_duplicate_on2(&sample), has_duplicate_on(&sample), "{sample:?}");
     }
 }
 ```
@@ -468,29 +475,29 @@ fn main() {
 
     // O(N): cộng dồn từng số
     let t0 = Instant::now();
-    let mut tong_lap: u64 = 0;
-    for i in 1..=N { tong_lap += i; }
-    let tg_lap = t0.elapsed();
-    black_box(tong_lap);   // ngăn trình tối ưu xoá cả vòng lặp
+    let mut loop_sum: u64 = 0;
+    for i in 1..=N { loop_sum += i; }
+    let loop_time = t0.elapsed();
+    black_box(loop_sum);   // ngăn trình tối ưu xoá cả vòng lặp
 
     // O(1): công thức Gauss
     let t1 = Instant::now();
-    let tong_gauss = N * (N + 1) / 2;
-    let tg_gauss = t1.elapsed();
-    black_box(tong_gauss);
+    let gauss_sum = N * (N + 1) / 2;
+    let gauss_time = t1.elapsed();
+    black_box(gauss_sum);
 
-    assert_eq!(tong_lap, tong_gauss, "hai cách phải ra cùng con số");
+    assert_eq!(loop_sum, gauss_sum, "hai cách phải ra cùng con số");
 
-    println!("Vòng lặp O(N) : {:?}", tg_lap);
-    println!("Gauss    O(1) : {:?}", tg_gauss);
+    println!("Vòng lặp O(N) : {:?}", loop_time);
+    println!("Gauss    O(1) : {:?}", gauss_time);
     println!("Nhanh hơn     : {:.0} lần",
-             tg_lap.as_nanos() as f64 / tg_gauss.as_nanos().max(1) as f64);
+             loop_time.as_nanos() as f64 / gauss_time.as_nanos().max(1) as f64);
 }
 ```
 
 **Ba cái bẫy khi đo, cả ba đều thật:**
 
-1. **Không có `black_box`, trình tối ưu xoá sạch vòng lặp.** Nó thấy `tong_lap` không được dùng và bỏ luôn — bạn đo được 0 nano giây và tưởng mình vừa phát minh ra thuật toán thần kỳ.
+1. **Không có `black_box`, trình tối ưu xoá sạch vòng lặp.** Nó thấy `loop_sum` không được dùng và bỏ luôn — bạn đo được 0 nano giây và tưởng mình vừa phát minh ra thuật toán thần kỳ.
 2. **Bản `-O` và bản gỡ lỗi khác nhau hàng chục lần.** Luôn đo bằng `cargo run --release`.
 3. **Gauss có thể ra ~0 ns** vì trình biên dịch tính sẵn lúc biên dịch (`N` là hằng số). Muốn đo trung thực thì đọc `N` từ đầu vào lúc chạy.
 

@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 
 /// Kích thước trang chuẩn của cơ sở dữ liệu (4KB)
@@ -39,55 +39,59 @@ impl SlottedPage {
         u16::from_le_bytes(self.data[4..6].try_into().unwrap())
     }
 
-    fn nearest_slot(&mut self, count: u16) {
+    fn set_slot_count(&mut self, count: u16) {
         self.data[4..6].copy_from_slice(&count.to_le_bytes());
     }
 
-    pub fn tail_pointer(&self) -> u16 {
+    pub fn free_space_pointer(&self) -> u16 {
         u16::from_le_bytes(self.data[6..8].try_into().unwrap())
     }
 
-    fn set_tail_pointer(&mut self, ptr: u16) {
+    fn set_free_space_pointer(&mut self, ptr: u16) {
         self.data[6..8].copy_from_slice(&ptr.to_le_bytes());
     }
 
     /// Thêm một bản ghi nhị phân vào trang - Trả về slot_id (chỉ số khe)
-    pub fn add_sell_record(&mut self, bytes_ban_ghi: &[u8]) -> Option<u16> {
+    pub fn insert_record(&mut self, record: &[u8]) -> Option<u16> {
         let current_slot_count = self.slot_count();
-        let tail_pointer = self.tail_pointer();
-        let do_long_record = bytes_ban_ghi.len() as u16;
+        let free_space_pointer = self.free_space_pointer();
 
         // Tính toán vị trí tiêu tốn của Slot Directory ở trên đầu trang:
         // Header: 8 bytes. Mỗi khe: 4 bytes.
         let new_slot_index = 8 + (current_slot_count as usize * 4);
-        let capacity_remaining = tail_pointer as usize - (new_slot_index + 4);
+        // checked_sub: khi bảng khe đã chạm vùng dữ liệu, phép trừ sẽ âm —
+        // trừ thẳng trên usize sẽ panic (bản debug) hoặc quay vòng (bản release).
+        let Some(free_space) = (free_space_pointer as usize).checked_sub(new_slot_index + 4) else {
+            return None; // Không còn chỗ cho cả một khe mới
+        };
 
         // Kiểm tra xem trang còn đủ chỗ cho cả Slot mới lẫn thân dữ liệu không
-        if do_long_record as usize > capacity_remaining {
+        // (so sánh trên usize TRƯỚC khi ép về u16 để không bị cắt cụt)
+        if record.len() > free_space {
             return None; // Trang đã đầy (Page Full)!
         }
+        let record_len = record.len() as u16;
 
         // 1. Tính tọa độ đáy mới và ghi dữ liệu từ đáy trang ngược lên
-        let offset_day_moi = tail_pointer - do_long_record;
-        let start = offset_day_moi as usize;
-        let end = tail_pointer as usize;
-        self.data[start..end].copy_from_slice(bytes_ban_ghi);
+        let new_offset = free_space_pointer - record_len;
+        let start = new_offset as usize;
+        let end = free_space_pointer as usize;
+        self.data[start..end].copy_from_slice(record);
 
         // 2. Ghi thông tin Khe vào Slot Directory ở đầu trang
-        self.data[new_slot_index..new_slot_index + 2]
-            .copy_from_slice(&offset_day_moi.to_le_bytes());
+        self.data[new_slot_index..new_slot_index + 2].copy_from_slice(&new_offset.to_le_bytes());
         self.data[new_slot_index + 2..new_slot_index + 4]
-            .copy_from_slice(&do_long_record.to_le_bytes());
+            .copy_from_slice(&record_len.to_le_bytes());
 
         // 3. Cập nhật Header
-        self.nearest_slot(current_slot_count + 1);
-        self.set_tail_pointer(offset_day_moi);
+        self.set_slot_count(current_slot_count + 1);
+        self.set_free_space_pointer(new_offset);
 
         Some(current_slot_count)
     }
 
     /// Đọc bản ghi qua slot_id - O(1)
-    pub fn read_sell_record(&self, slot_id: u16) -> Option<&[u8]> {
+    pub fn read_record(&self, slot_id: u16) -> Option<&[u8]> {
         let slot_count = self.slot_count();
         if slot_id >= slot_count {
             return None;
@@ -116,7 +120,7 @@ pub struct Frame {
 pub struct BufferPool {
     capacity: usize,
     frames: HashMap<u32, Frame>,
-    lru_list: Vec<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
+    lru_list: VecDeque<u32>, // Quản lý thứ tự: Đầu danh sách là nguội nhất (LRU)
 }
 
 impl BufferPool {
@@ -124,14 +128,14 @@ impl BufferPool {
         Self {
             capacity,
             frames: HashMap::new(),
-            lru_list: Vec::new(),
+            lru_list: VecDeque::new(),
         }
     }
 
     /// Cập nhật trang vừa được truy cập xuống cuối danh sách LRU
     fn touch_lru(&mut self, page_id: u32) {
         self.lru_list.retain(|&id| id != page_id);
-        self.lru_list.push(page_id);
+        self.lru_list.push_back(page_id);
     }
 
     /// Lấy trang từ bộ nhớ đệm (nếu có)
@@ -150,9 +154,11 @@ impl BufferPool {
         // Nếu trang chưa có trong buffer và buffer đã đầy sức chứa
         if !self.frames.contains_key(&id) && self.frames.len() >= self.capacity {
             // Trục xuất trang ở đầu danh sách LRU (nguội nhất)
-            let evict_id = self.lru_list.remove(0);
-            if let Some(khung_cu) = self.frames.remove(&evict_id) {
-                if khung_cu.is_dirty {
+            // (VecDeque::pop_front là O(1) — xem Chương 28 về Vec::remove(0))
+            if let Some(evict_id) = self.lru_list.pop_front()
+                && let Some(evicted) = self.frames.remove(&evict_id)
+            {
+                if evicted.is_dirty {
                     println!(
                         "    [EVICT]: Trang #{} có cờ bẩn (is_dirty=true) -> Đang ghi đè xuống đĩa SSD...",
                         evict_id
@@ -166,11 +172,26 @@ impl BufferPool {
             }
         }
 
-        self.frames.insert(id, Frame { page, is_dirty });
+        // Nếu trang ĐÃ có trong buffer và đang bẩn, việc đưa lại một bản "sạch"
+        // KHÔNG được xoá cờ bẩn: những thay đổi trước đó vẫn chưa được ghi xuống đĩa.
+        // Cờ bẩn chỉ được xoá khi trang thực sự được ghi ra đĩa.
+        let was_dirty = self.frames.get(&id).is_some_and(|f| f.is_dirty);
+        self.frames.insert(
+            id,
+            Frame {
+                page,
+                is_dirty: was_dirty || is_dirty,
+            },
+        );
         self.touch_lru(id);
     }
 
-    pub fn num_state_show_has(&self) -> usize {
+    /// Trang có đang nằm trong buffer và có cờ bẩn không? (None nếu không có trong buffer)
+    pub fn is_dirty(&self, page_id: u32) -> Option<bool> {
+        self.frames.get(&page_id).map(|f| f.is_dirty)
+    }
+
+    pub fn page_count(&self) -> usize {
         self.frames.len()
     }
 }
@@ -189,17 +210,17 @@ fn main() {
     );
     println!(
         "    - Con trỏ đáy tự do ban đầu: {} (Đáy trang)",
-        page_1.tail_pointer()
+        page_1.free_space_pointer()
     );
 
     // Nạp các bản ghi có kích thước chuỗi thay đổi
-    let record_a = b"NguoiDung: Nguyen Van An - Ha Noi";
-    let record_b = b"NguoiDung: Tran Thi Binh - TP Ho Chi Minh (VIP Member)";
-    let record_c = b"NguoiDung: Le Hoang Cuong - Da Nang";
+    let record_a = "Người dùng: Nguyễn Văn An - Hà Nội".as_bytes();
+    let record_b = "Người dùng: Trần Thị Bình - TP Hồ Chí Minh (Thành viên VIP)".as_bytes();
+    let record_c = "Người dùng: Lê Hoàng Cường - Đà Nẵng".as_bytes();
 
-    let slot_a = page_1.add_sell_record(record_a).expect("Lỗi chèn khe A");
-    let slot_b = page_1.add_sell_record(record_b).expect("Lỗi chèn khe B");
-    let slot_c = page_1.add_sell_record(record_c).expect("Lỗi chèn khe C");
+    let slot_a = page_1.insert_record(record_a).expect("Lỗi chèn khe A");
+    let slot_b = page_1.insert_record(record_b).expect("Lỗi chèn khe B");
+    let slot_c = page_1.insert_record(record_c).expect("Lỗi chèn khe C");
 
     println!(
         "    - Đã chèn Bản ghi A -> Được cấp Tuple ID: (Page: 1, Slot: {})",
@@ -216,17 +237,17 @@ fn main() {
     println!(
         "    - Tổng số khe: {}, Con trỏ đáy hiện tại: {}",
         page_1.slot_count(),
-        page_1.tail_pointer()
+        page_1.free_space_pointer()
     );
 
     // Đọc lại nội dung qua Slot ID
-    let doc_b = page_1.read_sell_record(slot_b).unwrap();
+    let read_b = page_1.read_record(slot_b).unwrap();
     println!(
         "    - Đọc nội dung qua Slot ID {}: '{}'",
         slot_b,
-        String::from_utf8_lossy(doc_b)
+        String::from_utf8_lossy(read_b)
     );
-    assert_eq!(doc_b, record_b);
+    assert_eq!(read_b, record_b);
 
     // 2. Khảo sát hệ thống Buffer Pool và thuật toán trục xuất LRU Eviction
     println!("\n[2] Vận hành Buffer Pool với sức chứa tối đa 2 trang:");
@@ -236,15 +257,15 @@ fn main() {
     println!("    - Nạp Trang #1 (đã sửa đổi -> dirty=true) vào Buffer Pool");
     buffer_pool.put_page(page_1, true);
 
-    let state_2 = SlottedPage::new(2);
+    let page_2 = SlottedPage::new(2);
     println!("    - Nạp Trang #2 (chỉ đọc -> dirty=false) vào Buffer Pool");
-    buffer_pool.put_page(state_2, false);
+    buffer_pool.put_page(page_2, false);
 
     println!(
         "    - Số trang hiện có trong Buffer: {}",
-        buffer_pool.num_state_show_has()
+        buffer_pool.page_count()
     );
-    assert_eq!(buffer_pool.num_state_show_has(), 2);
+    assert_eq!(buffer_pool.page_count(), 2);
 
     // Người dùng truy cập lại Trang 1 -> Trang 1 trở thành trang dùng gần nhất
     println!("\n    - Người dùng đọc Trang #1 -> Cập nhật thứ tự ưu tiên LRU cho Trang #1!");
@@ -253,8 +274,8 @@ fn main() {
     // Giờ đây, Trang #2 là trang "nguội nhất" (lâu nhất không dùng).
     // Khi nạp thêm Trang #3 vào, Buffer Pool sẽ kích hoạt trục xuất (evict) Trang #2!
     println!("\n    - Nạp Trang #3 mới tinh vào (Vượt quá sức chứa 2 trang):");
-    let state_3 = SlottedPage::new(3);
-    buffer_pool.put_page(state_3, false);
+    let page_3 = SlottedPage::new(3);
+    buffer_pool.put_page(page_3, false);
 
     // Kiểm tra: Trang 2 đã bị loại bỏ, Trang 1 và Trang 3 vẫn nằm trong Buffer Pool
     assert!(buffer_pool.get_page(2).is_none());
@@ -263,6 +284,78 @@ fn main() {
     println!("    => Thuật toán LRU Eviction vận hành chuẩn xác 100%!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 28               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 32               ");
     println!("============================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_and_read_back() {
+        let mut page = SlottedPage::new(7);
+        let a = page.insert_record(b"alpha").unwrap();
+        let b = page.insert_record(b"beta").unwrap();
+        assert_eq!(page.read_record(a), Some(&b"alpha"[..]));
+        assert_eq!(page.read_record(b), Some(&b"beta"[..]));
+        assert_eq!(page.read_record(2), None);
+        assert_eq!(page.free_space_pointer() as usize, PAGE_SIZE - 5 - 4);
+    }
+
+    #[test]
+    fn exactly_39_records_of_100_bytes_fit() {
+        // Đối chiếu với lời giải Bài tập 1: (4096 - 8) / (100 + 4) = 39
+        let mut page = SlottedPage::new(1);
+        let record = [0xABu8; 100];
+        for i in 0..39 {
+            assert_eq!(page.insert_record(&record), Some(i));
+        }
+        assert_eq!(page.insert_record(&record), None);
+    }
+
+    #[test]
+    fn full_page_returns_none_instead_of_panicking() {
+        // Lấp đầy trang sao cho vùng trống còn lại đúng bằng 1 khe (4 byte),
+        // rồi chèn bản ghi rỗng: bản cũ trừ usize bị tràn và panic ở đây.
+        let mut page = SlottedPage::new(1);
+        let fill = PAGE_SIZE - 8 - 4 - 4; // chừa đúng 4 byte cho khe thứ hai
+        assert!(page.insert_record(&vec![1u8; fill]).is_some());
+        assert!(page.insert_record(&[]).is_some()); // khe thứ hai vừa khít
+        assert_eq!(page.insert_record(&[]), None); // không còn chỗ cho khe thứ ba
+        assert_eq!(page.insert_record(b"x"), None);
+    }
+
+    #[test]
+    fn oversized_record_is_rejected_not_truncated() {
+        let mut page = SlottedPage::new(1);
+        // 65_540 as u16 == 4: nếu ép kiểu trước khi so sánh, bản ghi này sẽ "lọt" qua
+        assert_eq!(page.insert_record(&vec![0u8; 65_540]), None);
+        assert_eq!(page.slot_count(), 0);
+    }
+
+    #[test]
+    fn lru_evicts_least_recently_used() {
+        let mut pool = BufferPool::new(2);
+        pool.put_page(SlottedPage::new(1), false);
+        pool.put_page(SlottedPage::new(2), false);
+        assert!(pool.get_page(1).is_some()); // 1 vừa dùng -> 2 thành nguội nhất
+        pool.put_page(SlottedPage::new(3), false);
+        assert!(pool.get_page(2).is_none());
+        assert!(pool.get_page(1).is_some());
+        assert!(pool.get_page(3).is_some());
+        assert_eq!(pool.page_count(), 2);
+    }
+
+    #[test]
+    fn re_putting_clean_page_keeps_dirty_flag() {
+        // Lỗi cũ: put lại một trang đang bẩn với is_dirty=false xoá mất cờ bẩn,
+        // nên lúc trục xuất trang sẽ bị vứt đi mà không ghi xuống đĩa.
+        let mut pool = BufferPool::new(2);
+        pool.put_page(SlottedPage::new(1), true);
+        assert_eq!(pool.is_dirty(1), Some(true));
+        pool.put_page(SlottedPage::new(1), false);
+        assert_eq!(pool.is_dirty(1), Some(true));
+        assert_eq!(pool.page_count(), 1);
+    }
 }

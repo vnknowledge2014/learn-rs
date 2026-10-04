@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables)]
 use std::cmp::Ordering;
 use std::fmt::Debug;
 
@@ -8,14 +7,14 @@ use std::fmt::Debug;
 
 /// 1. SETOID — kiểu có quan hệ "bằng nhau" tuân luật tương đương.
 pub trait Setoid {
-    fn bang(&self, other: &Self) -> bool;
+    fn equals(&self, other: &Self) -> bool;
 }
 
 /// 2. ORD — Setoid có thêm quan hệ thứ tự toàn phần.
 pub trait Ord: Setoid {
-    fn so_sanh(&self, other: &Self) -> Ordering;
+    fn compare(&self, other: &Self) -> Ordering;
     fn less_or_equal(&self, other: &Self) -> bool {
-        self.so_sanh(other) != Ordering::Greater
+        self.compare(other) != Ordering::Greater
     }
 }
 
@@ -31,35 +30,35 @@ pub trait Monoid: Semigroup + Sized {
 
 /// 7. GROUP — vị nhóm có phần tử nghịch đảo.
 pub trait Group: Monoid {
-    fn nghich_dao(self) -> Self;
+    fn invert(self) -> Self;
 }
 
-// ---- Instance: Tong (vị nhóm cộng) là một NHÓM đầy đủ ----
+// ---- Instance: Sum (vị nhóm cộng) là một NHÓM đầy đủ ----
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Tong(pub i64);
-impl Setoid for Tong {
-    fn bang(&self, k: &Self) -> bool {
-        self.0 == k.0
+pub struct Sum(pub i64);
+impl Setoid for Sum {
+    fn equals(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }
-impl Ord for Tong {
-    fn so_sanh(&self, k: &Self) -> Ordering {
-        self.0.cmp(&k.0)
+impl Ord for Sum {
+    fn compare(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
     }
 }
-impl Semigroup for Tong {
-    fn compose(self, k: Self) -> Self {
-        Tong(self.0.wrapping_add(k.0))
+impl Semigroup for Sum {
+    fn compose(self, other: Self) -> Self {
+        Sum(self.0.wrapping_add(other.0))
     }
 }
-impl Monoid for Tong {
+impl Monoid for Sum {
     fn empty() -> Self {
-        Tong(0)
+        Sum(0)
     }
 }
-impl Group for Tong {
-    fn nghich_dao(self) -> Self {
-        Tong(-self.0)
+impl Group for Sum {
+    fn invert(self) -> Self {
+        Sum(-self.0)
     }
 }
 
@@ -67,13 +66,13 @@ impl Group for Tong {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mod4(pub u8);
 impl Setoid for Mod4 {
-    fn bang(&self, k: &Self) -> bool {
-        self.0 % 4 == k.0 % 4
+    fn equals(&self, other: &Self) -> bool {
+        self.0 % 4 == other.0 % 4
     }
 }
 impl Semigroup for Mod4 {
-    fn compose(self, k: Self) -> Self {
-        Mod4((self.0 + k.0) % 4)
+    fn compose(self, other: Self) -> Self {
+        Mod4((self.0 + other.0) % 4)
     }
 }
 impl Monoid for Mod4 {
@@ -82,15 +81,15 @@ impl Monoid for Mod4 {
     }
 }
 impl Group for Mod4 {
-    fn nghich_dao(self) -> Self {
+    fn invert(self) -> Self {
         Mod4((4 - self.0 % 4) % 4)
     }
 }
 
 // ---- Instance: String là nửa nhóm + vị nhóm, nhưng KHÔNG phải nhóm ----
 impl Semigroup for String {
-    fn compose(self, k: Self) -> Self {
-        self + &k
+    fn compose(self, other: Self) -> Self {
+        self + &other
     }
 }
 impl Monoid for String {
@@ -109,11 +108,11 @@ pub fn combine_all<M: Monoid>(list: impl IntoIterator<Item = M>) -> M {
 // ══════════════════════════════════════════════════════════════════════════
 
 /// Bọc một hàm thành giá trị để có thể cài trait lên nó (vượt quy tắc mồ côi).
-pub struct Ham<A, B>(Box<dyn Fn(A) -> B>);
+pub struct Func<A, B>(Box<dyn Fn(A) -> B>);
 
-impl<A, B> Ham<A, B> {
+impl<A, B> Func<A, B> {
     pub fn new(f: impl Fn(A) -> B + 'static) -> Self {
-        Ham(Box::new(f))
+        Func(Box::new(f))
     }
     pub fn run(&self, a: A) -> B {
         (self.0)(a)
@@ -121,25 +120,25 @@ impl<A, B> Ham<A, B> {
 }
 
 /// 3. SEMIGROUPOID — có phép ghép hai "mũi tên" khớp đầu nối đuôi.
-impl<A: 'static, B: 'static> Ham<A, B> {
-    pub fn compose_with<C: 'static>(self, next: Ham<B, C>) -> Ham<A, C> {
-        Ham::new(move |a| next.run(self.run(a)))
+impl<A: 'static, B: 'static> Func<A, B> {
+    pub fn compose_with<C: 'static>(self, next: Func<B, C>) -> Func<A, C> {
+        Func::new(move |a| next.run(self.run(a)))
     }
 }
 
 /// 4. CATEGORY — Semigroupoid có thêm "mũi tên đơn vị".
-pub fn identity<A>() -> Ham<A, A> {
-    Ham::new(|a| a)
+pub fn identity<A>() -> Func<A, A> {
+    Func::new(|a| a)
 }
 
 /// 24. PROFUNCTOR — nghịch biến ở đầu vào, hiệp biến ở đầu ra.
-impl<A: 'static, B: 'static> Ham<A, B> {
+impl<A: 'static, B: 'static> Func<A, B> {
     pub fn promap<C: 'static, D: 'static>(
         self,
         prev: impl Fn(C) -> A + 'static, // NGHỊCH biến: đắp thêm vào ĐẦU VÀO
         next: impl Fn(B) -> D + 'static, // HIỆP biến : đắp thêm vào ĐẦU RA
-    ) -> Ham<C, D> {
-        Ham::new(move |c| next(self.run(prev(c))))
+    ) -> Func<C, D> {
+        Func::new(move |c| next(self.run(prev(c))))
     }
 }
 
@@ -166,24 +165,24 @@ impl<A: 'static> Predicate<A> {
 
 pub trait HKT<U> {
     type Current;
-    type DichDen;
+    type Target;
 }
 impl<T, U> HKT<U> for Option<T> {
     type Current = T;
-    type DichDen = Option<U>;
+    type Target = Option<U>;
 }
 impl<T, U> HKT<U> for Vec<T> {
     type Current = T;
-    type DichDen = Vec<U>;
+    type Target = Vec<U>;
 }
 impl<T, U, E> HKT<U> for Result<T, E> {
     type Current = T;
-    type DichDen = Result<U, E>;
+    type Target = Result<U, E>;
 }
 
 /// 9. FUNCTOR
 pub trait Functor<U>: HKT<U> {
-    fn fmap<F: FnMut(Self::Current) -> U>(self, f: F) -> Self::DichDen;
+    fn fmap<F: FnMut(Self::Current) -> U>(self, f: F) -> Self::Target;
 }
 impl<T, U> Functor<U> for Option<T> {
     fn fmap<F: FnMut(T) -> U>(self, f: F) -> Option<U> {
@@ -203,7 +202,7 @@ impl<T, U, E> Functor<U> for Result<T, E> {
 
 /// 8. FILTERABLE — lọc và biến đổi cùng lúc bằng A -> Option<B>.
 pub trait Filterable<U>: HKT<U> {
-    fn filter_map<F: FnMut(Self::Current) -> Option<U>>(self, f: F) -> Self::DichDen;
+    fn filter_map<F: FnMut(Self::Current) -> Option<U>>(self, f: F) -> Self::Target;
 }
 impl<T, U> Filterable<U> for Vec<T> {
     fn filter_map<F: FnMut(T) -> Option<U>>(self, f: F) -> Vec<U> {
@@ -211,22 +210,26 @@ impl<T, U> Filterable<U> for Vec<T> {
     }
 }
 impl<T, U> Filterable<U> for Option<T> {
-    fn filter_map<F: FnMut(T) -> Option<U>>(self, mut f: F) -> Option<U> {
-        self.and_then(|x| f(x))
+    fn filter_map<F: FnMut(T) -> Option<U>>(self, f: F) -> Option<U> {
+        self.and_then(f)
     }
 }
 
 /// 23. BIFUNCTOR — hai chân, đắp thêm được vào cả hai.
 pub trait Bifunctor<C, D> {
-    type Ra;
-    fn bimap(self, f: impl FnOnce(Self::Left) -> C, g: impl FnOnce(Self::Right) -> D) -> Self::Ra;
+    type Output;
+    fn bimap(
+        self,
+        f: impl FnOnce(Self::Left) -> C,
+        g: impl FnOnce(Self::Right) -> D,
+    ) -> Self::Output;
     type Left;
     type Right;
 }
 impl<A, B, C, D> Bifunctor<C, D> for Result<A, B> {
     type Left = A;
     type Right = B;
-    type Ra = Result<C, D>;
+    type Output = Result<C, D>;
     fn bimap(self, f: impl FnOnce(A) -> C, g: impl FnOnce(B) -> D) -> Result<C, D> {
         match self {
             Ok(a) => Ok(f(a)),
@@ -237,7 +240,7 @@ impl<A, B, C, D> Bifunctor<C, D> for Result<A, B> {
 impl<A, B, C, D> Bifunctor<C, D> for (A, B) {
     type Left = A;
     type Right = B;
-    type Ra = (C, D);
+    type Output = (C, D);
     fn bimap(self, f: impl FnOnce(A) -> C, g: impl FnOnce(B) -> D) -> (C, D) {
         (f(self.0), g(self.1))
     }
@@ -246,14 +249,17 @@ impl<A, B, C, D> Bifunctor<C, D> for (A, B) {
 // ---- 11. APPLY & 12. APPLICATIVE (bản cụ thể cho Option / Result / Vec) ----
 
 /// APPLY: ngữ cảnh chứa HÀM áp vào ngữ cảnh chứa GIÁ TRỊ.
-pub fn ap_option<A, B>(ham: Option<Box<dyn Fn(A) -> B>>, gt: Option<A>) -> Option<B> {
-    match (ham, gt) {
+pub fn ap_option<A, B>(func: Option<Box<dyn Fn(A) -> B>>, value: Option<A>) -> Option<B> {
+    match (func, value) {
         (Some(f), Some(a)) => Some(f(a)),
         _ => None,
     }
 }
-pub fn ap_result<A, B, E>(ham: Result<Box<dyn Fn(A) -> B>, E>, gt: Result<A, E>) -> Result<B, E> {
-    match (ham, gt) {
+pub fn ap_result<A, B, E>(
+    func: Result<Box<dyn Fn(A) -> B>, E>,
+    value: Result<A, E>,
+) -> Result<B, E> {
+    match (func, value) {
         (Ok(f), Ok(a)) => Ok(f(a)),
         (Err(e), _) => Err(e),
         (_, Err(e)) => Err(e),
@@ -273,26 +279,29 @@ pub fn of_vec<A>(a: A) -> Vec<A> {
 /// APPLICATIVE tích lũy lỗi — biến thể `Validation` (không phải Monad!).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Validation<T> {
-    Set(T),
-    Hong(Vec<String>),
+    Valid(T),
+    Invalid(Vec<String>),
 }
 impl<T> Validation<T> {
     pub fn fmap<U>(self, f: impl FnOnce(T) -> U) -> Validation<U> {
         match self {
-            Validation::Set(x) => Validation::Set(f(x)),
-            Validation::Hong(e) => Validation::Hong(e),
+            Validation::Valid(x) => Validation::Valid(f(x)),
+            Validation::Invalid(e) => Validation::Invalid(e),
         }
     }
 }
-pub fn ap_auth<A, B>(ham: Validation<Box<dyn Fn(A) -> B>>, gt: Validation<A>) -> Validation<B> {
-    match (ham, gt) {
-        (Validation::Set(f), Validation::Set(a)) => Validation::Set(f(a)),
-        (Validation::Hong(mut e1), Validation::Hong(e2)) => {
+pub fn ap_validation<A, B>(
+    func: Validation<Box<dyn Fn(A) -> B>>,
+    value: Validation<A>,
+) -> Validation<B> {
+    match (func, value) {
+        (Validation::Valid(f), Validation::Valid(a)) => Validation::Valid(f(a)),
+        (Validation::Invalid(mut e1), Validation::Invalid(e2)) => {
             e1.extend(e2);
-            Validation::Hong(e1)
+            Validation::Invalid(e1)
         }
-        (Validation::Hong(e), _) => Validation::Hong(e),
-        (_, Validation::Hong(e)) => Validation::Hong(e),
+        (Validation::Invalid(e), _) => Validation::Invalid(e),
+        (_, Validation::Invalid(e)) => Validation::Invalid(e),
     }
 }
 
@@ -304,7 +313,7 @@ pub trait Alt {
 }
 /// PLUS — Alt có thêm phần tử "rỗng".
 pub trait Plus: Alt + Sized {
-    fn rong() -> Self;
+    fn zero() -> Self;
 }
 impl<T> Alt for Option<T> {
     fn alt(self, other: Self) -> Self {
@@ -312,7 +321,7 @@ impl<T> Alt for Option<T> {
     }
 }
 impl<T> Plus for Option<T> {
-    fn rong() -> Self {
+    fn zero() -> Self {
         None
     }
 }
@@ -323,7 +332,7 @@ impl<T> Alt for Vec<T> {
     }
 }
 impl<T> Plus for Vec<T> {
-    fn rong() -> Self {
+    fn zero() -> Self {
         Vec::new()
     }
 }
@@ -337,27 +346,27 @@ impl<T> Alternative for Vec<T> {}
 /// FOLDABLE — gấp một cấu trúc về một giá trị.
 pub trait Foldable {
     type Item;
-    fn gap<B>(self, init: B, f: impl FnMut(B, Self::Item) -> B) -> B;
+    fn fold<B>(self, init: B, f: impl FnMut(B, Self::Item) -> B) -> B;
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum Cay<T> {
-    La,
-    Nut(Box<Cay<T>>, T, Box<Cay<T>>),
+pub enum Tree<T> {
+    Leaf,
+    Node(Box<Tree<T>>, T, Box<Tree<T>>),
 }
-impl<T> Foldable for Cay<T> {
+impl<T> Foldable for Tree<T> {
     type Item = T;
-    fn gap<B>(self, init: B, mut f: impl FnMut(B, T) -> B) -> B {
-        fn di<T, B>(c: Cay<T>, acc: B, f: &mut impl FnMut(B, T) -> B) -> B {
+    fn fold<B>(self, init: B, mut f: impl FnMut(B, T) -> B) -> B {
+        fn walk<T, B>(c: Tree<T>, acc: B, f: &mut impl FnMut(B, T) -> B) -> B {
             match c {
-                Cay::La => acc,
-                Cay::Nut(t, v, p) => {
-                    let acc = di(*t, acc, f);
+                Tree::Leaf => acc,
+                Tree::Node(t, v, p) => {
+                    let acc = walk(*t, acc, f);
                     let acc = f(acc, v);
-                    di(*p, acc, f)
+                    walk(*p, acc, f)
                 }
             }
         }
-        di(self, init, &mut f)
+        walk(self, init, &mut f)
     }
 }
 
@@ -376,20 +385,20 @@ pub fn traverse_vec_option<A, B>(list: Vec<A>, f: impl FnMut(A) -> Option<B>) ->
 
 /// CHAIN — phép `bind`: A -> F<B>.
 pub trait Chain<U>: HKT<U> {
-    fn concat<F: FnMut(Self::Current) -> Self::DichDen>(self, f: F) -> Self::DichDen;
+    fn chain<F: FnMut(Self::Current) -> Self::Target>(self, f: F) -> Self::Target;
 }
 impl<T, U> Chain<U> for Option<T> {
-    fn concat<F: FnMut(T) -> Option<U>>(self, mut f: F) -> Option<U> {
-        self.and_then(|x| f(x))
+    fn chain<F: FnMut(T) -> Option<U>>(self, f: F) -> Option<U> {
+        self.and_then(f)
     }
 }
 impl<T, U, E> Chain<U> for Result<T, E> {
-    fn concat<F: FnMut(T) -> Result<U, E>>(self, mut f: F) -> Result<U, E> {
-        self.and_then(|x| f(x))
+    fn chain<F: FnMut(T) -> Result<U, E>>(self, f: F) -> Result<U, E> {
+        self.and_then(f)
     }
 }
 impl<T, U> Chain<U> for Vec<T> {
-    fn concat<F: FnMut(T) -> Vec<U>>(self, f: F) -> Vec<U> {
+    fn chain<F: FnMut(T) -> Vec<U>>(self, f: F) -> Vec<U> {
         self.into_iter().flat_map(f).collect()
     }
 }
@@ -408,10 +417,10 @@ pub enum Step<A, B> {
     Finished(B),
 }
 pub fn chain_rec_option<A, B>(
-    first_block: A,
+    initial: A,
     mut step: impl FnMut(A) -> Option<Step<A, B>>,
 ) -> Option<B> {
-    let mut current = first_block;
+    let mut current = initial;
     loop {
         match step(current)? {
             Step::Continue(a) => current = a, // vòng lặp, KHÔNG đệ quy
@@ -424,14 +433,14 @@ pub fn chain_rec_option<A, B>(
 
 /// EXTEND — đối ngẫu của Chain: F<A> -> (F<A> -> B) -> F<B>.
 pub trait Extend<U>: HKT<U> + Sized {
-    fn mo_rong<F: FnMut(&Self) -> U>(self, f: F) -> Self::DichDen;
+    fn extend<F: FnMut(&Self) -> U>(self, f: F) -> Self::Target;
 }
 /// COMONAD — Extend có thêm `extract`: F<A> -> A (đối ngẫu của `of`).
 /// 22a. `extract` được tách riêng, đúng như đặc tả Fantasy Land: nó KHÔNG phụ
 /// thuộc kiểu đích U, nên không được đặt trong một trait generic theo U.
 pub trait Extract {
-    type Ruot;
-    fn extract(&self) -> &Self::Ruot;
+    type Inner;
+    fn extract(&self) -> &Self::Inner;
 }
 
 /// 22b. COMONAD = Extend + extract (đối ngẫu của Monad = Chain + of).
@@ -446,10 +455,10 @@ pub struct Window<T> {
 }
 impl<T, U> HKT<U> for Window<T> {
     type Current = T;
-    type DichDen = Window<U>;
+    type Target = Window<U>;
 }
 impl<T: Clone, U> Extend<U> for Window<T> {
-    fn mo_rong<F: FnMut(&Self) -> U>(self, mut f: F) -> Window<U> {
+    fn extend<F: FnMut(&Self) -> U>(self, mut f: F) -> Window<U> {
         let n = self.prev.len();
         let all: Vec<T> = self
             .prev
@@ -458,20 +467,20 @@ impl<T: Clone, U> Extend<U> for Window<T> {
             .chain(std::iter::once(self.focus.clone()))
             .chain(self.next.iter().cloned())
             .collect();
-        let tai = |i: usize| Window {
+        let at = |i: usize| Window {
             prev: all[..i].to_vec(),
             focus: all[i].clone(),
             next: all[i + 1..].to_vec(),
         };
         Window {
-            prev: (0..n).map(|i| f(&tai(i))).collect(),
-            focus: f(&tai(n)),
-            next: ((n + 1)..all.len()).map(|i| f(&tai(i))).collect(),
+            prev: (0..n).map(|i| f(&at(i))).collect(),
+            focus: f(&at(n)),
+            next: ((n + 1)..all.len()).map(|i| f(&at(i))).collect(),
         }
     }
 }
 impl<T> Extract for Window<T> {
-    type Ruot = T;
+    type Inner = T;
     fn extract(&self) -> &T {
         &self.focus
     }
@@ -489,59 +498,59 @@ fn main() {
 
     println!("\n── NHÓM A: ĐẠI SỐ TRÊN MỘT KIỂU ──");
     println!(
-        " 1. Setoid     Tong(5).bang(&Tong(5))      = {}",
-        Tong(5).bang(&Tong(5))
+        " 1. Setoid     Sum(5).equals(&Sum(5))     = {}",
+        Sum(5).equals(&Sum(5))
     );
     println!(
-        " 2. Ord        Tong(3).so_sanh(&Tong(9))   = {:?}",
-        Tong(3).so_sanh(&Tong(9))
+        " 2. Ord        Sum(3).compare(&Sum(9))    = {:?}",
+        Sum(3).compare(&Sum(9))
     );
     println!(
-        " 5. Semigroup  Tong(3).ghep(Tong(4))       = {:?}",
-        Tong(3).compose(Tong(4))
+        " 5. Semigroup  Sum(3).compose(Sum(4))     = {:?}",
+        Sum(3).compose(Sum(4))
     );
     println!(
-        " 6. Monad     don_vi()                    = {:?}",
-        Tong::empty()
+        " 6. Monoid     Sum::empty()               = {:?}",
+        Sum::empty()
     );
     println!(
-        " 7. Group      Tong(7).nghich_dao()        = {:?}",
-        Tong(7).nghich_dao()
+        " 7. Group      Sum(7).invert()            = {:?}",
+        Sum(7).invert()
     );
     println!(
-        "               Mod4(3).ghep(nghich_dao)    = {:?}",
-        Mod4(3).compose(Mod4(3).nghich_dao())
+        "               Mod4(3).compose(invert)    = {:?}",
+        Mod4(3).compose(Mod4(3).invert())
     );
-    println!("    (String là Monad nhưng KHÔNG phải Group: không có \"chuỗi âm\")");
+    println!("    (String là Monoid nhưng KHÔNG phải Group: không có \"chuỗi âm\")");
 
     println!("\n── NHÓM B: ĐẠI SỐ TRÊN HÀM ──");
-    let nhan2 = Ham::new(|x: i64| x * 2);
-    let cong3 = Ham::new(|x: i64| x + 3);
-    let compose = nhan2.compose_with(cong3);
+    let times2 = Func::new(|x: i64| x * 2);
+    let plus3 = Func::new(|x: i64| x + 3);
+    let composed = times2.compose_with(plus3);
     println!(
-        " 3. Semigroupoid  (nhân2 rồi cộng3)(10)    = {}",
-        compose.run(10)
+        " 3. Semigroupoid  (nhân 2 rồi cộng 3)(10)  = {}",
+        composed.run(10)
     );
     println!(
         " 4. Category      identity(42)             = {}",
         identity::<i64>().run(42)
     );
-    let length = Ham::new(|s: String| s.chars().count());
+    let length = Func::new(|s: String| s.chars().count());
     let pro = length.promap(|n: i64| format!("số {}", n), |u: usize| u * 100);
     println!(
         "24. Profunctor    promap(i64 -> usize)(7)  = {}",
         pro.run(7)
     );
     let is_even = Predicate::new(|n: &i64| n % 2 == 0);
-    let name_block = is_even.contramap(|s: &String| s.chars().count() as i64);
+    let even_length = is_even.contramap(|s: &String| s.chars().count() as i64);
     println!(
         "10. Contravariant \"Rust\" có độ dài chẵn?   = {}",
-        name_block.check(&"Rust".to_string())
+        even_length.check(&"Rust".to_string())
     );
 
     println!("\n── NHÓM C: ĐẠI SỐ TRÊN NGỮ CẢNH ──");
     println!(
-        " 9. Functor      Some(5).anh_xa(+1)        = {:?}",
+        " 9. Functor      Some(5).fmap(+1)          = {:?}",
         Some(5i32).fmap(|x| x + 1)
     );
     println!(
@@ -566,60 +575,61 @@ fn main() {
         None.alt(Some(2))
     );
     println!(
-        "14. Plus         Option::rong()            = {:?}",
-        <Option<i32> as Plus>::rong()
+        "14. Plus         Option::zero()            = {:?}",
+        <Option<i32> as Plus>::zero()
     );
     println!("15. Alternative  = Applicative + Plus (siêu trait đánh dấu)");
 
-    let cay = Cay::Nut(
-        Box::new(Cay::Nut(Box::new(Cay::La), 20i64, Box::new(Cay::La))),
+    let tree = Tree::Node(
+        Box::new(Tree::Node(
+            Box::new(Tree::Leaf),
+            20i64,
+            Box::new(Tree::Leaf),
+        )),
         50,
-        Box::new(Cay::Nut(Box::new(Cay::La), 70, Box::new(Cay::La))),
+        Box::new(Tree::Node(Box::new(Tree::Leaf), 70, Box::new(Tree::Leaf))),
     );
     println!(
-        "16. Ord     gấp cây [20,50,70] -> tổng= {}",
-        cay.clone().gap(0i64, |a, x| a + x)
+        "16. Foldable     gấp cây [20,50,70] -> tổng = {}",
+        tree.clone().fold(0i64, |a, x| a + x)
     );
     println!(
-        "17. Foldable  Vec<Result> -> Result<Vec>= {:?}",
+        "17. Traversable  Vec<Result> -> Result<Vec> = {:?}",
         traverse_vec_result(vec!["1", "2"], |s: &str| s.parse::<i32>())
     );
     println!(
-        "18. Chain        Some(4).noi(|x| Some(x*5))= {:?}",
-        Some(4i32).concat(|x| Some(x * 5))
+        "18. Chain        Some(4).chain(|x| Some(x*5)) = {:?}",
+        Some(4i32).chain(|x| Some(x * 5))
     );
     println!("20. Monad        = Applicative + Chain (siêu trait đánh dấu)");
 
-    let luy_thua = chain_rec_option((1u64, 20u32), |(acc, remaining)| {
+    let power = chain_rec_option((1u64, 20u32), |(acc, remaining)| {
         Some(if remaining == 0 {
             Step::Finished(acc)
         } else {
             Step::Continue((acc * 2, remaining - 1))
         })
     });
-    println!(
-        "19. ChainRec     2^20 bằng vòng lặp        = {:?}",
-        luy_thua
-    );
+    println!("19. ChainRec     2^20 bằng vòng lặp        = {:?}", power);
 
-    let cs = Window {
+    let window = Window {
         prev: vec![1i64, 2],
         focus: 3,
         next: vec![4, 5],
     };
     println!(
         "22. Comonad      trích xuất tiêu điểm      = {}",
-        cs.extract()
+        window.extract()
     );
-    let tong_lan_can = cs.clone().mo_rong(|w: &Window<i64>| {
+    let neighbor_sums = window.clone().extend(|w: &Window<i64>| {
         w.prev.last().copied().unwrap_or(0) + w.focus + w.next.first().copied().unwrap_or(0)
     });
     println!(
         "21. Extend       tổng 3 ô lân cận mỗi vị trí= {:?}",
         [
-            tong_lan_can.prev.clone(),
-            vec![tong_lan_can.focus],
-            tong_lan_can.next.clone()
+            neighbor_sums.prev.clone(),
+            vec![neighbor_sums.focus],
+            neighbor_sums.next.clone()
         ]
         .concat()
     );
@@ -634,28 +644,28 @@ fn main() {
 // ══════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
-mod luat {
+mod laws {
     use super::*;
 
-    fn mau4() -> Vec<Mod4> {
+    fn mod4_samples() -> Vec<Mod4> {
         (0..4).map(Mod4).collect()
     }
 
     #[test] // 1. SETOID: phản xạ, đối xứng, bắc cầu
     fn setoid() {
-        for a in mau4() {
-            assert!(a.bang(&a));
+        for a in mod4_samples() {
+            assert!(a.equals(&a));
         } // phản xạ
-        for a in mau4() {
-            for b in mau4() {
-                assert_eq!(a.bang(&b), b.bang(&a));
+        for a in mod4_samples() {
+            for b in mod4_samples() {
+                assert_eq!(a.equals(&b), b.equals(&a));
             }
         } // đối xứng
-        for a in mau4() {
-            for b in mau4() {
-                for c in mau4() {
-                    if a.bang(&b) && b.bang(&c) {
-                        assert!(a.bang(&c));
+        for a in mod4_samples() {
+            for b in mod4_samples() {
+                for c in mod4_samples() {
+                    if a.equals(&b) && b.equals(&c) {
+                        assert!(a.equals(&c));
                     } // bắc cầu
                 }
             }
@@ -664,44 +674,44 @@ mod luat {
 
     #[test] // 2. ORD: toàn phần, phản đối xứng, bắc cầu
     fn ord() {
-        let m: Vec<Tong> = (-3..4).map(Tong).collect();
+        let m: Vec<Sum> = (-3..4).map(Sum).collect();
         for a in &m {
             for b in &m {
                 assert!(a.less_or_equal(b) || b.less_or_equal(a)); // toàn phần
                 if a.less_or_equal(b) && b.less_or_equal(a) {
-                    assert!(a.bang(b));
+                    assert!(a.equals(b));
                 }
             }
         }
     }
 
     #[test] // 3. SEMIGROUPOID: (f ∘ g) ∘ h == f ∘ (g ∘ h)
-    fn semigroupoid_ket_hop() {
+    fn semigroupoid_associative() {
         for x in [-5i64, 0, 7, 100] {
-            let left = Ham::new(|a: i64| a + 1)
-                .compose_with(Ham::new(|a: i64| a * 2))
-                .compose_with(Ham::new(|a: i64| a - 3));
-            let right = Ham::new(|a: i64| a + 1)
-                .compose_with(Ham::new(|a: i64| a * 2).compose_with(Ham::new(|a: i64| a - 3)));
+            let left = Func::new(|a: i64| a + 1)
+                .compose_with(Func::new(|a: i64| a * 2))
+                .compose_with(Func::new(|a: i64| a - 3));
+            let right = Func::new(|a: i64| a + 1)
+                .compose_with(Func::new(|a: i64| a * 2).compose_with(Func::new(|a: i64| a - 3)));
             assert_eq!(left.run(x), right.run(x));
         }
     }
 
     #[test] // 4. CATEGORY: id ∘ f == f == f ∘ id
-    fn category_don_vi() {
+    fn category_identity() {
         for x in [-5i64, 0, 42] {
             let f = |a: i64| a * 3 + 1;
-            assert_eq!(identity::<i64>().compose_with(Ham::new(f)).run(x), f(x));
-            assert_eq!(Ham::new(f).compose_with(identity::<i64>()).run(x), f(x));
+            assert_eq!(identity::<i64>().compose_with(Func::new(f)).run(x), f(x));
+            assert_eq!(Func::new(f).compose_with(identity::<i64>()).run(x), f(x));
         }
     }
 
     #[test] // 5. SEMIGROUP: (a ⊕ b) ⊕ c == a ⊕ (b ⊕ c)
-    fn semigroup_ket_hop() {
-        for a in mau4() {
-            for b in mau4() {
-                for c in mau4() {
-                    assert!(a.compose(b).compose(c).bang(&a.compose(b.compose(c))));
+    fn semigroup_associative() {
+        for a in mod4_samples() {
+            for b in mod4_samples() {
+                for c in mod4_samples() {
+                    assert!(a.compose(b).compose(c).equals(&a.compose(b.compose(c))));
                 }
             }
         }
@@ -713,23 +723,23 @@ mod luat {
     }
 
     #[test] // 6. MONOID: e ⊕ a == a == a ⊕ e
-    fn monoid_don_vi() {
-        for a in mau4() {
-            assert!(Mod4::empty().compose(a).bang(&a));
-            assert!(a.compose(Mod4::empty()).bang(&a));
+    fn monoid_identity() {
+        for a in mod4_samples() {
+            assert!(Mod4::empty().compose(a).equals(&a));
+            assert!(a.compose(Mod4::empty()).equals(&a));
         }
-        let rong: Vec<Tong> = Vec::new();
-        assert_eq!(combine_all(rong), Tong(0));
+        let zero: Vec<Sum> = Vec::new();
+        assert_eq!(combine_all(zero), Sum(0));
     }
 
     #[test] // 7. GROUP: a ⊕ a⁻¹ == e
-    fn group_nghich_dao() {
-        for a in mau4() {
-            assert!(a.compose(a.nghich_dao()).bang(&Mod4::empty()));
-            assert!(a.nghich_dao().compose(a).bang(&Mod4::empty()));
+    fn group_inverse() {
+        for a in mod4_samples() {
+            assert!(a.compose(a.invert()).equals(&Mod4::empty()));
+            assert!(a.invert().compose(a).equals(&Mod4::empty()));
         }
         for n in [-9i64, 0, 33] {
-            assert_eq!(Tong(n).compose(Tong(n).nghich_dao()), Tong::empty());
+            assert_eq!(Sum(n).compose(Sum(n).invert()), Sum::empty());
         }
     }
 
@@ -763,10 +773,10 @@ mod luat {
 
     #[test] // 10. CONTRAVARIANT: contramap(id) == id
     fn contravariant() {
-        let root = Predicate::new(|n: &i64| *n > 10);
-        let qua_contramap = Predicate::new(|n: &i64| *n > 10).contramap(|n: &i64| *n);
+        let original = Predicate::new(|n: &i64| *n > 10);
+        let via_contramap = Predicate::new(|n: &i64| *n > 10).contramap(|n: &i64| *n);
         for n in [-5i64, 10, 11, 99] {
-            assert_eq!(root.check(&n), qua_contramap.check(&n));
+            assert_eq!(original.check(&n), via_contramap.check(&n));
         }
     }
 
@@ -779,17 +789,17 @@ mod luat {
         }
         // Đồng cấu: ap(of(f), of(x)) == of(f(x))
         let f = |x: i32| x * 4;
-        let report: Option<Box<dyn Fn(i32) -> i32>> =
+        let wrapped: Option<Box<dyn Fn(i32) -> i32>> =
             of_option(Box::new(f) as Box<dyn Fn(i32) -> i32>);
-        assert_eq!(ap_option(report, of_option(5)), of_option(f(5)));
+        assert_eq!(ap_option(wrapped, of_option(5)), of_option(f(5)));
     }
 
     #[test] // 12b. APPLICATIVE tích lũy lỗi: gom ĐỦ lỗi, khác hẳn Monad
     fn applicative_accumulates_errors() {
-        let ham: Validation<Box<dyn Fn(i32) -> i32>> = Validation::Hong(vec!["lỗi A".into()]);
-        let gt: Validation<i32> = Validation::Hong(vec!["lỗi B".into()]);
-        match ap_auth(ham, gt) {
-            Validation::Hong(e) => assert_eq!(e.len(), 2, "phải gom CẢ HAI lỗi"),
+        let func: Validation<Box<dyn Fn(i32) -> i32>> = Validation::Invalid(vec!["lỗi A".into()]);
+        let value: Validation<i32> = Validation::Invalid(vec!["lỗi B".into()]);
+        match ap_validation(func, value) {
+            Validation::Invalid(e) => assert_eq!(e.len(), 2, "phải gom CẢ HAI lỗi"),
             _ => panic!("phải hỏng"),
         }
     }
@@ -804,27 +814,31 @@ mod luat {
             }
         }
         for a in [Some(1i32), None] {
-            assert_eq!(<Option<i32> as Plus>::rong().alt(a), a); // đơn vị trái
-            assert_eq!(a.alt(<Option<i32> as Plus>::rong()), a); // đơn vị phải
+            assert_eq!(<Option<i32> as Plus>::zero().alt(a), a); // đơn vị trái
+            assert_eq!(a.alt(<Option<i32> as Plus>::zero()), a); // đơn vị phải
         }
     }
 
     #[test] // 16. FOLDABLE: gấp cây tương đương gấp danh sách các phần tử
     fn foldable() {
-        let cay = Cay::Nut(
-            Box::new(Cay::Nut(Box::new(Cay::La), 20i64, Box::new(Cay::La))),
+        let tree = Tree::Node(
+            Box::new(Tree::Node(
+                Box::new(Tree::Leaf),
+                20i64,
+                Box::new(Tree::Leaf),
+            )),
             50,
-            Box::new(Cay::Nut(Box::new(Cay::La), 70, Box::new(Cay::La))),
+            Box::new(Tree::Node(Box::new(Tree::Leaf), 70, Box::new(Tree::Leaf))),
         );
-        assert_eq!(cay.clone().gap(0i64, |a, x| a + x), 140);
+        assert_eq!(tree.clone().fold(0i64, |a, x| a + x), 140);
         assert_eq!(
-            cay.clone().gap(Vec::new(), |mut a, x| {
+            tree.clone().fold(Vec::new(), |mut a, x| {
                 a.push(x);
                 a
             }),
             vec![20, 50, 70]
         );
-        assert_eq!(Cay::<i64>::La.gap(0i64, |a, x| a + x), 0); // cây rỗng -> phần tử đơn vị
+        assert_eq!(Tree::<i64>::Leaf.fold(0i64, |a, x| a + x), 0); // cây rỗng -> phần tử đơn vị
     }
 
     #[test] // 17. TRAVERSABLE: đảo ngữ cảnh, ngắn mạch ở phần tử hỏng đầu tiên
@@ -845,35 +859,35 @@ mod luat {
     }
 
     #[test] // 18. CHAIN: (m >>= f) >>= g  ==  m >>= (x -> f(x) >>= g)
-    fn chain_ket_hop() {
+    fn chain_associative() {
         let f = |x: i32| if x >= 0 { Some(x + 1) } else { None };
         let g = |x: i32| if x % 2 == 0 { Some(x / 2) } else { None };
         for m in [Some(-3i32), Some(0), Some(3), Some(7), None] {
-            assert_eq!(m.concat(f).concat(g), m.concat(|x| f(x).concat(g)));
+            assert_eq!(m.chain(f).chain(g), m.chain(|x| f(x).chain(g)));
         }
     }
 
     #[test] // 20. MONAD: đơn vị trái & đơn vị phải
-    fn monad_don_vi() {
+    fn monad_identity() {
         let f = |x: i32| if x > 0 { Some(x * 2) } else { None };
         for a in [-1i32, 0, 5] {
-            assert_eq!(of_option(a).concat(f), f(a));
+            assert_eq!(of_option(a).chain(f), f(a));
         } // trái
         for m in [Some(4i32), None] {
-            assert_eq!(m.concat(of_option), m);
+            assert_eq!(m.chain(of_option), m);
         } // phải
     }
 
     #[test] // 19. CHAINREC: chạy 1 TRIỆU vòng mà KHÔNG tràn ngăn xếp
     fn chainrec_does_not_overflow_the_stack() {
-        let kq = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
+        let result = chain_rec_option((0u64, 1_000_000u32), |(acc, remaining)| {
             Some(if remaining == 0 {
                 Step::Finished(acc)
             } else {
                 Step::Continue((acc + 1, remaining - 1))
             })
         });
-        assert_eq!(kq, Some(1_000_000));
+        assert_eq!(result, Some(1_000_000));
     }
 
     #[test] // 21-22. EXTEND & COMONAD: extract(extend(w, f)) == f(w)
@@ -884,20 +898,20 @@ mod luat {
             next: vec![4, 5],
         };
         let f = |c: &Window<i64>| c.focus * 10;
-        assert_eq!(*w.clone().mo_rong(f).extract(), f(&w)); // đơn vị trái
+        assert_eq!(*w.clone().extend(f).extract(), f(&w)); // đơn vị trái
         // extend(w, extract) == w   (đơn vị phải)
-        let lai: Window<i64> = w.clone().mo_rong(|c: &Window<i64>| *c.extract());
-        assert_eq!(lai, w);
+        let back: Window<i64> = w.clone().extend(|c: &Window<i64>| *c.extract());
+        assert_eq!(back, w);
     }
 
     #[test] // 23. BIFUNCTOR: bimap(id, id) == id
     fn bifunctor() {
         let ok: Result<i32, String> = Ok(5);
-        let er: Result<i32, String> = Err("hỏng".into());
+        let err: Result<i32, String> = Err("hỏng".into());
         assert_eq!(ok.clone().bimap(|a| a, |b| b), ok);
-        assert_eq!(er.clone().bimap(|a| a, |b| b), er);
+        assert_eq!(err.clone().bimap(|a| a, |b| b), err);
         assert_eq!(
-            er.bimap(|a| a + 1, |b| format!("[{}]", b)),
+            err.bimap(|a| a + 1, |b| format!("[{}]", b)),
             Err("[hỏng]".to_string())
         );
         assert_eq!((1i32, "x").bimap(|a| a * 2, |b: &str| b.len()), (2, 1));
@@ -906,9 +920,9 @@ mod luat {
     #[test] // 24. PROFUNCTOR: promap(id, id) == id
     fn profunctor() {
         for x in [-4i64, 0, 9] {
-            let root = |a: i64| a * 3;
-            let qua = Ham::new(root).promap(|a: i64| a, |b: i64| b);
-            assert_eq!(qua.run(x), root(x));
+            let original = |a: i64| a * 3;
+            let via = Func::new(original).promap(|a: i64| a, |b: i64| b);
+            assert_eq!(via.run(x), original(x));
         }
     }
 }

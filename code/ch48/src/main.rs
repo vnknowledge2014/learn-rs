@@ -1,5 +1,6 @@
-#![allow(dead_code, unused_variables, unused_imports)]
+#![allow(dead_code)]
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -20,9 +21,19 @@ pub struct OrderRecord {
     pub price_cents: u64,
 }
 
+/// Lỗi khi gọi dịch vụ. Phân biệt hai loại là then chốt cho Circuit Breaker:
+/// - `NotFound`: dịch vụ VẪN KHỎE, nó trả lời đúng rằng không có dữ liệu -> không tính là sự cố.
+/// - `Unavailable`: dịch vụ sập/quá tải/hết thời gian chờ -> đây mới là thứ ngắt mạch cần đếm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceError {
+    NotFound,
+    Unavailable,
+    CircuitOpen,
+}
+
 /// Giao diện Hợp đồng Dịch vụ Người dùng (Domain Service Interface)
 pub trait UserService: Send + Sync {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str>;
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, ServiceError>;
 }
 
 /// Trạng thái hoạt động của Ngắt mạch (Circuit Breaker States)
@@ -30,7 +41,7 @@ pub trait UserService: Send + Sync {
 pub enum CircuitState {
     Closed,   // Bình thường: Cho phép yêu cầu đi qua
     Open,     // Ngắt mạch: Từ chối ngay lập tức để bảo vệ hệ thống
-    HalfOpen, // Nửa mở: Cho phép thử nghiệm vài yêu cầu
+    HalfOpen, // Nửa mở: Cho đúng MỘT yêu cầu thăm dò đi qua
 }
 
 /// Bộ ngắt mạch chống sập lan truyền cho các cuộc gọi mạng phân tán
@@ -40,6 +51,7 @@ pub struct CircuitBreaker {
     failure_threshold: usize,
     last_state_change: Instant,
     cooldown_duration: Duration,
+    probe_in_flight: bool,
 }
 
 impl CircuitBreaker {
@@ -50,7 +62,12 @@ impl CircuitBreaker {
             failure_threshold,
             last_state_change: Instant::now(),
             cooldown_duration: Duration::from_millis(cooldown_ms),
+            probe_in_flight: false,
         }
+    }
+
+    pub fn state(&self) -> CircuitState {
+        self.state
     }
 
     /// Kiểm tra xem yêu cầu có được phép thực thi hay không
@@ -65,12 +82,21 @@ impl CircuitBreaker {
                     );
                     self.state = CircuitState::HalfOpen;
                     self.last_state_change = Instant::now();
+                    self.probe_in_flight = true;
                     true
                 } else {
                     false // Vẫn ngắt mạch, từ chối cuộc gọi mạng
                 }
             }
-            CircuitState::HalfOpen => true,
+            // Chỉ một yêu cầu thăm dò tại một thời điểm; các yêu cầu khác vẫn bị chặn
+            CircuitState::HalfOpen => {
+                if self.probe_in_flight {
+                    false
+                } else {
+                    self.probe_in_flight = true;
+                    true
+                }
+            }
         }
     }
 
@@ -83,17 +109,20 @@ impl CircuitBreaker {
         }
         self.state = CircuitState::Closed;
         self.failure_count = 0;
+        self.probe_in_flight = false;
     }
 
     /// Báo cáo cuộc gọi mạng thất bại
     pub fn record_failure(&mut self) {
         self.failure_count += 1;
+        self.probe_in_flight = false;
         println!(
             "    [CircuitBreaker] Ghi nhận thất bại #{}",
             self.failure_count
         );
 
-        if self.failure_count >= self.failure_threshold {
+        // Ở HALF-OPEN, chỉ một lần thăm dò thất bại là ngắt mạch lại ngay
+        if self.state == CircuitState::HalfOpen || self.failure_count >= self.failure_threshold {
             println!("    [!] [CẢNH BÁO] Số lỗi vượt ngưỡng: KÍCH HOẠT NGẮT MẠCH (OPEN)!");
             self.state = CircuitState::Open;
             self.last_state_change = Instant::now();
@@ -101,9 +130,17 @@ impl CircuitBreaker {
     }
 }
 
-/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation)
+/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation).
+/// Cờ `down` mô phỏng dịch vụ bị sập (trong thực tế: hết thời gian chờ, mất kết nối).
 pub struct InMemoryUserService {
     users: HashMap<u64, UserProfile>,
+    down: AtomicBool,
+}
+
+impl Default for InMemoryUserService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryUserService {
@@ -117,16 +154,26 @@ impl InMemoryUserService {
                 email: "a@masterclass.vn".to_string(),
             },
         );
-        Self { users }
+        Self {
+            users,
+            down: AtomicBool::new(false),
+        }
+    }
+
+    pub fn set_down(&self, down: bool) {
+        self.down.store(down, Ordering::SeqCst);
     }
 }
 
 impl UserService for InMemoryUserService {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str> {
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, ServiceError> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(ServiceError::Unavailable);
+        }
         self.users
             .get(&user_id)
             .cloned()
-            .ok_or("Không tìm thấy thông tin người dùng")
+            .ok_or(ServiceError::NotFound)
     }
 }
 
@@ -144,6 +191,10 @@ impl OrderCoordinatorService {
         }
     }
 
+    pub fn breaker_state(&self) -> CircuitState {
+        self.circuit_breaker.lock().unwrap().state()
+    }
+
     /// Tạo đơn hàng mới với sự bảo vệ của Circuit Breaker
     pub fn create_order(
         &self,
@@ -151,18 +202,19 @@ impl OrderCoordinatorService {
         user_id: u64,
         item_name: &str,
         price_cents: u64,
-    ) -> Result<OrderRecord, &'static str> {
-        let mut breaker = self.circuit_breaker.lock().unwrap();
-
-        // 1. Kiểm tra Circuit Breaker trước khi thực hiện cuộc gọi liên dịch vụ
-        if !breaker.allow_request() {
-            return Err(
-                "Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!",
-            );
+    ) -> Result<OrderRecord, ServiceError> {
+        // 1. Kiểm tra Circuit Breaker. Khóa chỉ giữ trong khối này: KHÔNG giữ Mutex
+        //    trong lúc gọi mạng, nếu không mọi yêu cầu sẽ bị xếp hàng nối đuôi nhau.
+        if !self.circuit_breaker.lock().unwrap().allow_request() {
+            return Err(ServiceError::CircuitOpen);
         }
 
-        // 2. Gọi sang dịch vụ người dùng để xác thực
-        match self.user_service.get_user(user_id) {
+        // 2. Gọi sang dịch vụ người dùng để xác thực (không giữ khóa)
+        let result = self.user_service.get_user(user_id);
+
+        // 3. Báo kết quả cho Circuit Breaker
+        let mut breaker = self.circuit_breaker.lock().unwrap();
+        match result {
             Ok(user) => {
                 breaker.record_success();
                 println!(
@@ -176,6 +228,11 @@ impl OrderCoordinatorService {
                     price_cents,
                 })
             }
+            // Dịch vụ trả lời "không có" -> dịch vụ vẫn khỏe, không tính là sự cố
+            Err(ServiceError::NotFound) => {
+                breaker.record_success();
+                Err(ServiceError::NotFound)
+            }
             Err(err) => {
                 breaker.record_failure();
                 Err(err)
@@ -186,14 +243,14 @@ impl OrderCoordinatorService {
 
 fn main() {
     println!("==================================================================");
-    println!("   KIEN TRUC PHAN TAN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
+    println!("   KIẾN TRÚC PHÂN TÁN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
     println!("==================================================================");
 
     // Khởi tạo Dịch vụ Người dùng
     let user_service = Arc::new(InMemoryUserService::new());
 
-    // Khởi tạo Dịch vụ Đơn hàng liên kết
-    let order_service = OrderCoordinatorService::new(user_service);
+    // Khởi tạo Dịch vụ Đơn hàng liên kết (Arc<InMemoryUserService> -> Arc<dyn UserService>)
+    let order_service = OrderCoordinatorService::new(user_service.clone());
 
     // 1. Thử nghiệm tạo đơn hàng hợp lệ
     println!("\n[1] Thử nghiệm tạo đơn hàng cho khách hàng hợp lệ (ID = 1):");
@@ -202,31 +259,91 @@ fn main() {
             "    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}",
             order.order_id, order.item_name
         ),
-        Err(err) => println!("    [!] Thất bại: {}", err),
+        Err(err) => println!("    [!] Thất bại: {:?}", err),
     }
 
-    // 2. Thử nghiệm kích hoạt ngắt mạch Circuit Breaker bằng cách gọi liên tục ID không tồn tại
-    println!("\n[2] Gửi liên tiếp các yêu cầu lỗi để kích hoạt Circuit Breaker:");
+    // 2. Khách không tồn tại: lỗi nghiệp vụ, KHÔNG được làm ngắt mạch
+    println!("\n[2] Khách hàng không tồn tại (ID = 999) — lỗi nghiệp vụ, mạch vẫn CLOSED:");
+    let not_found = order_service.create_order(150, 999, "Vật phẩm", 10000);
+    println!("    - Kết quả: {:?}", not_found);
+    assert_eq!(not_found, Err(ServiceError::NotFound));
+    assert_eq!(order_service.breaker_state(), CircuitState::Closed);
+
+    // 3. Dịch vụ người dùng sập: gửi liên tiếp để kích hoạt ngắt mạch
+    println!("\n[3] Dịch vụ Người dùng sập — gửi liên tiếp các yêu cầu:");
+    user_service.set_down(true);
     for i in 1..=4 {
-        println!(
-            "    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...",
-            i
-        );
-        let result = order_service.create_order(200 + i, 999, "Vật phẩm ảo", 10000);
-        match result {
-            Ok(_) => println!("        Thành công!"),
-            Err(e) => println!("        Thất bại: {}", e),
-        }
+        let result = order_service.create_order(200 + i, 1, "Vật phẩm ảo", 10000);
+        println!("    --> Yêu cầu #{}: {:?}", i, result);
     }
+    // Yêu cầu thứ 4 đã bị chặn ngay tại chỗ, không tốn một cuộc gọi mạng nào
+    assert_eq!(order_service.breaker_state(), CircuitState::Open);
 
-    // 3. Yêu cầu thứ 5 bị chặn đứng ngay từ vòng gửi xe bởi Circuit Breaker
-    println!("\n[3] Gửi yêu cầu tiếp theo khi ngắt mạch đang OPEN:");
-    let blocked_call = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
-    println!("    - Kết quả cuộc gọi: {:?}", blocked_call);
-    assert!(blocked_call.is_err());
-    println!("    => Circuit Breaker đã chặn đứng cuộc gọi mạng, bảo vệ hệ thống tuyệt đối!");
+    // 4. Dịch vụ hồi phục; sau thời gian cooldown, yêu cầu thăm dò khép mạch lại
+    println!("\n[4] Dịch vụ hồi phục, chờ hết cooldown 200ms rồi gửi yêu cầu thăm dò:");
+    user_service.set_down(false);
+    std::thread::sleep(Duration::from_millis(250));
+    let probe = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
+    println!("    - Kết quả cuộc gọi: {:?}", probe);
+    assert!(probe.is_ok());
+    assert_eq!(order_service.breaker_state(), CircuitState::Closed);
 
     println!("\n==================================================================");
-    println!("   XÁC NHẬN: KIẾN TRÚC PHÂN TÁN AN TOÀN - CHỐNG SẬP DÂY CHUYỀN!   ");
+    println!("   XÁC NHẬN: NGẮT MẠCH CHẶN SẬP DÂY CHUYỀN VÀ TỰ PHỤC HỒI         ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (Arc<InMemoryUserService>, OrderCoordinatorService) {
+        let svc = Arc::new(InMemoryUserService::new());
+        let orders = OrderCoordinatorService::new(svc.clone());
+        (svc, orders)
+    }
+
+    #[test]
+    fn not_found_does_not_trip_breaker() {
+        let (_svc, orders) = setup();
+        for i in 0..10 {
+            assert_eq!(
+                orders.create_order(i, 999, "x", 1),
+                Err(ServiceError::NotFound)
+            );
+        }
+        assert_eq!(orders.breaker_state(), CircuitState::Closed);
+        assert!(orders.create_order(99, 1, "x", 1).is_ok());
+    }
+
+    #[test]
+    fn unavailable_trips_breaker_then_blocks() {
+        let (svc, orders) = setup();
+        svc.set_down(true);
+        for i in 0..3 {
+            assert_eq!(
+                orders.create_order(i, 1, "x", 1),
+                Err(ServiceError::Unavailable)
+            );
+        }
+        assert_eq!(orders.breaker_state(), CircuitState::Open);
+        svc.set_down(false); // dù dịch vụ đã khỏe, mạch vẫn chặn cho tới hết cooldown
+        assert_eq!(
+            orders.create_order(9, 1, "x", 1),
+            Err(ServiceError::CircuitOpen)
+        );
+    }
+
+    #[test]
+    fn half_open_allows_single_probe_and_failed_probe_reopens() {
+        let mut cb = CircuitBreaker::new(1, 0);
+        assert!(cb.allow_request());
+        cb.record_failure();
+        assert_eq!(cb.state(), CircuitState::Open);
+        assert!(cb.allow_request()); // cooldown 0 -> HALF-OPEN, đây là yêu cầu thăm dò
+        assert_eq!(cb.state(), CircuitState::HalfOpen);
+        assert!(!cb.allow_request()); // yêu cầu thứ hai bị chặn khi thăm dò đang chạy
+        cb.record_failure();
+        assert_eq!(cb.state(), CircuitState::Open);
+    }
 }
