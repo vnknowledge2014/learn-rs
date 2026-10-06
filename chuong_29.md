@@ -87,14 +87,14 @@ Hãy cùng hình dung cấu trúc Cây qua hai hình ảnh vô cùng quen thuộ
 Một nút cây nhị phân cần lưu trữ giá trị của chính nó và hai liên kết trỏ tới cây con bên trái và cây con bên phải. Vì kích thước của một cây con là đệ quy và co giãn động trên Heap, chúng ta sử dụng con trỏ thông minh (smart pointer) `Box<T>`:
 
 ```rust
-pub struct NutCay<T> {
+pub struct TreeNode<T> {
     pub value: T,
-    pub left: Option<Box<NutCay<T>>>,
-    pub right: Option<Box<NutCay<T>>>,
+    pub left: Option<Box<TreeNode<T>>>,
+    pub right: Option<Box<TreeNode<T>>>,
 }
 ```
 
-Trên Ngăn xếp (Stack), một `Option<Box<NutCay<T>>>` chỉ chiếm đúng **8 bytes** (nhờ kỹ thuật tối ưu hóa con trỏ rỗng Null Pointer Optimization của Rust: `None` tương đương giá trị nhị phân `0`, và `Some(box)` là địa chỉ con trỏ hợp lệ khác `0`). Dữ liệu thực tế của các nút được phân bổ linh hoạt trên Vùng nhớ tự do (Heap).
+Trên Ngăn xếp (Stack), một `Option<Box<TreeNode<T>>>` chỉ chiếm đúng **8 bytes** (nhờ kỹ thuật tối ưu hóa con trỏ rỗng Null Pointer Optimization của Rust: `None` tương đương giá trị nhị phân `0`, và `Some(box)` là địa chỉ con trỏ hợp lệ khác `0`). Dữ liệu thực tế của các nút được phân bổ linh hoạt trên Vùng nhớ tự do (Heap).
 
 ```
           [Root: 50] (Heap 0x1000)
@@ -123,35 +123,35 @@ Thứ tự xử lý một nút cha so với các nút con của nó quyết đ�
 Ở Chương 16 bạn đã dùng `fold` để cô đặc một danh sách thành một giá trị. Nhưng ý tưởng "gấp" tổng quát hơn thế nhiều: **bất kỳ cấu trúc dữ liệu nào duyệt được đều gấp được** — kể cả cây.
 
 ```rust
-impl<T: Copy> NutCay<T> {
+impl<T: Copy> TreeNode<T> {
     /// Gấp cây theo thứ tự trung thứ tự (trái → gốc → phải).
     /// `f` nhận (giá trị tích lũy, giá trị nút) và trả về giá trị tích lũy mới.
-    pub fn gap<A>(&self, block_make: A, f: &impl Fn(A, T) -> A) -> A {
-        let mut acc = block_make;
+    pub fn fold<A>(&self, init: A, f: &impl Fn(A, T) -> A) -> A {
+        let mut acc = init;
         if let Some(left) = &self.left {
-            acc = left.gap(acc, f);
+            acc = left.fold(acc, f);
         }
         acc = f(acc, self.value);
         if let Some(right) = &self.right {
-            acc = right.gap(acc, f);
+            acc = right.fold(acc, f);
         }
         acc
     }
 }
 ```
 
-Một hàm `gap` duy nhất giờ đây thay thế cho hàng loạt hàm chuyên biệt:
+Một hàm `fold` duy nhất giờ đây thay thế cho hàng loạt hàm chuyên biệt:
 
 ```rust
-let tong  = cay.gap(0i64, &|a, x| a + x);            // tính tổng
-let count   = cay.gap(0usize, &|a, _| a + 1);          // đếm số nút
-let large   = cay.gap(i64::MIN, &|a, x| a.max(x));     // tìm giá trị lớn nhất
-let list    = cay.gap(Vec::new(), &|mut a, x| { a.push(x); a }); // xuất ra danh sách đã sắp xếp
+let sum  = tree.fold(0i64, &|a, x| a + x);            // tính tổng
+let count   = tree.fold(0usize, &|a, _| a + 1);          // đếm số nút
+let max   = tree.fold(i64::MIN, &|a, x| a.max(x));     // tìm giá trị lớn nhất
+let list    = tree.fold(Vec::new(), &|mut a, x| { a.push(x); a }); // xuất ra danh sách đã sắp xếp
 ```
 
-Khả năng "gấp được" này có tên chính thức là **Foldable**, và giá trị được tính ra bằng cách gấp một cấu trúc đệ quy gọi là một **catamorphism** (phép gấp). Bạn sẽ gặp lại toàn bộ nhóm khái niệm này ở Chương 18 và 19.
+Khả năng "gấp được" này có tên chính thức là **Foldable**, và giá trị được tính ra bằng cách gấp một cấu trúc đệ quy gọi là một **catamorphism** (phép gấp). Nhóm khái niệm này (vị nhóm, hàm tử…) đã được bàn ở Chương 18 và 19 — `fold` trên cây chính là cầu nối giữa chúng và cấu trúc dữ liệu thật.
 
-> **Ghi nhớ thiết kế**: khi bạn thấy mình sắp viết hàm thứ tư kiểu `tinh_tong_cay`, `dem_nut_cay`, `tim_max_cay`… hãy dừng lại và viết **một** hàm `gap` duy nhất. Ba hàm kia sẽ tự sinh ra từ nó.
+> **Ghi nhớ thiết kế**: khi bạn thấy mình sắp viết hàm thứ tư kiểu `tree_sum`, `count_tree_nodes`, `tree_max`… hãy dừng lại và viết **một** hàm `fold` duy nhất. Ba hàm kia sẽ tự sinh ra từ nó.
 
 ### 4. Vấn đề Cây suy biến (Degenerate Tree)
 
@@ -160,7 +160,7 @@ Nếu bạn thêm các số vào BST theo thứ tự đã được sắp xếp s
 - 30 lớn hơn 20 -> nằm bên phải 20.
 - Chiếc cây bị "lệch hẳn về một bên", biến tướng thành một Danh sách liên kết thẳng đuột!
 - Lúc này, chiều cao cây bằng $N$, và tốc độ tìm kiếm bị tụt dốc thảm hại từ $O(\log N)$ về lại $O(N)$.
-- Đây chính là lý do vì sao trong các chương sau về Cơ sở dữ liệu (Topic 6), chúng ta sẽ khám phá **Cây B-Tree và B+ Tree** — những cấu trúc cây tự động tái cân bằng (Self-balancing) để luôn giữ vững tốc độ tìm kiếm siêu tốc.
+- Đây chính là lý do vì sao trong các chương sau về Cơ sở dữ liệu (Chủ đề 6), chúng ta sẽ khám phá **Cây B-Tree và B+ Tree** — những cấu trúc cây tự động tái cân bằng (Self-balancing) để luôn giữ vững tốc độ tìm kiếm siêu tốc.
 
 ---
 
@@ -171,15 +171,15 @@ Dưới đây là một chương trình Rust hoàn chỉnh cài đặt cấu tr�
 ```rust
 /// Cấu trúc một nút bên trong Cây nhị phân tìm kiếm
 #[derive(Debug)]
-pub struct NutCay<T> {
+pub struct TreeNode<T> {
     pub value: T,
-    pub left: Option<Box<NutCay<T>>>,
-    pub right: Option<Box<NutCay<T>>>,
+    pub left: Option<Box<TreeNode<T>>>,
+    pub right: Option<Box<TreeNode<T>>>,
 }
 
-impl<T> NutCay<T> {
+impl<T> TreeNode<T> {
     pub fn new(value: T) -> Self {
-        NutCay {
+        TreeNode {
             value,
             left: None,
             right: None,
@@ -190,8 +190,8 @@ impl<T> NutCay<T> {
 /// Cấu trúc Cây nhị phân tìm kiếm hoàn chỉnh
 #[derive(Debug)]
 pub struct BinarySearchTree<T: Ord> {
-    root: Option<Box<NutCay<T>>>,
-    quantity: usize,
+    root: Option<Box<TreeNode<T>>>,
+    size: usize,
 }
 
 impl<T: Ord> BinarySearchTree<T> {
@@ -199,22 +199,22 @@ impl<T: Ord> BinarySearchTree<T> {
     pub fn new() -> Self {
         BinarySearchTree {
             root: None,
-            quantity: 0,
+            size: 0,
         }
     }
 
     /// Thêm một phần tử vào cây - Duy trì tính chất BST
-    pub fn them(&mut self, value: T) {
+    pub fn insert(&mut self, value: T) {
         if Self::insert_recursive(&mut self.root, value) {
-            self.quantity += 1;
+            self.size += 1;
         }
     }
 
-    fn insert_recursive(nut: &mut Option<Box<NutCay<T>>>, value: T) -> bool {
-        match nut {
+    fn insert_recursive(node: &mut Option<Box<TreeNode<T>>>, value: T) -> bool {
+        match node {
             // Khi tìm thấy vị trí lá trống thích hợp: Tạo Box mới
             None => {
-                *nut = Some(Box::new(NutCay::new(value)));
+                *node = Some(Box::new(TreeNode::new(value)));
                 true
             }
             Some(current) => {
@@ -233,13 +233,13 @@ impl<T: Ord> BinarySearchTree<T> {
     /// Tìm kiếm một giá trị trong cây - Tốc độ O(log N)
     pub fn contains_key(&self, value: &T) -> bool {
         let mut pointer = &self.root;
-        while let Some(nut) = pointer {
-            if value == &nut.value {
+        while let Some(node) = pointer {
+            if value == &node.value {
                 return true;
-            } else if value < &nut.value {
-                pointer = &nut.left;
+            } else if value < &node.value {
+                pointer = &node.left;
             } else {
-                pointer = &nut.right;
+                pointer = &node.right;
             }
         }
         false
@@ -248,19 +248,19 @@ impl<T: Ord> BinarySearchTree<T> {
     /// Duyệt cây theo Trung thứ tự (In-order: Trái -> Gốc -> Phải)
     /// Trả về một Vector chứa các tham chiếu mượn được sắp xếp tăng dần!
     pub fn in_order_walk(&self) -> Vec<&T> {
-        let mut ket_qua = Vec::new();
-        Self::collect_in_order(&self.root, &mut ket_qua);
-        ket_qua
+        let mut out = Vec::new();
+        Self::collect_in_order(&self.root, &mut out);
+        out
     }
 
-    fn collect_in_order<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>) {
-        if let Some(current) = nut {
+    fn collect_in_order<'a>(node: &'a Option<Box<TreeNode<T>>>, out: &mut Vec<&'a T>) {
+        if let Some(current) = node {
             // 1. Duyệt toàn bộ cây con bên trái
-            Self::collect_in_order(&current.left, ket_qua);
+            Self::collect_in_order(&current.left, out);
             // 2. Thu thập nút hiện tại
-            ket_qua.push(&current.value);
+            out.push(&current.value);
             // 3. Duyệt toàn bộ cây con bên phải
-            Self::collect_in_order(&current.right, ket_qua);
+            Self::collect_in_order(&current.right, out);
         }
     }
 
@@ -269,23 +269,23 @@ impl<T: Ord> BinarySearchTree<T> {
         Self::recursive_height(&self.root)
     }
 
-    fn recursive_height(nut: &Option<Box<NutCay<T>>>) -> usize {
-        match nut {
+    fn recursive_height(node: &Option<Box<TreeNode<T>>>) -> usize {
+        match node {
             None => 0,
             Some(current) => {
-                let high_left = Self::recursive_height(&current.left);
-                let high_must = Self::recursive_height(&current.right);
-                1 + high_left.max(high_must)
+                let left_height = Self::recursive_height(&current.left);
+                let right_height = Self::recursive_height(&current.right);
+                1 + left_height.max(right_height)
             }
         }
     }
 
     pub fn len(&self) -> usize {
-        self.quantity
+        self.size
     }
 
     pub fn is_empty(&self) -> bool {
-        self.quantity == 0
+        self.size == 0
     }
 }
 
@@ -300,7 +300,7 @@ fn main() {
     println!("    HIỆN THỰC CÂY NHỊ PHÂN TÌM KIẾM (BST) AN TOÀN TRONG RUST");
     println!("============================================================");
 
-    let mut cay_bst: BinarySearchTree<i32> = BinarySearchTree::new();
+    let mut bst: BinarySearchTree<i32> = BinarySearchTree::new();
 
     // 1. Thêm các phần tử vào cây
     // Cấu trúc dự kiến:
@@ -310,41 +310,41 @@ fn main() {
     //      /  \   /  \
     //     20  40 60  80
     println!("[1] Nạp các giá trị vào Cây nhị phân tìm kiếm:");
-    let all_num = [50, 30, 70, 20, 40, 60, 80];
-    for &so in &all_num {
-        cay_bst.them(so);
-        print!("{} ", so);
+    let values = [50, 30, 70, 20, 40, 60, 80];
+    for &value in &values {
+        bst.insert(value);
+        print!("{} ", value);
     }
-    println!("\n    - Tổng số nút trong cây: {}", cay_bst.len());
-    assert_eq!(cay_bst.len(), 7);
+    println!("\n    - Tổng số nút trong cây: {}", bst.len());
+    assert_eq!(bst.len(), 7);
 
     // 2. Kiểm tra chiều cao của cây
-    let height = cay_bst.height();
+    let height = bst.height();
     println!("\n[2] Chiều cao của cây: {}", height);
     assert_eq!(height, 3); // 3 tầng: 50 -> (30,70) -> (20,40,60,80)
 
     // 3. Kiểm tra tính năng tìm kiếm O(log N)
     println!("\n[3] Kiểm tra tính năng tìm kiếm nhị phân:");
-    println!("    - Tìm số 40: {}", cay_bst.contains_key(&40));
-    println!("    - Tìm số 99: {}", cay_bst.contains_key(&99));
-    assert!(cay_bst.contains_key(&40));
-    assert!(!cay_bst.contains_key(&99));
+    println!("    - Tìm số 40: {}", bst.contains_key(&40));
+    println!("    - Tìm số 99: {}", bst.contains_key(&99));
+    assert!(bst.contains_key(&40));
+    assert!(!bst.contains_key(&99));
 
     // 4. Duyệt In-order xác nhận dãy số tăng dần hoàn hảo
     println!("\n[4] Duyệt cây In-order (Trái -> Gốc -> Phải):");
-    let list_up_derive = cay_bst.in_order_walk();
+    let sorted = bst.in_order_walk();
     print!("    - Kết quả in: ");
-    for &value in &list_up_derive {
+    for &value in &sorted {
         print!("{} ", value);
     }
     println!();
 
-    let expectation = vec![&20, &30, &40, &50, &60, &70, &80];
-    assert_eq!(list_up_derive, expectation);
+    let expected = vec![&20, &30, &40, &50, &60, &70, &80];
+    assert_eq!(sorted, expected);
     println!("    => Dãy số được sắp xếp tăng dần hoàn hảo đúng theo lý thuyết BST!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 25               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 29               ");
     println!("============================================================");
 }
 ```
@@ -358,23 +358,23 @@ Khi làm việc với các cấu trúc cây đệ quy trong Rust, lập trình v
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0277** | `the trait bound 'T: Ord' is not satisfied` | Cây nhị phân tìm kiếm bắt buộc các phần tử phải so sánh được với nhau (`<`, `>`, `==`). Nếu kiểu `T` không thỏa mãn trait `Ord`, phép so sánh sẽ bị cấm. | Bổ sung ràng buộc trait: `impl<T: Ord> BinarySearchTree<T>`. Nếu là struct tự tạo, thêm `#[derive(Ord, PartialOrd, Eq, PartialEq)]`. |
-| **E0502** | `cannot borrow 'current.trai' as mutable more than once at a time` | Trong thân hàm đệ quy, bạn vừa mượn nhánh trái làm mutable, vừa cố mượn cả nút cha hoặc nhánh phải trong cùng một biểu thức. | Tách rời các bước rẽ nhánh điều kiện `if/else` để mỗi nhánh mượn nằm trong một khối lệnh độc lập. |
-| **E0106** | `missing lifetime specifier` | Khi viết hàm duyệt cây trả về mảng tham chiếu mượn `Vec<&T>`, bạn quên gắn nhãn thời gian sống (lifetime) liên kết giữa cây mượn và danh sách trả về. | Khai báo thời gian sống rõ ràng: `fn thu_thap<'a>(nut: &'a Option<Box<NutCay<T>>>, ket_qua: &mut Vec<&'a T>)`. |
+| **E0499** | `cannot borrow '**current' as mutable more than once at a time` | Trong thân hàm đệ quy, bạn đang giữ `&mut current.left` mà lại mượn khả biến cả nút `current` (ví dụ gọi một phương thức `&mut self` trên nó). Lưu ý: mượn `&mut current.left` và `&mut current.right` cùng lúc thì HỢP LỆ — hai trường tách biệt. | Tách rời các bước rẽ nhánh điều kiện `if/else` để mỗi nhánh mượn nằm trong một khối lệnh độc lập. |
+| *(không có mã)* | `lifetime may not live long enough` | Khi viết hàm duyệt cây gom tham chiếu mượn vào `Vec<&T>`, bạn để trình biên dịch tự suy diễn (elision): tham số `node: &...` và `out: &mut Vec<&T>` nhận hai thời gian sống *khác nhau*, nên không được đẩy `&node.value` vào `out`. (Nếu hàm *trả về* `Vec<&T>` mà có từ hai tham số tham chiếu trở lên thì lỗi sẽ là **E0106** `missing lifetime specifier`.) | Khai báo thời gian sống rõ ràng: `fn collect<'a>(node: &'a Option<Box<TreeNode<T>>>, out: &mut Vec<&'a T>)`. |
 | **E0382** | `use of moved value: 'value'` | Trong hàm đệ quy, bạn truyền `value` bằng giá trị (by value) vào nhánh trái, sau đó lại dùng lại nó trong nhánh phải. | Nếu kiểu `T` không phải là `Copy`, hãy chỉ di chuyển `value` khi chắc chắn rẽ vào nhánh đó, hoặc truyền mượn tham chiếu `&T` khi tìm kiếm. |
 
 ### Ví dụ phân tích lỗi `E0277` và cách gắn ràng buộc `Ord`:
 
 ```rust
 // Định nghĩa một kiểu dữ liệu tùy chỉnh chưa có khả năng so sánh
-struct ToaDo {
+struct Coord {
     x: i32,
     y: i32,
 }
 
 // Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
 fn broken_bst() {
-    // let mut cay = BinarySearchTree::new();
-    // cay.them(ToaDo { x: 1, y: 2 }); // LỖI E0277: ToaDo không thỏa mãn trait Ord!
+    // let mut tree = BinarySearchTree::new();
+    // tree.insert(Coord { x: 1, y: 2 }); // LỖI E0277: Coord không thỏa mãn trait Ord!
 }
 
 // Cách sửa chữa đúng chuẩn: Derive các trait so sánh cần thiết
@@ -385,10 +385,10 @@ struct CoordIdiomatic {
 }
 
 fn correct_bst() {
-    let mut cay = BinarySearchTree::new();
-    cay.them(CoordIdiomatic { x: 10, y: 20 });
-    cay.them(CoordIdiomatic { x: 5, y: 15 });
-    println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", cay.len());
+    let mut tree = BinarySearchTree::new();
+    tree.insert(CoordIdiomatic { x: 10, y: 20 });
+    tree.insert(CoordIdiomatic { x: 5, y: 15 });
+    println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", tree.len());
 }
 ```
 
@@ -400,31 +400,31 @@ fn correct_bst() {
 
 ## Kiểm thử tự động (Automated Tests)
 
-Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Hãy để ý cách các test nhắm thẳng vào trường hợp biên và vào **bất biến** của cấu trúc dữ liệu, thay vì chỉ thử một ví dụ "đẹp".
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn cay_mau() -> BinarySearchTree<i32> {
+    fn sample_tree() -> BinarySearchTree<i32> {
         let mut c = BinarySearchTree::new();
         for x in [50, 30, 70, 20, 40, 60, 80] {
-            c.them(x);
+            c.insert(x);
         }
         c
     }
 
     #[test]
     fn in_order_walk_is_sorted() {
-        let c = cay_mau();
-        let so: Vec<i32> = c.in_order_walk().into_iter().copied().collect();
-        assert_eq!(so, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
+        let c = sample_tree();
+        let values: Vec<i32> = c.in_order_walk().into_iter().copied().collect();
+        assert_eq!(values, vec![20, 30, 40, 50, 60, 70, 80]); // BST in-order = sắp xếp
     }
 
     #[test]
     fn contains_key() {
-        let c = cay_mau();
+        let c = sample_tree();
         assert!(c.contains_key(&40));
         assert!(c.contains_key(&80));
         assert!(!c.contains_key(&99));
@@ -434,24 +434,24 @@ mod tests {
     #[test]
     fn no_duplicate_inserts() {
         let mut c = BinarySearchTree::new();
-        c.them(5);
-        c.them(5); // giá trị trùng bị bỏ qua
-        c.them(5);
+        c.insert(5);
+        c.insert(5); // giá trị trùng bị bỏ qua
+        c.insert(5);
         assert_eq!(c.len(), 1);
     }
 
     #[test]
     fn balanced_tree_is_shallower_than_degenerate() {
-        let mut suy_bien = BinarySearchTree::new();
+        let mut degenerate = BinarySearchTree::new();
         for x in 1..=7 {
-            suy_bien.them(x); // chèn tuần tự -> suy biến thành danh sách
+            degenerate.insert(x); // chèn tuần tự -> suy biến thành danh sách
         }
-        assert_eq!(suy_bien.height(), 7);
-        assert_eq!(cay_mau().height(), 3); // cân đối -> ~log N
+        assert_eq!(degenerate.height(), 7);
+        assert_eq!(sample_tree().height(), 3); // cân đối -> ~log N
     }
 
     #[test]
-    fn cay_rong() {
+    fn empty_tree() {
         let c: BinarySearchTree<i32> = BinarySearchTree::new();
         assert!(c.is_empty());
         assert_eq!(c.height(), 0);
@@ -496,36 +496,36 @@ Giá trị nhỏ nhất nằm ở nhánh **trái tận cùng**, lớn nhất ở
 impl<T: Ord> BinarySearchTree<T> {
     /// Nhỏ nhất = đi trái tới khi không đi được nữa.
     pub fn min(&self) -> Option<&T> {
-        let mut hien_tai = self.root.as_ref()?;
-        while let Some(t) = hien_tai.left.as_ref() { hien_tai = t; }
-        Some(&hien_tai.value)
+        let mut current = self.root.as_ref()?;
+        while let Some(t) = current.left.as_ref() { current = t; }
+        Some(&current.value)
     }
 
     /// Lớn nhất = đi phải tới khi không đi được nữa.
     pub fn max(&self) -> Option<&T> {
-        let mut hien_tai = self.root.as_ref()?;
-        while let Some(p) = hien_tai.right.as_ref() { hien_tai = p; }
-        Some(&hien_tai.value)
+        let mut current = self.root.as_ref()?;
+        while let Some(p) = current.right.as_ref() { current = p; }
+        Some(&current.value)
     }
 }
 
 #[test]
-fn min_max_khop_voi_duyet_in_order() {
-    let mut cay = BinarySearchTree::new();
-    for x in [50, 30, 70, 20, 40, 60, 80] { cay.them(x); }
+fn min_max_match_in_order_walk() {
+    let mut tree = BinarySearchTree::new();
+    for x in [50, 30, 70, 20, 40, 60, 80] { tree.insert(x); }
 
-    assert_eq!(cay.min(), Some(&20));
-    assert_eq!(cay.max(), Some(&80));
+    assert_eq!(tree.min(), Some(&20));
+    assert_eq!(tree.max(), Some(&80));
 
     // Đối chiếu độc lập: duyệt in-order cho dãy TĂNG DẦN,
     // nên đầu dãy là min và cuối dãy là max.
-    let day = cay.in_order_walk();
-    assert_eq!(cay.min(), day.first().copied());
-    assert_eq!(cay.max(), day.last().copied());
+    let walk = tree.in_order_walk();
+    assert_eq!(tree.min(), walk.first().copied());
+    assert_eq!(tree.max(), walk.last().copied());
 
-    let rong: BinarySearchTree<i32> = BinarySearchTree::new();
-    assert_eq!(rong.min(), None);
-    assert_eq!(rong.max(), None);
+    let empty: BinarySearchTree<i32> = BinarySearchTree::new();
+    assert_eq!(empty.min(), None);
+    assert_eq!(empty.max(), None);
 }
 ```
 
@@ -544,39 +544,39 @@ Nút lá là nút **không có con nào**. Đệ quy: lá đếm 1, nút trong �
 ```rust
 impl<T: Ord> BinarySearchTree<T> {
     pub fn leaf_count(&self) -> usize {
-        fn dem<T>(nut: &Option<Box<NutCay<T>>>) -> usize {
-            match nut {
+        fn count_leaves<T>(node: &Option<Box<TreeNode<T>>>) -> usize {
+            match node {
                 None => 0,
                 Some(n) if n.left.is_none() && n.right.is_none() => 1,   // là LÁ
-                Some(n) => dem(&n.left) + dem(&n.right),                 // nút trong
+                Some(n) => count_leaves(&n.left) + count_leaves(&n.right),                 // nút trong
             }
         }
-        dem(&self.root)
+        count_leaves(&self.root)
     }
 }
 
 #[test]
-fn dem_dung_so_nut_la() {
-    let rong: BinarySearchTree<i32> = BinarySearchTree::new();
-    assert_eq!(rong.leaf_count(), 0);
+fn counts_leaves_correctly() {
+    let empty: BinarySearchTree<i32> = BinarySearchTree::new();
+    assert_eq!(empty.leaf_count(), 0);
 
-    let mut mot = BinarySearchTree::new();
-    mot.them(42);
-    assert_eq!(mot.leaf_count(), 1, "gốc không con thì chính nó là lá");
+    let mut single = BinarySearchTree::new();
+    single.insert(42);
+    assert_eq!(single.leaf_count(), 1, "gốc không con thì chính nó là lá");
 
     //        50
     //      /    \
     //    30      70
     //   /  \    /  \
     //  20  40  60  80      -> 4 lá
-    let mut cay = BinarySearchTree::new();
-    for x in [50, 30, 70, 20, 40, 60, 80] { cay.them(x); }
-    assert_eq!(cay.leaf_count(), 4);
+    let mut tree = BinarySearchTree::new();
+    for x in [50, 30, 70, 20, 40, 60, 80] { tree.insert(x); }
+    assert_eq!(tree.leaf_count(), 4);
 
     // Cây suy biến: mọi nút chỉ có một con -> đúng MỘT lá.
-    let mut suy_bien = BinarySearchTree::new();
-    for x in 1..=7 { suy_bien.them(x); }
-    assert_eq!(suy_bien.leaf_count(), 1);
+    let mut degenerate = BinarySearchTree::new();
+    for x in 1..=7 { degenerate.insert(x); }
+    assert_eq!(degenerate.leaf_count(), 1);
 }
 ```
 

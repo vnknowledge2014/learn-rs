@@ -93,8 +93,8 @@ Hãy nhìn vào cách thư viện chuẩn của Rust (`std`) hiện thực hóa 
 ### 3. Giao diện Giao tiếp Hàm Ngoại lai (FFI - Foreign Function Interface)
 
 Khi gọi một hàm viết bằng ngôn ngữ C từ Rust:
-1. **Quy ước gọi hàm C (`extern "C"`)**: Đảm bảo thanh ghi CPU và ngăn xếp tuân thủ đúng chuẩn C ABI (Application Binary Interface) của hệ điều hành.
-2. **Bố cục bộ nhớ tương thích (`#[repr(C)]`)**: Mặc định, trình biên dịch Rust có quyền sắp xếp lại thứ tự các trường trong `struct` để tối ưu hóa bộ nhớ đệm (buffer) (cache). Thuộc tính `#[repr(C)]` buộc Rust phải sắp xếp các trường y hệt như trình biên dịch C (GCC/Clang).
+1. **Quy ước gọi hàm C (`extern "C"`)**: Đảm bảo thanh ghi CPU và ngăn xếp tuân thủ đúng chuẩn C ABI (Application Binary Interface) của hệ điều hành. Từ edition 2024, khối khai báo hàm ngoại lai phải viết là `unsafe extern "C" { ... }` — chính chữ `unsafe` nhắc rằng bạn đang *cam đoan* các chữ ký bên trong khớp với mã C thật, điều trình biên dịch không tự kiểm được.
+2. **Bố cục bộ nhớ tương thích (`#[repr(C)]`)**: Mặc định (`repr(Rust)`), trình biên dịch Rust có quyền sắp xếp lại thứ tự các trường trong `struct` để giảm phần đệm căn lề (padding) và thu nhỏ kích thước. Thuộc tính `#[repr(C)]` buộc Rust phải sắp xếp các trường y hệt như trình biên dịch C (GCC/Clang).
 3. **Xử lý chuỗi ký tự**: Chuỗi trong C kết thúc bằng byte số không (`\0` - Null-terminated string). Trong Rust, chuỗi `&str` và `String` lưu kèm độ dài và không bắt buộc có byte `\0`. Rust cung cấp `std::ffi::CString` (sở hữu vùng nhớ kết thúc bằng `\0`) và `std::ffi::CStr` (tham chiếu mượn (borrow) chuỗi C) để chuyển đổi an toàn tuyệt đối.
 
 ### 4. Khái niệm Undefined Behavior (UB) & Công cụ Miri
@@ -103,7 +103,7 @@ Hành vi bất định (Undefined Behavior) là cơn ác mộng lớn nhất tro
 - Một số ví dụ về UB trong Rust:
   - Giải tham chiếu con trỏ thô `null` hoặc con trỏ lơ lửng (dangling).
   - Vi phạm quy tắc mượn (borrow): Tạo ra hai tham chiếu `&mut` tới cùng một ô nhớ trong cùng một thời điểm.
-  - Ép kiểu một số nguyên thành kiểu `bool` có giá trị khác `0` hoặc `1`.
+  - Tạo ra một giá trị `bool` từ byte khác `0` hoặc `1` (ví dụ bằng `std::mem::transmute`).
 - **Miri**: Trình thông dịch trung gian chính thức của Rust (`cargo miri run`/`cargo miri test`), có khả năng phát hiện các hành vi rò rỉ bộ nhớ, Use-After-Free, và vi phạm quyền mượn (borrow) (Stacked Borrows) ngay khi chạy kiểm thử!
 
 ---
@@ -113,7 +113,7 @@ Hành vi bất định (Undefined Behavior) là cơn ác mộng lớn nhất tro
 Dưới đây là mã nguồn Rust hoàn chỉnh thể hiện trọn vẹn triết lý: Tự tay xây dựng một cấu trúc **Bộ nhớ đệm (buffer) an toàn** mang tên `SafeRawBuffer` bọc kín mã `unsafe` bên trong, tuân thủ nghiêm ngặt các bất biến an toàn, kết hợp với gọi hàm chuẩn C thông qua FFI:
 
 ```rust
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -140,18 +140,22 @@ impl SafeRawBuffer {
             return Err("Dung lượng bộ đệm phải lớn hơn 0");
         }
 
-        // Tạo bố cục bộ nhớ (Memory Layout) với căn lề 8 bytes
-        let layout = Layout::array::<u8>(capacity)
-            .map_err(|_| "Lỗi tính toán kích thước bố cục bộ nhớ")?;
+        // Tạo bố cục bộ nhớ (Memory Layout) cho `capacity` phần tử u8.
+        // Căn lề lấy theo u8, tức 1 byte — muốn căn 8 byte phải dùng
+        // Layout::from_size_align(capacity, 8).
+        let layout =
+            Layout::array::<u8>(capacity).map_err(|_| "Lỗi tính toán kích thước bố cục bộ nhớ")?;
 
-        // Thao tác cấp phát thô nằm trong khối unsafe
+        // Thao tác cấp phát thô nằm trong khối unsafe.
+        // SAFETY: layout có kích thước > 0 (đã loại capacity == 0 ở trên).
         let raw_ptr = unsafe { alloc(layout) };
 
         if raw_ptr.is_null() {
             return Err("Hệ thống cạn kiệt bộ nhớ: Cấp phát con trỏ thô thất bại!");
         }
 
-        // Khởi tạo các byte về 0 để tránh đọc dữ liệu rác
+        // Khởi tạo các byte về 0 để tránh đọc dữ liệu rác.
+        // SAFETY: raw_ptr khác null và trỏ tới đúng `capacity` byte vừa cấp phát.
         unsafe {
             std::ptr::write_bytes(raw_ptr, 0, capacity);
         }
@@ -169,7 +173,8 @@ impl SafeRawBuffer {
             return Err("Chỉ số vượt quá giới hạn dung lượng bộ đệm!");
         }
 
-        // Thao tác unsafe được kiểm chứng an toàn 100% bởi ranh giới offset < capacity
+        // SAFETY: offset < capacity (vừa kiểm tra) nên ptr.add(offset) nằm trong vùng đã cấp phát,
+        // và &mut self bảo đảm không ai khác đang đọc/ghi vùng này.
         unsafe {
             let target_ptr = self.ptr.add(offset);
             *target_ptr = value;
@@ -184,6 +189,7 @@ impl SafeRawBuffer {
             return None;
         }
 
+        // SAFETY: offset < capacity, mọi byte đã được khởi tạo bằng write_bytes.
         unsafe {
             let target_ptr = self.ptr.add(offset);
             Some(*target_ptr)
@@ -199,7 +205,11 @@ impl SafeRawBuffer {
 impl Drop for SafeRawBuffer {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            println!("    [Drop] Đang giải phóng con trỏ thô tại địa chỉ {:p}...", self.ptr);
+            println!(
+                "    [Drop] Đang giải phóng con trỏ thô tại địa chỉ {:p}...",
+                self.ptr
+            );
+            // SAFETY: ptr được cấp phát bằng alloc với đúng layout này và chưa từng giải phóng.
             unsafe {
                 dealloc(self.ptr, self.layout);
             }
@@ -209,23 +219,26 @@ impl Drop for SafeRawBuffer {
 }
 
 // Giả lập khai báo hàm FFI tương thích chuẩn C
-extern "C" {
+unsafe extern "C" {
     // Gọi hàm đo độ dài chuỗi kinh điển strlen trong thư viện C chuẩn (libc)
     fn strlen(s: *const c_char) -> usize;
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   KIEM CHUNG AN TOAN BO NHO: UNSAFE RUST & FFI DONG GOI CHUAN   ");
+    println!("   KIỂM CHỨNG AN TOÀN BỘ NHỚ: UNSAFE RUST & FFI ĐÓNG GÓI CHUẨN   ");
     println!("==================================================================");
 
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM BỘ ĐỆM CẤP THẤP ĐÓNG GÓI AN TOÀN (SAFE WRAPPER)
     // -------------------------------------------------------------
-    println!("\n[1] Khoi tao SafeRawBuffer dong goi con tro tho Heap:");
+    println!("\n[1] Khởi tạo SafeRawBuffer đóng gói con trỏ thô trên Heap:");
     {
-        let mut my_buffer = SafeRawBuffer::with_capacity(32).expect("Khoi tao that bai");
-        println!("    - Khoi tao thanh cong bo dem dung luong: {} bytes", my_buffer.capacity());
+        let mut my_buffer = SafeRawBuffer::with_capacity(32).expect("Khởi tạo thất bại");
+        println!(
+            "    - Khởi tạo thành công bộ đệm dung lượng: {} bytes",
+            my_buffer.capacity()
+        );
 
         // Ghi dữ liệu an toàn
         my_buffer.write_byte(0, 0xDE).unwrap();
@@ -233,20 +246,26 @@ fn main() {
         my_buffer.write_byte(2, 0xBE).unwrap();
         my_buffer.write_byte(3, 0xEF).unwrap();
 
-        println!("    - Doc byte tai index 0: 0x{:02X}", my_buffer.read_byte(0).unwrap());
-        println!("    - Doc byte tai index 1: 0x{:02X}", my_buffer.read_byte(1).unwrap());
+        println!(
+            "    - Đọc byte tại index 0: 0x{:02X}",
+            my_buffer.read_byte(0).unwrap()
+        );
+        println!(
+            "    - Đọc byte tại index 1: 0x{:02X}",
+            my_buffer.read_byte(1).unwrap()
+        );
 
         // Thử nghiệm truy cập ngoài biên an toàn
         let out_of_bounds = my_buffer.write_byte(100, 0xFF);
-        println!("    - Thu ghi vao index = 100: {:?}", out_of_bounds);
+        println!("    - Thử ghi vào index = 100: {:?}", out_of_bounds);
         assert!(out_of_bounds.is_err());
-        println!("    => Lop vo Safe Wrapper da chan dung hanh vi vi pham bien!");
+        println!("    => Lớp vỏ Safe Wrapper đã chặn đứng hành vi vi phạm biên!");
     } // my_buffer tự động được giải phóng an toàn tại đây thông qua drop()!
 
     // -------------------------------------------------------------
     // 2. THỬ NGHIỆM GIAO TIẾP HÀM NGOẠI LAI (FFI VỚI C ABI)
     // -------------------------------------------------------------
-    println!("\n[2] Thu nghiem Foreign Function Interface (FFI) voi C Library:");
+    println!("\n[2] Thử nghiệm Foreign Function Interface (FFI) với thư viện C:");
 
     // Tạo chuỗi an toàn tương thích C kết thúc bằng byte \0
     let c_greeting = std::ffi::CString::new("Hello from Rust via C ABI!").unwrap();
@@ -257,21 +276,24 @@ fn main() {
         strlen(raw_c_ptr)
     };
 
-    println!("    - Text gui sang C : {:?}", c_greeting);
-    println!("    - Do dai do boi C strlen: {} bytes", length_from_c);
+    println!("    - Chuỗi gửi sang C : {:?}", c_greeting);
+    println!("    - Độ dài đo bởi C strlen: {} bytes", length_from_c);
     assert_eq!(length_from_c, 26);
 
     // -------------------------------------------------------------
     // 3. THỬ NGHIỆM CẤU TRÚC ĐỊNH DẠNG TƯƠNG THÍCH #[repr(C)]
     // -------------------------------------------------------------
-    println!("\n[3] Kiem tra tuong thich bo cuc bo nho #[repr(C)]:");
+    println!("\n[3] Kiểm tra tương thích bố cục bộ nhớ #[repr(C)]:");
     let pt = NativePoint { x: 100, y: 200 };
-    println!("    - Toa do diem C-compatible: x = {}, y = {}", pt.x, pt.y);
-    println!("    - Kich thuoc struct NativePoint: {} bytes (dung bang 2 * i32)", std::mem::size_of::<NativePoint>());
+    println!("    - Tọa độ điểm C-compatible: x = {}, y = {}", pt.x, pt.y);
+    println!(
+        "    - Kích thước struct NativePoint: {} bytes (đúng bằng 2 * i32)",
+        std::mem::size_of::<NativePoint>()
+    );
     assert_eq!(std::mem::size_of::<NativePoint>(), 8);
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: UNSAFE & FFI HOAT DONG AN TOAN DUNG QUY CHUAN!      ");
+    println!("   XÁC NHẬN: UNSAFE & FFI HOẠT ĐỘNG AN TOÀN ĐÚNG QUY CHUẨN!      ");
     println!("==================================================================");
 }
 ```
@@ -284,10 +306,10 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi làm việc
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0133** | `call to unsafe function requires unsafe function or block` | Bạn gọi một hàm ngoại lai `extern "C"` hoặc giải tham chiếu con trỏ thô mà quên đặt trong khối `unsafe { ... }`. | Bọc dòng lệnh đó vào bên trong một khối lệnh `unsafe { ... }` và bổ sung chú thích lý do an toàn. |
-| **E0606** | `cannot cast '&T' as '*mut T'` | Bạn cố gắng ép kiểu một tham chiếu mượn (borrow) bất biến trực tiếp sang một con trỏ thô khả biến. | Ép kiểu qua con trỏ hằng trước: `&val as *const T as *mut T`, hoặc dùng tham chiếu khả biến `&mut val as *mut T`. |
-| **E0277** | `the trait 'Send' is not implemented for '*const u8'` | Con trỏ thô mặc định không tự động triển khai trait `Send` và `Sync` để ngăn chặn việc truyền dữ liệu bất cẩn qua các luồng. | Đóng gói con trỏ thô bên trong một `struct` và tự triển khai `unsafe impl Send for MyWrapper {}` nếu cam kết đồng bộ an toàn. |
-| **E0507** | `cannot move out of a raw pointer` | Cố gắng lấy quyền sở hữu (ownership) của một giá trị nằm sau con trỏ thô mà không sao chép dữ liệu. | Sử dụng hàm `std::ptr::read(raw_ptr)` để sao chép dữ liệu ra ngoài một cách có ý thức. |
+| **E0133** | `call to unsafe function 'raw_disk_wipe' is unsafe and requires unsafe block` | Bạn gọi một hàm ngoại lai `extern "C"` hoặc giải tham chiếu con trỏ thô mà quên đặt trong khối `unsafe { ... }`. | Bọc dòng lệnh đó vào bên trong một khối lệnh `unsafe { ... }` và bổ sung chú thích lý do an toàn. |
+| **E0606** | `casting '&i32' as '*mut i32' is invalid` | Bạn cố gắng ép kiểu một tham chiếu mượn (borrow) bất biến trực tiếp sang một con trỏ thô khả biến. | Ép kiểu qua con trỏ hằng trước: `&val as *const T as *mut T`, hoặc dùng tham chiếu khả biến `&mut val as *mut T`. |
+| **E0277** | `'*const u8' cannot be sent between threads safely` | Con trỏ thô mặc định không tự động triển khai trait `Send` và `Sync` để ngăn chặn việc truyền dữ liệu bất cẩn qua các luồng. | Đóng gói con trỏ thô bên trong một `struct` và tự triển khai `unsafe impl Send for MyWrapper {}` nếu cam kết đồng bộ an toàn. |
+| **E0507** | `cannot move out of '*p' which is behind a raw pointer` | Cố gắng lấy quyền sở hữu (ownership) của một giá trị nằm sau con trỏ thô (`let s = unsafe { *p };` với `p: *const String`) mà không sao chép dữ liệu. | Sử dụng hàm `std::ptr::read(raw_ptr)` để sao chép dữ liệu ra ngoài một cách có ý thức. |
 
 ### Ví dụ phân tích lỗi `E0133` khi gọi hàm ngoại lai không có khối `unsafe`:
 
@@ -303,7 +325,7 @@ fn e0133_broken() {
 }
 
 // Cách sửa chữa đúng chuẩn:
-fn vi_du_dung_e0133() {
+fn e0133_correct() {
     // Phải có khối lệnh unsafe thể hiện trách nhiệm của lập trình viên
     unsafe {
         raw_disk_wipe();
@@ -348,32 +370,38 @@ fn vi_du_dung_e0133() {
 /// - `a` và `b` đều hợp lệ, căn chỉnh đúng, và trỏ tới `T` đã khởi tạo
 /// - `a` và `b` KHÔNG trùng nhau (chồng lấn thì mất giá trị)
 pub unsafe fn raw_swap<T>(a: *mut T, b: *mut T) {
-    // `read` lấy giá trị ra mà KHÔNG gọi Drop -> tránh giải phóng hai lần.
-    let tam = std::ptr::read(a);
-    // `write` ghi đè mà KHÔNG giải phóng giá trị cũ -> vì ta vừa lấy nó ra rồi.
-    std::ptr::write(a, std::ptr::read(b));
-    std::ptr::write(b, tam);
+    // Từ edition 2024, thân `unsafe fn` KHÔNG tự động là vùng unsafe
+    // (lint `unsafe_op_in_unsafe_fn`): mỗi thao tác nguy hiểm vẫn cần khối riêng.
+    // SAFETY: người gọi bảo đảm a, b hợp lệ, đã khởi tạo và không chồng lấn.
+    unsafe {
+        // `read` lấy giá trị ra mà KHÔNG gọi Drop -> tránh giải phóng hai lần.
+        let tmp = std::ptr::read(a);
+        // `write` ghi đè mà KHÔNG giải phóng giá trị cũ -> vì ta vừa lấy nó ra rồi.
+        std::ptr::write(a, std::ptr::read(b));
+        std::ptr::write(b, tmp);
+    }
 }
 
 /// Vỏ bọc AN TOÀN. `&mut T` đã bảo đảm mọi điều kiện ở trên:
 /// hợp lệ, căn chỉnh, đã khởi tạo, và KHÔNG THỂ trùng nhau —
 /// vì Rust không cho tồn tại hai mượn sửa đổi tới cùng một chỗ.
 pub fn safe_swap<T>(a: &mut T, b: &mut T) {
+    // SAFETY: hai `&mut` hợp lệ, đã khởi tạo, và không thể trỏ cùng một chỗ.
     unsafe { raw_swap(a as *mut T, b as *mut T) }
 }
 
 #[test]
-fn hoan_doi_dung_ke_ca_kieu_co_drop() {
+fn swap_works_even_for_drop_types() {
     let (mut x, mut y) = (1, 2);
     safe_swap(&mut x, &mut y);
     assert_eq!((x, y), (2, 1));
 
     // Kiểu CÓ cấp phát heap — nơi giải phóng hai lần sẽ lộ ra ngay.
-    let mut s1 = String::from("mot");
+    let mut s1 = String::from("một");
     let mut s2 = String::from("hai");
     safe_swap(&mut s1, &mut s2);
     assert_eq!(s1, "hai");
-    assert_eq!(s2, "mot");
+    assert_eq!(s2, "một");
     // Cả hai vẫn hợp lệ, không rò rỉ, không giải phóng hai lần.
 }
 ```
@@ -394,7 +422,8 @@ Khai báo `extern "C"`, rồi gọi trong khối `unsafe` vì trình biên dịc
 
 ```rust
 // Hàm sqrt của thư viện C, liên kết sẵn trên mọi hệ Unix.
-extern "C" {
+// Edition 2024 bắt buộc viết `unsafe extern`.
+unsafe extern "C" {
     fn sqrt(x: f64) -> f64;
 }
 
@@ -439,8 +468,8 @@ Vì vậy dự án thật không viết tay khai báo FFI mà dùng `bindgen` si
 **Rủi ro khi tự ý `unsafe impl Send` mà không có khoá:**
 
 ```text
-struct DungChung { p: *mut Vec<u32> }
-unsafe impl Send for DungChung {}   // LỜI HỨA SUÔNG, không gì bảo đảm
+struct SharedVec { p: *mut Vec<u32> }
+unsafe impl Send for SharedVec {}   // LỜI HỨA SUÔNG, không gì bảo đảm
 
 Hai luồng cùng push vào một Vec qua con trỏ thô:
     luồng A đọc len = 5, tính chỗ ghi

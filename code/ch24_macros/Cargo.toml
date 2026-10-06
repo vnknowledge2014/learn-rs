@@ -1,0 +1,13 @@
+[package]
+name = "ch24_macros"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# "full" để phân tích được cả hàm (ItemFn) cho macro thuộc tính
+syn = { version = "3", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

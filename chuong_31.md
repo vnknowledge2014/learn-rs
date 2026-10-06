@@ -84,17 +84,32 @@ Khi một số nguyên có kích thước lớn hơn 1 byte (như `u32` 4 bytes 
 - **Big-Endian (Tiêu chuẩn truyền thông mạng Network Order)**: Byte có giá trị lớn nhất được lưu đầu tiên: `[0, 0, 0, 1]`.
 
 Trong Rust, chúng ta sử dụng hai phương thức chuẩn hóa:
-- `so.to_le_bytes()`: Chuyển số nguyên thành mảng byte Little-Endian.
+- `n.to_le_bytes()`: Chuyển số nguyên thành mảng byte Little-Endian.
 - `u32::from_le_bytes(bytes)`: Khôi phục mảng byte Little-Endian trở lại số nguyên.
 
 ### 3. Con trỏ dịch chuyển trên tệp: Trait `Seek`
 
-Một tệp tin trên đĩa được hệ điều hành xem như một mảng byte khổng lồ có chỉ số từ `0` đến `capacity - 1`. Con trỏ đọc/ghi (Cursor/Offset) xác định vị trí mà lệnh đọc hoặc ghi tiếp theo sẽ diễn ra.
+Một tệp tin trên đĩa được hệ điều hành xem như một mảng byte khổng lồ có chỉ số từ `0` đến `kích thước tệp - 1`. Con trỏ đọc/ghi (Cursor/Offset) xác định vị trí mà lệnh đọc hoặc ghi tiếp theo sẽ diễn ra.
 
 Rust cung cấp trait `std::io::Seek` với enum `SeekFrom`:
 - `SeekFrom::Start(n)`: Nhảy con trỏ tới vị trí byte thứ `n` tính từ đầu tệp.
 - `SeekFrom::Current(n)`: Dịch chuyển con trỏ thêm `n` bytes so với vị trí hiện tại.
-- `SeekFrom::End(n)`: Nhảy con trỏ tới vị trí tính từ cuối tệp (dùng `SeekFrom::End(0)` để nhảy đến đuôi tệp chuẩn bị ghi chèn).
+- `SeekFrom::End(n)`: Nhảy con trỏ tới vị trí tính từ cuối tệp (dùng `SeekFrom::End(0)` để nhảy đến đuôi tệp chuẩn bị ghi nối).
+
+### 4. `write_all` xong chưa có nghĩa là dữ liệu đã nằm trên đĩa: `flush` vs `sync_data`/`sync_all`
+
+Dữ liệu đi từ chương trình xuống đĩa phải qua **ba chặng**:
+
+```
+Bộ đệm của chương trình ──flush()──► Page cache của hệ điều hành ──sync_data()/sync_all()──► Đĩa vật lý
+(ví dụ BufWriter)                    (vẫn nằm trong RAM!)                (fdatasync/fsync)
+```
+
+- `Write::flush()` chỉ đẩy bộ đệm **phía người dùng** (của `BufWriter`) xuống hệ điều hành. Với `File` trần, `flush()` không làm gì cả, vì `File` không có bộ đệm riêng.
+- Sau `write_all` + `flush`, dữ liệu mới nằm trong **page cache** — vẫn là RAM. Mất điện lúc này là mất dữ liệu, dù chương trình đã "ghi thành công".
+- `File::sync_data()` (gọi `fdatasync`) ép nội dung tệp xuống thiết bị lưu trữ; `File::sync_all()` (gọi `fsync`) ép cả siêu dữ liệu (kích thước tệp, thời gian sửa…). Đây mới là lời hứa *bền vững* (durability) mà cơ sở dữ liệu cần — và cũng là thao tác đắt nhất, thường tốn từ hàng chục micro-giây (SSD có tụ điện dự phòng) đến hàng mili-giây.
+
+Vì vậy mã bên dưới gọi `sync_data()` sau mỗi lần ghi bản ghi. Các chương sau (WAL, LSM-Tree) sẽ học cách **gom nhiều bản ghi** vào một lần đồng bộ để không trả giá này cho từng bản ghi.
 
 ---
 
@@ -110,13 +125,13 @@ use std::path::Path;
 
 /// Cấu trúc bản ghi người dùng trong cơ sở dữ liệu
 #[derive(Debug, PartialEq, Clone)]
-pub struct SellRecordUser {
-    pub id: u32,       // 4 bytes cố định
-    pub age: u8,      // 1 byte cố định
-    pub full_name: String,// Độ dài biến thiên
+pub struct UserRecord {
+    pub id: u32,           // 4 bytes cố định
+    pub age: u8,           // 1 byte cố định
+    pub full_name: String, // Độ dài biến thiên
 }
 
-impl SellRecordUser {
+impl UserRecord {
     pub fn new(id: u32, age: u8, full_name: &str) -> Self {
         Self {
             id,
@@ -129,20 +144,20 @@ impl SellRecordUser {
     /// Cấu trúc nhị phân đóng gói:
     /// [ID: 4B] + [Tuổi: 1B] + [Độ dài tên: 2B] + [Dữ liệu chuỗi tên: NB]
     pub fn serialize(&self) -> Vec<u8> {
-        let ten_bytes = self.full_name.as_bytes();
-        let do_long_name = ten_bytes.len() as u16;
+        let name_bytes = self.full_name.as_bytes();
+        let name_len = name_bytes.len() as u16;
 
         // Ước tính trước kích thước để cấp phát bộ nhớ một lần duy nhất
-        let mut byte_buffer = Vec::with_capacity(4 + 1 + 2 + ten_bytes.len());
+        let mut byte_buffer = Vec::with_capacity(4 + 1 + 2 + name_bytes.len());
 
         // 1. Ghi ID (4 bytes Little-Endian)
         byte_buffer.extend_from_slice(&self.id.to_le_bytes());
         // 2. Ghi Tuổi (1 byte)
         byte_buffer.push(self.age);
         // 3. Ghi Độ dài chuỗi tên (2 bytes Little-Endian)
-        byte_buffer.extend_from_slice(&do_long_name.to_le_bytes());
+        byte_buffer.extend_from_slice(&name_len.to_le_bytes());
         // 4. Ghi Chuỗi byte nội dung tên UTF-8
-        byte_buffer.extend_from_slice(ten_bytes);
+        byte_buffer.extend_from_slice(name_bytes);
 
         byte_buffer
     }
@@ -158,21 +173,21 @@ impl SellRecordUser {
         }
 
         // Đọc ID
-        let id_bytes: [u8; 4] = data[0..4].try_into().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã ID")
-        })?;
+        let id_bytes: [u8; 4] = data[0..4]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã ID"))?;
         let id = u32::from_le_bytes(id_bytes);
 
         // Đọc Tuổi
         let age = data[4];
 
         // Đọc Độ dài tên
-        let len_bytes: [u8; 2] = data[5..7].try_into().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã độ dài chuỗi")
-        })?;
-        let do_long_name = u16::from_le_bytes(len_bytes) as usize;
+        let len_bytes: [u8; 2] = data[5..7]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Lỗi giải mã độ dài chuỗi"))?;
+        let name_len = u16::from_le_bytes(len_bytes) as usize;
 
-        let total_size = 7 + do_long_name;
+        let total_size = 7 + name_len;
         if data.len() < total_size {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -181,63 +196,66 @@ impl SellRecordUser {
         }
 
         // Đọc chuỗi tên UTF-8
-        let full_name = String::from_utf8(data[7..total_size].to_vec()).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let full_name = String::from_utf8(data[7..total_size].to_vec())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-        Ok((SellRecordUser { id, age, full_name }, total_size))
+        Ok((UserRecord { id, age, full_name }, total_size))
     }
 }
 
 /// Động cơ tệp nhị phân đơn giản lưu trữ các bản ghi xuống đĩa cứng
-pub struct BinaryPageStore {
+pub struct BinaryStore {
     file: File,
 }
 
-impl BinaryPageStore {
+impl BinaryStore {
     /// Mở hoặc tạo mới tệp lưu trữ dữ liệu
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
+            // Không xoá dữ liệu cũ khi mở lại: kho chỉ ghi nối đuôi
+            .truncate(false)
             .open(path)?;
         Ok(Self { file })
     }
 
     /// Ghi thêm bản ghi vào cuối tệp - Trả về tọa độ byte (Offset) bắt đầu của bản ghi
-    pub fn record_sell_record(&mut self, sell_record: &SellRecordUser) -> io::Result<u64> {
+    pub fn append_record(&mut self, record: &UserRecord) -> io::Result<u64> {
         // Nhảy đến cuối tệp để ghi nối đuôi tuần tự (Sequential Append)
-        let vi_tri_offset = self.file.seek(SeekFrom::End(0))?;
-        let bytes_to_write = sell_record.serialize();
+        let offset = self.file.seek(SeekFrom::End(0))?;
+        let bytes_to_write = record.serialize();
         self.file.write_all(&bytes_to_write)?;
-        // Ép dữ liệu từ bộ nhớ đệm hệ điều hành xuống đĩa vật lý
-        self.file.flush()?;
-        Ok(vi_tri_offset)
+        // write_all chỉ chép dữ liệu vào bộ nhớ đệm trang (page cache) của hệ điều hành.
+        // `File::flush()` KHÔNG giúp gì (File không có bộ đệm phía người dùng);
+        // phải gọi sync_data() (fdatasync) để ép dữ liệu xuống đĩa vật lý.
+        self.file.sync_data()?;
+        Ok(offset)
     }
 
     /// Nhảy đến vị trí Offset chính xác và đọc một bản ghi lên RAM - O(1) Disk Seek
-    pub fn read_record_at(&mut self, offset: u64) -> io::Result<SellRecordUser> {
+    pub fn read_record_at(&mut self, offset: u64) -> io::Result<UserRecord> {
         self.file.seek(SeekFrom::Start(offset))?;
-        
+
         // Đọc trước 7 bytes phần đầu để biết độ dài chuỗi tên
         let mut header = [0u8; 7];
         self.file.read_exact(&mut header)?;
 
         let len_bytes: [u8; 2] = header[5..7].try_into().unwrap();
-        let do_long_name = u16::from_le_bytes(len_bytes) as usize;
+        let name_len = u16::from_le_bytes(len_bytes) as usize;
 
         // Đọc tiếp phần thân chuỗi tên
-        let mut ten_buffer = vec![0u8; do_long_name];
-        self.file.read_exact(&mut ten_buffer)?;
+        let mut name_buf = vec![0u8; name_len];
+        self.file.read_exact(&mut name_buf)?;
 
         // Ghép toàn bộ byte lại và giải mã
-        let mut all_bytes = Vec::with_capacity(7 + do_long_name);
+        let mut all_bytes = Vec::with_capacity(7 + name_len);
         all_bytes.extend_from_slice(&header);
-        all_bytes.extend_from_slice(&ten_buffer);
+        all_bytes.extend_from_slice(&name_buf);
 
-        let (sell_record, _) = SellRecordUser::deserialize(&all_bytes)?;
-        Ok(sell_record)
+        let (record, _) = UserRecord::deserialize(&all_bytes)?;
+        Ok(record)
     }
 }
 
@@ -246,52 +264,68 @@ fn main() -> io::Result<()> {
     println!("     CƠ CHẾ LƯU TRỮ ĐĨA CỨNG & TỆP NHỊ PHÂN TRONG RUST      ");
     println!("============================================================");
 
-    // Sử dụng tệp tạm thời trong thư mục làm việc
-    let path_file = "kho_du_lieu_tam.bin";
+    // Sử dụng tệp trong thư mục tạm của hệ điều hành
+    let path = std::env::temp_dir().join("ch31_records.bin");
 
     // 1. Khởi tạo kho lưu trữ
-    let mut store = BinaryPageStore::open(path_file)?;
-    println!("[1] Đã mở tệp lưu trữ nhị phân: '{}'", path_file);
+    let _ = std::fs::remove_file(&path); // xoá dấu vết của lần chạy trước (nếu có)
+    let mut store = BinaryStore::open(&path)?;
+    println!("[1] Đã mở tệp lưu trữ nhị phân: '{}'", path.display());
 
     // 2. Chuẩn bị dữ liệu và tuần tự hóa thành chuỗi byte
-    let person_1 = SellRecordUser::new(101, 24, "Nguyễn Văn An");
-    let person_2 = SellRecordUser::new(102, 30, "Trần Thị Bình");
-    let person_3 = SellRecordUser::new(103, 19, "Lê Hoàng Cường");
+    let person_1 = UserRecord::new(101, 24, "Nguyễn Văn An");
+    let person_2 = UserRecord::new(102, 30, "Trần Thị Bình");
+    let person_3 = UserRecord::new(103, 19, "Lê Hoàng Cường");
 
     println!("\n[2] Ghi tuần tự các bản ghi xuống đĩa:");
-    let offset_1 = store.record_sell_record(&person_1)?;
-    println!("    - Ghi bản ghi 101 ({}): Tọa độ byte = {}", person_1.full_name, offset_1);
+    let offset_1 = store.append_record(&person_1)?;
+    println!(
+        "    - Ghi bản ghi 101 ({}): Tọa độ byte = {}",
+        person_1.full_name, offset_1
+    );
 
-    let offset_2 = store.record_sell_record(&person_2)?;
-    println!("    - Ghi bản ghi 102 ({}): Tọa độ byte = {}", person_2.full_name, offset_2);
+    let offset_2 = store.append_record(&person_2)?;
+    println!(
+        "    - Ghi bản ghi 102 ({}): Tọa độ byte = {}",
+        person_2.full_name, offset_2
+    );
 
-    let offset_3 = store.record_sell_record(&person_3)?;
-    println!("    - Ghi bản ghi 103 ({}): Tọa độ byte = {}", person_3.full_name, offset_3);
+    let offset_3 = store.append_record(&person_3)?;
+    println!(
+        "    - Ghi bản ghi 103 ({}): Tọa độ byte = {}",
+        person_3.full_name, offset_3
+    );
 
     // 3. Nhảy cóc ngẫu nhiên (Seek) đọc bản ghi bất kỳ mà không cần đọc từ đầu tệp!
     println!("\n[3] Đọc ngẫu nhiên bản ghi theo tọa độ byte (Offset):");
-    let doc_lai_2 = store.read_record_at(offset_2)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_2, doc_lai_2.id, doc_lai_2.age, doc_lai_2.full_name);
-    assert_eq!(doc_lai_2, person_2);
+    let read_back_2 = store.read_record_at(offset_2)?;
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_2, read_back_2.id, read_back_2.age, read_back_2.full_name
+    );
+    assert_eq!(read_back_2, person_2);
 
-    let doc_lai_1 = store.read_record_at(offset_1)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_1, doc_lai_1.id, doc_lai_1.age, doc_lai_1.full_name);
-    assert_eq!(doc_lai_1, person_1);
+    let read_back_1 = store.read_record_at(offset_1)?;
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_1, read_back_1.id, read_back_1.age, read_back_1.full_name
+    );
+    assert_eq!(read_back_1, person_1);
 
-    let doc_lai_3 = store.read_record_at(offset_3)?;
-    println!("    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}", 
-        offset_3, doc_lai_3.id, doc_lai_3.age, doc_lai_3.full_name);
-    assert_eq!(doc_lai_3, person_3);
+    let read_back_3 = store.read_record_at(offset_3)?;
+    println!(
+        "    - Nhảy tới offset {} đọc được: ID={}, Tuổi={}, Tên={}",
+        offset_3, read_back_3.id, read_back_3.age, read_back_3.full_name
+    );
+    assert_eq!(read_back_3, person_3);
 
     // 4. Dọn dẹp tệp thử nghiệm
     drop(store); // Đóng tệp tin an toàn
-    let _ = std::fs::remove_file(path_file);
+    let _ = std::fs::remove_file(&path);
     println!("\n[4] Dọn dẹp tệp dữ liệu thử nghiệm thành công.");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 27               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 31               ");
     println!("============================================================");
     Ok(())
 }
@@ -307,7 +341,7 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi làm việc
 |---|---|---|---|
 | **E0599** | `no method named 'seek' found for struct 'File'` | Bạn gọi phương thức `.seek()` trên đối tượng `File` nhưng chưa đưa trait `Seek` vào phạm vi hoạt động. Trong Rust, muốn dùng phương thức của trait bắt buộc phải `use` trait đó. | Thêm dòng khai báo: `use std::io::Seek;` ở đầu tệp mã nguồn. |
 | **E0599** | `no method named 'write_all' found for struct 'File'` | Tương tự lỗi trên, bạn gọi `.write_all()` mà quên đưa trait `Write` vào phạm vi. | Thêm dòng khai báo: `use std::io::Write;`. |
-| **E0277** | `the trait bound '[u8]: Index<Range<usize>>' is not satisfied` | Bạn cố lấy lát cắt trên một con trỏ thô hoặc kiểu không hỗ trợ chỉ số mà quên chuyển đổi sang tham chiếu lát cắt `&[u8]`. | Đảm bảo biến mang kiểu tham chiếu lát cắt: `let slice = &buffer[start..end];`. |
+| **E0608** | `cannot index into a value of type '*const u8'` | Bạn cố lấy lát cắt `p[0..4]` trên một con trỏ thô — con trỏ thô không hỗ trợ chỉ số, vì nó không mang theo độ dài. | Đảm bảo biến mang kiểu tham chiếu lát cắt: `let slice = &buffer[start..end];`. |
 | **E0308** | `mismatched types: expected '[u8; 4]', found '&[u8]'` | Hàm `from_le_bytes` đòi hỏi một mảng có kích thước cố định `[u8; 4]`, trong khi lát cắt `&bytes[0..4]` có kích thước động (`&[u8]`). | Sử dụng phương thức chuyển đổi an toàn: `bytes[0..4].try_into().unwrap()`. |
 
 ### Ví dụ phân tích lỗi `E0599` và cách khắc phục:
@@ -334,11 +368,12 @@ fn write_file_correct(mut f: File) -> std::io::Result<()> {
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
-### 4 Điểm cốt lõi cần ghi nhớ:
+### 5 Điểm cốt lõi cần ghi nhớ:
 1. **RAM vs Ổ đĩa cứng**: RAM cực nhanh nhưng mất điện là mất sạch dữ liệu; Đĩa cứng chậm hơn nhưng lưu trữ vĩnh cửu. Cơ sở dữ liệu phải dung hòa tốc độ của RAM và tính bền vững của Đĩa.
-2. **Ghi tuần tự là Vua**: Luôn ưu tiên ghi nối đuôi tuần tự (Sequential Append) thay vì nhảy cóc ghi ngẫu nhiên (Random I/O) để tận dụng tối đa băng thông phần cứng đĩa.
-3. **Đóng gói nhị phân**: Lưu trữ dữ liệu dưới dạng byte nhị phân (`[u8]`) giúp tiết kiệm hơn 70% dung lượng và loại bỏ chi phí phân tích cú pháp chuỗi so với JSON/CSV.
-4. **Quy tắc Little-Endian**: Sử dụng nhất quán `.to_le_bytes()` và `from_le_bytes()` để đảm bảo tệp dữ liệu có thể đọc được chính xác trên mọi kiến trúc máy tính khác nhau.
+2. **Ghi xong chưa chắc đã bền**: `write_all` (và cả `flush`) chỉ đưa dữ liệu tới page cache của hệ điều hành; phải `sync_data()`/`sync_all()` thì dữ liệu mới sống sót qua mất điện.
+3. **Ghi tuần tự là Vua**: Luôn ưu tiên ghi nối đuôi tuần tự (Sequential Append) thay vì nhảy cóc ghi ngẫu nhiên (Random I/O) để tận dụng tối đa băng thông phần cứng đĩa.
+4. **Đóng gói nhị phân**: Lưu trữ dữ liệu dưới dạng byte nhị phân (`[u8]`) giúp tiết kiệm hơn 70% dung lượng và loại bỏ chi phí phân tích cú pháp chuỗi so với JSON/CSV.
+5. **Quy tắc Little-Endian**: Sử dụng nhất quán `.to_le_bytes()` và `from_le_bytes()` để đảm bảo tệp dữ liệu có thể đọc được chính xác trên mọi kiến trúc máy tính khác nhau.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Phân biệt I/O)**:  
@@ -391,11 +426,11 @@ impl Product {
     pub const SIZE: usize = 8 + 8 + 1;
 
     pub fn serialize(&self) -> Vec<u8> {
-        let mut ra = Vec::with_capacity(Self::SIZE);
-        ra.extend_from_slice(&self.id.to_le_bytes());       // 8
-        ra.extend_from_slice(&self.price.to_le_bytes());    // 8
-        ra.push(self.in_stock as u8);                       // 1
-        ra
+        let mut out = Vec::with_capacity(Self::SIZE);
+        out.extend_from_slice(&self.id.to_le_bytes());       // 8
+        out.extend_from_slice(&self.price.to_le_bytes());    // 8
+        out.push(self.in_stock as u8);                       // 1
+        out
     }
 
     pub fn deserialize(bytes: &[u8]) -> Option<Self> {
@@ -409,16 +444,16 @@ impl Product {
 }
 
 #[test]
-fn ghi_roi_doc_lai_ra_dung_ban_goc() {
+fn roundtrip_restores_original() {
     let p = Product { id: 42, price: 199.5, in_stock: true };
     let b = p.serialize();
     assert_eq!(b.len(), Product::SIZE);
     assert_eq!(Product::deserialize(&b), Some(p));
 
     assert_eq!(Product::deserialize(&b[..10]), None, "thiếu byte phải báo None");
-    let mut xau = b.clone();
-    xau[16] = 7;                       // giá trị bool không hợp lệ
-    assert_eq!(Product::deserialize(&xau), None);
+    let mut corrupted = b.clone();
+    corrupted[16] = 7;                       // giá trị bool không hợp lệ
+    assert_eq!(Product::deserialize(&corrupted), None);
 }
 ```
 
@@ -441,27 +476,27 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 fn main() -> std::io::Result<()> {
-    let duong_dan = std::env::temp_dir().join("so_nguyen.bin");
+    let path = std::env::temp_dir().join("so_nguyen.bin");
 
     // Ghi 10 số u32: 10, 20, ..., 100
     {
-        let mut f = File::create(&duong_dan)?;
+        let mut f = File::create(&path)?;
         for i in 1..=10u32 { f.write_all(&(i * 10).to_le_bytes())?; }
     }
 
     // Đọc số thứ 5 mà KHÔNG đọc 4 số đầu.
-    let mut f = File::open(&duong_dan)?;
-    let vi_tri = 4 * std::mem::size_of::<u32>() as u64;   // bỏ qua 4 số = 16 byte
-    f.seek(SeekFrom::Start(vi_tri))?;
+    let mut f = File::open(&path)?;
+    let offset = 4 * std::mem::size_of::<u32>() as u64;   // bỏ qua 4 số = 16 byte
+    f.seek(SeekFrom::Start(offset))?;
 
-    let mut dem = [0u8; 4];
-    f.read_exact(&mut dem)?;
-    let gia_tri = u32::from_le_bytes(dem);
+    let mut buf = [0u8; 4];
+    f.read_exact(&mut buf)?;
+    let value = u32::from_le_bytes(buf);
 
-    assert_eq!(gia_tri, 50);
-    println!("Số thứ 5 = {gia_tri} (đọc tại byte {vi_tri}, không chạm 4 số đầu)");
+    assert_eq!(value, 50);
+    println!("Số thứ 5 = {value} (đọc tại byte {offset}, không chạm 4 số đầu)");
 
-    std::fs::remove_file(&duong_dan)?;
+    std::fs::remove_file(&path)?;
     Ok(())
 }
 ```

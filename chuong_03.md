@@ -34,14 +34,14 @@ Mục tiêu học tập của chương này:
 ```
 
 ### 1. Chiếc hộp carton dán băng keo niêm phong (Biến bất biến mặc định)
-Khi bạn viết `let nam_sinh = 1995;`, bạn đang đặt con số `1995` vào một chiếc hộp carton nhỏ, sau đó dán băng keo niêm phong màu đỏ lên miệng hộp.
+Khi bạn viết `let birth_year = 1995;`, bạn đang đặt con số `1995` vào một chiếc hộp carton nhỏ, sau đó dán băng keo niêm phong màu đỏ lên miệng hộp.
 - Không ai — kể cả chính bạn — được phép bóc băng keo ra để nhét con số khác vào chiếc hộp đó nữa.
 - Điều này mang lại sự an tâm tuyệt đối: Nếu bạn đưa chiếc hộp này cho 10 người khác xem, bạn biết chắc chắn 100% rằng khi nhận lại hộp, con số bên trong vẫn mãi mãi là `1995`.
 
 ### 2. Chiếc bảng phấn đen treo tường (Biến khả biến với từ khóa `mut`)
 Nếu bạn muốn một đại lượng có thể thay đổi liên tục theo thời gian (ví dụ: điểm số trong một trận bóng đá), bạn phải báo trước cho Rust bằng từ khóa `mut` (viết tắt của *mutable* - có thể biến đổi):
 ```rust
-let mut diem_so = 0;
+let mut score = 0;
 ```
 Điều này giống như bạn dựng một chiếc bảng phấn đen lên tường. Bạn viết số `0`. Khi đội nhà ghi bàn, bạn cầm giẻ lau xóa số `0` đi và viết số `1` vào chính vị trí đó. Chiếc bảng vẫn là chiếc bảng đó, vị trí vẫn ở đó, chỉ có nội dung bên trong được cập nhật.
 
@@ -123,55 +123,77 @@ Dưới đây là một chương trình minh họa toàn diện tất cả các 
 fn main() {
     println!("=== 1. KHÁM PHÁ TÍNH BẤT BIẾN (IMMUTABILITY) ===");
     let founding_year = 2006; // Biến bất biến: không thể sửa
-    println!("Năm ngôn ngữ Rust bắt đầu được thai nghén: {}", founding_year);
+    println!(
+        "Năm ngôn ngữ Rust bắt đầu được thai nghén: {}",
+        founding_year
+    );
     // Nếu bạn bỏ chú thích dòng dưới, compiler sẽ lập tức báo lỗi E0384:
     // founding_year = 2010;
 
     println!("\n=== 2. KHÁM PHÁ BIẾN KHẢ BIẾN VỚI TỪ KHÓA 'mut' ===");
     let mut rust_version = 1.0; // Chiếc bảng phấn: cho phép xóa đi viết lại
     println!("Phiên bản Rust ban đầu: {}", rust_version);
-    
-    rust_version = 1.85; // Cập nhật giá trị mới hợp lệ
+
+    rust_version = 1.97; // Cập nhật giá trị mới hợp lệ
     println!("Phiên bản Rust hiện đại : {}", rust_version);
 
     println!("\n=== 3. KỸ THUẬT CHE KHUẤT BIẾN (SHADOWING) ===");
     // Giả sử nhận được dữ liệu dạng chuỗi văn bản từ người dùng nhập
-    let quantity_ve = "5"; 
-    println!("Dữ liệu người dùng nhập (chuỗi): {}", quantity_ve);
+    let ticket_count = "5";
+    println!("Dữ liệu người dùng nhập (chuỗi): {}", ticket_count);
 
     // Dán đè một biến mới cùng tên nhưng đổi kiểu dữ liệu sang số nguyên:
-    let quantity_ve: u32 = quantity_ve.parse().expect("Không phải con số hợp lệ!");
-    let tong_tien = quantity_ve * 100_000; // Rust cho phép dùng dấu gạch dưới _ để số dễ đọc hơn
-    println!("Số vé sau khi chuyển đổi: {} vé", quantity_ve);
-    println!("Tổng tiền cần thanh toán : {} VND", tong_tien);
+    let ticket_count: u32 = ticket_count.parse().expect("Không phải con số hợp lệ!");
+    let total_price = ticket_count * 100_000; // Rust cho phép dùng dấu gạch dưới _ để số dễ đọc hơn
+    println!("Số vé sau khi chuyển đổi: {} vé", ticket_count);
+    println!("Tổng tiền cần thanh toán : {} VND", total_price);
 
     println!("\n=== 4. CÁC KIỂU DỮ LIỆU SỐ HỌC NGUYÊN BẢN ===");
-    let age: u8 = 25;                       // Số nguyên không dấu 8-bit (0..255)
-    let nhiet_do: i16 = -15;                  // Số nguyên có dấu 16-bit
-    let derive_num_write_nam: u32 = 100_000_000;   // Số nguyên không dấu 32-bit
-    let pos_value_distance: f64 = 384_400.5; // Khoảng cách tới Mặt Trăng (km)
-    
-    println!("Tuổi học viên   : {} tuổi (chiếm {} byte)", age, std::mem::size_of_val(&age));
-    println!("Nhiệt độ mùa đông: {}°C (chiếm {} bytes)", nhiet_do, std::mem::size_of_val(&nhiet_do));
-    println!("Dân số Việt Nam : {} người (chiếm {} bytes)", derive_num_write_nam, std::mem::size_of_val(&derive_num_write_nam));
-    println!("Khoảng cách trăng: {} km (chiếm {} bytes)", pos_value_distance, std::mem::size_of_val(&pos_value_distance));
+    let age: u8 = 25; // Số nguyên không dấu 8-bit (0..255)
+    let temperature: i16 = -15; // Số nguyên có dấu 16-bit
+    let vietnam_population: u32 = 100_000_000; // Số nguyên không dấu 32-bit
+    let moon_distance: f64 = 384_400.5; // Khoảng cách tới Mặt Trăng (km)
+
+    println!(
+        "Tuổi học viên   : {} tuổi (chiếm {} byte)",
+        age,
+        std::mem::size_of_val(&age)
+    );
+    println!(
+        "Nhiệt độ mùa đông: {}°C (chiếm {} bytes)",
+        temperature,
+        std::mem::size_of_val(&temperature)
+    );
+    println!(
+        "Dân số Việt Nam : {} người (chiếm {} bytes)",
+        vietnam_population,
+        std::mem::size_of_val(&vietnam_population)
+    );
+    println!(
+        "Khoảng cách trăng: {} km (chiếm {} bytes)",
+        moon_distance,
+        std::mem::size_of_val(&moon_distance)
+    );
 
     println!("\n=== 5. KIỂU LOGIC VÀ KÝ TỰ UNICODE ===");
-    let dang_hoc_rust: bool = true;
+    let learning_rust: bool = true;
     let emoji: char = '🎯'; // Ký tự Unicode chiếm trọn vẹn 4 bytes
     let vietnamese_char: char = 'Đ';
 
-    println!("Đang say mê học Rust? {}", dang_hoc_rust);
+    println!("Đang say mê học Rust? {}", learning_rust);
     println!("Mục tiêu học tập    : {}", emoji);
     println!("Chữ cái tiếng Việt  : {}", vietnamese_char);
-    println!("Kích thước char trên RAM: {} bytes", std::mem::size_of::<char>());
+    println!(
+        "Kích thước char trên RAM: {} bytes",
+        std::mem::size_of::<char>()
+    );
 
     println!("\n=== 6. ÉP KIỂU AN TOÀN VỚI TỪ KHÓA 'as' ===");
-    let point_transfer_can: u8 = 9;
+    let attendance_score: u8 = 9;
     let exam_score: f32 = 8.5;
     // Để cộng số nguyên với số thực, ta phải chủ động ép kiểu (explicit casting)
-    let diem_tong_ket = (point_transfer_can as f32 * 0.3) + (exam_score * 0.7);
-    println!("Điểm tổng kết môn học: {:.2}", diem_tong_ket);
+    let final_score = (attendance_score as f32 * 0.3) + (exam_score * 0.7);
+    println!("Điểm tổng kết môn học: {:.2}", final_score);
 }
 ```
 
@@ -184,9 +206,9 @@ Hệ thống kiểu dữ liệu tĩnh nghiêm ngặt của Rust sẽ giúp bạn
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0384** | `error[E0384]: cannot assign twice to immutable variable 'x'` | Bạn đang cố gán giá trị mới cho một biến được khai báo không có từ khóa `mut`. | Thêm `mut` vào trước tên biến khi khai báo (`let mut x = ...`), hoặc nếu muốn đổi kiểu dữ liệu thì dùng kỹ thuật Shadowing (`let x = ...`). |
-| **E0308** | `error[E0308]: mismatched types: expected 'i32', found 'f64'` | Bạn cố tình cộng hoặc gán hai kiểu dữ liệu khác nhau (Rust không bao giờ tự ý ép kiểu ngầm để tránh sai sót). | Sử dụng từ khóa `as` để ép kiểu rõ ràng (ví dụ: `bien_so_nguyen as f64`). |
+| **E0277** | `error[E0277]: cannot add 'f64' to 'i32'` | Bạn cộng hai kiểu số khác nhau (ví dụ `i32 + f64`): kiểu `i32` không cài phép cộng với `f64` (Rust không bao giờ tự ý ép kiểu ngầm để tránh sai sót). Nếu là phép **gán** khác kiểu (`let x: i32 = 1.5;`) thì lỗi lại là `E0308: mismatched types`. | Sử dụng từ khóa `as` để ép kiểu rõ ràng (ví dụ: `integer_value as f64`). |
 | **Tràn số biên dịch** | `error: literal out of range for 'u8'` | Bạn viết số `300` vào kiểu `u8` (vốn chỉ chứa được tối đa số `255`). | Đổi sang kiểu dữ liệu có sức chứa lớn hơn như `u16` hoặc `u32`. |
-| **Thiếu chú thích kiểu** | `error[E0282]: type annotations needed` | Khi dùng các hàm như `.parse()`, Rust không tự đoán được bạn muốn chuyển đổi chuỗi thành kiểu số nào. | Thêm chú thích kiểu rõ ràng cho biến: `let x: u32 = chuoi.parse().unwrap();`. |
+| **Thiếu chú thích kiểu** | `error[E0284]: type annotations needed` | Khi dùng các hàm như `.parse()`, Rust không tự đoán được bạn muốn chuyển đổi chuỗi thành kiểu số nào. | Thêm chú thích kiểu rõ ràng cho biến: `let x: u32 = text.parse().unwrap();`. |
 
 ---
 
@@ -208,9 +230,9 @@ Hệ thống kiểu dữ liệu tĩnh nghiêm ngặt của Rust sẽ giúp bạn
 2. **Bài tập tư duy 2**: Nếu bạn cần lưu trữ thông tin "Số lượng học sinh trong một lớp học (tối đa 50 em)", bạn nên chọn kiểu dữ liệu nào giữa `i8`, `u8`, `i32`, hay `f64`? Hãy giải thích lý do lựa chọn của bạn dựa trên nguyên tắc tiết kiệm bộ nhớ RAM.
 3. **Bài tập sửa lỗi (Debugging)**: Cho đoạn mã sau:
    ```rust
-   let diem_so = 10;
-   diem_so = diem_so + 5;
-   println!("Điểm mới: {}", diem_so);
+   let score = 10;
+   score = score + 5;
+   println!("Điểm mới: {}", score);
    ```
    Hãy chỉ ra lỗi biên dịch sẽ xuất hiện và đưa ra 2 cách khác nhau để sửa cho đoạn mã này chạy thành công.
 
@@ -221,7 +243,7 @@ Hệ thống kiểu dữ liệu tĩnh nghiêm ngặt của Rust sẽ giúp bạn
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Khai báo bốn biến đúng kiểu, rồi in kèm `size_of_val(&bien)` để đo kích thước từng cái.
+Khai báo bốn biến đúng kiểu, rồi in kèm `size_of_val(&value)` để đo kích thước từng cái.
 </details>
 
 <details>
@@ -229,20 +251,20 @@ Khai báo bốn biến đúng kiểu, rồi in kèm `size_of_val(&bien)` để �
 
 ```rust
 fn main() {
-    let ten_may: &str = "Galaxy S24";     // chuỗi ký tự
-    let dung_luong_pin: u32 = 4000;        // mAh, số nguyên không âm
-    let trong_luong: f64 = 168.5;          // gam, số thực
-    let dang_bat_wifi: bool = true;        // logic đúng/sai
+    let model_name: &str = "Galaxy S24"; // chuỗi ký tự
+    let battery_mah: u32 = 4000;         // mAh, số nguyên không âm
+    let weight_grams: f64 = 168.5;       // gam, số thực
+    let wifi_on: bool = true;            // logic đúng/sai
 
     // size_of_val đo số byte một GIÁ TRỊ cụ thể chiếm trên RAM.
-    println!("Tên máy      : {ten_may} ({} byte)", std::mem::size_of_val(&ten_may));
-    println!("Pin          : {dung_luong_pin} mAh ({} byte)", std::mem::size_of_val(&dung_luong_pin));
-    println!("Trọng lượng  : {trong_luong} g ({} byte)", std::mem::size_of_val(&trong_luong));
-    println!("Bật Wifi     : {dang_bat_wifi} ({} byte)", std::mem::size_of_val(&dang_bat_wifi));
+    println!("Tên máy      : {model_name} ({} byte)", std::mem::size_of_val(&model_name));
+    println!("Pin          : {battery_mah} mAh ({} byte)", std::mem::size_of_val(&battery_mah));
+    println!("Trọng lượng  : {weight_grams} g ({} byte)", std::mem::size_of_val(&weight_grams));
+    println!("Bật Wifi     : {wifi_on} ({} byte)", std::mem::size_of_val(&wifi_on));
 }
 
 #[test]
-fn kich_thuoc_tung_kieu() {
+fn type_sizes() {
     assert_eq!(std::mem::size_of::<u32>(), 4);   // số nguyên 32 bit
     assert_eq!(std::mem::size_of::<f64>(), 8);   // số thực 64 bit
     assert_eq!(std::mem::size_of::<bool>(), 1);  // chỉ cần 1 byte cho đúng/sai
@@ -286,22 +308,22 @@ Lỗi nằm ở tính **bất biến mặc định** của Rust: biến khai bá
 <details>
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
-**Lỗi:** `cannot assign twice to immutable variable `diem_so`` — không được gán lại biến bất biến.
+**Lỗi `E0384`:** ``cannot assign twice to immutable variable `score` `` — không được gán lại biến bất biến.
 
-Trong Rust, `let diem_so = 10;` tạo ra một biến **bất biến (immutable)** — đây là *mặc định*, khác hầu hết ngôn ngữ khác. Dòng `diem_so = diem_so + 5;` cố gán lại nên trình biên dịch chặn.
+Trong Rust, `let score = 10;` tạo ra một biến **bất biến (immutable)** — đây là *mặc định*, khác hầu hết ngôn ngữ khác. Dòng `score = score + 5;` cố gán lại nên trình biên dịch chặn.
 
 **Cách sửa 1 — cho phép thay đổi bằng `mut`:**
 ```text
-let mut diem_so = 10;   // mut = biến này sẽ đổi giá trị
-diem_so = diem_so + 5;  // giờ hợp lệ
-println!("Điểm mới: {diem_so}");   // in ra 15
+let mut score = 10;   // mut = biến này sẽ đổi giá trị
+score = score + 5;  // giờ hợp lệ
+println!("Điểm mới: {score}");   // in ra 15
 ```
 
 **Cách sửa 2 — che biến (shadowing), tạo biến mới cùng tên:**
 ```text
-let diem_so = 10;
-let diem_so = diem_so + 5;   // biến MỚI, che biến cũ; không cần mut
-println!("Điểm mới: {diem_so}");   // in ra 15
+let score = 10;
+let score = score + 5;   // biến MỚI, che biến cũ; không cần mut
+println!("Điểm mới: {score}");   // in ra 15
 ```
 
 Khác biệt tinh tế đáng nhớ: cách 1 **sửa cùng một ô nhớ**; cách 2 **tạo ô nhớ mới** che tên cũ đi — nhờ vậy shadowing còn đổi được cả kiểu (ví dụ `let x = "10"; let x = x.len();`), điều mà `mut` không làm được. Việc Rust bắt bất biến làm mặc định là có chủ đích: phần lớn biến trong chương trình đúng đắn *không* cần thay đổi, và nói rõ điều đó giúp bắt lỗi sửa nhầm.

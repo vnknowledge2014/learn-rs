@@ -89,7 +89,9 @@ Tính Sẵn sàng       Tính Chịu Phân Rã
 Mỗi máy chủ (Node) trong cụm Raft luôn nằm ở 1 trong 3 trạng thái:
 1. **Follower (Người phục tùng)**: Trạng thái mặc định ban đầu. Chỉ thụ động lắng nghe yêu cầu từ Leader và Candidate. Định kỳ nhận thông điệp nhịp tim (`Heartbeat / AppendEntries`).
 2. **Candidate (Ứng viên tranh cử)**: Khi không nhận được Heartbeat trong khoảng thời gian **Election Timeout** (ngẫu nhiên từ 150ms đến 300ms), Follower tự nâng cấp mình lên thành Candidate, tăng số thứ tự Nhiệm kỳ (`current_term += 1`), tự bỏ phiếu cho mình và gửi RPC `RequestVote` tới tất cả các nút khác.
-3. **Leader (Trưởng đoàn điều hành)**: Nếu Candidate nhận được đủ số phiếu quá bán ($N/2 + 1$), nó chính thức trở thành Leader. Leader bắt đầu gửi Heartbeat định kỳ để duy trì quyền lực và tiếp nhận mọi yêu cầu ghi từ Client.
+3. **Leader (Trưởng đoàn điều hành)**: Nếu Candidate nhận được đủ số phiếu quá bán ($\lfloor N/2 \rfloor + 1$, tính cả phiếu tự bầu), nó chính thức trở thành Leader. Leader bắt đầu gửi Heartbeat định kỳ để duy trì quyền lực và tiếp nhận mọi yêu cầu ghi từ Client.
+
+**Hạn chế bầu cử (Election Restriction)**: một nút chỉ bỏ phiếu cho ứng viên có nhật ký *mới ít nhất bằng* nhật ký của chính nó — so term của bản ghi cuối trước, nếu bằng thì so độ dài. Vì một bản ghi đã cam kết nằm trên đa số, và ứng viên cũng cần phiếu của đa số, hai đa số này luôn giao nhau ở ít nhất một nút — nút đó sẽ từ chối mọi ứng viên thiếu bản ghi. Nhờ vậy, Leader mới **luôn chứa mọi bản ghi đã cam kết**. Thiếu luật này, một nút tụt hậu có thể đắc cử rồi ghi đè mất dữ liệu đã cam kết.
 
 ### 3. Quy trình Sao chép Sổ nhật ký (Log Replication)
 
@@ -105,16 +107,18 @@ Client ──► [LEADER (Node 1)] ──(AppendEntries)──► [FOLLOWER (Nod
 1. Client gửi lệnh: `set("account", "1000k")` tới Leader.
 2. Leader ghi lệnh vào cuối cuốn Sổ nhật ký (Log) của mình ở trạng thái Chưa cam kết (Uncommitted).
 3. Leader gửi bản sao lệnh đó tới tất cả các Follower thông qua RPC `AppendEntries`.
-4. Khi đa số các Follower (Quorum) đã ghi nhận bản ghi vào đĩa của họ và phản hồi thành công, Leader chính thức **Cam kết bản ghi (Commit)** và nạp vào máy trạng thái (State Machine).
-5. Leader trả lời Client: *"Ghi dữ liệu thành công!"*. Ở nhịp Heartbeat tiếp theo, Leader thông báo cho các Follower biết chỉ số Commit Index để các Follower cũng cam kết bản ghi vào máy trạng thái của họ. Dữ liệu trên toàn cụm đạt trạng thái nhất quán tuyệt đối!
+4. Khi bản ghi đã nằm trên đa số **cả cụm** (tính cả chính Leader — với 3 nút, chỉ cần Leader + 1 Follower) và phản hồi thành công, Leader chính thức **Cam kết bản ghi (Commit)** và nạp vào máy trạng thái (State Machine). Hai chi tiết an toàn: Leader cam kết *theo từng chỉ số* (index N chỉ được cam kết khi chính N đã có trên đa số, không phải "cả nhật ký"), và **chỉ đếm bản sao để cam kết bản ghi thuộc term hiện tại** — bản ghi của term cũ được cam kết gián tiếp khi một bản ghi phía sau thuộc term hiện tại được cam kết (Hình 8 trong bài báo Raft cho thấy vì sao đếm bản sao cho bản ghi term cũ có thể làm mất dữ liệu).
+5. Leader trả lời Client: *"Ghi dữ liệu thành công!"*. Ở nhịp Heartbeat tiếp theo, Leader thông báo cho các Follower biết chỉ số Commit Index để các Follower cũng cam kết bản ghi vào máy trạng thái của họ. Các nút còn sống dần hội tụ về cùng một chuỗi lệnh đã cam kết.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Động cơ Đồng thuận Raft thu nhỏ (Educational Raft Consensus Simulation)**: Mô phỏng đầy đủ 3 vai trò (Follower, Candidate, Leader), cơ chế tính toán nhiệm kỳ (Term), quy tắc bầu cử đạt ngưỡng quá bán Quorum ($N/2 + 1$), và tiến trình sao chép sổ nhật ký an toàn:
+Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Động cơ Đồng thuận Raft thu nhỏ (Educational Raft Consensus Simulation)**: Mô phỏng 3 vai trò (Follower, Candidate, Leader), cơ chế tính toán nhiệm kỳ (Term), quy tắc bầu cử đạt ngưỡng quá bán Quorum ($\lfloor N/2 \rfloor + 1$) kèm hạn chế bầu cử, RPC `AppendEntries` chỉ cắt nhật ký khi có xung đột, và luật cam kết theo từng chỉ số chỉ cho bản ghi của term hiện tại. Mạng được mô phỏng bằng lời gọi hàm trực tiếp, không có luồng hay đồng hồ thật:
 
 ```rust
+use std::collections::HashMap;
+
 /// Ba vai trò khả dĩ của một nút trong cụm đồng thuận Raft
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RaftRole {
@@ -123,7 +127,7 @@ pub enum RaftRole {
     Leader,
 }
 
-/// Một bản ghi nhật ký deliver dịch trong sổ cái Raft
+/// Một bản ghi nhật ký giao dịch trong sổ cái Raft (index bắt đầu từ 1)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogEntry {
     pub term: u64,
@@ -140,6 +144,13 @@ pub struct RaftNode {
     pub log: Vec<LogEntry>,
     pub commit_index: u64,
     pub votes_received: usize,
+    /// (Chỉ Leader dùng) chỉ số bản ghi cao nhất đã biết là khớp trên từng Follower
+    pub match_index: HashMap<u64, u64>,
+}
+
+/// Ngưỡng quá bán của CẢ CỤM (tính cả Leader): floor(N/2) + 1
+pub fn quorum(total_nodes: usize) -> usize {
+    total_nodes / 2 + 1
 }
 
 impl RaftNode {
@@ -152,6 +163,24 @@ impl RaftNode {
             log: Vec::new(),
             commit_index: 0,
             votes_received: 0,
+            match_index: HashMap::new(),
+        }
+    }
+
+    pub fn last_log_index(&self) -> u64 {
+        self.log.len() as u64
+    }
+
+    pub fn last_log_term(&self) -> u64 {
+        self.log.last().map_or(0, |e| e.term)
+    }
+
+    /// Term của bản ghi tại `index` (index 0 = "trước bản ghi đầu tiên", term 0)
+    fn term_at(&self, index: u64) -> Option<u64> {
+        if index == 0 {
+            Some(0)
+        } else {
+            self.log.get(index as usize - 1).map(|e| e.term)
         }
     }
 
@@ -167,15 +196,30 @@ impl RaftNode {
             self.node_id, self.current_term
         );
 
-        // Tính toán ngưỡng quá bán Quorum: (N / 2) + 1
-        let quorum = (total_cluster_nodes / 2) + 1;
-        if self.votes_received >= quorum {
-            self.role = RaftRole::Leader;
-            println!(
-                "    [Node {}] Nhận đủ {}/{} phiếu quá bán: ĐẮC CỬ LÀM LEADER!",
-                self.node_id, self.votes_received, total_cluster_nodes
-            );
+        // Cụm 1 nút: phiếu của chính mình đã đủ quá bán
+        if self.votes_received >= quorum(total_cluster_nodes) {
+            self.become_leader();
         }
+    }
+
+    /// Ứng viên nhận thêm một phiếu; đủ quá bán thì đắc cử
+    pub fn receive_vote(&mut self, granted: bool, total_cluster_nodes: usize) {
+        if self.role != RaftRole::Candidate || !granted {
+            return;
+        }
+        self.votes_received += 1;
+        if self.votes_received >= quorum(total_cluster_nodes) {
+            println!(
+                "    [Node {}] Nhận đủ {}/{} phiếu quá bán: ĐẮC CỬ LÀM LEADER của Term {}!",
+                self.node_id, self.votes_received, total_cluster_nodes, self.current_term
+            );
+            self.become_leader();
+        }
+    }
+
+    fn become_leader(&mut self) {
+        self.role = RaftRole::Leader;
+        self.match_index.clear();
     }
 
     /// Xử lý yêu cầu xin phiếu bầu từ một ứng viên khác (RequestVote RPC)
@@ -183,6 +227,8 @@ impl RaftNode {
         &mut self,
         candidate_id: u64,
         candidate_term: u64,
+        candidate_last_log_index: u64,
+        candidate_last_log_term: u64,
     ) -> bool {
         // 1. Nếu nhiệm kỳ của ứng viên thấp hơn nhiệm kỳ hiện tại: Từ chối ngay
         if candidate_term < self.current_term {
@@ -200,7 +246,20 @@ impl RaftNode {
             self.voted_for = None;
         }
 
-        // 3. Nếu chưa bỏ phiếu cho ai trong nhiệm kỳ này: Đồng ý bỏ phiếu!
+        // 3. HẠN CHẾ BẦU CỬ (Election Restriction): chỉ bầu cho ứng viên có nhật ký
+        //    "mới ít nhất bằng" của mình — so term bản ghi cuối trước, rồi tới độ dài.
+        //    Nhờ vậy Leader mới luôn chứa mọi bản ghi đã được cam kết.
+        let candidate_up_to_date = (candidate_last_log_term, candidate_last_log_index)
+            >= (self.last_log_term(), self.last_log_index());
+        if !candidate_up_to_date {
+            println!(
+                "    [Node {}] Từ chối bầu cho Node {}: nhật ký của ứng viên cũ hơn (term cuối {}, index cuối {})",
+                self.node_id, candidate_id, candidate_last_log_term, candidate_last_log_index
+            );
+            return false;
+        }
+
+        // 4. Nếu chưa bỏ phiếu cho ai trong nhiệm kỳ này: Đồng ý bỏ phiếu!
         if self.voted_for.is_none() || self.voted_for == Some(candidate_id) {
             self.voted_for = Some(candidate_id);
             println!(
@@ -219,7 +278,7 @@ impl RaftNode {
             return Err("Nút này không phải Leader: Từ chối tiếp nhận lệnh ghi!");
         }
 
-        let new_index = (self.log.len() as u64) + 1;
+        let new_index = self.last_log_index() + 1;
         let entry = LogEntry {
             term: self.current_term,
             index: new_index,
@@ -235,22 +294,89 @@ impl RaftNode {
         Ok(new_index)
     }
 
-    /// Kiểm tra và xác nhận cam kết bản ghi khi đủ số nút sao chép (Quorum Commit)
-    pub fn check_and_commit(&mut self, successful_replications: usize, total_nodes: usize) {
-        let quorum = (total_nodes / 2) + 1;
-        if successful_replications >= quorum {
-            self.commit_index = self.log.len() as u64;
-            println!(
-                "    [Leader Node {}] Đạt Quorum ({}/{} nút): CAM KẾT LOG INDEX #{} VÀO MÁY TRẠNG THÁI!",
-                self.node_id, successful_replications, total_nodes, self.commit_index
-            );
+    /// Follower xử lý AppendEntries RPC. Trả `true` nếu nhận thành công.
+    pub fn handle_append_entries(
+        &mut self,
+        leader_term: u64,
+        prev_log_index: u64,
+        prev_log_term: u64,
+        entries: &[LogEntry],
+        leader_commit: u64,
+    ) -> bool {
+        if leader_term < self.current_term {
+            return false; // Leader cũ đã bị lật đổ
+        }
+        if leader_term > self.current_term {
+            // Sang term mới: lá phiếu của term cũ hết hiệu lực. Không xoá thì nút có thể
+            // từ chối nhầm ứng viên hợp lệ ở term mới (hại tính sống, dù vẫn an toàn).
+            self.current_term = leader_term;
+            self.voted_for = None;
+        }
+        self.role = RaftRole::Follower;
+
+        // Kiểm tra tính nhất quán: phải có bản ghi prev_log_index với đúng term
+        if self.term_at(prev_log_index) != Some(prev_log_term) {
+            return false; // Leader sẽ lùi prev_log_index và thử lại
+        }
+
+        // CHỈ cắt nhật ký khi gặp XUNG ĐỘT (cùng index, khác term). Bản ghi đã có và
+        // khớp thì bỏ qua — nếu cắt vô điều kiện, một AppendEntries cũ/đến trễ sẽ xóa
+        // mất các bản ghi phía sau, kể cả bản ghi đã được cam kết.
+        for entry in entries {
+            match self.term_at(entry.index) {
+                Some(term) if term == entry.term => continue,
+                Some(_) => {
+                    self.log.truncate(entry.index as usize - 1);
+                    self.log.push(entry.clone());
+                }
+                None => self.log.push(entry.clone()),
+            }
+        }
+
+        // Cập nhật commit_index theo Leader (không vượt quá bản ghi mới nhất vừa nhận)
+        let last_new_index = prev_log_index + entries.len() as u64;
+        if leader_commit > self.commit_index {
+            self.commit_index = leader_commit.min(last_new_index);
+        }
+        true
+    }
+
+    /// Leader ghi nhận một Follower đã khớp nhật ký tới `match_index`
+    pub fn record_replication(&mut self, follower_id: u64, match_index: u64) {
+        let current = self.match_index.entry(follower_id).or_insert(0);
+        *current = (*current).max(match_index);
+    }
+
+    /// Leader nâng commit_index tới chỉ số N CAO NHẤT thỏa:
+    ///   (a) N đã nằm trên đa số CẢ CỤM (tính cả Leader), và
+    ///   (b) bản ghi N thuộc term HIỆN TẠI của Leader.
+    /// Bản ghi của term cũ không được cam kết bằng cách đếm bản sao (xem Hình 8 trong
+    /// bài báo Raft); chúng được cam kết gián tiếp khi một bản ghi phía sau thuộc term
+    /// hiện tại được cam kết.
+    pub fn advance_commit_index(&mut self, total_nodes: usize) {
+        if self.role != RaftRole::Leader {
+            return;
+        }
+        for n in (self.commit_index + 1..=self.last_log_index()).rev() {
+            if self.term_at(n) != Some(self.current_term) {
+                continue;
+            }
+            let replicas = 1 + self.match_index.values().filter(|&&m| m >= n).count();
+            if replicas >= quorum(total_nodes) {
+                self.commit_index = n;
+                println!(
+                    "    [Leader Node {}] Index #{} có trên {}/{} nút: CAM KẾT tới index #{}!",
+                    self.node_id, n, replicas, total_nodes, n
+                );
+                return;
+            }
         }
     }
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   DONG THUAN PHAN TAN RAFT & CAP THEOREM SIMULATION TRONG RUST   ");
+    println!("   ĐỒNG THUẬN PHÂN TÁN RAFT & CAP THEOREM SIMULATION TRONG RUST   ");
     println!("==================================================================");
 
     // 1. Khởi tạo một cụm gồm 3 nút mạng phân tán (Node 1, Node 2, Node 3)
@@ -259,51 +385,172 @@ fn main() {
     let mut node2 = RaftNode::new(2);
     let mut node3 = RaftNode::new(3);
 
-    println!("\n[1] Khoi tao cum 3 nut mang (Tat ca deu la Follower ban dau):");
-    println!("    - Node 1 Role: {:?} | Term: {}", node1.role, node1.current_term);
-    println!("    - Node 2 Role: {:?} | Term: {}", node2.role, node2.current_term);
-    println!("    - Node 3 Role: {:?} | Term: {}", node3.role, node3.current_term);
-
-    // 2. Mô phỏng Node 1 bị hết hạn chờ (Election Timeout) và phát động tranh cử
-    println!("\n[2] Node 1 bi Timeout va khoi dong tranh cu lanh dao (Election):");
-    node1.handle_election_timeout(total_nodes);
-
-    // Node 1 gửi RequestVote tới Node 2 và Node 3
-    let vote_from_2 = node2.handle_request_vote(node1.node_id, node1.current_term);
-    let vote_from_3 = node3.handle_request_vote(node1.node_id, node1.current_term);
-
-    if vote_from_2 {
-        node1.votes_received += 1;
-    }
-    if vote_from_3 {
-        node1.votes_received += 1;
-    }
-
-    let quorum = (total_nodes / 2) + 1;
-    if node1.votes_received >= quorum {
-        node1.role = RaftRole::Leader;
+    println!("\n[1] Khởi tạo cụm 3 nút mạng (Tất cả đều là Follower ban đầu):");
+    for node in [&node1, &node2, &node3] {
         println!(
-            "\n    [+] Chuc mung Node 1 da tro thanh LEADER hop phap cua Term {} voi {}/{} phieu!",
-            node1.current_term, node1.votes_received, total_nodes
+            "    - Node {} Role: {:?} | Term: {}",
+            node.node_id, node.role, node.current_term
         );
     }
+
+    // 2. Mô phỏng Node 1 bị hết hạn chờ (Election Timeout) và phát động tranh cử
+    println!("\n[2] Node 1 bị Timeout và khởi động tranh cử lãnh đạo (Election):");
+    node1.handle_election_timeout(total_nodes);
+    let (term, last_idx, last_term) = (
+        node1.current_term,
+        node1.last_log_index(),
+        node1.last_log_term(),
+    );
+    let vote_from_2 = node2.handle_request_vote(1, term, last_idx, last_term);
+    node1.receive_vote(vote_from_2, total_nodes);
+    let vote_from_3 = node3.handle_request_vote(1, term, last_idx, last_term);
+    node1.receive_vote(vote_from_3, total_nodes); // đã là Leader: phiếu thừa bị bỏ qua
     assert_eq!(node1.role, RaftRole::Leader);
 
-    // 3. Mô phỏng Client gửi lệnh ghi dữ liệu tới Leader
-    println!("\n[3] Mo phong Client gui deliver dich 'CHUYEN_TIEN_100K' toi Leader:");
-    let log_idx = node1.append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K").unwrap();
+    // 3. Client gửi lệnh ghi; Leader sao chép sang Node 2 (Node 3 tạm mất mạng)
+    println!("\n[3] Client gửi giao dịch 'CHUYEN_TIEN_ALICE_TO_BOB_100K' tới Leader:");
+    let log_idx = node1
+        .append_client_command("CHUYEN_TIEN_ALICE_TO_BOB_100K")
+        .unwrap();
+    let entry = node1.log[log_idx as usize - 1].clone();
+    println!("    - Leader Node 1 gửi AppendEntries sang Node 2 (Node 3 mất kết nối)...");
+    let ok = node2.handle_append_entries(node1.current_term, 0, 0, &[entry], node1.commit_index);
+    if ok {
+        node1.record_replication(2, log_idx);
+    }
 
-    // Leader sao chép sang Node 2 thành công
-    println!("    - Leader Node 1 sao chep ban ghi sang Node 2...");
-    let replication_success_count = 2; // Node 1 (chính nó) + Node 2 đồng ý
-
-    // Leader kiểm tra Quorum để quyết định Commit
-    node1.check_and_commit(replication_success_count, total_nodes);
+    // Leader kiểm tra Quorum để quyết định Commit (Node 1 + Node 2 = 2/3)
+    node1.advance_commit_index(total_nodes);
     assert_eq!(node1.commit_index, log_idx);
 
+    // 4. Node 3 (nhật ký rỗng, tụt hậu) hết hạn chờ và đòi làm Leader của Term 2
+    println!("\n[4] Node 3 (nhật ký rỗng) tranh cử — Hạn chế bầu cử phải chặn nó:");
+    node3.handle_election_timeout(total_nodes);
+    let vote = node2.handle_request_vote(
+        3,
+        node3.current_term,
+        node3.last_log_index(),
+        node3.last_log_term(),
+    );
+    assert!(
+        !vote,
+        "Node 2 giữ bản ghi đã cam kết, không được bầu cho Node 3"
+    );
+    println!("    => Node 3 không thể đắc cử, bản ghi đã cam kết không bị mất.");
+
     println!("\n==================================================================");
-    println!("   XAC NHAN: THUAT TOAN RAFT HOAT DONG DUNG QUY CHUAN DONG THUAN! ");
+    println!("   XÁC NHẬN: BẦU CỬ, SAO CHÉP VÀ CAM KẾT ĐÚNG QUY TẮC AN TOÀN RAFT ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(term: u64, index: u64) -> LogEntry {
+        LogEntry {
+            term,
+            index,
+            command: format!("cmd{index}"),
+        }
+    }
+
+    fn leader_with_log(terms: &[u64], current_term: u64) -> RaftNode {
+        let mut node = RaftNode::new(1);
+        node.log = terms
+            .iter()
+            .enumerate()
+            .map(|(i, &t)| entry(t, i as u64 + 1))
+            .collect();
+        node.current_term = current_term;
+        node.role = RaftRole::Leader;
+        node
+    }
+
+    #[test]
+    fn rejects_candidate_with_stale_log() {
+        let mut voter = RaftNode::new(2);
+        voter.log = vec![entry(1, 1), entry(2, 2)];
+        voter.current_term = 2;
+        // Term ứng viên cao hơn nhưng nhật ký thiếu bản ghi term 2
+        assert!(!voter.handle_request_vote(3, 3, 1, 1));
+        // Nhật ký dài bằng nhưng term cuối thấp hơn cũng bị từ chối
+        assert!(!voter.handle_request_vote(3, 3, 5, 1));
+    }
+
+    #[test]
+    fn heartbeat_from_newer_term_clears_old_vote() {
+        let mut node = RaftNode::new(2);
+        // Term 1: đã bầu cho nút 1
+        assert!(node.handle_request_vote(1, 1, 0, 0));
+        // Leader term 2 (không phải nút ta đã bầu) gửi nhịp tim
+        assert!(node.handle_append_entries(2, 0, 0, &[], 0));
+        // Term 3: nút 3 ứng cử — lá phiếu term 1 không được chặn lá phiếu term 3
+        assert!(node.handle_request_vote(3, 3, 0, 0));
+    }
+
+    #[test]
+    fn grants_vote_to_more_up_to_date_candidate() {
+        let mut voter = RaftNode::new(2);
+        voter.log = vec![entry(1, 1), entry(1, 2), entry(1, 3)];
+        // Ngắn hơn nhưng term cuối cao hơn -> mới hơn
+        assert!(voter.handle_request_vote(3, 4, 2, 2));
+    }
+
+    #[test]
+    fn commits_per_index_not_whole_log() {
+        let mut leader = leader_with_log(&[1, 1, 1], 1);
+        leader.record_replication(2, 1); // Follower 2 mới chỉ có index 1
+        leader.advance_commit_index(3);
+        // Bản cũ đặt commit_index = log.len() = 3 dù index 2, 3 chỉ có trên Leader
+        assert_eq!(leader.commit_index, 1);
+        leader.record_replication(3, 3);
+        leader.advance_commit_index(3);
+        assert_eq!(leader.commit_index, 3);
+    }
+
+    #[test]
+    fn old_term_entry_not_committed_by_counting_replicas() {
+        // Leader term 4 mang bản ghi index 2 từ term 2 (Hình 8 bài báo Raft)
+        let mut leader = leader_with_log(&[1, 2], 4);
+        leader.record_replication(2, 2);
+        leader.advance_commit_index(3);
+        assert_eq!(leader.commit_index, 0, "không được cam kết bản ghi term cũ");
+        // Khi một bản ghi term 4 được sao chép quá bán, mọi thứ trước nó cũng cam kết
+        leader.append_client_command("new").unwrap();
+        leader.record_replication(2, 3);
+        leader.advance_commit_index(3);
+        assert_eq!(leader.commit_index, 3);
+    }
+
+    #[test]
+    fn stale_append_entries_does_not_truncate_committed_entries() {
+        let mut follower = RaftNode::new(2);
+        let log = vec![entry(1, 1), entry(1, 2), entry(1, 3)];
+        assert!(follower.handle_append_entries(1, 0, 0, &log, 3));
+        assert_eq!(follower.commit_index, 3);
+        // Một AppendEntries cũ đến trễ chỉ chứa bản ghi 1
+        assert!(follower.handle_append_entries(1, 0, 0, &log[..1], 1));
+        assert_eq!(follower.log.len(), 3);
+        assert_eq!(follower.commit_index, 3);
+    }
+
+    #[test]
+    fn conflicting_suffix_is_replaced() {
+        let mut follower = RaftNode::new(2);
+        follower.log = vec![entry(1, 1), entry(2, 2), entry(2, 3)]; // từ Leader cũ term 2
+        follower.current_term = 2;
+        let fresh = [entry(3, 2)];
+        assert!(follower.handle_append_entries(3, 1, 1, &fresh, 0));
+        assert_eq!(follower.log, vec![entry(1, 1), entry(3, 2)]);
+    }
+
+    #[test]
+    fn rejects_when_prev_entry_missing() {
+        let mut follower = RaftNode::new(2);
+        assert!(!follower.handle_append_entries(1, 5, 1, &[entry(1, 6)], 0));
+        assert!(follower.log.is_empty());
+    }
 }
 ```
 
@@ -315,30 +562,40 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0506** | `cannot assign to 'self.current_term' because it is borrowed` | Cố gắng thay đổi trường dữ liệu trong khi đang mượn tham chiếu đọc trường khác trong cùng struct. | Tách nhỏ các phương thức hoặc sao chép giá trị số nguyên (`u64`) ra biến cục bộ độc lập trên Stack. |
-| **E0382** | `use of moved value: 'node1'` | Di chuyển quyền sở hữu (ownership) của nút mạng vào luồng khác mà không dùng con trỏ đếm tham chiếu đa luồng. | Sử dụng con trỏ thông minh (smart pointer) `Arc<Mutex<RaftNode>>` khi chia sẻ một Node qua nhiều luồng mạng. |
-| **E0277** | `the trait 'Clone' is not implemented for 'LogEntry'` | Cố gắng nhân bản danh sách nhật ký `log.clone()` mà struct chưa triển khai trait `Clone`. | Bổ sung derive tự động: `#[derive(Clone, Debug, PartialEq, Eq)]` lên trên định nghĩa `LogEntry`. |
+| **E0506** | `` cannot assign to `node.term` because it is borrowed `` | Cố gắng thay đổi một trường trong khi tham chiếu trả về từ một *phương thức* `&self` vẫn còn sống — phương thức mượn *cả* struct. (Mượn trực tiếp hai trường khác nhau `node.log` và `node.term` thì lại hợp lệ: borrow checker tách được từng trường.) | Sao chép/clone giá trị cần dùng ra biến cục bộ trước, hoặc thu hẹp phạm vi sống của tham chiếu. |
+| **E0382** | `` borrow of moved value: `node1` `` | Di chuyển quyền sở hữu (ownership) của nút mạng vào luồng khác mà không dùng con trỏ đếm tham chiếu đa luồng. | Sử dụng con trỏ thông minh (smart pointer) `Arc<Mutex<RaftNode>>` khi chia sẻ một Node qua nhiều luồng mạng. |
+| **E0599** | `` the method `clone` exists for struct `Vec<LogEntry>`, but its trait bounds were not satisfied `` | Cố gắng nhân bản danh sách nhật ký `log.clone()` mà struct chưa triển khai trait `Clone`. | Bổ sung derive tự động: `#[derive(Clone, Debug, PartialEq, Eq)]` lên trên định nghĩa `LogEntry`. |
 | **E0599** | `no method named 'len' found for struct 'LogEntry'` | Gọi nhầm phương thức `.len()` trên một phần tử đơn lẻ thay vì trên mảng vector `self.log`. | Kiểm tra lại cú pháp: Dùng `self.log.len()` để đếm số lượng bản ghi nhật ký. |
 
-### Ví dụ phân tích lỗi `E0506` khi vừa duyệt mảng log vừa thay đổi term:
+### Ví dụ phân tích lỗi `E0506` khi vừa giữ tham chiếu vào log vừa thay đổi term:
 
 ```rust
-struct ViDuNode {
+struct DemoNode {
     term: u64,
     log: Vec<String>,
 }
 
-// Đoạn mã lỗi minh họa E0506:
-fn update_broken(node: &mut ViDuNode) {
-    // let first_cmd = node.log.first(); // Mượn bất biến node.log
-    // node.term += 1;                   // LỖI E0506: Mượn khả biến node để sửa term!
-    // println!("Lệnh: {:?}", first_cmd);
+impl DemoNode {
+    // Phương thức nhận &self: tham chiếu trả về mượn CẢ node, không chỉ node.log
+    fn first_command(&self) -> Option<&String> {
+        self.log.first()
+    }
 }
 
-// Cách sửa chữa đúng chuẩn: Sao chép dữ liệu hoặc attempt hẹp phạm vi mượn
-fn update_correct(node: &mut ViDuNode) {
-    let first_cmd = node.log.first().cloned(); // Sao chép giá trị ra biến riêng
-    node.term += 1;                            // Sửa term an toàn 100%
+// Đoạn mã lỗi minh họa E0506:
+fn update_broken(node: &mut DemoNode) {
+    // let first_cmd = node.first_command(); // Mượn bất biến CẢ node
+    // node.term += 1;                       // LỖI E0506: cannot assign to `node.term` because it is borrowed
+    // println!("Lệnh: {:?}", first_cmd);
+    //
+    // (Viết `node.log.first()` trực tiếp thì KHÔNG lỗi: mượn node.log và sửa
+    //  node.term là hai trường tách biệt, borrow checker cho phép.)
+}
+
+// Cách sửa chữa đúng chuẩn: Sao chép dữ liệu hoặc thu hẹp phạm vi mượn
+fn update_correct(node: &mut DemoNode) {
+    let first_cmd = node.first_command().cloned(); // Sao chép giá trị ra biến riêng
+    node.term += 1;                                // Tham chiếu đã hết hạn: sửa term an toàn
     println!("Lệnh đã trích xuất: {:?}", first_cmd);
 }
 ```
@@ -349,8 +606,8 @@ fn update_correct(node: &mut ViDuNode) {
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Định lý CAP không thể phá vỡ**: Khi mạng bị phân tách (Partition), hệ thống phân tán bắt buộc phải lựa chọn giữa Tính Nhất quán (CP) hoặc Tính Sẵn sàng (AP).
-2. **Quy tắc Quá bán Quorum**: Bất kỳ quyết định bầu cử hay cam kết dữ liệu nào trong Raft cũng đòi hỏi sự đồng thuận của hơn một nửa số nút ($N/2 + 1$), loại bỏ triệt để xung đột não đôi (Split-Brain).
-3. **Sao chép Sổ nhật ký (Log Replication)**: Dữ liệu chỉ được cam kết chính thức vào máy trạng thái khi đã được ghi nhận trên đa số các nút trong cụm.
+2. **Quy tắc Quá bán Quorum**: Bất kỳ quyết định bầu cử hay cam kết dữ liệu nào trong Raft cũng đòi hỏi sự đồng thuận của hơn một nửa số nút của cả cụm ($\lfloor N/2 \rfloor + 1$), nên mỗi term có tối đa một Leader và phía thiểu số khi chia cắt mạng không thể cam kết gì — ngăn não đôi (Split-Brain). Kết hợp với hạn chế bầu cử, Leader mới luôn giữ mọi bản ghi đã cam kết.
+3. **Sao chép Sổ nhật ký (Log Replication)**: Dữ liệu chỉ được cam kết chính thức vào máy trạng thái khi đã được ghi nhận trên đa số các nút trong cụm (theo từng chỉ số, và chỉ đếm bản sao cho bản ghi của term hiện tại); Follower chỉ cắt nhật ký khi gặp bản ghi xung đột.
 4. **Độ an toàn Nhất quán trong Rust**: Sự phối hợp giữa quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) giúp mô phỏng và vận hành cỗ máy đồng thuận Raft mà không bao giờ gặp lỗi rò rỉ dữ liệu hay xung đột luồng.
 
 ### Bài tập rèn luyện tự giải:
@@ -377,31 +634,31 @@ Quorum = quá bán: với 5 nút cần floor(5/2)+1 = 3 phiếu để bầu Lead
 ```rust
 /// Kiểm một cụm con có đủ quorum để bầu Leader không.
 /// Quorum của cụm n nút = n/2 + 1 (quá bán).
-fn co_du_quorum(so_phieu: usize, tong_cum: usize) -> bool {
-    so_phieu >= tong_cum / 2 + 1
+fn has_quorum(votes: usize, cluster_size: usize) -> bool {
+    votes >= cluster_size / 2 + 1
 }
 
 /// Mô phỏng: cụm 5 nút bị chia thành A (2 nút) và B (3 nút).
 /// Chứng minh chỉ cụm B bầu được Leader.
 #[test]
-fn chong_nao_doi_split_brain() {
-    let tong = 5;
-    let quorum_can = tong / 2 + 1; // = 3
-    assert_eq!(quorum_can, 3);
+fn prevents_split_brain() {
+    let total = 5;
+    let quorum_needed = total / 2 + 1; // = 3
+    assert_eq!(quorum_needed, 3);
 
     // Cụm A: Node 1, 2 -> tối đa 2 phiếu (tự bầu cho nhau).
-    let phieu_cum_a = 2;
-    assert!(!co_du_quorum(phieu_cum_a, tong),
+    let votes_group_a = 2;
+    assert!(!has_quorum(votes_group_a, total),
         "Cụm A chỉ 2 phiếu < 3 -> KHÔNG được bầu Leader");
 
     // Cụm B: Node 3, 4, 5 -> 3 phiếu.
-    let phieu_cum_b = 3;
-    assert!(co_du_quorum(phieu_cum_b, tong),
+    let votes_group_b = 3;
+    assert!(has_quorum(votes_group_b, total),
         "Cụm B đủ 3 phiếu >= 3 -> ĐƯỢC bầu Leader");
 
     // Điểm mấu chốt: hai cụm KHÔNG THỂ cùng đạt quorum.
     // Vì nếu cả hai cùng đủ quá bán thì tổng phiếu > tổng nút — vô lý.
-    assert!(!(co_du_quorum(phieu_cum_a, tong) && co_du_quorum(phieu_cum_b, tong)),
+    assert!(!(has_quorum(votes_group_a, total) && has_quorum(votes_group_b, total)),
         "Không bao giờ có HAI Leader cùng lúc");
 }
 ```
@@ -422,48 +679,76 @@ Leader so nhật ký của mình với follower, lùi dần tìm điểm bắt �
 #[derive(Clone, PartialEq, Debug)]
 pub struct LogEntry { pub term: u64, pub command: String }
 
-/// Leader đồng bộ nhật ký cho một follower bị tụt lại.
-/// Trả về các bản ghi follower CÒN THIẾU (từ điểm khớp cuối trở đi).
-pub fn sync_follower_log(leader_log: &[LogEntry], follower_log: &[LogEntry]) -> Vec<LogEntry> {
-    // Tìm điểm khớp cuối cùng: quét tới khi hai nhật ký bắt đầu lệch.
+/// Leader tìm điểm khớp cuối với follower (log matching: hai nhật ký có bản ghi
+/// cùng index và cùng term thì giống hệt nhau từ đầu tới đó) và trả về
+/// (prev_index, các bản ghi cần gửi từ prev_index + 1 trở đi).
+/// Raft thật lùi `next_index` từng bước qua các lần AppendEntries bị từ chối;
+/// ở đây quét trực tiếp cho gọn.
+pub fn sync_follower_log(leader_log: &[LogEntry], follower_log: &[LogEntry]) -> (usize, Vec<LogEntry>) {
     let mut match_len = 0;
     while match_len < leader_log.len()
         && match_len < follower_log.len()
-        && leader_log[match_len] == follower_log[match_len]
+        && leader_log[match_len].term == follower_log[match_len].term
     {
         match_len += 1;
     }
-    // Mọi bản ghi của Leader từ điểm lệch trở đi là phần cần gửi bù.
-    leader_log[match_len..].to_vec()
+    (match_len, leader_log[match_len..].to_vec())
 }
 
-/// Follower áp bản vá: cắt phần lệch của mình, nối phần Leader gửi.
-pub fn apply_sync(follower_log: &mut Vec<LogEntry>, tu_vi_tri: usize, bu: &[LogEntry]) {
-    follower_log.truncate(tu_vi_tri); // bỏ phần lệch (nếu có)
-    follower_log.extend_from_slice(bu);
+/// Follower áp bản vá theo đúng luật AppendEntries: bản ghi đã có và KHỚP term thì
+/// giữ nguyên; chỉ khi gặp XUNG ĐỘT (cùng vị trí, khác term) mới cắt từ đó trở đi.
+/// Không cắt vô điều kiện: nếu bản vá đến trễ (follower đã nhận thêm bản ghi mới hơn,
+/// có thể đã được cam kết), `truncate(prev_index)` mù quáng sẽ xóa mất chúng.
+pub fn apply_sync(follower_log: &mut Vec<LogEntry>, prev_index: usize, entries: &[LogEntry]) {
+    for (offset, entry) in entries.iter().enumerate() {
+        let pos = prev_index + offset;
+        match follower_log.get(pos) {
+            Some(existing) if existing.term == entry.term => continue, // đã có, khớp
+            Some(_) => {
+                follower_log.truncate(pos); // xung đột -> bỏ phần lệch
+                follower_log.push(entry.clone());
+            }
+            None => follower_log.push(entry.clone()),
+        }
+    }
 }
 
 #[test]
-fn dong_bo_follower_bi_tut_lai() {
+fn syncs_lagging_follower() {
     let e = |t, c: &str| LogEntry { term: t, command: c.to_string() };
     // Leader có 5 bản ghi; follower (Node 3) mới có 2 -> thiếu 3 cái cuối.
     let leader = vec![e(1,"a"), e(1,"b"), e(2,"c"), e(2,"d"), e(3,"e")];
     let mut follower = vec![e(1,"a"), e(1,"b")];
 
-    let bu = sync_follower_log(&leader, &follower);
-    assert_eq!(bu.len(), 3); // c, d, e
-    apply_sync(&mut follower, 2, &bu);
+    let (prev, patch) = sync_follower_log(&leader, &follower);
+    assert_eq!((prev, patch.len()), (2, 3)); // c, d, e
+    apply_sync(&mut follower, prev, &patch);
     assert_eq!(follower, leader); // đã nhất quán với Leader
 
     // Follower có bản ghi LỆCH (term sai) phải bị cắt bỏ, không giữ lại.
-    let mut lech = vec![e(1,"a"), e(1,"b"), e(9,"X")]; // "X" ở term 9 là rác cần bỏ
-    let bu2 = sync_follower_log(&leader, &lech);
-    apply_sync(&mut lech, 2, &bu2); // cắt từ vị trí khớp cuối (2)
-    assert_eq!(lech, leader);
+    let mut diverged = vec![e(1,"a"), e(1,"b"), e(9,"X")]; // "X" ở term 9 là rác cần bỏ
+    let (prev2, patch2) = sync_follower_log(&leader, &diverged);
+    apply_sync(&mut diverged, prev2, &patch2);
+    assert_eq!(diverged, leader);
+}
+
+#[test]
+fn late_patch_does_not_drop_newer_entries() {
+    let e = |t, c: &str| LogEntry { term: t, command: c.to_string() };
+    let leader = vec![e(1,"a"), e(1,"b"), e(2,"c")];
+    let mut follower = vec![e(1,"a")];
+    // Bản vá tính lúc follower chỉ có 1 bản ghi: gửi b
+    let (prev, old_patch) = (1, vec![e(1,"b")]);
+    // ...nhưng trước khi nó tới, follower đã nhận đủ (c có thể đã được cam kết)
+    let (p, full) = sync_follower_log(&leader, &follower);
+    apply_sync(&mut follower, p, &full);
+    // Bản vá cũ đến trễ KHÔNG được cắt mất "c"
+    apply_sync(&mut follower, prev, &old_patch);
+    assert_eq!(follower, leader);
 }
 ```
 
-Đây là trái tim của cơ chế **nhất quán nhật ký (log matching)** trong Raft. Nguyên tắc: Leader là **nguồn chân lý duy nhất** — mọi follower phải khớp nhật ký của Leader tới từng bản ghi. Khi một nút sống lại sau sự cố và bị thiếu (hoặc tệ hơn, có bản ghi *lệch* do từng nhận lệnh từ một Leader cũ đã bị lật đổ), Leader **lùi dần tìm điểm khớp cuối cùng**, rồi buộc follower **cắt bỏ mọi thứ sau điểm đó và chép lại từ Leader**. Chi tiết an toàn quan trọng: follower *không* được giữ lại bản ghi lệch của mình (bản ghi `X` ở term 9 trong test) — nó phải bị ghi đè, vì chỉ nhật ký của Leader mới được thừa nhận. Nhờ luật này, sau đồng bộ mọi nút hội tụ về *đúng một* lịch sử thống nhất, dù trước đó chúng phân kỳ thế nào.
+Đây là trái tim của cơ chế **nhất quán nhật ký (log matching)** trong Raft. Nguyên tắc: Leader là **nguồn chân lý duy nhất** — mọi follower phải khớp nhật ký của Leader tới từng bản ghi. Khi một nút sống lại sau sự cố và bị thiếu (hoặc tệ hơn, có bản ghi *lệch* do từng nhận lệnh từ một Leader cũ đã bị lật đổ), Leader **lùi dần tìm điểm khớp cuối cùng**, rồi gửi lại mọi bản ghi từ đó; follower **chỉ cắt bỏ từ bản ghi xung đột đầu tiên** và chép lại từ Leader (bản ghi đã có và khớp term thì giữ nguyên — cắt vô điều kiện sẽ khiến một bản vá đến trễ xóa mất bản ghi mới hơn, kể cả bản ghi đã cam kết; xem test `late_patch_does_not_drop_newer_entries`). Chi tiết an toàn quan trọng: follower *không* được giữ lại bản ghi lệch của mình (bản ghi `X` ở term 9 trong test) — nó phải bị ghi đè, vì chỉ nhật ký của Leader mới được thừa nhận. Nhờ luật này, sau đồng bộ mọi nút hội tụ về *đúng một* lịch sử thống nhất, dù trước đó chúng phân kỳ thế nào.
 </details>
 
 <details>

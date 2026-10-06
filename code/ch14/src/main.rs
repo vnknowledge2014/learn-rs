@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 // Tệp: src/main.rs
 // Chương trình thực chiến: Ghép hàm, Curry hóa và Áp dụng từng phần trong Rust
 
@@ -15,7 +14,7 @@ pub fn compose<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) ->
 }
 
 /// Ghép 3 hàm liên tiếp cho tiện dùng.
-pub fn ghep3<A, B, C, D>(
+pub fn compose3<A, B, C, D>(
     f: impl Fn(A) -> B,
     g: impl Fn(B) -> C,
     h: impl Fn(C) -> D,
@@ -24,13 +23,13 @@ pub fn ghep3<A, B, C, D>(
 }
 
 /// Bộ kết hợp `identity`: phần tử đơn vị của phép ghép hàm.
-pub fn closest<T>(x: T) -> T {
+pub fn identity<T>(x: T) -> T {
     x
 }
 
 /// Bộ kết hợp `const`: nuốt tham số, luôn trả về giá trị đã khóa sẵn.
-pub fn queue_num<A: Clone, B>(value: A) -> impl Fn(B) -> A {
-    move |_bo_qua| value.clone()
+pub fn constant<A: Clone, B>(value: A) -> impl Fn(B) -> A {
+    move |_ignored| value.clone()
 }
 
 /// Bộ kết hợp `flip`: đảo thứ tự hai tham số của một hàm.
@@ -43,21 +42,21 @@ pub fn flip_args<A, B, C>(f: impl Fn(A, B) -> C) -> impl Fn(B, A) -> C {
 // ============================================================================
 
 /// Cắt bỏ khoảng trắng thừa ở hai đầu.
-pub fn cut_range_state(s: &str) -> String {
+pub fn trim_whitespace(s: &str) -> String {
     s.trim().to_string()
 }
 
 /// Thu gọn nhiều khoảng trắng liên tiếp thành một khoảng trắng duy nhất.
-pub fn reduce_range(s: String) -> String {
+pub fn collapse_whitespace(s: String) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
 /// Viết hoa chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
 pub fn capitalize_first(s: String) -> String {
-    let mut all_ky_from = s.chars();
-    match all_ky_from.next() {
+    let mut chars = s.chars();
+    match chars.next() {
         None => String::new(),
-        Some(first) => first.to_uppercase().collect::<String>() + all_ky_from.as_str(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
 
@@ -66,35 +65,57 @@ pub fn capitalize_first(s: String) -> String {
 // ============================================================================
 
 /// Dạng thông thường: nhận đủ 2 tham số cùng lúc.
-pub fn cat_bot(gioi_han: usize, s: &str) -> String {
-    if s.chars().count() <= gioi_han {
+pub fn truncate(limit: usize, s: &str) -> String {
+    if s.chars().count() <= limit {
         s.to_string()
     } else {
-        let header: String = s.chars().take(gioi_han).collect();
+        let header: String = s.chars().take(limit).collect();
         format!("{}…", header)
     }
 }
 
-/// Dạng đã curry hóa: khóa trước `gioi_han`, sinh ra một hàm chuyên dụng.
-pub fn cat_bot_curry(gioi_han: usize) -> impl Fn(&str) -> String {
-    move |s: &str| cat_bot(gioi_han, s)
+/// Dạng đã curry hóa: khóa trước `limit`, sinh ra một hàm chuyên dụng.
+pub fn truncate_curried(limit: usize) -> impl Fn(&str) -> String {
+    move |s: &str| truncate(limit, s)
 }
 
 /// Nhà máy sinh bộ lọc từ cấm: khóa sẵn danh sách từ, trả về một vị từ (predicate).
-pub fn make_ban_filter(tu_cam: Vec<String>) -> impl Fn(&str) -> bool {
-    move |van_ban: &str| {
-        let lowercase = van_ban.to_lowercase();
-        !tu_cam.iter().any(|tu| lowercase.contains(tu.as_str()))
+pub fn make_ban_filter(banned_words: Vec<String>) -> impl Fn(&str) -> bool {
+    move |text: &str| {
+        let lowercase = text.to_lowercase();
+        !banned_words
+            .iter()
+            .any(|word| lowercase.contains(word.as_str()))
     }
 }
 
+/// Hạ một ký tự về chữ thường (với tiếng Việt, mỗi chữ hoa ứng đúng một chữ thường).
+fn lower_char(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
 /// Nhà máy sinh bộ che từ cấm bằng dấu sao.
-pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
-    move |van_ban: String| {
-        tu_cam.iter().fold(van_ban, |ket_qua, tu| {
-            let che = "*".repeat(tu.chars().count());
-            ket_qua.replace(tu.as_str(), che.as_str())
-        })
+/// Không phân biệt hoa/thường — khớp với `make_ban_filter`, để "SPAM" cũng bị che.
+pub fn make_censor(banned_words: Vec<String>) -> impl Fn(String) -> String {
+    // Chuẩn bị MỘT LẦN lúc tạo bộ che: mỗi từ cấm thành dãy ký tự chữ thường.
+    let banned: Vec<Vec<char>> = banned_words
+        .iter()
+        .map(|word| word.chars().map(lower_char).collect())
+        .filter(|word: &Vec<char>| !word.is_empty())
+        .collect();
+    move |text: String| {
+        let original: Vec<char> = text.chars().collect();
+        // So khớp trên bản chữ thường, nhưng che trên bản gốc (cùng chỉ số ký tự).
+        let lower: Vec<char> = original.iter().copied().map(lower_char).collect();
+        let mut masked = original;
+        for word in &banned {
+            for start in 0..lower.len() {
+                if lower[start..].starts_with(word) {
+                    masked[start..start + word.len()].fill('*');
+                }
+            }
+        }
+        masked.into_iter().collect()
     }
 }
 
@@ -104,37 +125,37 @@ pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
 
 /// Bản ghi nhật ký kiểm duyệt (thay cho việc ghi ra tệp thật).
 #[derive(Debug, Clone, PartialEq)]
-pub struct SellRecordLog {
-    pub ma_binh_luan: u32,
-    pub ket_luan: String,
+pub struct LogRecord {
+    pub comment_id: u32,
+    pub verdict: String,
 }
 
 /// "Phụ thuộc" ở đây là hàm ghi nhật ký. Ta KHÓA nó vào trong bộ kiểm duyệt
 /// bằng áp dụng từng phần, thay vì để bộ kiểm duyệt tự đi tìm.
-/// `ghi_nhat_ky` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
+/// `log` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
 pub fn make_validator<L>(
     check_clean: impl Fn(&str) -> bool,
     sanitize: impl Fn(String) -> String,
-    mut ghi_nhat_ky: L,
+    mut log: L,
 ) -> impl FnMut(u32, &str) -> String
 where
-    L: FnMut(SellRecordLog),
+    L: FnMut(LogRecord),
 {
-    move |id: u32, tho: &str| {
-        let standard = cut_range_state(tho);
+    move |id: u32, raw: &str| {
+        let trimmed = trim_whitespace(raw);
         // Kiểm tra TRƯỚC khi che — nếu che trước thì từ cấm biến mất
         // và bộ kiểm tra sẽ luôn báo "hợp lệ". Thứ tự các bước rất quan trọng!
-        let ket_luan = if check_clean(&standard) {
+        let verdict = if check_clean(&trimmed) {
             "HỢP LỆ"
         } else {
             "CHỨA TỪ CẤM — ĐÃ CHE"
         };
-        let da_lam_sach = sanitize(standard);
-        ghi_nhat_ky(SellRecordLog {
-            ma_binh_luan: id,
-            ket_luan: ket_luan.to_string(),
+        let cleaned = sanitize(trimmed);
+        log(LogRecord {
+            comment_id: id,
+            verdict: verdict.to_string(),
         });
-        da_lam_sach
+        cleaned
     }
 }
 
@@ -150,27 +171,33 @@ fn main() {
     // ------------------------------------------------------------------
     // 1. LẮP REN ỐNG NƯỚC: ghép 3 hàm nhỏ thành 1 đường ống chuẩn hóa
     // ------------------------------------------------------------------
-    let normalize = ghep3(cut_range_state, reduce_range, capitalize_first);
+    let normalize = compose3(trim_whitespace, collapse_whitespace, capitalize_first);
 
-    let tho = "   xin    chào     các bạn  ";
+    let raw = "   xin    chào     các bạn  ";
     println!("\n1. GHÉP HÀM (Composition)");
-    println!("   Đầu vào thô  : {:?}", tho);
-    println!("   Sau đường ống: {:?}", normalize(tho));
+    println!("   Đầu vào thô  : {:?}", raw);
+    println!("   Sau đường ống: {:?}", normalize(raw));
 
     // ------------------------------------------------------------------
     // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
     // ------------------------------------------------------------------
-    let cach_a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-    let cach_b = compose(cut_range_state, compose(reduce_range, capitalize_first));
-    assert_eq!(cach_a(tho), cach_b(tho));
+    let way_a = compose(
+        compose(trim_whitespace, collapse_whitespace),
+        capitalize_first,
+    );
+    let way_b = compose(
+        trim_whitespace,
+        compose(collapse_whitespace, capitalize_first),
+    );
+    assert_eq!(way_a(raw), way_b(raw));
     println!("\n2. LUẬT KẾT HỢP");
-    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", cach_a(tho));
+    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", way_a(raw));
 
     // ------------------------------------------------------------------
     // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
     // ------------------------------------------------------------------
-    let with_don_pos = compose(closest::<&str>, &normalize);
-    assert_eq!(with_don_pos(tho), normalize(tho));
+    let with_identity = compose(identity::<&str>, &normalize);
+    assert_eq!(with_identity(raw), normalize(raw));
     println!("\n3. LUẬT ĐƠN VỊ");
     println!("   identity ∘ f == f  ✓ (kết quả không đổi)");
 
@@ -178,63 +205,73 @@ fn main() {
     // 4. CURRY HÓA: một hàm gốc sinh ra nhiều hàm chuyên dụng
     // ------------------------------------------------------------------
     println!("\n4. CURRY HÓA & ÁP DỤNG TỪNG PHẦN");
-    let truncate = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
-    let cut_long = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
+    let truncate_10 = truncate_curried(10); // Máy đã khóa núm "10 ký tự"
+    let truncate_25 = truncate_curried(25); // Máy đã khóa núm "25 ký tự"
 
-    let cau = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
-    println!("   Bản gốc   : {}", cau);
-    println!("   Cắt còn 10: {}", truncate(cau));
-    println!("   Cắt còn 25: {}", cut_long(cau));
+    let sentence = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
+    println!("   Bản gốc   : {}", sentence);
+    println!("   Cắt còn 10: {}", truncate_10(sentence));
+    println!("   Cắt còn 25: {}", truncate_25(sentence));
 
     // ------------------------------------------------------------------
     // 5. NHÀ MÁY SINH HÀM: cùng một danh sách từ cấm, hai công cụ khác nhau
     // ------------------------------------------------------------------
-    let tu_cam: Vec<String> = vec!["lừa đảo".to_string(), "spam".to_string()];
-    let is_clean = make_ban_filter(tu_cam.clone());
-    let che_di = tao_bo_che_tu_cam(tu_cam.clone());
+    let banned_words: Vec<String> = vec!["lừa đảo".to_string(), "spam".to_string()];
+    let is_clean = make_ban_filter(banned_words.clone());
+    let censor = make_censor(banned_words.clone());
 
     println!("\n5. NHÀ MÁY SINH HÀM (Closure Factory)");
-    let binh_luan_ban = "Đây là tin spam lừa đảo";
-    println!("   {:?} có sạch không? {}", binh_luan_ban, is_clean(binh_luan_ban));
-    println!("   Sau khi che: {}", che_di(binh_luan_ban.to_string()));
+    let dirty_comment = "Đây là tin spam lừa đảo";
+    println!(
+        "   {:?} có sạch không? {}",
+        dirty_comment,
+        is_clean(dirty_comment)
+    );
+    println!("   Sau khi che: {}", censor(dirty_comment.to_string()));
 
     // ------------------------------------------------------------------
     // 6. TIÊM PHỤ THUỘC: khóa "bộ ghi nhật ký" vào bộ kiểm duyệt
     // ------------------------------------------------------------------
     println!("\n6. TIÊM PHỤ THUỘC BẰNG ÁP DỤNG TỪNG PHẦN");
-    let mut num_log: Vec<SellRecordLog> = Vec::new();
+    let mut log_book: Vec<LogRecord> = Vec::new();
 
     {
         // Phụ thuộc thật: ghi vào sổ nhật ký trong bộ nhớ.
-        let record_in_num = |sell_record: SellRecordLog| num_log.push(sell_record);
-        let mut validator = make_validator(&is_clean, &che_di, record_in_num);
+        let write_to_log = |record: LogRecord| log_book.push(record);
+        let mut validator = make_validator(&is_clean, &censor, write_to_log);
 
         println!("   #101 -> {}", validator(101, "  Bài viết rất hay!  "));
-        println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
+        println!(
+            "   #102 -> {}",
+            validator(102, "  Cẩn thận kẻo bị lừa đảo  ")
+        );
     }
 
-    println!("   Nhật ký thu được ({} dòng):", num_log.len());
-    for sell_record in &num_log {
-        println!("     - Bình luận #{}: {}", sell_record.ma_binh_luan, sell_record.ket_luan);
+    println!("   Nhật ký thu được ({} dòng):", log_book.len());
+    for record in &log_book {
+        println!(
+            "     - Bình luận #{}: {}",
+            record.comment_id, record.verdict
+        );
     }
 
     // ------------------------------------------------------------------
     // 7. BỘ KẾT HỢP `flip` VÀ `const`
     // ------------------------------------------------------------------
     println!("\n7. BỘ KẾT HỢP flip & const");
-    let chia = |a: f64, b: f64| a / b;
-    let chia_nguoc = flip_args(chia);
-    println!("   chia(10, 2)       = {}", chia(10.0, 2.0));
-    println!("   flip(chia)(10, 2) = {}", chia_nguoc(10.0, 2.0)); // = chia(2, 10)
+    let divide = |a: f64, b: f64| a / b;
+    let divide_flipped = flip_args(divide);
+    println!("   divide(10, 2)       = {}", divide(10.0, 2.0));
+    println!("   flip(divide)(10, 2) = {}", divide_flipped(10.0, 2.0)); // = divide(2, 10)
 
-    let always_return_ve_0 = queue_num::<i32, &str>(0);
-    println!("   const(0)(\"bất kỳ\") = {}", always_return_ve_0("bất kỳ"));
+    let always_zero = constant::<i32, &str>(0);
+    println!("   const(0)(\"bất kỳ\") = {}", always_zero("bất kỳ"));
 
     // ------------------------------------------------------------------
     // 8. `identity` GIÚP LỌC BỎ None — ỨNG DỤNG THỰC TẾ
     // ------------------------------------------------------------------
     let raw_data: Vec<Option<i32>> = vec![Some(1), None, Some(3), None, Some(5)];
-    let clean: Vec<i32> = raw_data.into_iter().flat_map(closest).collect();
+    let clean: Vec<i32> = raw_data.into_iter().flat_map(identity).collect();
     println!("\n8. identity LỌC BỎ None: {:?}", clean);
     assert_eq!(clean, vec![1, 3, 5]);
 
@@ -242,24 +279,25 @@ fn main() {
     // 9. GHÉP HÀM QUY MÔ LỚN: xử lý cả một danh sách bình luận
     // ------------------------------------------------------------------
     println!("\n9. ÁP DỤNG ĐƯỜNG ỐNG LÊN TOÀN BỘ DỮ LIỆU");
-    let binh_luan_tho = vec![
+    let raw_comments = [
         "   rust rất   thú vị  ",
         " cẩn thận trò spam này ",
         "   giáo trình  hay quá   ",
     ];
 
-    let thong_ke: HashMap<bool, usize> = binh_luan_tho
-        .iter()
-        .map(|b| normalize(b))
-        .fold(HashMap::new(), |mut bang, cau| {
-            *bang.entry(is_clean(&cau)).or_insert(0) += 1;
-            bang
-        });
+    let stats: HashMap<bool, usize> =
+        raw_comments
+            .iter()
+            .map(|c| normalize(c))
+            .fold(HashMap::new(), |mut table, sentence| {
+                *table.entry(is_clean(&sentence)).or_insert(0) += 1;
+                table
+            });
 
-    for b in binh_luan_tho.iter() {
-        println!("   {:?} -> {:?}", b, normalize(b));
+    for c in raw_comments.iter() {
+        println!("   {:?} -> {:?}", c, normalize(c));
     }
-    println!("   Thống kê [sạch = true/false]: {:?}", thong_ke);
+    println!("   Thống kê [sạch = true/false]: {:?}", stats);
 
     println!("\n============================================================");
     println!("      HOÀN TẤT: TỪ HÀM NHỎ LẮP THÀNH HỆ THỐNG LỚN          ");
@@ -276,18 +314,24 @@ mod tests {
 
     #[test]
     fn composition_is_associative() {
-        let mau = ["  a   b ", "Xin   chào", "   rust  "];
-        for s in mau {
-            let a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-            let b = compose(cut_range_state, compose(reduce_range, capitalize_first));
+        let samples = ["  a   b ", "Xin   chào", "   rust  "];
+        for s in samples {
+            let a = compose(
+                compose(trim_whitespace, collapse_whitespace),
+                capitalize_first,
+            );
+            let b = compose(
+                trim_whitespace,
+                compose(collapse_whitespace, capitalize_first),
+            );
             assert_eq!(a(s), b(s), "Luật kết hợp bị vi phạm với đầu vào {:?}", s);
         }
     }
 
     #[test]
     fn composition_has_identity() {
-        let f = compose(cut_range_state, capitalize_first);
-        let left = compose(closest::<&str>, &f);
+        let f = compose(trim_whitespace, capitalize_first);
+        let left = compose(identity::<&str>, &f);
         for s in ["  xin chào ", "rust"] {
             assert_eq!(left(s), f(s));
         }
@@ -295,9 +339,9 @@ mod tests {
 
     #[test]
     fn curried_matches_original() {
-        let cat_15 = cat_bot_curry(15);
-        let cau = "Rust là ngôn ngữ tuyệt vời";
-        assert_eq!(cat_15(cau), cat_bot(15, cau));
+        let truncate_15 = truncate_curried(15);
+        let sentence = "Rust là ngôn ngữ tuyệt vời";
+        assert_eq!(truncate_15(sentence), truncate(15, sentence));
     }
 
     #[test]
@@ -305,7 +349,7 @@ mod tests {
         let subtract = |a: i32, b: i32| a - b;
         let flipped_subtract = flip_args(subtract);
         assert_eq!(subtract(10, 3), 7);
-        assert_eq!(flipped_subtract(10, 3), -7); // = tru(3, 10)
+        assert_eq!(flipped_subtract(10, 3), -7); // = subtract(3, 10)
     }
 
     #[test]
@@ -313,5 +357,15 @@ mod tests {
         let filter = make_ban_filter(vec!["spam".to_string()]);
         assert!(filter("bài viết hay"));
         assert!(!filter("đây là SPAM"));
+    }
+
+    #[test]
+    fn censor_is_case_insensitive_like_the_filter() {
+        // Trước đây bộ lọc không phân biệt hoa/thường nhưng bộ che thì có,
+        // nên "SPAM" bị báo là từ cấm mà vẫn không bị che.
+        let censor = make_censor(vec!["spam".to_string(), "lừa đảo".to_string()]);
+        assert_eq!(censor("đây là SPAM".to_string()), "đây là ****");
+        assert_eq!(censor("Lừa Đảo nè".to_string()), "******* nè");
+        assert_eq!(censor("bài viết hay".to_string()), "bài viết hay");
     }
 }

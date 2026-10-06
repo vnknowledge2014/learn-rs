@@ -86,11 +86,11 @@ Rust tích hợp sẵn khung kiểm thử mạnh mẽ ngay trong ngôn ngữ chu
 
 ## Mã nguồn minh họa thực chiến
 
-Dưới đây là một mô-đun Rust hoàn chỉnh, minh họa trọn vẹn quy trình SDD & TDD: Xây dựng một **Động cơ xác thực tài khoản ngân hàng và giao dịch chuyển tiền (BankTransactionValidator)**. Toàn bộ mã nguồn có thể biên dịch và thực thi bằng `rustc --edition=2021`.
+Dưới đây là một mô-đun Rust hoàn chỉnh, minh họa trọn vẹn quy trình SDD & TDD: Xây dựng một **Động cơ xác thực tài khoản ngân hàng và giao dịch chuyển tiền (BankTransactionValidator)**. Toàn bộ mã nguồn có thể biên dịch và thực thi bằng `rustc --edition=2024` (chạy test: `rustc --edition=2024 --test` hoặc `cargo test`).
 
 ```rust
 // ============================================================================
-// CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT & TDD CÙNG AI
+// CHƯƠNG 45: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT & TDD CÙNG AI
 // Tác giả: Kỹ Sư Hệ Thống Rust
 // ============================================================================
 
@@ -108,7 +108,8 @@ pub enum ValidationError {
     InvalidAccountPrefix(String),
     InvalidAccountDigits,
     SameSourceAndDestination,
-    ZeroOrNegativeAmount,
+    // u64 không thể âm — hệ thống kiểu đã loại trừ ca "số tiền âm" giúp ta
+    ZeroAmount,
     AmountExceedsLimit { limit: u64, requested: u64 },
 }
 
@@ -131,15 +132,20 @@ impl BankTransactionValidator {
     // Xác thực định dạng của một số tài khoản theo quy chuẩn
     // Mượn (borrow) tham chiếu lát cắt chuỗi &str để tối ưu hóa hiệu năng, zero-copy
     pub fn validate_account_format(&self, account: &str) -> Result<(), ValidationError> {
-        if account.len() != 10 {
+        // Đếm theo KÝ TỰ (chars), không theo byte: "ệ" chiếm 3 byte UTF-8
+        let char_count = account.chars().count();
+        if char_count != 10 {
             return Err(ValidationError::InvalidAccountLength {
                 expected: 10,
-                actual: account.len(),
+                actual: char_count,
             });
         }
 
         if !account.starts_with("VN") {
-            return Err(ValidationError::InvalidAccountPrefix(account[0..2].to_string()));
+            // KHÔNG dùng `account[0..2]`: cắt chuỗi theo byte sẽ panic nếu byte 2
+            // nằm giữa một ký tự nhiều byte (ca biên "ký tự dị biệt").
+            let prefix: String = account.chars().take(2).collect();
+            return Err(ValidationError::InvalidAccountPrefix(prefix));
         }
 
         // Kiểm tra 8 ký tự phía sau phải là chữ số hợp lệ
@@ -150,7 +156,7 @@ impl BankTransactionValidator {
         Ok(())
     }
 
-    // Xác thực toàn bộ yêu cầu deliver dịch chuyển khoản
+    // Xác thực toàn bộ yêu cầu giao dịch chuyển khoản
     pub fn validate_transfer(&self, req: &TransferRequest) -> Result<(), ValidationError> {
         // 1. Kiểm tra tài khoản nguồn
         self.validate_account_format(&req.from_account)?;
@@ -165,7 +171,7 @@ impl BankTransactionValidator {
 
         // 4. Kiểm tra số tiền
         if req.amount_cents == 0 {
-            return Err(ValidationError::ZeroOrNegativeAmount);
+            return Err(ValidationError::ZeroAmount);
         }
 
         if req.amount_cents > self.max_limit_cents {
@@ -180,7 +186,49 @@ impl BankTransactionValidator {
 }
 
 // ----------------------------------------------------------------------------
-// PHẦN 2: BỘ KIỂM THỬ ĐƠN VỊ TDD DO AI SINH RA TỪ FILE SPEC (RED -> GREEN)
+// PHẦN 2: HÀM MAIN THỰC THI TRỰC TIẾP ĐỂ KIỂM CHỨNG TÍNH NĂNG
+// ----------------------------------------------------------------------------
+fn main() {
+    println!("=== CHƯƠNG 45: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
+
+    // Khởi tạo bộ kiểm định giao dịch với hạn mức 50 triệu xu
+    let validator = BankTransactionValidator::new(50_000_000);
+
+    // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công
+    let req_ok = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN33334444".to_string(),
+        amount_cents: 15_000_000,
+    };
+    match validator.validate_transfer(&req_ok) {
+        Ok(()) => println!(
+            "[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!",
+            req_ok.from_account, req_ok.to_account
+        ),
+        Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
+    }
+
+    // Kịch bản kiểm thử trực tiếp 2: Chuyển khoản trùng tài khoản
+    let req_duplicate = TransferRequest {
+        from_account: "VN11112222".to_string(),
+        to_account: "VN11112222".to_string(),
+        amount_cents: 500_000,
+    };
+    match validator.validate_transfer(&req_duplicate) {
+        Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
+        Err(e) => println!(
+            "[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}",
+            e
+        ),
+    }
+
+    println!(
+        "\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// PHẦN 3: BỘ KIỂM THỬ ĐƠN VỊ TDD DO AI SINH RA TỪ FILE SPEC (RED -> GREEN)
 // ----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -197,11 +245,25 @@ mod tests {
         let validator = BankTransactionValidator::new(50_000_000);
         // Quá ngắn
         let err_short = validator.validate_account_format("VN123").unwrap_err();
-        assert_eq!(err_short, ValidationError::InvalidAccountLength { expected: 10, actual: 5 });
+        assert_eq!(
+            err_short,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 5
+            }
+        );
 
         // Quá dài
-        let err_long = validator.validate_account_format("VN12345678999").unwrap_err();
-        assert_eq!(err_long, ValidationError::InvalidAccountLength { expected: 10, actual: 13 });
+        let err_long = validator
+            .validate_account_format("VN12345678999")
+            .unwrap_err();
+        assert_eq!(
+            err_long,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 13
+            }
+        );
     }
 
     #[test]
@@ -226,7 +288,10 @@ mod tests {
             to_account: "VN12345678".to_string(),
             amount_cents: 1_000_000,
         };
-        assert_eq!(validator.validate_transfer(&req), Err(ValidationError::SameSourceAndDestination));
+        assert_eq!(
+            validator.validate_transfer(&req),
+            Err(ValidationError::SameSourceAndDestination)
+        );
     }
 
     #[test]
@@ -239,7 +304,41 @@ mod tests {
         };
         assert_eq!(
             validator.validate_transfer(&req),
-            Err(ValidationError::AmountExceedsLimit { limit: 10_000_000, requested: 20_000_000 })
+            Err(ValidationError::AmountExceedsLimit {
+                limit: 10_000_000,
+                requested: 20_000_000
+            })
+        );
+    }
+
+    #[test]
+    fn test_account_non_ascii_does_not_panic() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        // 10 ký tự, nhưng ký tự đầu nhiều byte: phiên bản cũ cắt `account[0..2]` và panic
+        let err = validator.validate_account_format("ệN12345678").unwrap_err();
+        assert_eq!(err, ValidationError::InvalidAccountPrefix("ệN".to_string()));
+        // 10 byte nhưng chỉ 4 ký tự -> sai độ dài
+        let err = validator.validate_account_format("ệệệA").unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::InvalidAccountLength {
+                expected: 10,
+                actual: 4
+            }
+        );
+    }
+
+    #[test]
+    fn test_transfer_zero_amount() {
+        let validator = BankTransactionValidator::new(50_000_000);
+        let req = TransferRequest {
+            from_account: "VN12345678".to_string(),
+            to_account: "VN87654321".to_string(),
+            amount_cents: 0,
+        };
+        assert_eq!(
+            validator.validate_transfer(&req),
+            Err(ValidationError::ZeroAmount)
         );
     }
 
@@ -254,40 +353,6 @@ mod tests {
         assert!(validator.validate_transfer(&req).is_ok());
     }
 }
-
-// ----------------------------------------------------------------------------
-// PHẦN 3: HÀM MAIN THỰC THI TRỰC TIẾP ĐỂ KIỂM CHỨNG TÍNH NĂNG
-// ----------------------------------------------------------------------------
-fn main() {
-    println!("=== CHƯƠNG 41: MINH HỌA QUY TRÌNH SPEC-DRIVEN DEVELOPMENT (SDD) ===");
-
-    // Khởi tạo bộ kiểm định deliver dịch với hạn mức 50 triệu xu
-    let validator = BankTransactionValidator::new(50_000_000);
-
-    // Kịch bản kiểm thử trực tiếp 1: Giao dịch thành công
-    let req_ok = TransferRequest {
-        from_account: "VN11112222".to_string(),
-        to_account: "VN33334444".to_string(),
-        amount_cents: 15_000_000,
-    };
-    match validator.validate_transfer(&req_ok) {
-        Ok(()) => println!("[Xác nhận] Giao dịch 15,000,000 xu từ {} sang {} HỢP LỆ!", req_ok.from_account, req_ok.to_account),
-        Err(e) => println!("[Từ chối] Lỗi: {:?}", e),
-    }
-
-    // Kịch bản kiểm thử trực tiếp 2: Chuyển khoản trùng tài khoản
-    let req_duplicate = TransferRequest {
-        from_account: "VN11112222".to_string(),
-        to_account: "VN11112222".to_string(),
-        amount_cents: 500_000,
-    };
-    match validator.validate_transfer(&req_duplicate) {
-        Ok(()) => println!("[Xác nhận] Giao dịch hợp lệ!"),
-        Err(e) => println!("[Đặc tả chặn thành công] Phát hiện lỗi nghiệp vụ mong đợi: {:?}", e),
-    }
-
-    println!("\n[Tổng kết] Tất cả các điều kiện ràng buộc trong file SPEC đều được kiểm chứng chặt chẽ!");
-}
 ```
 
 ---
@@ -298,10 +363,10 @@ Dưới đây là các lỗi biên dịch thường phát sinh trong chu trình 
 
 | Mã lỗi `rustc` | Nguyên nhân gốc rễ trong quá trình TDD | Đoạn mã vi phạm mẫu | Giải pháp sửa chữa chuẩn quy trình |
 | :--- | :--- | :--- | :--- |
-| **`E0277`** | **Trait bound `PartialEq` is not satisfied**<br>AI sử dụng `assert_eq!(a, b)` trong bài test nhưng kiểu dữ liệu tùy biến chưa được dẫn xuất trait so sánh. | ```rust // compile-fail\nstruct Point { x: i32 }\nassert_eq!(Point { x: 1 }, Point { x: 1 });``` | Bổ sung macro dẫn xuất `#[derive(Debug, PartialEq, Eq)]` phía trên định nghĩa cấu trúc dữ liệu. |
+| **`E0369`** + **`E0277`** | **Binary operation `==` cannot be applied / `Point` doesn't implement `Debug`**<br>AI sử dụng `assert_eq!(a, b)` trong bài test nhưng kiểu dữ liệu tùy biến chưa được dẫn xuất trait so sánh (`PartialEq` → E0369) và trait in ấn (`Debug` → E0277). | ```rust // compile-fail\nstruct Point { x: i32 }\nassert_eq!(Point { x: 1 }, Point { x: 1 });``` | Bổ sung macro dẫn xuất `#[derive(Debug, PartialEq, Eq)]` phía trên định nghĩa cấu trúc dữ liệu. |
 | **`E0308`** | **Mismatched types in assertions**<br>Trong bài test, AI so sánh một giá trị kiểu `Result<(), ValidationError>` với một kiểu lỗi chưa bọc trong `Err(...)`. | ```rust // compile-fail\nlet res: Result<(), i32> = Err(404);\nassert_eq!(res, 404);``` | Sửa lại biểu thức so sánh cho khớp kiểu: `assert_eq!(res, Err(404));`. |
 | **`E0433`** | **Failed to resolve: use of undeclared module/crate**<br>AI tự tiện gọi các thư viện kiểm thử nâng cao (như `mockall` hoặc `proptest`) khi dự án chưa khai báo trong `Cargo.toml`. | ```rust // compile-fail\nuse proptest::prelude::*;``` | Yêu cầu AI chỉ sử dụng khung kiểm thử tích hợp chuẩn của Rust (`#[cfg(test)]`, `assert!`) trừ khi bạn cho phép nạp thêm dependency. |
-| **`E0603`** | **Struct/Field is private**<br>AI viết module kiểm thử tách rời nhưng các trường của struct cần kiểm tra không được gắn từ khóa `pub`. | ```rust // compile-fail\nmod inner { pub struct Item { count: u32 } }\nlet it = inner::Item { count: 5 };``` | Thêm từ khóa `pub` trước các trường hoặc cung cấp phương thức khởi tạo công khai `pub fn new(...)`. |
+| **`E0451`** | **Field is private**<br>AI viết module kiểm thử tách rời nhưng các trường của struct cần kiểm tra không được gắn từ khóa `pub`. (Nếu chính *struct* là private thì mới là `E0603`.) | ```rust // compile-fail\nmod inner { pub struct Item { count: u32 } }\nlet it = inner::Item { count: 5 };``` | Thêm từ khóa `pub` trước các trường hoặc cung cấp phương thức khởi tạo công khai `pub fn new(...)`. |
 
 ---
 
@@ -313,7 +378,7 @@ Dưới đây là các lỗi biên dịch thường phát sinh trong chu trình 
    - **Red**: Yêu cầu AI sinh bài test kiểm chứng đặc tả (Test thất bại trước).
    - **Green**: Yêu cầu AI viết logic tối thiểu để vượt qua toàn bộ bài test.
    - **Refactor**: Yêu cầu AI dọn dẹp và tối ưu hóa mã nguồn mà không làm gãy test.
-3. **Rust biến bài test thành công cụ bảo vệ tuyệt đối**: Kết hợp giữa hệ thống kiểm tra kiểu tĩnh của trình biên dịch và bộ unit tests tự động giúp loại bỏ triệt để mọi lỗi hồi quy (Regression Bugs).
+3. **Rust biến bài test thành công cụ bảo vệ vững chắc**: Kết hợp giữa hệ thống kiểm tra kiểu tĩnh của trình biên dịch và bộ unit tests tự động giúp bắt sớm lỗi hồi quy (Regression Bugs) — trong phạm vi mà bộ test thực sự bao phủ.
 4. **Tối ưu hóa hiệu năng bằng tham chiếu mượn (borrow)**: Luôn ưu tiên truyền tham chiếu lát cắt `&str` hoặc `&[u8]` trong các hàm kiểm định để đạt hiệu năng đỉnh cao, hạn chế việc nhân bản bộ nhớ (`.clone()`).
 
 ### Bài tập rèn luyện tư duy
@@ -333,7 +398,7 @@ Dựa trên bản đặc tả mật khẩu ở Bài tập 1, hãy viết một b
 - Mật khẩu hoàn hảo hợp lệ.
 
 **Bài tập 3 (Sửa lỗi thiếu Trait so sánh của AI)**:
-Đoạn mã sau do AI tạo ra bị lỗi biên dịch `E0277` khi chạy lệnh kiểm thử:
+Đoạn mã sau do AI tạo ra bị lỗi biên dịch (`E0369` và `E0277`) khi chạy lệnh kiểm thử:
 ```rust
 struct OrderId(u64);
 
@@ -431,40 +496,40 @@ pub fn validate(pw: &str) -> Result<(), PasswordError> {
 }
 
 #[test]
-fn mat_khau_qua_ngan() {
+fn too_short() {
     assert_eq!(validate("Ab1!"), Err(PasswordError::TooShort));  // 4 ký tự
 }
 #[test]
-fn thieu_chu_hoa() {
+fn missing_uppercase() {
     assert_eq!(validate("abcdef1!"), Err(PasswordError::MissingUppercase));
 }
 #[test]
-fn thieu_chu_so() {
+fn missing_digit() {
     assert_eq!(validate("Abcdefg!"), Err(PasswordError::MissingDigit));
 }
 #[test]
-fn mat_khau_hoan_hao() {
+fn valid_password() {
     assert_eq!(validate("Abcdef1!"), Ok(()));  // đủ dài, đủ 4 loại ký tự
 }
 ```
 
-Điểm cốt lõi của TDD *trước khi viết code*: bốn test này là **đặc tả biến thành mã chạy được**. Chúng được viết ra *trước* (hoặc song song với) phần cài đặt, và mỗi test cô lập đúng một quy tắc — mật khẩu trong `thieu_chu_hoa` đủ mọi thứ *trừ* chữ hoa, nên nếu test đỏ thì bạn biết chính xác quy tắc nào hỏng. Khi giao cho AI viết `validate`, bộ test này là **lưới an toàn**: AI cài xong, bạn chạy test, xanh hết mới tin. Thứ tự kiểm trong hàm cũng có chủ đích — kiểm độ dài trước, vì báo "quá ngắn" hữu ích hơn báo "thiếu ký tự đặc biệt" cho một chuỗi 2 ký tự.
+Điểm cốt lõi của TDD *trước khi viết code*: bốn test này là **đặc tả biến thành mã chạy được**. Chúng được viết ra *trước* (hoặc song song với) phần cài đặt, và mỗi test cô lập đúng một quy tắc — mật khẩu trong `missing_uppercase` đủ mọi thứ *trừ* chữ hoa, nên nếu test đỏ thì bạn biết chính xác quy tắc nào hỏng. Khi giao cho AI viết `validate`, bộ test này là **lưới an toàn**: AI cài xong, bạn chạy test, xanh hết mới tin. Thứ tự kiểm trong hàm cũng có chủ đích — kiểm độ dài trước, vì báo "quá ngắn" hữu ích hơn báo "thiếu ký tự đặc biệt" cho một chuỗi 2 ký tự.
 </details>
 
 <details>
 <summary><b>Bài tập 3 — Gợi ý</b></summary>
 
-E0277 nghĩa là kiểu chưa cài trait mà thao tác đòi hỏi. `assert_eq!` cần so sánh (`PartialEq`) VÀ in ra khi lệch (`Debug`). Thêm `#[derive(...)]` là xong.
+E0369 (toán tử `==` không áp dụng được) và E0277 (thiếu trait) đều nghĩa là kiểu chưa cài trait mà thao tác đòi hỏi. `assert_eq!` cần so sánh (`PartialEq`) VÀ in ra khi lệch (`Debug`). Thêm `#[derive(...)]` là xong.
 </details>
 
 <details>
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
-**Nguyên nhân E0277 (`binary operation == cannot be applied`):** `assert_eq!(id1, id2)` cần làm hai việc với `OrderId`, mỗi việc đòi một trait mà `struct OrderId(u64)` **chưa có**:
+**Nguyên nhân E0369 (`binary operation == cannot be applied`) và E0277 (`OrderId doesn't implement Debug`):** `assert_eq!(id1, id2)` cần làm hai việc với `OrderId`, mỗi việc đòi một trait mà `struct OrderId(u64)` **chưa có**:
 1. **So sánh bằng** `==` -> đòi trait **`PartialEq`**.
 2. **In giá trị ra** khi khẳng định thất bại (để báo "left = ..., right = ...") -> đòi trait **`Debug`**.
 
-Mặc định một struct tự định nghĩa *không* có sẵn hai trait này, nên macro không dùng được -> E0277.
+Mặc định một struct tự định nghĩa *không* có sẵn hai trait này, nên macro không dùng được: thiếu `PartialEq` -> E0369, thiếu `Debug` -> E0277.
 
 **Cách sửa — dẫn xuất (derive) cả hai trait:**
 ```rust

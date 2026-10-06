@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_imports)]
-use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Sender};
+use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::sync::mpsc::{Sender, channel};
 use std::thread;
 use std::time::Duration;
 
@@ -44,15 +44,15 @@ fn guess_service_name(port: u16) -> &'static str {
 
 /// Thực hiện kiểm tra trạng thái một cổng đơn lẻ với thời gian chờ xác định
 pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
-    let address_str = format!("{}:{}", ip, port);
-    if let Ok(socket_addr) = address_str.parse::<SocketAddr>() {
-        // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt
-        if let Ok(_stream) = TcpStream::connect_timeout(&socket_addr, timeout) {
-            // Kết nối thành công! _stream sẽ tự động đóng kết nối khi ra khỏi phạm vi
-            return true;
-        }
-    }
-    false
+    // Ghép IpAddr + cổng bằng SocketAddr::new thay vì format!("{ip}:{port}"):
+    // cách ghép chuỗi hỏng với IPv6 (phải viết [::1]:80).
+    let Ok(ip_addr) = ip.parse::<IpAddr>() else {
+        return false;
+    };
+    let socket_addr = SocketAddr::new(ip_addr, port);
+    // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt.
+    // Kết nối thành công thì _stream tự động đóng khi ra khỏi phạm vi (RAII).
+    TcpStream::connect_timeout(&socket_addr, timeout).is_ok()
 }
 
 /// Động cơ quét cổng mạng đa luồng tốc độ cao
@@ -67,7 +67,12 @@ pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
     );
 
     let ports: Vec<u16> = (config.start_port..=config.end_port).collect();
-    let chunk_size = (ports.len() + config.thread_count - 1) / config.thread_count;
+    if ports.is_empty() {
+        return Vec::new(); // start_port > end_port: không có gì để quét
+    }
+    // Chia đều cho các luồng (làm tròn lên). max(1) tránh chia cho 0 khi thread_count = 0;
+    // mỗi luồng chỉ mở MỘT socket tại một thời điểm -> tối đa thread_count socket cùng lúc.
+    let chunk_size = ports.len().div_ceil(config.thread_count.max(1));
 
     for chunk in ports.chunks(chunk_size) {
         let chunk_vec = chunk.to_vec();
@@ -108,46 +113,111 @@ pub fn execute_concurrent_scan(config: ScanConfig) -> Vec<PortResult> {
 
 fn main() {
     println!("==================================================================");
-    println!("   CONG CU QUET CONG MANG DA LUONG SIEU TOC (RUST PORT SCANNER)  ");
+    println!("   CÔNG CỤ QUÉT CỔNG MẠNG ĐA LUỒNG SIÊU TỐC (RUST PORT SCANNER)  ");
     println!("==================================================================");
+
+    // Giả lập một dịch vụ đang chạy để kiểm tra tính chính xác của trình quét:
+    // bind cổng 0 -> hệ điều hành tự chọn một cổng trống (không cần quyền root
+    // như khi bind cổng 80).
+    let mock_listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("không mở được cổng giả lập");
+    let mock_port = mock_listener.local_addr().unwrap().port();
 
     // Thiết lập cấu hình kiểm thử quét trên máy cục bộ (Localhost 127.0.0.1)
     let config = ScanConfig {
         target_ip: "127.0.0.1".to_string(),
-        start_port: 75,
-        end_port: 85,
+        start_port: mock_port.saturating_sub(5),
+        end_port: mock_port.saturating_add(5),
         timeout_ms: 100, // 100ms timeout cực nhanh cho mạng nội bộ
-        thread_count: 4,  // 4 luồng quét song song
+        thread_count: 4, // 4 luồng quét song song
     };
 
-    println!("    - Dia chi IP muc tieu : {}", config.target_ip);
-    println!("    - Pham vi cong quet   : {} -> {}", config.start_port, config.end_port);
-    println!("    - So luong luong chay : {}", config.thread_count);
-    println!("    - Thoi gian cho toi da: {} ms/port\n", config.timeout_ms);
-
-    // Giả lập mở một cổng cục bộ để kiểm tra tính chính xác của trình quét
-    let mock_listener = std::net::TcpListener::bind("127.0.0.1:80").ok();
-    if mock_listener.is_some() {
-        println!("    [+] Da kich hoat cong gia lap 80 (HTTP) de kiem thu.");
-    }
+    println!("    - Địa chỉ IP mục tiêu : {}", config.target_ip);
+    println!(
+        "    - Phạm vi cổng quét   : {} -> {}",
+        config.start_port, config.end_port
+    );
+    println!("    - Số luồng chạy       : {}", config.thread_count);
+    println!("    - Thời gian chờ tối đa: {} ms/cổng", config.timeout_ms);
+    println!(
+        "    [+] Đã kích hoạt cổng giả lập {} để kiểm thử.\n",
+        mock_port
+    );
 
     let results = execute_concurrent_scan(config);
 
     println!("\n==================================================================");
-    println!("                  DANH SACH CONG DANG MO (OPEN PORTS)             ");
+    println!("                  DANH SÁCH CỔNG ĐANG MỞ (OPEN PORTS)             ");
     println!("==================================================================");
     if results.is_empty() {
-        println!("    [!] Low phat hien thay cong nao mo trong pham vi quet.");
+        println!("    [!] Không phát hiện thấy cổng nào mở trong phạm vi quét.");
     } else {
         for res in &results {
             println!(
-                "    [+] Cong {:5}/TCP : MO (Open) | Dich vu: {}",
+                "    [+] Cổng {:5}/TCP : MỞ (Open) | Dịch vụ: {}",
                 res.port, res.service_hint
             );
         }
     }
+    assert!(results.iter().any(|r| r.port == mock_port));
+    drop(mock_listener);
 
     println!("\n==================================================================");
-    println!("   QUET CONG HOAN TAT AN TOAN: ZERO DATA RACE & ZERO MEMORY LEAK! ");
+    println!("   QUÉT CỔNG HOÀN TẤT AN TOÀN: KHÔNG DATA RACE, KHÔNG RÒ RỈ BỘ NHỚ! ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    #[test]
+    fn finds_a_listening_port_and_nothing_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let results = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: port,
+            end_port: port,
+            timeout_ms: 200,
+            thread_count: 2,
+        });
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].port, port);
+        assert!(results[0].is_open);
+    }
+
+    #[test]
+    fn empty_range_and_zero_threads_do_not_panic() {
+        // Lỗi cũ: thread_count = 0 -> chia cho 0; dải rỗng -> chunks(0) panic
+        let empty = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: 10,
+            end_port: 5,
+            timeout_ms: 50,
+            thread_count: 4,
+        });
+        assert!(empty.is_empty());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let zero_threads = execute_concurrent_scan(ScanConfig {
+            target_ip: "127.0.0.1".into(),
+            start_port: port,
+            end_port: port,
+            timeout_ms: 200,
+            thread_count: 0,
+        });
+        assert_eq!(zero_threads.len(), 1);
+    }
+
+    #[test]
+    fn invalid_ip_is_reported_closed() {
+        assert!(!check_single_port(
+            "không-phải-ip",
+            80,
+            Duration::from_millis(10)
+        ));
+        assert_eq!(guess_service_name(22), "SSH (Secure Shell)");
+    }
 }

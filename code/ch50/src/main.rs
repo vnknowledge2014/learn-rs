@@ -1,6 +1,6 @@
-#![allow(dead_code, unused_variables, unused_imports)]
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
+use std::time::Duration;
 
 /// Các loại mệnh lệnh thông điệp có thể gửi tới Actor
 #[derive(Debug)]
@@ -13,9 +13,7 @@ pub enum AccountMessage {
         respond_to: Sender<Result<u64, &'static str>>,
     },
     /// Vấn tin số dư: Kèm theo kênh hồi âm trả về số dư hiện tại
-    GetBalance {
-        respond_to: Sender<u64>,
-    },
+    GetBalance { respond_to: Sender<u64> },
 }
 
 /// Thực thể Actor quản lý tài khoản ngân hàng (Sở hữu trạng thái riêng biệt)
@@ -58,11 +56,15 @@ impl BankAccountActor {
                             "    [Actor] Từ chối rút {}đ: Số dư không đủ (Hiện có {}đ)!",
                             amount, self.balance
                         );
-                        let _ = respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
+                        let _ =
+                            respond_to.send(Err("Số dư tài khoản không đủ để thực hiện giao dịch"));
                     }
                 }
                 AccountMessage::GetBalance { respond_to } => {
-                    println!("    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...", self.balance);
+                    println!(
+                        "    [Actor] Vấn tin số dư: Đang gửi kết quả {}đ về phong bì hồi âm...",
+                        self.balance
+                    );
                     let _ = respond_to.send(self.balance);
                 }
             }
@@ -110,9 +112,56 @@ impl BankAccountHandle {
     }
 }
 
+// ----------------------------------------------------------------------------
+// MINH HỌA: ACTOR VẪN CÓ THỂ DEADLOCK
+// Mỗi actor, để trả lời `Ask`, lại gửi `Ask` sang actor kia rồi CHẶN chờ trả lời.
+// X đang chặn chờ Y nên không đọc hòm thư; Y gửi `Ask` cho X rồi chặn chờ X ->
+// vòng chờ khép kín, y hệt deadlock khóa A-B, chỉ là "khóa" ở đây là `recv()`.
+// ----------------------------------------------------------------------------
+pub enum PeerMessage {
+    SetPeer(Sender<PeerMessage>),
+    Ask { reply: Sender<u32> },
+}
+
+fn peer_actor(inbox: Receiver<PeerMessage>) {
+    let mut peer: Option<Sender<PeerMessage>> = None;
+    while let Ok(msg) = inbox.recv() {
+        match msg {
+            PeerMessage::SetPeer(p) => peer = Some(p),
+            PeerMessage::Ask { reply } => {
+                let (tx, rx) = channel();
+                if let Some(p) = &peer {
+                    let _ = p.send(PeerMessage::Ask { reply: tx });
+                }
+                // CHẶN chờ actor kia — mầm mống deadlock
+                if let Ok(v) = rx.recv() {
+                    let _ = reply.send(v + 1);
+                }
+            }
+        }
+    }
+}
+
+/// Trả về `true` nếu yêu cầu không được trả lời trong `timeout` (tức là đã deadlock).
+/// Hai luồng actor bị kẹt vĩnh viễn; trong mã thật, cách chữa là không chặn chờ
+/// bên trong actor (gửi tiếp kèm phong bì hồi âm của người hỏi gốc), hoặc dùng
+/// timeout cho mọi yêu cầu liên actor.
+pub fn circular_request_deadlocks(timeout: Duration) -> bool {
+    let (tx_x, rx_x) = channel();
+    let (tx_y, rx_y) = channel();
+    thread::spawn(move || peer_actor(rx_x));
+    thread::spawn(move || peer_actor(rx_y));
+    let _ = tx_x.send(PeerMessage::SetPeer(tx_y.clone()));
+    let _ = tx_y.send(PeerMessage::SetPeer(tx_x.clone()));
+
+    let (reply_tx, reply_rx) = channel();
+    let _ = tx_x.send(PeerMessage::Ask { reply: reply_tx });
+    reply_rx.recv_timeout(timeout).is_err()
+}
+
 fn main() {
     println!("==================================================================");
-    println!("   MO HINH ACTOR & GIAO TIEP KENH DONG THOI AN TOAN TRONG RUST    ");
+    println!("   MÔ HÌNH ACTOR & GIAO TIẾP KÊNH ĐỒNG THỜI AN TOÀN TRONG RUST    ");
     println!("==================================================================");
 
     // 1. Tạo kênh truyền tin chính nối tới hòm thư của Actor
@@ -127,26 +176,32 @@ fn main() {
     // 3. Tạo tay cầm Handle để các client sử dụng
     let handle = BankAccountHandle::new(mailbox_tx);
 
-    println!("\n[1] Thuc hien cac giao dich nap tien ban dau:");
+    println!("\n[1] Thực hiện các giao dịch nạp tiền ban đầu:");
     handle.deposit(100_000);
     handle.deposit(250_000);
 
     // Kiểm tra số dư qua Request-Response
     let current_bal = handle.get_balance();
-    println!("    [Client Main] So du kiem tra duoc: {}d", current_bal);
+    println!("    [Client Main] Số dư kiểm tra được: {}đ", current_bal);
     assert_eq!(current_bal, 350_000);
 
-    println!("\n[2] Mo phong 3 luong khach hang dong thoi rut tien (Concurrent Clients):");
+    println!("\n[2] Mô phỏng 3 luồng khách hàng đồng thời rút tiền (Concurrent Clients):");
     let mut client_threads = Vec::new();
 
     for client_id in 1..=3 {
         let client_handle = handle.clone();
         let t = thread::spawn(move || {
             let withdraw_amount = 150_000;
-            println!("    - Khach hang #{} bat dau gui lenh rut {}d...", client_id, withdraw_amount);
+            println!(
+                "    - Khách hàng #{} bắt đầu gửi lệnh rút {}đ...",
+                client_id, withdraw_amount
+            );
             match client_handle.withdraw(withdraw_amount) {
-                Ok(remaining) => println!("      + Khach hang #{} rut THANH CONG! So du con: {}d", client_id, remaining),
-                Err(err) => println!("      + Khach hang #{} rut THAT BAI: {}", client_id, err),
+                Ok(remaining) => println!(
+                    "      + Khách hàng #{} rút THÀNH CÔNG! Số dư còn: {}đ",
+                    client_id, remaining
+                ),
+                Err(err) => println!("      + Khách hàng #{} rút THẤT BẠI: {}", client_id, err),
             }
         });
         client_threads.push(t);
@@ -158,14 +213,58 @@ fn main() {
 
     // Kiểm tra số dư cuối cùng
     let final_balance = handle.get_balance();
-    println!("\n[3] So du cuoi cung trong so cai Actor: {}d", final_balance);
+    println!(
+        "\n[3] Số dư cuối cùng trong sổ cái Actor: {}đ",
+        final_balance
+    );
     assert_eq!(final_balance, 50_000);
 
     // Tiêu hủy handle để đóng mailbox, luồng Actor sẽ kết thúc êm ái
     drop(handle);
     let _ = actor_thread.join();
 
+    // 4. Actor KHÔNG miễn nhiễm deadlock: yêu cầu-phản hồi đồng bộ vòng tròn
+    println!("\n[4] Hai actor hỏi nhau đồng bộ theo vòng tròn (X -> Y -> X):");
+    if circular_request_deadlocks(Duration::from_millis(300)) {
+        println!("    [!] Không có phản hồi sau 300ms: X chờ Y, Y chờ X -> DEADLOCK!");
+    }
+
     println!("\n==================================================================");
-    println!("   XAC NHAN: TOAN BO GIAO DICH DA DONG BO HOAN HAO - ZERO LOCK!  ");
+    println!("   XÁC NHẬN: GIAO DỊCH NHẤT QUÁN, KHÔNG CẦN MUTEX TRONG MÃ NGHIỆP VỤ ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spawn_account() -> BankAccountHandle {
+        let (tx, rx) = channel();
+        thread::spawn(move || BankAccountActor::new(rx).run());
+        BankAccountHandle::new(tx)
+    }
+
+    #[test]
+    fn concurrent_withdrawals_never_overdraw() {
+        let handle = spawn_account();
+        handle.deposit(1_000);
+        let threads: Vec<_> = (0..20)
+            .map(|_| {
+                let h = handle.clone();
+                thread::spawn(move || h.withdraw(100).is_ok())
+            })
+            .collect();
+        let ok = threads
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .filter(|&ok| ok)
+            .count();
+        assert_eq!(ok, 10);
+        assert_eq!(handle.get_balance(), 0);
+    }
+
+    #[test]
+    fn circular_synchronous_requests_deadlock() {
+        assert!(circular_request_deadlocks(Duration::from_millis(200)));
+    }
 }

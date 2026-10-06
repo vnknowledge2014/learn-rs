@@ -87,7 +87,7 @@ Trong Rust, cấu trúc `Vec<T>` bản thân nó đã là một Ngăn xếp hoà
 let mut stack = Vec::new();
 stack.push(10); // Đẩy vào đỉnh Stack: [10]
 stack.push(20); // Đẩy vào đỉnh Stack: [10, 20]
-let peak = stack.pop(); // Lấy từ đỉnh Stack: Some(20), còn lại [10]
+let top = stack.pop(); // Lấy từ đỉnh Stack: Some(20), còn lại [10]
 ```
 
 ### 2. Thảm họa hiệu năng khi dùng `Vec::remove(0)` làm Hàng đợi
@@ -105,7 +105,7 @@ let front_item = list.remove(0); // Buộc CPU phải dời toàn bộ các ph�
 
 ### 3. Bí mật bên trong của `VecDeque<T>` (Vòng đệm tròn - Circular Buffer)
 
-`VecDeque<T>` giải quyết triệt để bài toán trên bằng cách biến một mảng phẳng thành một **vòng tròn khép kín** sử dụng hai con trỏ chỉ số: `head` (đầu) và `tail` (đuôi):
+`VecDeque<T>` giải quyết triệt để bài toán trên bằng cách biến một mảng phẳng thành một **vòng tròn khép kín** sử dụng hai con trỏ chỉ số: `head` (đầu) và `tail` (đuôi) — bản cài đặt hiện tại của thư viện chuẩn lưu `head` và `len` rồi tính `tail = (head + len) % capacity`, về bản chất là một:
 
 ```
        Chỉ số:   0      1      2      3      4      5      6      7
@@ -137,26 +137,22 @@ use std::collections::VecDeque;
 /// - Gặp dấu đóng ')', ']', '}': Rút phần tử trên đỉnh ra so khớp.
 ///   Nếu không khớp hoặc ngăn xếp rỗng -> Biểu thức sai cú pháp!
 /// - Kết thúc chuỗi, nếu ngăn xếp rỗng -> Biểu thức hợp lệ.
-pub fn is_balanced_brackets(bieu_thuc: &str) -> bool {
+pub fn is_balanced_brackets(expr: &str) -> bool {
     let mut stack: Vec<char> = Vec::new();
 
-    for ky_tu in bieu_thuc.chars() {
-        match ky_tu {
+    for ch in expr.chars() {
+        match ch {
             '(' | '[' | '{' => {
-                stack.push(ky_tu);
+                stack.push(ch);
             }
-            ')' => {
-                if stack.pop() != Some('(') {
-                    return false;
-                }
-            }
-            ']' => {
-                if stack.pop() != Some('[') {
-                    return false;
-                }
-            }
-            '}' => {
-                if stack.pop() != Some('{') {
+            ')' | ']' | '}' => {
+                // Dấu đóng phải khớp với dấu mở nằm trên đỉnh ngăn xếp
+                let expected = match ch {
+                    ')' => '(',
+                    ']' => '[',
+                    _ => '{',
+                };
+                if stack.pop() != Some(expected) {
                     return false;
                 }
             }
@@ -171,18 +167,18 @@ pub fn is_balanced_brackets(bieu_thuc: &str) -> bool {
 
 /// Mô hình Đơn hàng trong hệ thống thương mại điện tử
 #[derive(Debug, PartialEq, Clone)]
-pub struct DonQueue {
+pub struct Order {
     pub order_code: u32,
     pub customer_name: String,
-    pub tong_tien: f64,
+    pub total_amount: f64,
 }
 
 /// ỨNG DỤNG 2 CỦA QUEUE: Hệ thống quản lý hàng đợi đơn hàng chuẩn FIFO
-pub struct QueueDonQueue {
-    list: VecDeque<DonQueue>,
+pub struct OrderQueue {
+    list: VecDeque<Order>,
 }
 
-impl QueueDonQueue {
+impl OrderQueue {
     pub fn new() -> Self {
         Self {
             list: VecDeque::new(),
@@ -190,31 +186,31 @@ impl QueueDonQueue {
     }
 
     /// Khách đặt hàng: Xếp vào cuối hàng đợi - O(1)
-    pub fn them_don(&mut self, don: DonQueue) {
-        self.list.push_back(don);
+    pub fn add_order(&mut self, order: Order) {
+        self.list.push_back(order);
     }
 
     /// Đơn hàng VIP (Ưu tiên khẩn cấp): Chèn thẳng vào đầu hàng đợi - O(1)
-    pub fn them_don_vip(&mut self, don: DonQueue) {
-        self.list.push_front(don);
+    pub fn add_vip_order(&mut self, order: Order) {
+        self.list.push_front(order);
     }
 
     /// Nhà bếp / Kho xuất hàng: Phục vụ đơn đến trước - O(1)
-    pub fn handle_don_ke_cont(&mut self) -> Option<DonQueue> {
+    pub fn process_next_order(&mut self) -> Option<Order> {
         self.list.pop_front()
     }
 
     /// Xem trước đơn sắp được phục vụ mà không xóa khỏi hàng đợi
-    pub fn first_view_don(&self) -> Option<&DonQueue> {
+    pub fn peek_next_order(&self) -> Option<&Order> {
         self.list.front()
     }
 
-    pub fn so_don_dang_cho(&self) -> usize {
+    pub fn pending_count(&self) -> usize {
         self.list.len()
     }
 }
 
-impl Default for QueueDonQueue {
+impl Default for OrderQueue {
     fn default() -> Self {
         Self::new()
     }
@@ -231,9 +227,21 @@ fn main() {
     let expr_2 = "( a + b ]";
     let expr_3 = "{ [ ( ] ) }"; // Đóng sai thứ tự lồng nhau
 
-    println!("    - Biểu thức 1 '{}': {}", expr_1, is_balanced_brackets(expr_1));
-    println!("    - Biểu thức 2 '{}': {}", expr_2, is_balanced_brackets(expr_2));
-    println!("    - Biểu thức 3 '{}': {}", expr_3, is_balanced_brackets(expr_3));
+    println!(
+        "    - Biểu thức 1 '{}': {}",
+        expr_1,
+        is_balanced_brackets(expr_1)
+    );
+    println!(
+        "    - Biểu thức 2 '{}': {}",
+        expr_2,
+        is_balanced_brackets(expr_2)
+    );
+    println!(
+        "    - Biểu thức 3 '{}': {}",
+        expr_3,
+        is_balanced_brackets(expr_3)
+    );
 
     assert!(is_balanced_brackets(expr_1));
     assert!(!is_balanced_brackets(expr_2));
@@ -241,51 +249,60 @@ fn main() {
 
     // 2. Kiểm thử Hệ thống Hàng đợi đơn hàng với VecDeque
     println!("\n[2] Vận hành hệ thống xử lý đơn hàng FIFO bằng VecDeque:");
-    let mut he_thong = QueueDonQueue::new();
+    let mut queue = OrderQueue::new();
 
     // Khách hàng thông thường đặt hàng lần lượt
-    he_thong.them_don(DonQueue {
+    queue.add_order(Order {
         order_code: 101,
         customer_name: String::from("Nguyễn Văn A"),
-        tong_tien: 150.0,
+        total_amount: 150.0,
     });
-    he_thong.them_don(DonQueue {
+    queue.add_order(Order {
         order_code: 102,
         customer_name: String::from("Trần Thị B"),
-        tong_tien: 80.0,
+        total_amount: 80.0,
     });
 
-    println!("    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}", he_thong.so_don_dang_cho());
+    println!(
+        "    - Đã nhận 2 đơn hàng thông thường. Số đơn chờ: {}",
+        queue.pending_count()
+    );
 
     // Đơn hàng hỏa tốc VIP xuất hiện! Đưa thẳng vào đầu hàng đợi
-    he_thong.them_don_vip(DonQueue {
+    queue.add_vip_order(Order {
         order_code: 999,
         customer_name: String::from("Khách VIP Kim Cương"),
-        tong_tien: 500.0,
+        total_amount: 500.0,
     });
     println!("    - Nhận đơn hỏa tốc VIP 999 (chen lên đầu hàng)!");
 
     // Xem trước đơn hàng kế tiếp
-    if let Some(don_dau) = he_thong.first_view_don() {
-        println!("    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})", don_dau.order_code, don_dau.customer_name);
-        assert_eq!(don_dau.order_code, 999);
+    if let Some(next_order) = queue.peek_next_order() {
+        println!(
+            "    - Đơn hàng chuẩn bị xử lý tiếp theo là: Mã #{} ({})",
+            next_order.order_code, next_order.customer_name
+        );
+        assert_eq!(next_order.order_code, 999);
     }
 
     // Tiến hành xuất kho lần lượt theo đúng thứ tự ưu tiên
     println!("\n    Bắt đầu xuất kho theo thứ tự FIFO:");
-    let mut handles = Vec::new();
-    while let Some(don) = he_thong.handle_don_ke_cont() {
-        println!("    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k", don.order_code, don.customer_name, don.tong_tien);
-        handles.push(don.order_code);
+    let mut processed = Vec::new();
+    while let Some(order) = queue.process_next_order() {
+        println!(
+            "    -> Đang đóng gói đơn #{}: Khách {} - {:.2}k",
+            order.order_code, order.customer_name, order.total_amount
+        );
+        processed.push(order.order_code);
     }
 
     // Xác nhận thứ tự xử lý: Đơn VIP 999 trước, sau đó là 101, rồi đến 102
-    assert_eq!(handles, vec![999, 101, 102]);
-    assert_eq!(he_thong.so_don_dang_cho(), 0);
+    assert_eq!(processed, vec![999, 101, 102]);
+    assert_eq!(queue.pending_count(), 0);
     println!("    => Toàn bộ hàng đợi đã được xử lý sạch sẽ!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 24               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 28               ");
     println!("============================================================");
 }
 ```
@@ -307,12 +324,12 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thao tác v
 
 ```rust
 // Đoạn mã lỗi minh họa: Quên xử lý trường hợp ngăn xếp bị rỗng
-fn peek_broken(mut stack: Vec<i32>) {
+fn pop_broken(mut stack: Vec<i32>) {
     // let value: i32 = stack.pop(); // LỖI E0308: pop() trả về Option<i32>, không phải i32!
 }
 
 // Cách sửa chữa đúng chuẩn: Xử lý an toàn với Option
-fn peek_correct(mut stack: Vec<i32>) {
+fn pop_correct(mut stack: Vec<i32>) {
     match stack.pop() {
         Some(value) => println!("Đã lấy được giá trị: {}", value),
         None => println!("Ngăn xếp đang rỗng, không có gì để lấy!"),
@@ -328,15 +345,19 @@ fn peek_correct(mut stack: Vec<i32>) {
 
 ## Kiểm thử tự động (Automated Tests)
 
-Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Hãy để ý cách các test nhắm thẳng vào trường hợp biên và vào **bất biến** của cấu trúc dữ liệu, thay vì chỉ thử một ví dụ "đẹp".
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn don(id: u32, name: &str) -> DonQueue {
-        DonQueue { order_code: id, customer_name: name.into(), tong_tien: 100.0 }
+    fn order(id: u32, name: &str) -> Order {
+        Order {
+            order_code: id,
+            customer_name: name.into(),
+            total_amount: 100.0,
+        }
     }
 
     #[test]
@@ -350,18 +371,18 @@ mod tests {
 
     #[test]
     fn fifo_queue_and_vip_priority() {
-        let mut hd = QueueDonQueue::new();
-        hd.them_don(don(1, "A"));
-        hd.them_don(don(2, "B"));
-        hd.them_don_vip(don(9, "VIP")); // chen lên đầu
-        assert_eq!(hd.so_don_dang_cho(), 3);
-        assert_eq!(hd.first_view_don().map(|d| d.order_code), Some(9));
+        let mut queue = OrderQueue::new();
+        queue.add_order(order(1, "A"));
+        queue.add_order(order(2, "B"));
+        queue.add_vip_order(order(9, "VIP")); // chen lên đầu
+        assert_eq!(queue.pending_count(), 3);
+        assert_eq!(queue.peek_next_order().map(|d| d.order_code), Some(9));
 
         // VIP ra trước, phần còn lại giữ đúng thứ tự FIFO
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(9));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(1));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), Some(2));
-        assert_eq!(hd.handle_don_ke_cont().map(|d| d.order_code), None);
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(9));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(1));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), Some(2));
+        assert_eq!(queue.process_next_order().map(|d| d.order_code), None);
     }
 }
 ```
@@ -372,13 +393,13 @@ mod tests {
 1. **LIFO vs FIFO**: Ngăn xếp (Stack) lấy phần tử mới nhất ra trước (LIFO); Hàng đợi (Queue) lấy phần tử cũ nhất ra trước (FIFO).
 2. **Dùng `Vec` cho Stack**: `Vec::push` và `Vec::pop` thao tác ở đuôi mảng với hiệu năng tuyệt hảo $O(1)$.
 3. **Tuyệt đối tránh `Vec::remove(0)`**: Việc dời toàn bộ mảng gây thảm họa $O(N)$. Luôn sử dụng `VecDeque<T>` khi cần cấu trúc hàng đợi.
-4. **Cơ chế Vòng đệm tròn**: `VecDeque` sử dụng con trỏ vòng đệm tròn để thêm và xóa ở cả hai đầu (`front` và `back`) trong thời gian hằng số $O(1)$ mà không cần di dời dữ liệu trong bộ nhớ đệm (buffer).
+4. **Cơ chế Vòng đệm tròn**: `VecDeque` sử dụng con trỏ vòng đệm tròn để thêm và xóa ở cả hai đầu (`front` và `back`) trong thời gian hằng số $O(1)$ mà không cần di dời dữ liệu trong vùng đệm.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Bộ chuyển đổi cơ số 10 sang nhị phân)**:  
    Áp dụng nguyên lý Ngăn xếp (LIFO), hãy viết một hàm `fn to_binary(mut n: u32) -> String`:
-   - Liên tục chia `so` cho 2, lấy phần dư đẩy vào một Stack.
-   - Khi `so == 0`, lần lượt rút (`pop`) các phần dư ra khỏi Stack và ghép thành chuỗi kết quả.
+   - Liên tục chia `n` cho 2, lấy phần dư đẩy vào một Stack.
+   - Khi `n == 0`, lần lượt rút (`pop`) các phần dư ra khỏi Stack và ghép thành chuỗi kết quả.
    *(Giải thích: Tại sao cơ chế LIFO của Stack lại đảo ngược chính xác các số dư thành chuỗi nhị phân chuẩn?)*
 2. **Bài tập 2 (Mô phỏng bộ đệm bàn phím)**:  
    Sử dụng `VecDeque<char>` để viết cấu trúc `KeyBuffer` có sức chứa tối đa 10 ký tự. Khi người dùng gõ ký tự thứ 11, ký tự cũ nhất ở đầu hàng đợi sẽ tự động bị loại bỏ (`pop_front`) để nhường chỗ cho ký tự mới ở cuối hàng đợi (`push_back`).
@@ -409,15 +430,15 @@ pub fn to_binary(mut n: u32) -> String {
         n /= 2;
     }
     // Rút ra theo LIFO -> tự động đảo lại đúng thứ tự.
-    let mut ra = String::with_capacity(stack.len());
+    let mut output = String::with_capacity(stack.len());
     while let Some(bit) = stack.pop() {
-        ra.push(if bit == 1 { '1' } else { '0' });
+        output.push(if bit == 1 { '1' } else { '0' });
     }
-    ra
+    output
 }
 
 #[test]
-fn doi_nhi_phan_dung() {
+fn to_binary_is_correct() {
     assert_eq!(to_binary(0), "0");
     assert_eq!(to_binary(1), "1");
     assert_eq!(to_binary(10), "1010");
@@ -456,34 +477,34 @@ impl KeyBuffer {
     }
 
     /// Trả về ký tự bị đẩy ra (nếu có) — đừng nuốt mất thông tin đó.
-    pub fn go(&mut self, c: char) -> Option<char> {
-        let bi_bo = if self.buf.len() == self.capacity {
+    pub fn type_key(&mut self, c: char) -> Option<char> {
+        let evicted = if self.buf.len() == self.capacity {
             self.buf.pop_front()
         } else { None };
         self.buf.push_back(c);
-        bi_bo
+        evicted
     }
 
-    pub fn noi_dung(&self) -> String { self.buf.iter().collect() }
+    pub fn contents(&self) -> String { self.buf.iter().collect() }
     pub fn len(&self) -> usize { self.buf.len() }
     pub fn is_empty(&self) -> bool { self.buf.is_empty() }
 }
 
 #[test]
-fn day_thi_day_ky_tu_cu_nhat_ra() {
+fn full_buffer_evicts_oldest() {
     let mut kb = KeyBuffer::new(10);
     for c in "abcdefghij".chars() {
-        assert_eq!(kb.go(c), None);          // chưa đầy -> không đẩy ai ra
+        assert_eq!(kb.type_key(c), None);          // chưa đầy -> không đẩy ai ra
     }
-    assert_eq!(kb.noi_dung(), "abcdefghij");
+    assert_eq!(kb.contents(), "abcdefghij");
 
-    assert_eq!(kb.go('k'), Some('a'));       // ký tự thứ 11 -> 'a' bị đẩy ra
-    assert_eq!(kb.noi_dung(), "bcdefghijk");
+    assert_eq!(kb.type_key('k'), Some('a'));       // ký tự thứ 11 -> 'a' bị đẩy ra
+    assert_eq!(kb.contents(), "bcdefghijk");
     assert_eq!(kb.len(), 10);                // sức chứa KHÔNG BAO GIỜ vượt
 }
 ```
 
-Chi tiết đáng học: `go` **trả về** ký tự bị loại thay vì lặng lẽ vứt đi. Trong một trình soạn thảo thật, đó là thứ bạn cần để ghi nhật ký hoặc hoàn tác. Hàm nuốt mất thông tin là hàm khó dùng lại.
+Chi tiết đáng học: `type_key` **trả về** ký tự bị loại thay vì lặng lẽ vứt đi. Trong một trình soạn thảo thật, đó là thứ bạn cần để ghi nhật ký hoặc hoàn tác. Hàm nuốt mất thông tin là hàm khó dùng lại.
 </details>
 
 <details>
@@ -497,31 +518,31 @@ Mấu chốt: chỉ đổ từ ngăn xếp Vào sang ngăn xếp Ra **khi Ra r�
 
 ```rust
 /// Hàng đợi FIFO dựng từ hai ngăn xếp LIFO.
-pub struct QueueTuHaiStack<T> {
-    vao: Vec<T>,   // nơi nhận phần tử mới
-    ra:  Vec<T>,   // nơi lấy phần tử ra, thứ tự đã ĐẢO sẵn
+pub struct TwoStackQueue<T> {
+    inbox: Vec<T>,   // nơi nhận phần tử mới
+    outbox: Vec<T>,   // nơi lấy phần tử ra, thứ tự đã ĐẢO sẵn
 }
 
-impl<T> QueueTuHaiStack<T> {
-    pub fn new() -> Self { QueueTuHaiStack { vao: Vec::new(), ra: Vec::new() } }
+impl<T> TwoStackQueue<T> {
+    pub fn new() -> Self { TwoStackQueue { inbox: Vec::new(), outbox: Vec::new() } }
 
-    pub fn push(&mut self, x: T) { self.vao.push(x); }
+    pub fn push(&mut self, x: T) { self.inbox.push(x); }
 
     pub fn pop(&mut self) -> Option<T> {
-        if self.ra.is_empty() {
-            // CHỈ đổ khi `ra` đã cạn. Đổ sớm hơn là làm hỏng thứ tự.
-            while let Some(x) = self.vao.pop() { self.ra.push(x); }
+        if self.outbox.is_empty() {
+            // CHỈ đổ khi `outbox` đã cạn. Đổ sớm hơn là làm hỏng thứ tự.
+            while let Some(x) = self.inbox.pop() { self.outbox.push(x); }
         }
-        self.ra.pop()
+        self.outbox.pop()
     }
 
-    pub fn len(&self) -> usize { self.vao.len() + self.ra.len() }
+    pub fn len(&self) -> usize { self.inbox.len() + self.outbox.len() }
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
 #[test]
-fn hai_stack_cho_dung_thu_tu_fifo() {
-    let mut q = QueueTuHaiStack::new();
+fn two_stacks_preserve_fifo_order() {
+    let mut q = TwoStackQueue::new();
     q.push(1); q.push(2); q.push(3);
     assert_eq!(q.pop(), Some(1));   // vào trước ra trước
     q.push(4);                      // thêm giữa chừng
@@ -532,7 +553,7 @@ fn hai_stack_cho_dung_thu_tu_fifo() {
 }
 ```
 
-**Vì sao đây là O(1) khấu hao dù `pop` đôi khi tốn O(N):** mỗi phần tử được chuyển từ `vao` sang `ra` **đúng một lần** trong cả vòng đời của nó. Chia tổng chi phí cho tổng số thao tác ra một hằng số. Đây chính là *thời gian khấu hao* (amortized time) mà Chương 25 nói tới — cùng loại lập luận với việc `Vec` nhân đôi dung lượng.
+**Vì sao đây là O(1) khấu hao dù `pop` đôi khi tốn O(N):** mỗi phần tử được chuyển từ `inbox` sang `outbox` **đúng một lần** trong cả vòng đời của nó. Chia tổng chi phí cho tổng số thao tác ra một hằng số. Đây chính là *thời gian khấu hao* (amortized time) mà Chương 25 nói tới — cùng loại lập luận với việc `Vec` nhân đôi dung lượng.
 
-Cái bẫy: nếu đổ mỗi lần `pop` (không kiểm `ra.is_empty()`), lập luận khấu hao sụp đổ và bạn có O(N) thật cho mỗi thao tác.
+Cái bẫy: nếu đổ mỗi lần `pop` (không kiểm `outbox.is_empty()`), lập luận khấu hao sụp đổ và bạn có O(N) thật cho mỗi thao tác.
 </details>

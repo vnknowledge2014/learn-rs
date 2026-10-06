@@ -1,6 +1,6 @@
-#![allow(dead_code, unused_variables, unused_imports)]
+#![allow(dead_code)]
 // ============================================================================
-// CHƯƠNG 42: MINH HỌA TRÌNH BIÊN DỊCH LÀ TRỌNG TÀI TỐI CAO & TÁI CẤU TRÚC MÃ
+// CHƯƠNG 46: MINH HỌA TRÌNH BIÊN DỊCH LÀ TRỌNG TÀI TỐI CAO & TÁI CẤU TRÚC MÃ
 // Tác giả: Kỹ Sư Hệ Thống Rust
 // ============================================================================
 
@@ -27,7 +27,10 @@ impl MetricRecord {
 // ----------------------------------------------------------------------------
 // PHẦN 2: PHONG CÁCH CŨ (TRƯỚC KHI TÁI CẤU TRÚC)
 // Vấn đề: Cấp phát bộ nhớ thừa thãi qua `.clone()`, dùng chỉ số mảng dễ lỗi
+// (Hai lint dưới đây được tắt CÓ CHỦ ĐÍCH: hàm này là mẫu "trước khi tái cấu trúc";
+// chính `cargo clippy` sẽ chỉ ra `&Vec` -> `&[_]` và vòng lặp chỉ số -> iterator.)
 // ----------------------------------------------------------------------------
+#[allow(clippy::ptr_arg, clippy::needless_range_loop)]
 pub fn filter_slow_services_old(records: &Vec<MetricRecord>, threshold_ms: u32) -> Vec<String> {
     let mut slow_services: Vec<String> = Vec::new();
 
@@ -50,7 +53,9 @@ pub fn filter_slow_services_old(records: &Vec<MetricRecord>, threshold_ms: u32) 
 // Ưu điểm:
 // 1. Nhận lát cắt `&[MetricRecord]` thay vì tham chiếu cụ thể `&Vec<MetricRecord>`
 // 2. Tận dụng đường ống Iterator: filter, map
-// 3. Mượn tham chiếu chuỗi `&str` thay vì nhân bản vô tội vạ, tiết kiệm 100% chi phí cấp phát
+// 3. Mượn tham chiếu chuỗi `&str` thay vì nhân bản: không cấp phát String nào
+//    (chỉ còn một lần cấp phát cho Vec kết quả)
+// 4. Khử trùng lặp bằng sort + dedup: O(n log n) thay vì `contains` O(n²)
 // ----------------------------------------------------------------------------
 pub fn filter_slow_services_idiomatic<'a>(
     records: &'a [MetricRecord],
@@ -92,11 +97,8 @@ impl<'a> MetricsAnalyzer<'a> {
                 (acc_time + r.response_time_ms as u64, acc_count + 1)
             });
 
-        if count == 0 {
-            None
-        } else {
-            Some((total_time / count) as u32)
-        }
+        // checked_div trả None khi count == 0 (không có yêu cầu thành công nào)
+        total_time.checked_div(count).map(|avg| avg as u32)
     }
 }
 
@@ -104,7 +106,7 @@ impl<'a> MetricsAnalyzer<'a> {
 // PHẦN 5: HÀM MAIN KIỂM CHỨNG KẾT QUẢ ĐỐI CHIẾU
 // ----------------------------------------------------------------------------
 fn main() {
-    println!("=== CHƯƠNG 42: KIỂM CHỨNG TÁI CẤU TRÚC MÃ & TRỌNG TÀI BIÊN DỊCH RUST ===");
+    println!("=== CHƯƠNG 46: KIỂM CHỨNG TÁI CẤU TRÚC MÃ & TRỌNG TÀI BIÊN DỊCH RUST ===");
 
     // Tạo tập dữ liệu đo kiểm giả lập
     let metrics = vec![
@@ -116,7 +118,10 @@ fn main() {
         MetricRecord::new("AnalyticsService", 990, false), // Chậm nhưng thất bại -> bỏ qua
     ];
 
-    println!("Tập dữ liệu đầu vào gồm {} bản ghi đo lường.", metrics.len());
+    println!(
+        "Tập dữ liệu đầu vào gồm {} bản ghi đo lường.",
+        metrics.len()
+    );
 
     // 1. Chạy phương pháp cũ
     let slow_old = filter_slow_services_old(&metrics, 300);
@@ -124,7 +129,10 @@ fn main() {
 
     // 2. Chạy phương pháp mới sau tái cấu trúc (Zero-copy)
     let slow_idiomatic = filter_slow_services_idiomatic(&metrics, 300);
-    println!("[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}", slow_idiomatic);
+    println!(
+        "[Sau tái cấu trúc] Danh sách dịch vụ chậm (Zero-Copy): {:?}",
+        slow_idiomatic
+    );
 
     // Xác nhận hai phương pháp cho cùng kết quả nghiệp vụ chính xác
     assert_eq!(slow_old.len(), slow_idiomatic.len());
@@ -135,8 +143,52 @@ fn main() {
     // 3. Phân tích thống kê với MetricsAnalyzer
     let analyzer = MetricsAnalyzer::new(&metrics);
     if let Some(avg) = analyzer.calculate_average_success_time() {
-        println!("\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms", avg);
+        println!(
+            "\n[Thống kê] Thời gian phản hồi trung bình của các dịch vụ thành công: {} ms",
+            avg
+        );
     }
 
-    println!("\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!");
+    println!(
+        "\n[Tổng kết] Mã nguồn sau khi tái cấu trúc hoàn toàn sạch sẽ, không tốn tài nguyên cấp phát dư thừa!"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_and_idiomatic_agree_as_sets() {
+        let metrics = vec![
+            MetricRecord::new("B", 500, true),
+            MetricRecord::new("A", 400, true),
+            MetricRecord::new("B", 600, true),
+            MetricRecord::new("C", 900, false),
+        ];
+        let mut old = filter_slow_services_old(&metrics, 300);
+        old.sort();
+        assert_eq!(old, vec!["A", "B"]);
+        assert_eq!(
+            filter_slow_services_idiomatic(&metrics, 300),
+            vec!["A", "B"]
+        );
+    }
+
+    #[test]
+    fn average_none_when_no_success() {
+        let metrics = vec![MetricRecord::new("X", 100, false)];
+        assert_eq!(
+            MetricsAnalyzer::new(&metrics).calculate_average_success_time(),
+            None
+        );
+        let metrics = vec![
+            MetricRecord::new("X", 100, true),
+            MetricRecord::new("Y", 201, true),
+        ];
+        assert_eq!(
+            MetricsAnalyzer::new(&metrics).calculate_average_success_time(),
+            Some(150)
+        );
+    }
 }

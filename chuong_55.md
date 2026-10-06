@@ -6,7 +6,7 @@ Xuyên suốt giáo trình, mỗi chương đều kèm một module `#[cfg(test)
 
 Đây không phải câu hỏi phụ. Một dự án không có test là một dự án mà **mỗi lần sửa một dòng, bạn phải cầu nguyện**. Còn một dự án test sai cách — ví dụ 500 test tích hợp chậm chạp thay vì 5000 unit test nhanh — thì tệ theo kiểu khác: không ai dám chạy test, nên test trở nên vô dụng.
 
-Chương này trình bày **Kim tự tháp Kiểm thử (Testing Pyramid)** và toàn bộ các phương pháp mà bạn nghe tên nhưng có thể chưa phân biệt được: TDD, BDD, unit, integration, E2E, property-based, doctest, mocking, fuzzing. Điều đặc biệt: Rust có **hệ thống kiểm thử tích hợp sẵn trong ngôn ngữ** mạnh bậc nhất trong các ngôn ngữ hệ thống — kể cả doctest (test nằm trong tài liệu) mà rất ít ngôn ngữ có.
+Chương này trình bày **Kim tự tháp Kiểm thử (Testing Pyramid)** và toàn bộ các phương pháp mà bạn nghe tên nhưng có thể chưa phân biệt được: TDD, BDD, unit, integration, E2E, property-based, doctest, mocking, fuzzing. Điều đặc biệt: Rust có **hệ thống kiểm thử tích hợp sẵn trong công cụ chuẩn** (`cargo test`) mạnh bậc nhất trong các ngôn ngữ hệ thống — kể cả doctest (test nằm trong tài liệu), thứ mà Python hay Elixir cũng có nhưng hiếm thấy ở C/C++.
 
 Mục tiêu học tập của chương này:
 - Hiểu **Kim tự tháp Kiểm thử**: vì sao nhiều unit test, ít E2E test — không phải ngược lại.
@@ -95,7 +95,7 @@ TDD đảo ngược thứ tự quen thuộc: **viết test TRƯỚC, code SAU**.
                                ▼
 ```
 
-Lợi ích không nằm ở "có test" — mà ở chỗ TDD **buộc bạn thiết kế API từ góc nhìn người dùng trước khi cài đặt**. Bạn viết `gio.them("A", 10_000, 3)` trong test, và ngay lập tức nhận ra chữ ký hàm nên trông thế nào. Chương 45 đã dùng TDD cùng AI; chương này trình bày nó một cách hệ thống.
+Lợi ích không nằm ở "có test" — mà ở chỗ TDD **buộc bạn thiết kế API từ góc nhìn người dùng trước khi cài đặt**. Bạn viết `cart.add("A", 10_000, 3)` trong test, và ngay lập tức nhận ra chữ ký hàm nên trông thế nào. Chương 45 đã dùng TDD cùng AI; chương này trình bày nó một cách hệ thống.
 
 ### 3. BDD — Phát triển hướng hành vi (Behaviour-Driven Development)
 
@@ -131,11 +131,11 @@ Test ví dụ   :  discount(100_000, 10%)  == 90_000          (một điểm)
 Test tính chất:  ∀ tổng, ∀ %:  discount(tổng, %)  ≤  tổng    (cả một miền)
 ```
 
-Crate `proptest` và `quickcheck` làm việc này chuyên nghiệp, kèm khả năng **tự thu nhỏ (shrink)** phản ví dụ về dạng đơn giản nhất. **Fuzzing** (`cargo-fuzz`) là họ hàng gần: nó ném dữ liệu ngẫu nhiên/độc hại vào chương trình để tìm điểm **panic hoặc treo** — chính là công cụ mà kẻ tấn công OSCP/OSWE ở Chương 42 dùng để tìm lỗ hổng. Viết fuzz test cho bộ phân tích dữ liệu của bạn nghĩa là bạn tự tấn công mình trước khi kẻ xấu kịp làm.
+Crate `proptest` và `quickcheck` làm việc này chuyên nghiệp, kèm khả năng **tự thu nhỏ (shrink)** phản ví dụ về dạng đơn giản nhất. **Fuzzing** (`cargo-fuzz`) là họ hàng gần: nó ném dữ liệu ngẫu nhiên/độc hại vào chương trình để tìm điểm **panic hoặc treo** — chính là công cụ mà người kiểm thử thâm nhập (và kẻ tấn công thật) theo tư duy OSCP ở Chương 42 dùng để tìm lỗ hổng. Viết fuzz test cho bộ phân tích dữ liệu của bạn nghĩa là bạn tự tấn công mình trước khi kẻ xấu kịp làm.
 
 ### 6. Doctest — tài liệu không bao giờ lỗi thời
 
-Đây là tính năng Rust đặc biệt tự hào. Mọi khối ` ``` ` trong chú thích `///` **được biên dịch và chạy như một test** khi bạn gõ `cargo test`. Hệ quả tuyệt vời: **ví dụ trong tài liệu không thể lỗi thời** — nếu bạn đổi API mà quên cập nhật ví dụ, `cargo test` sẽ đỏ. Tài liệu và mã nguồn không bao giờ nói dối nhau.
+Đây là tính năng Rust đặc biệt tự hào. Mọi khối ` ``` ` trong chú thích `///` **được biên dịch và chạy như một test** khi bạn gõ `cargo test`. Hệ quả tuyệt vời: **ví dụ trong tài liệu không thể lỗi thời** — nếu bạn đổi API mà quên cập nhật ví dụ, `cargo test` sẽ đỏ. (Phần *văn xuôi* của tài liệu thì vẫn có thể lỗi thời — doctest chỉ bảo vệ các khối mã.) Lưu ý: doctest chỉ chạy cho crate thư viện (`lib.rs`), không chạy cho `main.rs` của crate nhị phân.
 
 ---
 
@@ -152,7 +152,6 @@ cargo test -p ch55 --doc      # chỉ doctest
 `src/lib.rs`:
 
 ```rust
-#![allow(dead_code, unused_variables)]
 //! Chương 55 — Kim tự tháp Kiểm thử: Unit, Integration, E2E, TDD, BDD, Property, Doctest.
 
 // ============================================================================
@@ -162,7 +161,7 @@ cargo test -p ch55 --doc      # chỉ doctest
 /// Giỏ hàng — ta sẽ "viết test trước, code sau" cho từng hành vi.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cart {
-    mat_queue: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
+    items: Vec<(String, u64, u32)>, // (tên, đơn giá, số lượng)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -171,21 +170,27 @@ pub enum CartError {
     NotFound,
 }
 
+impl Default for Cart {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Cart {
     pub fn new() -> Self {
-        Cart { mat_queue: Vec::new() }
+        Cart { items: Vec::new() }
     }
 
     /// Thêm mặt hàng. Số lượng 0 là lỗi nghiệp vụ (không phải panic).
-    pub fn them(&mut self, name: &str, don_price: u64, quantity: u32) -> Result<(), CartError> {
+    pub fn add(&mut self, name: &str, unit_price: u64, quantity: u32) -> Result<(), CartError> {
         if quantity == 0 {
             return Err(CartError::ZeroQuantity);
         }
         // Nếu đã có, cộng dồn số lượng thay vì tạo dòng mới
-        if let Some(dong) = self.mat_queue.iter_mut().find(|(t, _, _)| t == name) {
-            dong.2 += quantity;
+        if let Some(line) = self.items.iter_mut().find(|(t, _, _)| t == name) {
+            line.2 += quantity;
         } else {
-            self.mat_queue.push((name.to_string(), don_price, quantity));
+            self.items.push((name.to_string(), unit_price, quantity));
         }
         Ok(())
     }
@@ -195,24 +200,27 @@ impl Cart {
     /// # Ví dụ (đây cũng là một DOCTEST — chạy khi `cargo test`)
     /// ```
     /// # use ch55::Cart;
-    /// let mut gio = Cart::new();
-    /// gio.them("Sách", 45_000, 2).unwrap();
-    /// gio.them("Bút", 5_000, 3).unwrap();
-    /// assert_eq!(gio.tong_tien(), 105_000);
+    /// let mut cart = Cart::new();
+    /// cart.add("Sách", 45_000, 2).unwrap();
+    /// cart.add("Bút", 5_000, 3).unwrap();
+    /// assert_eq!(cart.total(), 105_000);
     /// ```
-    pub fn tong_tien(&self) -> u64 {
-        self.mat_queue.iter().map(|(_, gia, sl)| gia * *sl as u64).sum()
+    pub fn total(&self) -> u64 {
+        self.items
+            .iter()
+            .map(|(_, price, qty)| price * *qty as u64)
+            .sum()
     }
 
-    pub fn so_dong(&self) -> usize {
-        self.mat_queue.len()
+    pub fn line_count(&self) -> usize {
+        self.items.len()
     }
 
-    /// Áp mã giảm giá phần trăm (0..=100).
+    /// Áp mã giảm giá phần trăm (vượt 100 thì ghim ở 100).
     pub fn after_discount(&self, percent: u32) -> u64 {
-        let tong = self.tong_tien();
-        let pt = percent.min(100) as u64;
-        tong - tong * pt / 100
+        let total = self.total();
+        let pct = percent.min(100) as u64;
+        total - total * pct / 100
     }
 }
 
@@ -222,44 +230,48 @@ impl Cart {
 
 /// Cổng thanh toán là một PHỤ THUỘC. Trong test ta thay nó bằng bản giả.
 pub trait PaymentGateway {
-    fn debit(&self, so_tien: u64) -> Result<String, String>;
+    fn debit(&self, amount: u64) -> Result<String, String>;
 }
 
 /// Bản thật (chỉ mô phỏng, không gọi mạng thật ở đây).
 pub struct RealGateway;
 impl PaymentGateway for RealGateway {
-    fn debit(&self, so_tien: u64) -> Result<String, String> {
-        Ok(format!("TXN-THAT-{}", so_tien))
+    fn debit(&self, amount: u64) -> Result<String, String> {
+        Ok(format!("TXN-REAL-{}", amount))
     }
 }
 
 /// Hàm nghiệp vụ nhận phụ thuộc qua trait (tiêm phụ thuộc, Chương 14).
 pub fn checkout(
-    gio: &Cart,
-    cong: &dyn PaymentGateway,
+    cart: &Cart,
+    gateway: &dyn PaymentGateway,
     discount: u32,
 ) -> Result<String, String> {
-    let so_tien = gio.after_discount(discount);
-    if so_tien == 0 {
+    let amount = cart.after_discount(discount);
+    if amount == 0 {
         return Err("Giỏ rỗng hoặc miễn phí, không cần thanh toán".to_string());
     }
-    cong.debit(so_tien)
+    gateway.debit(amount)
 }
 
 // ============================================================================
-// PHẦN 3: MÁY TRẠNG THÁI ĐỂ DEMO KIỂM THỬ THEO TÍNH CHẤT (PROPERTY-BASED)
+// PHẦN 3: BỘ SINH DỮ LIỆU CHO KIỂM THỬ THEO TÍNH CHẤT (PROPERTY-BASED)
 // ============================================================================
 
-/// Bộ sinh giả ngẫu nhiên tất định (LCG) — giống Chương 18, không cần crate.
+/// Bộ rng giả ngẫu nhiên tất định (LCG) — giống Chương 18, không cần crate.
 pub struct Generator(u64);
 impl Generator {
-    pub fn moi(hat: u64) -> Self { Generator(hat) }
-    pub fn so(&mut self, tran: u32) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        ((self.0 >> 33) as u32) % tran
+    pub fn new(seed: u64) -> Self {
+        Generator(seed)
+    }
+    pub fn below(&mut self, bound: u32) -> u32 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((self.0 >> 33) as u32) % bound
     }
 }
-
 
 // ============================================================================
 // TẦNG 1 — UNIT TESTS: nhanh, nhiều, kiểm một đơn vị biệt lập
@@ -273,39 +285,39 @@ mod unit {
 
     #[test]
     fn new_cart_is_empty() {
-        let gio = Cart::new();
-        assert_eq!(gio.so_dong(), 0);
-        assert_eq!(gio.tong_tien(), 0);
+        let cart = Cart::new();
+        assert_eq!(cart.line_count(), 0);
+        assert_eq!(cart.total(), 0);
     }
 
     #[test]
     fn add_item_totals_correctly() {
-        let mut gio = Cart::new();
-        gio.them("A", 10_000, 3).unwrap();
-        assert_eq!(gio.tong_tien(), 30_000);
+        let mut cart = Cart::new();
+        cart.add("A", 10_000, 3).unwrap();
+        assert_eq!(cart.total(), 30_000);
     }
 
     #[test]
     fn same_name_merges_quantity() {
-        let mut gio = Cart::new();
-        gio.them("A", 10_000, 1).unwrap();
-        gio.them("A", 10_000, 2).unwrap();
-        assert_eq!(gio.so_dong(), 1, "phải gộp thành 1 dòng");
-        assert_eq!(gio.tong_tien(), 30_000);
+        let mut cart = Cart::new();
+        cart.add("A", 10_000, 1).unwrap();
+        cart.add("A", 10_000, 2).unwrap();
+        assert_eq!(cart.line_count(), 1, "phải gộp thành 1 dòng");
+        assert_eq!(cart.total(), 30_000);
     }
 
     #[test]
     fn zero_quantity_is_error_not_panic() {
-        let mut gio = Cart::new();
-        assert_eq!(gio.them("A", 10_000, 0), Err(CartError::SoLuongBangKhong));
-        assert_eq!(gio.so_dong(), 0); // không thêm gì
+        let mut cart = Cart::new();
+        assert_eq!(cart.add("A", 10_000, 0), Err(CartError::ZeroQuantity));
+        assert_eq!(cart.line_count(), 0); // không thêm gì
     }
 
     #[test]
     fn discount_clamped_at_100() {
-        let mut gio = Cart::new();
-        gio.them("A", 100_000, 1).unwrap();
-        assert_eq!(gio.after_discount(200), 0); // ghim ở 100%, không âm
+        let mut cart = Cart::new();
+        cart.add("A", 100_000, 1).unwrap();
+        assert_eq!(cart.after_discount(200), 0); // ghim ở 100%, không âm
     }
 }
 
@@ -323,9 +335,9 @@ mod test_double {
         called_with: RefCell<Vec<u64>>,
     }
     impl PaymentGateway for SpyGateway {
-        fn debit(&self, so_tien: u64) -> Result<String, String> {
-            self.called_with.borrow_mut().push(so_tien);
-            Ok("TXN-GIA".to_string())
+        fn debit(&self, amount: u64) -> Result<String, String> {
+            self.called_with.borrow_mut().push(amount);
+            Ok("TXN-FAKE".to_string())
         }
     }
 
@@ -339,29 +351,43 @@ mod test_double {
 
     #[test]
     fn checkout_charges_discounted_total() {
-        let mut gio = Cart::new();
-        gio.them("A", 100_000, 1).unwrap();
-        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
+        let mut cart = Cart::new();
+        cart.add("A", 100_000, 1).unwrap();
+        let spy = SpyGateway {
+            called_with: RefCell::new(vec![]),
+        };
 
-        checkout(&gio, &spy, 20).unwrap(); // giảm 20% -> 80.000
+        checkout(&cart, &spy, 20).unwrap(); // giảm 20% -> 80.000
 
-        assert_eq!(*spy.called_with.borrow(), vec![80_000], "phải trừ đúng số sau giảm giá");
+        assert_eq!(
+            *spy.called_with.borrow(),
+            vec![80_000],
+            "phải trừ đúng số sau giảm giá"
+        );
     }
 
     #[test]
     fn checkout_propagates_gateway_error() {
-        let mut gio = Cart::new();
-        gio.them("A", 100_000, 1).unwrap();
-        assert_eq!(checkout(&gio, &AlwaysFailGateway, 0), Err("Thẻ bị từ chối".to_string()));
+        let mut cart = Cart::new();
+        cart.add("A", 100_000, 1).unwrap();
+        assert_eq!(
+            checkout(&cart, &AlwaysFailGateway, 0),
+            Err("Thẻ bị từ chối".to_string())
+        );
     }
 
     #[test]
     fn empty_cart_skips_gateway() {
-        let gio = Cart::new();
-        let spy = SpyGateway { called_with: RefCell::new(vec![]) };
-        let kq = checkout(&gio, &spy, 0);
-        assert!(kq.is_err());
-        assert!(spy.called_with.borrow().is_empty(), "cổng KHÔNG được gọi khi giỏ rỗng");
+        let cart = Cart::new();
+        let spy = SpyGateway {
+            called_with: RefCell::new(vec![]),
+        };
+        let result = checkout(&cart, &spy, 0);
+        assert!(result.is_err());
+        assert!(
+            spy.called_with.borrow().is_empty(),
+            "cổng KHÔNG được gọi khi giỏ rỗng"
+        );
     }
 }
 
@@ -376,42 +402,50 @@ mod property {
 
     #[test]
     fn discount_within_bounds() {
-        let mut sinh = Generator::moi(2026);
+        let mut rng = Generator::new(2026);
         for _ in 0..2000 {
-            let mut gio = Cart::new();
-            let item_count = sinh.so(5) + 1;
+            let mut cart = Cart::new();
+            let item_count = rng.below(5) + 1;
             for i in 0..item_count {
-                let _ = gio.them(&format!("SP{}", i), (sinh.so(100_000) + 1) as u64, sinh.so(5) + 1);
+                let _ = cart.add(
+                    &format!("SP{}", i),
+                    (rng.below(100_000) + 1) as u64,
+                    rng.below(5) + 1,
+                );
             }
-            let pt = sinh.so(150); // cố tình cho vượt 100
-            let sau = gio.after_discount(pt);
+            let pct = rng.below(150); // cố tình cho vượt 100
+            let discounted = cart.after_discount(pct);
             // TÍNH CHẤT: giá sau giảm luôn trong [0, tổng]
-            assert!(sau <= gio.tong_tien(), "giảm giá không được làm TĂNG tiền");
+            assert!(
+                discounted <= cart.total(),
+                "giảm giá không được làm TĂNG tiền"
+            );
         }
     }
 
     #[test]
     fn zero_discount_keeps_total() {
-        let mut sinh = Generator::moi(7);
+        let mut rng = Generator::new(7);
         for _ in 0..1000 {
-            let mut gio = Cart::new();
-            gio.them("X", (sinh.so(50_000) + 1) as u64, sinh.so(9) + 1).unwrap();
+            let mut cart = Cart::new();
+            cart.add("X", (rng.below(50_000) + 1) as u64, rng.below(9) + 1)
+                .unwrap();
             // TÍNH CHẤT: giảm 0% là phép đồng nhất
-            assert_eq!(gio.after_discount(0), gio.tong_tien());
+            assert_eq!(cart.after_discount(0), cart.total());
         }
     }
 
     #[test]
     fn sum_equals_parts() {
-        let mut sinh = Generator::moi(99);
+        let mut rng = Generator::new(99);
         for _ in 0..1000 {
-            let (g1, sl1) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
-            let (g2, sl2) = ((sinh.so(1000) + 1) as u64, sinh.so(9) + 1);
-            let mut gio = Cart::new();
-            gio.them("A", g1, sl1).unwrap();
-            gio.them("B", g2, sl2).unwrap();
+            let (p1, q1) = ((rng.below(1000) + 1) as u64, rng.below(9) + 1);
+            let (p2, q2) = ((rng.below(1000) + 1) as u64, rng.below(9) + 1);
+            let mut cart = Cart::new();
+            cart.add("A", p1, q1).unwrap();
+            cart.add("B", p2, q2).unwrap();
             // TÍNH CHẤT: tổng = tổng thành tiền từng dòng
-            assert_eq!(gio.tong_tien(), g1 * sl1 as u64 + g2 * sl2 as u64);
+            assert_eq!(cart.total(), p1 * q1 as u64 + p2 * q2 as u64);
         }
     }
 }
@@ -428,38 +462,41 @@ mod bdd {
 
     struct OkGateway(RefCell<Vec<u64>>);
     impl PaymentGateway for OkGateway {
-        fn debit(&self, s: u64) -> Result<String, String> { self.0.borrow_mut().push(s); Ok("OK".into()) }
+        fn debit(&self, s: u64) -> Result<String, String> {
+            self.0.borrow_mut().push(s);
+            Ok("OK".into())
+        }
     }
 
     /// Kịch bản: "Khách VIP mua hàng và được giảm 15%".
     #[test]
     fn vip_gets_15_percent_off() {
         // GIVEN — một giỏ hàng trị giá 1.000.000đ và một cổng thanh toán
-        let mut gio = Cart::new();
-        gio.them("Tai nghe", 1_000_000, 1).unwrap();
-        let cong = OkGateway(RefCell::new(vec![]));
+        let mut cart = Cart::new();
+        cart.add("Tai nghe", 1_000_000, 1).unwrap();
+        let gateway = OkGateway(RefCell::new(vec![]));
 
         // WHEN — khách VIP (giảm 15%) thanh toán
-        let ket_qua = checkout(&gio, &cong, 15);
+        let result = checkout(&cart, &gateway, 15);
 
         // THEN — thanh toán thành công và số tiền bị trừ đúng 850.000đ
-        assert!(ket_qua.is_ok());
-        assert_eq!(*cong.0.borrow(), vec![850_000]);
+        assert!(result.is_ok());
+        assert_eq!(*gateway.0.borrow(), vec![850_000]);
     }
 
     /// Kịch bản: "Không thể thanh toán một giỏ hàng rỗng".
     #[test]
     fn cannot_checkout_empty_cart() {
         // GIVEN — một giỏ hàng rỗng
-        let gio = Cart::new();
-        let cong = OkGateway(RefCell::new(vec![]));
+        let cart = Cart::new();
+        let gateway = OkGateway(RefCell::new(vec![]));
 
         // WHEN — cố gắng thanh toán
-        let ket_qua = checkout(&gio, &cong, 0);
+        let result = checkout(&cart, &gateway, 0);
 
         // THEN — hệ thống từ chối và không gọi cổng thanh toán
-        assert!(ket_qua.is_err());
-        assert!(cong.0.borrow().is_empty());
+        assert!(result.is_err());
+        assert!(gateway.0.borrow().is_empty());
     }
 }
 ```
@@ -467,44 +504,44 @@ mod bdd {
 Và đây là **tầng kiểm thử tích hợp**, đặt ở `tests/integration.rs` — một crate riêng chỉ thấy API công khai:
 
 ```rust
-//! TẦNG 3 — KIỂM THỬ TÍCH HỢP (Integration Test).
+//! KIỂM THỬ TÍCH HỢP (Integration Test).
 //! Tệp trong thư mục `tests/` được biên dịch thành MỘT CRATE RIÊNG, chỉ nhìn thấy
 //! API CÔNG KHAI của `ch55` — đúng như một người dùng thật. Đây là điểm khác biệt
 //! cốt lõi so với unit test (nằm trong lib, thấy được cả hàm riêng tư).
 
-use ch55::{checkout, PaymentGateway, Cart};
+use ch55::{Cart, PaymentGateway, checkout};
 
 /// Cổng giả cấp module test tích hợp (không truy cập được nội bộ crate).
 struct FakeGateway;
 impl PaymentGateway for FakeGateway {
-    fn debit(&self, so_tien: u64) -> Result<String, String> {
-        Ok(format!("TICH-HOP-{}", so_tien))
+    fn debit(&self, amount: u64) -> Result<String, String> {
+        Ok(format!("INTEGRATION-{}", amount))
     }
 }
 
 #[test]
-fn full_purchase_flow_end_to_end() {
+fn full_purchase_flow_via_public_api() {
     // Dựng giỏ, cộng dồn, giảm giá, thanh toán — toàn bộ qua API công khai
-    let mut gio = Cart::new();
-    gio.them("Màn hình", 5_000_000, 1).unwrap();
-    gio.them("Cáp", 150_000, 2).unwrap();
-    gio.them("Màn hình", 5_000_000, 1).unwrap(); // gộp dòng
+    let mut cart = Cart::new();
+    cart.add("Màn hình", 5_000_000, 1).unwrap();
+    cart.add("Cáp", 150_000, 2).unwrap();
+    cart.add("Màn hình", 5_000_000, 1).unwrap(); // gộp dòng
 
-    assert_eq!(gio.so_dong(), 2);
-    assert_eq!(gio.tong_tien(), 10_300_000);
+    assert_eq!(cart.line_count(), 2);
+    assert_eq!(cart.total(), 10_300_000);
 
-    let id = checkout(&gio, &FakeGateway, 10).unwrap();
-    assert_eq!(id, "TICH-HOP-9270000"); // 10.300.000 - 10%
+    let id = checkout(&cart, &FakeGateway, 10).unwrap();
+    assert_eq!(id, "INTEGRATION-9270000"); // 10.300.000 - 10%
 }
 
 #[test]
 fn invariant_holds_across_operations() {
-    let mut gio = Cart::new();
+    let mut cart = Cart::new();
     for i in 0..20 {
-        gio.them(&format!("SP{}", i % 5), 1000, 1).unwrap(); // 5 tên, mỗi tên 4 lần
+        cart.add(&format!("SP{}", i % 5), 1000, 1).unwrap(); // 5 tên, mỗi tên 4 lần
     }
-    assert_eq!(gio.so_dong(), 5, "20 lần thêm 5 tên -> đúng 5 dòng");
-    assert_eq!(gio.tong_tien(), 20_000);
+    assert_eq!(cart.line_count(), 5, "20 lần thêm 5 tên -> đúng 5 dòng");
+    assert_eq!(cart.total(), 20_000);
 }
 ```
 
@@ -519,9 +556,9 @@ fn invariant_holds_across_operations() {
 | Xem `println!` trong test | `cargo test -- --nocapture` | Mặc định Rust nuốt stdout của test xanh |
 | Test phải panic | `#[should_panic(expected = "...")]` | Kiểm nhánh `panic!` có kiểm soát |
 | Test có thể bỏ qua | `#[ignore]` rồi `cargo test -- --ignored` | Cho test chậm |
-| Đo độ phủ | `cargo llvm-cov` | Phần trăm dòng được test chạm tới |
+| Đo độ phủ | `cargo llvm-cov` (cài: `cargo install cargo-llvm-cov`) | Phần trăm dòng được test chạm tới |
 | Property-based | crate `proptest` / `quickcheck` | Sinh đầu vào + thu nhỏ phản ví dụ |
-| Fuzzing | `cargo fuzz` | Tìm panic/treo — nối với Chương 42 |
+| Fuzzing | `cargo fuzz` (cài `cargo-fuzz`, cần toolchain nightly) | Tìm panic/treo — nối với Chương 42 |
 | Snapshot | crate `insta` | So kết quả với ảnh chụp đã duyệt |
 | BDD Gherkin | crate `cucumber` | Kịch bản `.feature` cho người không code |
 
@@ -544,12 +581,12 @@ fn invariant_holds_across_operations() {
 ### Bài tập rèn luyện tự giải:
 
 **Bài tập 1 (TDD một hành vi mới)**
-Theo đúng vòng Red-Green-Refactor, thêm phương thức `xoa(&mut self, ten: &str) -> Result<(), CartError>` cho `Cart`: xóa một dòng theo tên, trả `Err(CartError::KhongTonTai)` nếu không có. Viết test ĐỎ trước, rồi mới cài đặt.
+Theo đúng vòng Red-Green-Refactor, thêm phương thức `remove(&mut self, name: &str) -> Result<(), CartError>` cho `Cart`: xóa một dòng theo tên, trả `Err(CartError::NotFound)` nếu không có. Viết test ĐỎ trước, rồi mới cài đặt.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Test đỏ trước: `assert_eq!(gio.xoa("KhongCo"), Err(CartError::KhongTonTai));`. Cài đặt dùng `Vec::iter().position(...)` rồi `Vec::remove`. Đừng viết code trước khi có test đỏ.
+Test đỏ trước: `assert_eq!(cart.remove("Missing"), Err(CartError::NotFound));`. Cài đặt dùng `Vec::iter().position(...)` rồi `Vec::remove`. Đừng viết code trước khi có test đỏ.
 </details>
 
 <details>
@@ -558,57 +595,68 @@ Test đỏ trước: `assert_eq!(gio.xoa("KhongCo"), Err(CartError::KhongTonTai)
 ```rust
 impl Cart {
     pub fn remove(&mut self, name: &str) -> Result<(), CartError> {
-        match self.mat_queue.iter().position(|(t, _, _)| t == name) {
-            Some(i) => { self.mat_queue.remove(i); Ok(()) }
+        match self.items.iter().position(|(t, _, _)| t == name) {
+            Some(i) => { self.items.remove(i); Ok(()) }
             None => Err(CartError::NotFound),
         }
     }
 }
 
 #[cfg(test)]
-mod bai_tap_1 {
+mod exercise_1 {
     use super::*;
     #[test]
     fn removing_existing_line() {
-        let mut gio = Cart::new();
-        gio.them("A", 100, 1).unwrap();
-        gio.them("B", 200, 1).unwrap();
-        assert_eq!(gio.remove("A"), Ok(()));
-        assert_eq!(gio.so_dong(), 1);
-        assert_eq!(gio.tong_tien(), 200);
+        let mut cart = Cart::new();
+        cart.add("A", 100, 1).unwrap();
+        cart.add("B", 200, 1).unwrap();
+        assert_eq!(cart.remove("A"), Ok(()));
+        assert_eq!(cart.line_count(), 1);
+        assert_eq!(cart.total(), 200);
     }
     #[test]
     fn removing_missing_line_errors() {
-        let mut gio = Cart::new();
-        assert_eq!(gio.remove("KhongCo"), Err(CartError::NotFound));
+        let mut cart = Cart::new();
+        assert_eq!(cart.remove("Missing"), Err(CartError::NotFound));
     }
 }
 ```
 </details>
 
 **Bài tập 2 (Test double cho đồng hồ)**
-Nhiều hàm cần "thời gian hiện tại" — nhưng gọi `Instant::now()` khiến test không tất định. Thiết kế một `trait DongHo { fn now(&self) -> u64; }`, một bản thật và một bản giả trả về thời gian cố định. Viết một hàm `ma_don_hang(clock: &dyn DongHo) -> String` sinh mã theo thời gian, và test nó **một cách tất định**.
+Nhiều hàm cần "thời gian hiện tại" — nhưng gọi `Instant::now()` khiến test không tất định. Thiết kế một `trait Clock { fn now(&self) -> u64; }`, một bản thật và một bản giả trả về thời gian cố định. Viết một hàm `order_code(clock: &dyn Clock) -> String` sinh mã theo thời gian, và test nó **một cách tất định**.
 
 <details>
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub trait DongHo { fn now(&self) -> u64; }
+pub trait Clock { fn now(&self) -> u64; }
 
-pub struct DongHoGia(pub u64);
-impl DongHo for DongHoGia { fn now(&self) -> u64 { self.0 } }
+/// Bản thật: đọc đồng hồ hệ thống (giây kể từ Unix epoch)
+pub struct SystemClock;
+impl Clock for SystemClock {
+    fn now(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs())
+    }
+}
 
-pub fn order_code(clock: &dyn DongHo) -> String {
+/// Bản giả: luôn trả cùng một thời điểm
+pub struct FakeClock(pub u64);
+impl Clock for FakeClock { fn now(&self) -> u64 { self.0 } }
+
+pub fn order_code(clock: &dyn Clock) -> String {
     format!("ORD-{}", clock.now())
 }
 
 #[cfg(test)]
-mod bai_tap_2 {
+mod exercise_2 {
     use super::*;
     #[test]
     fn order_code_deterministic_via_fake_clock() {
-        let dh = DongHoGia(1_700_000_000);
-        assert_eq!(order_code(&dh), "ORD-1700000000"); // luôn giống nhau!
+        let clock = FakeClock(1_700_000_000);
+        assert_eq!(order_code(&clock), "ORD-1700000000"); // luôn giống nhau!
     }
 }
 ```

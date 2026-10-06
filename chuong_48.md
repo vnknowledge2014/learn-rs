@@ -40,7 +40,7 @@ Trong chương mở đầu của Topic 9, chúng ta sẽ phân tích:
 │ Tuyến phố dài có các cửa hàng độc lập:                                           │
 │ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐     │
 │ │ Tiệm Bánh Mì   │ │ Tiệm Thuốc Tây │ │ Tiệm Quần Áo   │ │ Quầy Thu Ngân  │     │
-│ │ (Auth Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
+│ │ (Validation Service) │ │ (Order Service)│ │(Product Service│ │(Payment Service│     │
 │ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘     │
 │ Ưu điểm: Nếu Tiệm Bánh Mì mất điện, Tiệm Thuốc vẫn mở cửa bán bình thường!      │
 │ Nhược điểm: Khách muốn mua cả bánh và thuốc phải đi bộ qua lại (Độ trễ mạng)!    │
@@ -84,33 +84,37 @@ Trong kỷ nguyên điện toán đám mây (AWS, Google Cloud, Kubernetes), chi
 
 | Tiêu chí so sánh | Java Spring Boot / Node.js | Rust Microservice | Lợi thế vượt trội của Rust |
 |---|---|---|---|
-| **Bộ nhớ RAM khi khởi động** | 350MB – 800MB | 8MB – 15MB | **Tiết kiệm 95% RAM** |
+| **Bộ nhớ RAM khi khởi động** | 350MB – 800MB | 8MB – 15MB | **Ít hơn hàng chục lần** |
 | **Thời gian khởi động lạnh (Cold Start)**| 5 – 20 giây | 2 – 5 mili-giây | Hoàn hảo cho Serverless & Auto-scaling |
-| **Dừng hệ thống do dọn rác (GC Pause)** | 50ms – 500ms ngẫu nhiên | **0 giây (Không có GC)** | Độ trễ đuôi $p99$ ổn định tuyệt đối |
-| **Mật độ Pod trên 1 máy chủ Kubernetes**| 10 – 20 pods | 200 – 400 pods | Tăng mật độ gấp **20 lần**, giảm chi phí máy chủ |
+| **Dừng hệ thống do dọn rác (GC Pause)** | vài ms – hàng trăm ms (tùy GC và cấu hình) | **Không có khoảng dừng GC** | Độ trễ đuôi $p99$ ổn định hơn (vẫn chịu ảnh hưởng của I/O, cấp phát, khóa) |
+| **Mật độ Pod trên 1 máy chủ Kubernetes**| 10 – 20 pods | 200 – 400 pods | Tăng mật độ đáng kể, giảm chi phí máy chủ |
+
+*Các con số trên là cỡ độ điển hình cho dịch vụ nhỏ, chỉ để định hướng — JVM hiện đại (GraalVM native image, CRaC) khởi động nhanh hơn nhiều, và con số thật phụ thuộc khối lượng công việc. Hãy tự đo trước khi ra quyết định.*
 
 ### 3. Ngân sách Độ trễ mạng (Latency Budget) & Serialization Overhead
 
 - Khi gọi một hàm nội bộ trên RAM: Tốn khoảng **10 nano-giây**.
 - Khi gọi qua mạng nội bộ Datacenter (RPC Call): Tốn khoảng **1 đến 5 mili-giây** (chậm hơn **100,000 lần**!).
 - Do đó, nếu một yêu cầu của khách hàng phải nhảy qua 10 microservices liên tiếp, tổng độ trễ đã là 50ms chỉ riêng thời gian di chuyển trên dây mạng.
-- Sử dụng các định dạng tuần tự hóa nhị phân tốc độ cao (như Protocol Buffers trong gRPC hoặc MessagePack) thay vì JSON cồng kềnh giúp thu nhỏ kích thước gói tin và triệt tiêu gánh nặng CPU khi chuyển đổi chuỗi.
+- Sử dụng các định dạng tuần tự hóa nhị phân tốc độ cao (như Protocol Buffers trong gRPC hoặc MessagePack) thay vì JSON cồng kềnh giúp thu nhỏ kích thước gói tin và giảm đáng kể gánh nặng CPU khi chuyển đổi chuỗi.
 
 ### 4. Mẫu Thiết kế Chống sập dây chuyền (Circuit Breaker Pattern)
 
-Trong hệ thống phân tán, sự cố mạng là điều chắc chắn sẽ xảy ra. Nếu Dịch vụ Bị đơ phản hồi, Dịch vụ A tiếp tục gửi hàng ngàn yêu cầu sẽ dẫn tới cạn kiệt luồng và sập lan truyền (Cascading Failure):
+Trong hệ thống phân tán, sự cố mạng là điều chắc chắn sẽ xảy ra. Nếu Dịch vụ B bị đơ phản hồi, Dịch vụ A tiếp tục gửi hàng ngàn yêu cầu sẽ dẫn tới cạn kiệt luồng và sập lan truyền (Cascading Failure):
 - **Trạng thái Closed (Đóng)**: Hệ thống hoạt động bình thường, các yêu cầu được chuyển qua mạng.
 - **Trạng thái Open (Mở / Ngắt mạch)**: Khi tỷ lệ lỗi vượt quá ngưỡng (ví dụ 50% lỗi trong 10 giây qua), ngắt mạch lập tức chặn đứng mọi yêu cầu mới, trả về lỗi ngay tức thì hoặc dữ liệu mặc định (Fallback) mà không gửi qua mạng nữa, giúp dịch vụ đích có thời gian phục hồi.
-- **Trạng thái Half-Open (Nửa mở)**: Sau một khoảng thời gian chờ (ví dụ 30 giây), ngắt mạch cho phép một vài yêu cầu thử nghiệm đi qua để kiểm tra xem dịch vụ đích đã hồi phục hay chưa.
+- **Trạng thái Half-Open (Nửa mở)**: Sau một khoảng thời gian chờ (ví dụ 30 giây), ngắt mạch cho phép một (hoặc vài) yêu cầu thử nghiệm đi qua để kiểm tra xem dịch vụ đích đã hồi phục hay chưa. Thăm dò thành công → Closed; thất bại → Open lại ngay.
+- **Chỉ đếm sự cố hạ tầng**: hết thời gian chờ, mất kết nối, lỗi 5xx mới là "thất bại" của ngắt mạch. Câu trả lời hợp lệ kiểu "không tìm thấy người dùng" (404) chứng tỏ dịch vụ vẫn khỏe — nếu đếm nó, vài khách gõ sai mã sẽ làm ngắt mạch chặn *mọi* khách hàng.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn hoàn chỉnh của một kiến trúc **Modular Monolith sẵn sàng chuyển dịch sang Microservices phân tán**: Minh họa sự trừu tượng hóa ranh giới nghiệp vụ qua Trait `UserService`, `OrderService`, cùng cơ chế phòng thủ **Ngắt mạch chống sập dây chuyền (Circuit Breaker)**:
+Dưới đây là mã nguồn hoàn chỉnh của một kiến trúc **Modular Monolith sẵn sàng chuyển dịch sang Microservices phân tán**: Minh họa sự trừu tượng hóa ranh giới nghiệp vụ qua Trait `UserService` và bộ điều phối `OrderCoordinatorService`, cùng cơ chế phòng thủ **Ngắt mạch chống sập dây chuyền (Circuit Breaker)**. Lưu ý chi tiết: `Mutex` của ngắt mạch chỉ được giữ trong lúc kiểm tra/ghi nhận trạng thái, **không** giữ trong lúc gọi dịch vụ — nếu không, mọi yêu cầu đồng thời sẽ bị xếp hàng nối đuôi sau một cuộc gọi mạng chậm:
 
 ```rust
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -131,9 +135,19 @@ pub struct OrderRecord {
     pub price_cents: u64,
 }
 
+/// Lỗi khi gọi dịch vụ. Phân biệt hai loại là then chốt cho Circuit Breaker:
+/// - `NotFound`: dịch vụ VẪN KHỎE, nó trả lời đúng rằng không có dữ liệu -> không tính là sự cố.
+/// - `Unavailable`: dịch vụ sập/quá tải/hết thời gian chờ -> đây mới là thứ ngắt mạch cần đếm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceError {
+    NotFound,
+    Unavailable,
+    CircuitOpen,
+}
+
 /// Giao diện Hợp đồng Dịch vụ Người dùng (Domain Service Interface)
 pub trait UserService: Send + Sync {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str>;
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, ServiceError>;
 }
 
 /// Trạng thái hoạt động của Ngắt mạch (Circuit Breaker States)
@@ -141,7 +155,7 @@ pub trait UserService: Send + Sync {
 pub enum CircuitState {
     Closed,   // Bình thường: Cho phép yêu cầu đi qua
     Open,     // Ngắt mạch: Từ chối ngay lập tức để bảo vệ hệ thống
-    HalfOpen, // Nửa mở: Cho phép thử nghiệm vài yêu cầu
+    HalfOpen, // Nửa mở: Cho đúng MỘT yêu cầu thăm dò đi qua
 }
 
 /// Bộ ngắt mạch chống sập lan truyền cho các cuộc gọi mạng phân tán
@@ -151,6 +165,7 @@ pub struct CircuitBreaker {
     failure_threshold: usize,
     last_state_change: Instant,
     cooldown_duration: Duration,
+    probe_in_flight: bool,
 }
 
 impl CircuitBreaker {
@@ -161,7 +176,12 @@ impl CircuitBreaker {
             failure_threshold,
             last_state_change: Instant::now(),
             cooldown_duration: Duration::from_millis(cooldown_ms),
+            probe_in_flight: false,
         }
+    }
+
+    pub fn state(&self) -> CircuitState {
+        self.state
     }
 
     /// Kiểm tra xem yêu cầu có được phép thực thi hay không
@@ -171,33 +191,52 @@ impl CircuitBreaker {
             CircuitState::Open => {
                 // Kiểm tra xem đã hết thời gian hồi sức (Cooldown) chưa
                 if self.last_state_change.elapsed() >= self.cooldown_duration {
-                    println!("    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!");
+                    println!(
+                        "    [CircuitBreaker] Hết thời gian chờ: Chuyển sang HALF-OPEN để thử nghiệm!"
+                    );
                     self.state = CircuitState::HalfOpen;
                     self.last_state_change = Instant::now();
+                    self.probe_in_flight = true;
                     true
                 } else {
                     false // Vẫn ngắt mạch, từ chối cuộc gọi mạng
                 }
             }
-            CircuitState::HalfOpen => true,
+            // Chỉ một yêu cầu thăm dò tại một thời điểm; các yêu cầu khác vẫn bị chặn
+            CircuitState::HalfOpen => {
+                if self.probe_in_flight {
+                    false
+                } else {
+                    self.probe_in_flight = true;
+                    true
+                }
+            }
         }
     }
 
     /// Báo cáo cuộc gọi mạng thành công
     pub fn record_success(&mut self) {
         if self.state == CircuitState::HalfOpen {
-            println!("    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!");
+            println!(
+                "    [CircuitBreaker] Yêu cầu thử nghiệm thành công: Phục hồi trạng thái CLOSED!"
+            );
         }
         self.state = CircuitState::Closed;
         self.failure_count = 0;
+        self.probe_in_flight = false;
     }
 
     /// Báo cáo cuộc gọi mạng thất bại
     pub fn record_failure(&mut self) {
         self.failure_count += 1;
-        println!("    [CircuitBreaker] Ghi nhận thất bại #{}", self.failure_count);
+        self.probe_in_flight = false;
+        println!(
+            "    [CircuitBreaker] Ghi nhận thất bại #{}",
+            self.failure_count
+        );
 
-        if self.failure_count >= self.failure_threshold {
+        // Ở HALF-OPEN, chỉ một lần thăm dò thất bại là ngắt mạch lại ngay
+        if self.state == CircuitState::HalfOpen || self.failure_count >= self.failure_threshold {
             println!("    [!] [CẢNH BÁO] Số lỗi vượt ngưỡng: KÍCH HOẠT NGẮT MẠCH (OPEN)!");
             self.state = CircuitState::Open;
             self.last_state_change = Instant::now();
@@ -205,9 +244,17 @@ impl CircuitBreaker {
     }
 }
 
-/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation)
+/// Hiện thực hóa Dịch vụ Người dùng chạy trong bộ nhớ (In-Memory Modular Implementation).
+/// Cờ `down` mô phỏng dịch vụ bị sập (trong thực tế: hết thời gian chờ, mất kết nối).
 pub struct InMemoryUserService {
     users: HashMap<u64, UserProfile>,
+    down: AtomicBool,
+}
+
+impl Default for InMemoryUserService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryUserService {
@@ -221,16 +268,26 @@ impl InMemoryUserService {
                 email: "a@masterclass.vn".to_string(),
             },
         );
-        Self { users }
+        Self {
+            users,
+            down: AtomicBool::new(false),
+        }
+    }
+
+    pub fn set_down(&self, down: bool) {
+        self.down.store(down, Ordering::SeqCst);
     }
 }
 
 impl UserService for InMemoryUserService {
-    fn get_user(&self, user_id: u64) -> Result<UserProfile, &'static str> {
+    fn get_user(&self, user_id: u64) -> Result<UserProfile, ServiceError> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(ServiceError::Unavailable);
+        }
         self.users
             .get(&user_id)
             .cloned()
-            .ok_or("Không tìm thấy thông tin người dùng")
+            .ok_or(ServiceError::NotFound)
     }
 }
 
@@ -248,6 +305,10 @@ impl OrderCoordinatorService {
         }
     }
 
+    pub fn breaker_state(&self) -> CircuitState {
+        self.circuit_breaker.lock().unwrap().state()
+    }
+
     /// Tạo đơn hàng mới với sự bảo vệ của Circuit Breaker
     pub fn create_order(
         &self,
@@ -255,25 +316,36 @@ impl OrderCoordinatorService {
         user_id: u64,
         item_name: &str,
         price_cents: u64,
-    ) -> Result<OrderRecord, &'static str> {
-        let mut breaker = self.circuit_breaker.lock().unwrap();
-
-        // 1. Kiểm tra Circuit Breaker trước khi thực hiện cuộc gọi liên dịch vụ
-        if !breaker.allow_request() {
-            return Err("Dịch vụ Người dùng đang gặp sự cố: Circuit Breaker đang ngắt mạch để tự bảo vệ!");
+    ) -> Result<OrderRecord, ServiceError> {
+        // 1. Kiểm tra Circuit Breaker. Khóa chỉ giữ trong khối này: KHÔNG giữ Mutex
+        //    trong lúc gọi mạng, nếu không mọi yêu cầu sẽ bị xếp hàng nối đuôi nhau.
+        if !self.circuit_breaker.lock().unwrap().allow_request() {
+            return Err(ServiceError::CircuitOpen);
         }
 
-        // 2. Gọi sang dịch vụ người dùng để xác thực
-        match self.user_service.get_user(user_id) {
+        // 2. Gọi sang dịch vụ người dùng để xác thực (không giữ khóa)
+        let result = self.user_service.get_user(user_id);
+
+        // 3. Báo kết quả cho Circuit Breaker
+        let mut breaker = self.circuit_breaker.lock().unwrap();
+        match result {
             Ok(user) => {
                 breaker.record_success();
-                println!("    [OrderService] Xác thực thành công khách hàng: {}", user.username);
+                println!(
+                    "    [OrderService] Xác thực thành công khách hàng: {}",
+                    user.username
+                );
                 Ok(OrderRecord {
                     order_id,
                     user_id: user.user_id,
                     item_name: item_name.to_string(),
                     price_cents,
                 })
+            }
+            // Dịch vụ trả lời "không có" -> dịch vụ vẫn khỏe, không tính là sự cố
+            Err(ServiceError::NotFound) => {
+                breaker.record_success();
+                Err(ServiceError::NotFound)
             }
             Err(err) => {
                 breaker.record_failure();
@@ -285,43 +357,109 @@ impl OrderCoordinatorService {
 
 fn main() {
     println!("==================================================================");
-    println!("   KIEN TRUC PHAN TAN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
+    println!("   KIẾN TRÚC PHÂN TÁN: MODULAR MONOLITH & CIRCUIT BREAKER RUST    ");
     println!("==================================================================");
 
     // Khởi tạo Dịch vụ Người dùng
     let user_service = Arc::new(InMemoryUserService::new());
 
-    // Khởi tạo Dịch vụ Đơn hàng liên kết
-    let order_service = OrderCoordinatorService::new(user_service);
+    // Khởi tạo Dịch vụ Đơn hàng liên kết (Arc<InMemoryUserService> -> Arc<dyn UserService>)
+    let order_service = OrderCoordinatorService::new(user_service.clone());
 
     // 1. Thử nghiệm tạo đơn hàng hợp lệ
     println!("\n[1] Thử nghiệm tạo đơn hàng cho khách hàng hợp lệ (ID = 1):");
     match order_service.create_order(101, 1, "Sách Rust Masterclass Chuyên Sâu", 450000) {
-        Ok(order) => println!("    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}", order.order_id, order.item_name),
-        Err(err) => println!("    [!] Thất bại: {}", err),
+        Ok(order) => println!(
+            "    [+] Đơn hàng tạo thành công: ID #{} - Sản phẩm: {}",
+            order.order_id, order.item_name
+        ),
+        Err(err) => println!("    [!] Thất bại: {:?}", err),
     }
 
-    // 2. Thử nghiệm kích hoạt ngắt mạch Circuit Breaker bằng cách gọi liên tục ID không tồn tại
-    println!("\n[2] Gửi liên tiếp các yêu cầu lỗi để kích hoạt Circuit Breaker:");
+    // 2. Khách không tồn tại: lỗi nghiệp vụ, KHÔNG được làm ngắt mạch
+    println!("\n[2] Khách hàng không tồn tại (ID = 999) — lỗi nghiệp vụ, mạch vẫn CLOSED:");
+    let not_found = order_service.create_order(150, 999, "Vật phẩm", 10000);
+    println!("    - Kết quả: {:?}", not_found);
+    assert_eq!(not_found, Err(ServiceError::NotFound));
+    assert_eq!(order_service.breaker_state(), CircuitState::Closed);
+
+    // 3. Dịch vụ người dùng sập: gửi liên tiếp để kích hoạt ngắt mạch
+    println!("\n[3] Dịch vụ Người dùng sập — gửi liên tiếp các yêu cầu:");
+    user_service.set_down(true);
     for i in 1..=4 {
-        println!("    --> Gửi yêu cầu #{} với user_id không tồn tại (ID = 999)...", i);
-        let result = order_service.create_order(200 + i, 999, "Vật phẩm ảo", 10000);
-        match result {
-            Ok(_) => println!("        Thành công!"),
-            Err(e) => println!("        Thất bại: {}", e),
-        }
+        let result = order_service.create_order(200 + i, 1, "Vật phẩm ảo", 10000);
+        println!("    --> Yêu cầu #{}: {:?}", i, result);
     }
+    // Yêu cầu thứ 4 đã bị chặn ngay tại chỗ, không tốn một cuộc gọi mạng nào
+    assert_eq!(order_service.breaker_state(), CircuitState::Open);
 
-    // 3. Yêu cầu thứ 5 bị chặn đứng ngay từ vòng gửi xe bởi Circuit Breaker
-    println!("\n[3] Gửi yêu cầu tiếp theo khi ngắt mạch đang OPEN:");
-    let blocked_call = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
-    println!("    - Kết quả cuộc gọi: {:?}", blocked_call);
-    assert!(blocked_call.is_err());
-    println!("    => Circuit Breaker đã chặn đứng cuộc gọi mạng, bảo vệ hệ thống tuyệt đối!");
+    // 4. Dịch vụ hồi phục; sau thời gian cooldown, yêu cầu thăm dò khép mạch lại
+    println!("\n[4] Dịch vụ hồi phục, chờ hết cooldown 200ms rồi gửi yêu cầu thăm dò:");
+    user_service.set_down(false);
+    std::thread::sleep(Duration::from_millis(250));
+    let probe = order_service.create_order(301, 1, "Mặt hàng mới", 50000);
+    println!("    - Kết quả cuộc gọi: {:?}", probe);
+    assert!(probe.is_ok());
+    assert_eq!(order_service.breaker_state(), CircuitState::Closed);
 
     println!("\n==================================================================");
-    println!("   XÁC NHẬN: KIẾN TRÚC PHÂN TÁN AN TOÀN - CHỐNG SẬP DÂY CHUYỀN!   ");
+    println!("   XÁC NHẬN: NGẮT MẠCH CHẶN SẬP DÂY CHUYỀN VÀ TỰ PHỤC HỒI         ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (Arc<InMemoryUserService>, OrderCoordinatorService) {
+        let svc = Arc::new(InMemoryUserService::new());
+        let orders = OrderCoordinatorService::new(svc.clone());
+        (svc, orders)
+    }
+
+    #[test]
+    fn not_found_does_not_trip_breaker() {
+        let (_svc, orders) = setup();
+        for i in 0..10 {
+            assert_eq!(
+                orders.create_order(i, 999, "x", 1),
+                Err(ServiceError::NotFound)
+            );
+        }
+        assert_eq!(orders.breaker_state(), CircuitState::Closed);
+        assert!(orders.create_order(99, 1, "x", 1).is_ok());
+    }
+
+    #[test]
+    fn unavailable_trips_breaker_then_blocks() {
+        let (svc, orders) = setup();
+        svc.set_down(true);
+        for i in 0..3 {
+            assert_eq!(
+                orders.create_order(i, 1, "x", 1),
+                Err(ServiceError::Unavailable)
+            );
+        }
+        assert_eq!(orders.breaker_state(), CircuitState::Open);
+        svc.set_down(false); // dù dịch vụ đã khỏe, mạch vẫn chặn cho tới hết cooldown
+        assert_eq!(
+            orders.create_order(9, 1, "x", 1),
+            Err(ServiceError::CircuitOpen)
+        );
+    }
+
+    #[test]
+    fn half_open_allows_single_probe_and_failed_probe_reopens() {
+        let mut cb = CircuitBreaker::new(1, 0);
+        assert!(cb.allow_request());
+        cb.record_failure();
+        assert_eq!(cb.state(), CircuitState::Open);
+        assert!(cb.allow_request()); // cooldown 0 -> HALF-OPEN, đây là yêu cầu thăm dò
+        assert_eq!(cb.state(), CircuitState::HalfOpen);
+        assert!(!cb.allow_request()); // yêu cầu thứ hai bị chặn khi thăm dò đang chạy
+        cb.record_failure();
+        assert_eq!(cb.state(), CircuitState::Open);
+    }
 }
 ```
 
@@ -333,8 +471,8 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết k�
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait 'Send' is not implemented for 'dyn UserService'` | Khi chia sẻ một đối tượng Trait qua các luồng bằng `Arc<dyn UserService>`, Trait đó bắt buộc phải có ràng buộc `Send + Sync`. | Định nghĩa Trait với ràng buộc luồng: `pub trait UserService: Send + Sync { ... }`. |
-| **E0038** | `the trait 'UserService' cannot be made into an object` | Trait chứa phương thức nhận `self` theo kiểu giá trị hoặc chứa hàm generic, vi phạm quy tắc Trait Object Safety. | Đổi tham số nhận thành tham chiếu `&self`, và không dùng generic trên các phương thức của trait. |
+| **E0277** | `` `dyn UserService` cannot be sent between threads safely `` (và `cannot be shared between threads safely`) | Khi chia sẻ một đối tượng Trait qua các luồng bằng `Arc<dyn UserService>`, Trait đó bắt buộc phải có ràng buộc `Send + Sync`. | Định nghĩa Trait với ràng buộc luồng: `pub trait UserService: Send + Sync { ... }`. |
+| **E0038** | `` the trait `UserService` is not dyn compatible `` (rustc cũ ghi: `cannot be made into an object`) | Trait chứa phương thức generic, phương thức không có receiver `self`, hoặc trả về `Self` — vi phạm quy tắc tương thích `dyn` (dyn compatibility, trước gọi là object safety). Riêng `fn f(self)` khi `Self: Sized` không tự động gây lỗi này. | Bỏ generic khỏi phương thức của trait (nhận kiểu cụ thể / `&dyn Trait`), hoặc gắn `where Self: Sized` cho phương thức không cần gọi qua `dyn`. |
 | **E0599** | `no method named 'clone' found for struct 'OrderRecord'` | Bạn gọi `.clone()` trên một cấu trúc dữ liệu domain mà quên khai báo derive tự động. | Thêm macro derive: `#[derive(Clone, Debug)]` trên cấu trúc dữ liệu. |
 | **E0382** | `use of moved value: 'user_service'` | Di chuyển quyền sở hữu (ownership) của dịch vụ vào một luồng khác mà không bọc trong con trỏ thông minh (smart pointer) chia sẻ. | Sử dụng con trỏ đếm tham chiếu đa luồng: `Arc::clone(&user_service)`. |
 
@@ -343,19 +481,19 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi thiết k�
 ```rust
 // Đoạn mã lỗi minh họa E0038: Trait không thỏa mãn Object Safety
 trait FailingService {
-    // Lỗi: Hàm generic không thể tạo Trait Object động
-    fn xu_ly_generic<T>(&self, data: T); 
+    // Lỗi: Hàm generic không thể gọi qua Trait Object động (không có vtable cho mọi T)
+    fn process_generic<T>(&self, data: T);
 }
 
-// fn goi_dich_vu(dv: &dyn FailingService) {} // LỖI E0038!
+// fn call_service(svc: &dyn FailingService) {} // LỖI E0038: not dyn compatible!
 
 // Cách sửa chữa đúng chuẩn: Dùng kiểu cụ thể hoặc lát cắt byte
-trait DichVuDung: Send + Sync {
+trait CorrectService: Send + Sync {
     fn handle_idiomatic(&self, data: &[u8]) -> Result<(), &'static str>;
 }
 
-fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
-    let _ = dv.handle_idiomatic(b"data");
+fn call_correct_service(svc: &dyn CorrectService) {
+    let _ = svc.handle_idiomatic(b"data");
 }
 ```
 
@@ -365,7 +503,7 @@ fn goi_dich_vu_dung(dv: &dyn DichVuDung) {
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Tiến trình kiến trúc tự nhiên**: Hãy bắt đầu với một Modular Monolith chặt chẽ trước khi quyết định xé nhỏ thành các Microservice phân tán.
-2. **Kinh tế học Rust trên Đám mây**: Nhờ mức tiêu thụ RAM cực thấp (~15MB), không có độ trễ GC, và thời gian khởi động tính bằng mili-giây, Rust giúp doanh nghiệp cắt giảm tới 80% hóa đơn máy chủ.
+2. **Kinh tế học Rust trên Đám mây**: Nhờ mức tiêu thụ RAM cực thấp (~15MB), không có độ trễ GC, và thời gian khởi động tính bằng mili-giây, Rust giúp doanh nghiệp cắt giảm đáng kể hóa đơn máy chủ (mức cụ thể phải đo trên khối lượng thật).
 3. **Chi phí Độ trễ mạng**: Gọi hàm nội bộ trên RAM nhanh gấp 100,000 lần gọi qua mạng. Tận dụng định dạng nhị phân tốc độ cao để giảm thiểu chi phí chuyển đổi dữ liệu.
 4. **Phòng chống sập lan truyền**: Luôn trang bị mô hình Ngắt mạch (Circuit Breaker) và Phân vùng chống tràn (Bulkhead) cho mọi điểm giao tiếp mạng, kết hợp cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo vệ toàn vẹn hệ thống.
 
@@ -403,29 +541,29 @@ impl FallbackCache {
     pub fn new() -> Self { Self { snapshot: HashMap::new() } }
 
     /// Mỗi lần tra THÀNH CÔNG qua dịch vụ thật, lưu lại vào đệm.
-    pub fn ghi_nho(&mut self, user_id: u64, ten: &str) {
-        self.snapshot.insert(user_id, ten.to_string());
+    pub fn remember(&mut self, user_id: u64, name: &str) {
+        self.snapshot.insert(user_id, name.to_string());
     }
 
     /// Khi mạch Open: trả bản đệm nếu có (có thể cũ), None nếu chưa từng thấy.
-    pub fn tra_du_phong(&self, user_id: u64) -> Option<String> {
+    pub fn lookup_fallback(&self, user_id: u64) -> Option<String> {
         self.snapshot.get(&user_id).cloned()
     }
 }
 
 #[test]
-fn dung_dem_khi_mach_open() {
+fn serves_from_cache_when_open() {
     let mut cache = FallbackCache::new();
     // Lúc mạch còn Closed và tra thành công -> ghi nhớ.
-    cache.ghi_nho(42, "Nguyễn Văn A");
+    cache.remember(42, "Nguyễn Văn A");
     // Sau đó dịch vụ sập, mạch chuyển Open -> phục vụ từ đệm thay vì lỗi.
-    assert_eq!(cache.tra_du_phong(42), Some("Nguyễn Văn A".to_string()));
+    assert_eq!(cache.lookup_fallback(42), Some("Nguyễn Văn A".to_string()));
     // Khách chưa từng tra thành công -> không có gì để dự phòng.
-    assert_eq!(cache.tra_du_phong(99), None);
+    assert_eq!(cache.lookup_fallback(99), None);
 }
 ```
 
-**Cách gắn vào `OrderCoordinatorService`:** trong luồng `create_order`, khi `circuit_breaker.allow_request()` trả `false` (mạch Open), thay vì `return Err(...)` ngay, hãy gọi `fallback_cache.tra_du_phong(user_id)`. Có bản đệm thì dùng nó tiếp tục xử lý (đánh dấu "dữ liệu có thể cũ"); không có thì mới trả lỗi.
+**Cách gắn vào `OrderCoordinatorService`:** trong luồng `create_order`, khi `circuit_breaker.allow_request()` trả `false` (mạch Open), thay vì `return Err(...)` ngay, hãy gọi `fallback_cache.lookup_fallback(user_id)`. Có bản đệm thì dùng nó tiếp tục xử lý (đánh dấu "dữ liệu có thể cũ"); không có thì mới trả lỗi.
 
 Đây là nguyên tắc **suy giảm duyên dáng (graceful degradation)**: khi một phụ thuộc sập, hệ thống không sập theo mà *lùi về mức phục vụ thấp hơn nhưng vẫn dùng được*. Đánh đổi phải nói rõ: dữ liệu đệm có thể **cũ** (khách vừa đổi tên xong chẳng hạn), nên chỉ hợp với dữ liệu mà "hơi cũ" là chấp nhận được (tên, hồ sơ) — *không* dùng cho dữ liệu phải luôn đúng khoảnh khắc (số dư tài khoản, tồn kho lúc thanh toán).
 </details>
@@ -445,60 +583,60 @@ use std::sync::{Arc, Mutex};
 /// Bulkhead (vách ngăn): giới hạn TỐI ĐA số cuộc gọi chạy đồng thời.
 /// Như khoang kín trên tàu — một khoang ngập nước không làm chìm cả tàu.
 pub struct BulkheadSemaphore {
-    giay_phep_con_lai: Arc<Mutex<usize>>,
-    toi_da: usize,
+    available_permits: Arc<Mutex<usize>>,
+    max_permits: usize,
 }
 
 /// Chứng từ giữ chỗ: tự động TRẢ giấy phép khi ra khỏi phạm vi (RAII).
-pub struct GiayPhep {
-    ngu: Arc<Mutex<usize>>,
+pub struct Permit {
+    permits: Arc<Mutex<usize>>,
 }
-impl Drop for GiayPhep {
+impl Drop for Permit {
     fn drop(&mut self) {
-        *self.ngu.lock().unwrap() += 1; // trả giấy phép khi cuộc gọi kết thúc
+        *self.permits.lock().unwrap() += 1; // trả giấy phép khi cuộc gọi kết thúc
     }
 }
 
 impl BulkheadSemaphore {
-    pub fn new(toi_da: usize) -> Self {
-        Self { giay_phep_con_lai: Arc::new(Mutex::new(toi_da)), toi_da }
+    pub fn new(max_permits: usize) -> Self {
+        Self { available_permits: Arc::new(Mutex::new(max_permits)), max_permits }
     }
 
     /// Thử lấy một giấy phép. Some(chứng từ) nếu còn chỗ, None nếu đã đầy -> từ chối.
-    pub fn thu_vao(&self) -> Option<GiayPhep> {
-        let mut con = self.giay_phep_con_lai.lock().unwrap();
-        if *con == 0 {
+    pub fn try_acquire(&self) -> Option<Permit> {
+        let mut remaining = self.available_permits.lock().unwrap();
+        if *remaining == 0 {
             return None; // đã đủ 10 cuộc gọi đồng thời -> từ chối yêu cầu thứ 11
         }
-        *con -= 1;
-        Some(GiayPhep { ngu: Arc::clone(&self.giay_phep_con_lai) })
+        *remaining -= 1;
+        Some(Permit { permits: Arc::clone(&self.available_permits) })
     }
 
-    pub fn cho_trong(&self) -> usize { *self.giay_phep_con_lai.lock().unwrap() }
+    pub fn available(&self) -> usize { *self.available_permits.lock().unwrap() }
 }
 
 #[test]
-fn gioi_han_dong_thoi_toi_da_10() {
-    let bh = BulkheadSemaphore::new(10);
-    let mut dang_giu = Vec::new();
+fn limits_concurrency_to_10() {
+    let bulkhead = BulkheadSemaphore::new(10);
+    let mut held = Vec::new();
     // 10 cuộc gọi đầu: đều lấy được giấy phép.
     for _ in 0..10 {
-        let p = bh.thu_vao();
+        let p = bulkhead.try_acquire();
         assert!(p.is_some());
-        dang_giu.push(p);
+        held.push(p);
     }
     // Cuộc gọi thứ 11 khi 10 cái trước chưa xong -> bị từ chối.
-    assert!(bh.thu_vao().is_none());
-    assert_eq!(bh.cho_trong(), 0);
+    assert!(bulkhead.try_acquire().is_none());
+    assert_eq!(bulkhead.available(), 0);
 
     // Một cuộc gọi xong (chứng từ bị hủy) -> trả lại 1 giấy phép.
-    dang_giu.pop();
-    assert_eq!(bh.cho_trong(), 1);
-    assert!(bh.thu_vao().is_some()); // giờ lại nhận được
+    held.pop();
+    assert_eq!(bulkhead.available(), 1);
+    assert!(bulkhead.try_acquire().is_some()); // giờ lại nhận được
 }
 ```
 
-Mẫu Bulkhead lấy tên từ **vách ngăn kín nước trên tàu thủy**: chia thân tàu thành nhiều khoang để một khoang thủng không làm chìm cả con tàu. Ở đây nó chặn một lỗi kinh điển: một phụ thuộc chậm (dịch vụ mạng treo) khiến *hàng nghìn* yêu cầu cùng chờ, ngốn sạch luồng/bộ nhớ/kết nối của máy chủ — rồi *toàn bộ* hệ thống sập, không chỉ phần gọi dịch vụ chậm đó. Giới hạn "tối đa 10 cuộc gọi đồng thời" cô lập thiệt hại: yêu cầu thứ 11 bị từ chối *nhanh* (fail nhanh) thay vì xếp hàng chờ vô tận. Chi tiết Rust đẹp ở đây là **RAII qua `Drop`**: chứng từ `GiayPhep` tự trả giấy phép khi ra khỏi phạm vi, nên không bao giờ rò rỉ giấy phép kể cả khi cuộc gọi hoảng loạn giữa chừng.
+Mẫu Bulkhead lấy tên từ **vách ngăn kín nước trên tàu thủy**: chia thân tàu thành nhiều khoang để một khoang thủng không làm chìm cả con tàu. Ở đây nó chặn một lỗi kinh điển: một phụ thuộc chậm (dịch vụ mạng treo) khiến *hàng nghìn* yêu cầu cùng chờ, ngốn sạch luồng/bộ nhớ/kết nối của máy chủ — rồi *toàn bộ* hệ thống sập, không chỉ phần gọi dịch vụ chậm đó. Giới hạn "tối đa 10 cuộc gọi đồng thời" cô lập thiệt hại: yêu cầu thứ 11 bị từ chối *nhanh* (fail nhanh) thay vì xếp hàng chờ vô tận. Chi tiết Rust đẹp ở đây là **RAII qua `Drop`**: chứng từ `Permit` tự trả giấy phép khi ra khỏi phạm vi, nên không bao giờ rò rỉ giấy phép kể cả khi cuộc gọi hoảng loạn giữa chừng.
 </details>
 
 <details>

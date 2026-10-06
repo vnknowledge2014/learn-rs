@@ -20,6 +20,12 @@ pub struct SafeBufferManager {
     buffer: [u8; 16], // Bộ đệm cố định 16 bytes
 }
 
+impl Default for SafeBufferManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SafeBufferManager {
     pub fn new() -> Self {
         Self { buffer: [0u8; 16] }
@@ -29,13 +35,13 @@ impl SafeBufferManager {
     pub fn safe_write(&mut self, input_data: &[u8]) -> Result<usize, &'static str> {
         if input_data.len() > self.buffer.len() {
             // Ngăn chặn tràn bộ đệm: Từ chối ghi đè khi dữ liệu quá lớn
-            return Err("Kich thuoc du lieu vuot qua gioi han bo dem (Buffer Overflow prevented)!");
+            return Err("Kích thước dữ liệu vượt quá giới hạn bộ đệm (đã chặn Buffer Overflow)!");
         }
 
-        // Sao chép an toàn đúng số lượng byte hợp lệ
-        for (idx, &byte) in input_data.iter().enumerate() {
-            self.buffer[idx] = byte;
-        }
+        // Sao chép an toàn đúng số lượng byte hợp lệ.
+        // (Kể cả nếu quên kiểm tra ở trên, copy_from_slice cũng panic khi độ dài lệch
+        // chứ không bao giờ ghi lấn ra ngoài mảng như memcpy của C.)
+        self.buffer[..input_data.len()].copy_from_slice(input_data);
 
         Ok(input_data.len())
     }
@@ -48,66 +54,84 @@ impl SafeBufferManager {
 
 fn main() {
     println!("==================================================================");
-    println!("   KIEM CHUNG AN TOAN BO NHO RUST: TRIET TIEU MEMORY CORRUPTION   ");
+    println!("   KIỂM CHỨNG AN TOÀN BỘ NHỚ RUST: TRIỆT TIÊU MEMORY CORRUPTION   ");
     println!("==================================================================");
 
     // -------------------------------------------------------------
     // 1. KIỂM THỬ PHÒNG CHỐNG TRÀN BỘ ĐỆM (BUFFER OVERFLOW)
     // -------------------------------------------------------------
-    println!("\n[1] Thu nghiem phong chong Tran bo dem (Buffer Overflow):");
+    println!("\n[1] Thử nghiệm phòng chống Tràn bộ đệm (Buffer Overflow):");
     let mut manager = SafeBufferManager::new();
 
     let safe_payload = b"MatKhauAnToan"; // 13 bytes (< 16 bytes)
     match manager.safe_write(safe_payload) {
-        Ok(bytes_written) => println!("    - Ghi payload hop le thanh cong: {} bytes", bytes_written),
-        Err(err) => println!("    - Failed: {}", err),
+        Ok(bytes_written) => println!(
+            "    - Ghi payload hợp lệ thành công: {} bytes",
+            bytes_written
+        ),
+        Err(err) => println!("    - Thất bại: {}", err),
     }
 
-    let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 55 bytes
-    println!("    - Thu gui payload tan cong co do dai {} bytes...", exploit_payload.len());
+    let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 57 bytes
+    println!(
+        "    - Thử gửi payload tấn công có độ dài {} bytes...",
+        exploit_payload.len()
+    );
     match manager.safe_write(exploit_payload) {
-        Ok(_) => println!("    - [NGUY HIEM] Payload da ghi de thanh cong!"),
-        Err(err) => println!("    - [CHẶN ĐỨNG AN TOÀN] Trinh quan ly tu choi: '{}'", err),
+        Ok(_) => println!("    - [NGUY HIỂM] Payload đã ghi đè thành công!"),
+        Err(err) => println!("    - [CHẶN ĐỨNG AN TOÀN] Trình quản lý từ chối: '{}'", err),
     }
 
     // Đọc ngoài biên an toàn qua Option
-    println!("    - Thu doc ky tu tai chi so index = 99:");
+    println!("    - Thử đọc ký tự tại chỉ số index = 99:");
     match manager.safe_read(99) {
-        Some(val) => println!("    - Gia tri: {}", val),
-        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an toan!"),
+        Some(val) => println!("    - Giá trị: {}", val),
+        None => println!("    - [SAFE BOUNDS] Trả về None: Chỉ số ngoài biên được xử lý an toàn!"),
     }
 
     // -------------------------------------------------------------
     // 2. KIỂM THỬ PHÒNG CHỐNG USE-AFTER-FREE (UAF)
     // -------------------------------------------------------------
-    println!("\n[2] Thu nghiem phong chong Use-After-Free (UAF):");
+    println!("\n[2] Thử nghiệm phòng chống Use-After-Free (UAF):");
     {
-        let session = Box::new(SafeUserSession::new("ChuyenGiaBaoMat", false));
-        println!("    - Khoi tao phien lam viec tai Heap: {:p}", session.as_ref());
-        println!("    - Nguoi dung: {}, Admin: {}", session.username, session.is_admin);
+        let session = Box::new(SafeUserSession::new("Chuyên gia bảo mật", false));
+        println!(
+            "    - Khởi tạo phiên làm việc tại Heap: {:p}",
+            session.as_ref()
+        );
+        println!(
+            "    - Người dùng: {}, Admin: {}",
+            session.username, session.is_admin
+        );
 
-        // Trong Rust, khi session ra khoi khoi lenh nay, trait Drop se tu dong
-        // giai phong vung nho mot cach sach se. Trinh bien dich Rust tuyet doi
-        // CAM moi hanh vi giu lai con tro tham chieu den session sau khi no da chet!
+        // Trong Rust, khi session ra khỏi khối lệnh này, trait Drop sẽ tự động
+        // giải phóng vùng nhớ một cách sạch sẽ. Trình biên dịch Rust tuyệt đối
+        // CẤM mọi hành vi giữ lại tham chiếu đến session sau khi nó đã chết!
     }
-    println!("    - [UAF ELIMINATED] Vung nho da duoc thu hoi tu dong.");
-    println!("    - Trinh bien dich dam bao 100% khong con con tro lo lung ton tai!");
+    println!("    - [UAF ELIMINATED] Vùng nhớ đã được thu hồi tự động.");
+    println!("    - Trình biên dịch đảm bảo không còn tham chiếu lơ lửng nào tồn tại!");
 
     // -------------------------------------------------------------
     // 3. KIỂM THỬ PHÒNG CHỐNG LỖ HỔNG FORMAT STRING
     // -------------------------------------------------------------
-    println!("\n[3] Thu nghiem phong chong Lo hong Text dinh dang (Format String):");
+    println!("\n[3] Thử nghiệm phòng chống Lỗ hổng Chuỗi định dạng (Format String):");
     // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
-    let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
-    println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
+    let malicious_user_input = "%x %x %s %p %n Chiếm đoạt bộ nhớ";
+    println!(
+        "    - Chuỗi đầu vào từ người dùng: '{}'",
+        malicious_user_input
+    );
 
-    // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
-    // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
-    println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
-    println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
-    println!("      khong bao gio phan tich cac ky tu '%' thanh lenh thuc thi!");
+    // Trong C: printf(malicious_user_input) sẽ làm rò rỉ nội dung Stack.
+    // Trong Rust: chuỗi người dùng chỉ là dữ liệu (data) truyền qua placeholder `{}`
+    println!(
+        "    - Kết quả in qua Rust format: \"{}\"",
+        malicious_user_input
+    );
+    println!("    - [FORMAT STRING SECURE] Rust coi chuỗi người dùng là chuỗi thuần túy,");
+    println!("      không bao giờ phân tích các ký tự '%' thành lệnh thực thi!");
 
     println!("\n==================================================================");
-    println!("   KET LUAN: RUST LOAI BO HOAN TOAN 70% NGUON GOC LO HONG CVE!   ");
+    println!("   KẾT LUẬN: RUST AN TOÀN LOẠI BỎ CẢ LỚP LỖI GÂY RA ~70% CVE!   ");
     println!("==================================================================");
 }

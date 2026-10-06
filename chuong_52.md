@@ -4,15 +4,15 @@
 
 Trong các hệ thống phân tán quy mô lớn, hai cơn ác mộng lớn nhất mà mọi kỹ sư kiến trúc phải đối mặt là: **Nghẽn cổ chai cơ sở dữ liệu (Database Bottleneck)** và **Sập nguồn do quá tải đỉnh (Traffic Spike Overload)**. 
 
-Một cơ sở dữ liệu quan hệ (như PostgreSQL hay MySQL) dù được tối ưu hóa đến đâu cũng chỉ có thể chịu tải tối đa vài ngàn truy vấn ghi/giây trước khi đĩa cứng và khóa giao dịch bị nghẽn. Để giải cứu cơ sở dữ liệu và giữ cho hệ thống luôn phản hồi trong vài mili-giây khi có hàng triệu người dùng cùng lúc, chúng ta cần hai trụ cột phòng thủ vững chắc:
+Một cơ sở dữ liệu quan hệ (như PostgreSQL hay MySQL) dù được tối ưu hóa đến đâu cũng có một trần thông lượng (thường cỡ vài nghìn đến vài chục nghìn giao dịch ghi/giây tùy phần cứng và khối lượng) trước khi đĩa cứng và khóa giao dịch bị nghẽn. Để giải cứu cơ sở dữ liệu và giữ cho hệ thống luôn phản hồi trong vài mili-giây khi có hàng triệu người dùng cùng lúc, chúng ta cần hai trụ cột phòng thủ vững chắc:
 1. **Tầng lưu trữ đệm phân tán (Distributed Caching với Redis)**: Đưa dữ liệu nóng (Hot Data) lên thanh RAM để phục vụ các yêu cầu đọc với độ trễ dưới 1 mili-giây.
-2. **Hàng đợi thông điệp phân tán (Message Queuing / Event Streams)**: Đóng vai trò "đập thủy điện" san phẳng các đợt sóng tải đột biến (Traffic Smoothing), tách rời các dịch vụ (Decoupling) và bảo đảm dữ liệu không bao giờ bị rơi rớt.
+2. **Hàng đợi thông điệp phân tán (Message Queuing / Event Streams)**: Đóng vai trò "đập thủy điện" san phẳng các đợt sóng tải đột biến (Traffic Smoothing), tách rời các dịch vụ (Decoupling) và — khi được cấu hình ghi bền vững kèm xác nhận (ack) — giữ cho công việc không bị rơi rớt khi một tiến trình xử lý gặp sự cố.
 
 Mục tiêu học tập của bạn:
 - Nắm vững các mô thức bộ đệm kinh điển: **Cache-Aside**, **Write-Through**, và **Write-Behind**.
 - Mổ xẻ và khắc chế "Tam đại hiểm họa Bộ đệm": **Cache Stampede** (Đàn bò giẫm đạp), **Cache Penetration** (Thủng đệm), và **Cache Avalanche** (Tuyết lở bộ đệm).
 - Hiểu sâu sắc kiến trúc Hàng đợi thông điệp: Mô hình Nhà sản xuất - Người tiêu thụ (Producer-Consumer), Cơ chế xác nhận hoàn tất (Ack / Nack), và Hàng đợi thư chết (Dead-Letter Queue - DLQ).
-- Tự tay lập trình một hệ thống Lưu trữ đệm kèm Hàng đợi sự kiện phân tán bằng Rust chuẩn mực, an toàn đa luồng và tối ưu hóa bộ nhớ đệm (buffer) tuyệt đối.
+- Tự tay lập trình một hệ thống Lưu trữ đệm kèm Hàng đợi sự kiện phân tán bằng Rust chuẩn mực, an toàn đa luồng, có chống Cache Stampede.
 
 ---
 
@@ -57,8 +57,8 @@ Hãy cùng quan sát hai câu chuyện đời thường để hiểu rõ sức m
 
 ### 2. Hàng rào dích dắc ngoài sân (Message Queuing)
 - Khi có chương trình "Săn vé máy bay 0 đồng", 100,000 người cùng bấm nút "Đặt vé" trong 1 giây. Nếu gửi thẳng 100,000 giao dịch này vào Database, máy chủ sẽ bốc khói và sập ngay lập tức.
-- Hàng đợi Message Queue (như Kafka, RabbitMQ, hay Redis Streams) đóng vai trò như chiếc rào chắn: Toàn bộ 100,000 yêu cầu được ghi nhận vào hàng đợi chỉ mất 1 mili-giây rồi báo cho khách hàng: *"Yêu cầu của bạn đã được tiếp nhận, vui lòng chờ xử lý"*.
-- Đằng sau hàng rào, một đội ngũ gồm 10 tiến trình công nhân (Workers / Consumers) cần mẫn rút từng đơn hàng ra xử lý tuần tự, giúp hệ thống không bao giờ bị quá tải.
+- Hàng đợi Message Queue (như Kafka, RabbitMQ, hay Redis Streams) đóng vai trò như chiếc rào chắn: Mỗi yêu cầu chỉ cần được ghi nhận vào hàng đợi (thao tác rẻ hơn rất nhiều so với một giao dịch CSDL) rồi báo ngay cho khách hàng: *"Yêu cầu của bạn đã được tiếp nhận, vui lòng chờ xử lý"*.
+- Đằng sau hàng rào, một đội ngũ gồm 10 tiến trình công nhân (Workers / Consumers) cần mẫn rút từng đơn hàng ra xử lý theo tốc độ của mình: khi tải dồn, hàng đợi dài ra thay vì CSDL sập.
 
 ---
 
@@ -100,10 +100,11 @@ Hãy cùng quan sát hai câu chuyện đời thường để hiểu rõ sức m
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Tầng lưu trữ đệm kèm Hàng đợi thông điệp phân tán (In-Memory Cache-Aside & Message Queue)**: Tự tay cài đặt cơ chế hết hạn TTL, giải thuật dọn rác LRU, hàng đợi Producer-Consumer an toàn đa luồng, và cơ chế phòng chống Cache Stampede:
+Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Tầng lưu trữ đệm kèm Hàng đợi thông điệp phân tán (In-Memory Cache-Aside & Message Queue)**: Tự tay cài đặt cơ chế hết hạn TTL, hàng đợi Producer-Consumer an toàn đa luồng (dùng `VecDeque` để lấy đầu hàng O(1) — nhớ bài học Chương 28: `Vec::remove(0)` phải dịch toàn bộ phần tử), và cơ chế phòng chống Cache Stampede kiểu "single-flight" (`get_or_load`: mỗi khóa chỉ một luồng đi truy vấn nguồn, các luồng khác chờ rồi đọc lại Cache). Đào thải LRU khi đầy dung lượng được để dành cho Bài tập 1:
 
 ```rust
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -115,14 +116,25 @@ struct CacheEntry<V> {
 }
 
 /// Động cơ Lưu trữ đệm an toàn đa luồng hỗ trợ TTL (In-Memory Cache Engine)
+/// kèm cơ chế chống Cache Stampede kiểu "single-flight".
 pub struct SafeCacheEngine<K, V> {
     storage: Mutex<HashMap<K, CacheEntry<V>>>,
+    // Mỗi khóa đang được nạp có một "ổ khóa nạp" riêng: chỉ MỘT luồng đi truy vấn
+    // nguồn dữ liệu, các luồng khác cùng khóa xếp hàng chờ rồi đọc lại từ Cache.
+    loading: Mutex<HashMap<K, Arc<Mutex<()>>>>,
 }
 
-impl<K: std::hash::Hash + Eq + Clone, V: Clone> SafeCacheEngine<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone> Default for SafeCacheEngine<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K: Hash + Eq + Clone, V: Clone> SafeCacheEngine<K, V> {
     pub fn new() -> Self {
         Self {
             storage: Mutex::new(HashMap::new()),
+            loading: Mutex::new(HashMap::new()),
         }
     }
 
@@ -145,11 +157,38 @@ impl<K: std::hash::Hash + Eq + Clone, V: Clone> SafeCacheEngine<K, V> {
                 // Cache Hit: Dữ liệu còn hạn sử dụng!
                 return Some(entry.value.clone());
             }
+            // Đã hết hạn: dọn dẹp mục cũ
+            store.remove(key);
+        }
+        None
+    }
+
+    /// Cache-Aside có chống Stampede: khi Cache Miss, chỉ một luồng gọi `loader`
+    /// cho mỗi khóa. Trả về (giá trị, có phải chính luồng này đã nạp không).
+    pub fn get_or_load<F>(&self, key: &K, ttl: Duration, loader: F) -> (V, bool)
+    where
+        F: FnOnce() -> V,
+    {
+        if let Some(v) = self.get(key) {
+            return (v, false);
         }
 
-        // Cache Miss hoặc đã hết hạn: Dọn dẹp mục cũ nếu có
-        store.remove(key);
-        None
+        // Lấy (hoặc tạo) ổ khóa nạp riêng của khóa này
+        let key_lock = {
+            let mut loading = self.loading.lock().unwrap();
+            Arc::clone(loading.entry(key.clone()).or_default())
+        };
+        let _guard = key_lock.lock().unwrap();
+
+        // Kiểm tra lại (double-checked): trong lúc ta chờ, luồng khác có thể đã nạp xong
+        if let Some(v) = self.get(key) {
+            return (v, false);
+        }
+
+        let value = loader();
+        self.set(key.clone(), value.clone(), ttl);
+        self.loading.lock().unwrap().remove(key);
+        (value, true)
     }
 
     pub fn total_entries(&self) -> usize {
@@ -157,129 +196,220 @@ impl<K: std::hash::Hash + Eq + Clone, V: Clone> SafeCacheEngine<K, V> {
     }
 }
 
-/// Hàng đợi thông điệp an toàn đa luồng (Thread-Safe Message Queue)
+/// Hàng đợi thông điệp an toàn đa luồng có giới hạn dung lượng (chạy trong một
+/// tiến trình — Kafka/RabbitMQ/Redis Streams làm điều này qua mạng và ghi đĩa).
 pub struct DistributedMessageQueue<T> {
-    queue: Mutex<Vec<T>>,
+    // VecDeque: lấy ở đầu O(1). Dùng `Vec::remove(0)` sẽ phải dịch toàn bộ phần tử: O(n).
+    queue: Mutex<VecDeque<T>>,
     capacity: usize,
 }
 
 impl<T> DistributedMessageQueue<T> {
     pub fn new(capacity: usize) -> Self {
         Self {
-            queue: Mutex::new(Vec::new()),
+            queue: Mutex::new(VecDeque::with_capacity(capacity)),
             capacity,
         }
     }
 
-    /// Đẩy thông điệp vào hàng đợi (Producer)
+    /// Đẩy thông điệp vào hàng đợi (Producer). Đầy thì từ chối (backpressure).
     pub fn push(&self, item: T) -> Result<(), &'static str> {
         let mut q = self.queue.lock().unwrap();
         if q.len() >= self.capacity {
-            return Err("Hang doi day (Queue is Full): Tu choi tiep nhan them thong diep!");
+            return Err("Hàng đợi đầy (Queue is Full): Từ chối tiếp nhận thêm thông điệp!");
         }
-        q.push(item);
+        q.push_back(item);
         Ok(())
     }
 
     /// Rút thông điệp ra khỏi hàng đợi để xử lý theo thứ tự FIFO (Consumer)
     pub fn pop(&self) -> Option<T> {
-        let mut q = self.queue.lock().unwrap();
-        if q.is_empty() {
-            None
-        } else {
-            Some(q.remove(0))
-        }
+        self.queue.lock().unwrap().pop_front()
     }
 
     pub fn len(&self) -> usize {
         self.queue.lock().unwrap().len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.lock().unwrap().is_empty()
+    }
 }
 
-/// Mô phỏng mẫu thiết kế Cache-Aside truy vấn dữ liệu thông minh
+/// Mô phỏng mẫu thiết kế Cache-Aside truy vấn dữ liệu
 pub fn fetch_user_data_cache_aside(
     cache: &SafeCacheEngine<String, String>,
     user_id: u64,
 ) -> (String, &'static str) {
     let key = format!("user:{}", user_id);
 
-    // 1. Thử tìm kiếm trong Cache
-    if let Some(cached_val) = cache.get(&key) {
-        return (cached_val, "CACHE_HIT (2ms)");
+    let (value, loaded_from_db) = cache.get_or_load(&key, Duration::from_millis(100), || {
+        // Cache Miss: Truy vấn cơ sở dữ liệu chính (giả lập)
+        println!(
+            "    [Database Query] Đang truy vấn từ ổ đĩa CSDL cho user_id = {}...",
+            user_id
+        );
+        format!("UserData_#{}", user_id)
+    });
+
+    if loaded_from_db {
+        (value, "CACHE_MISS (truy vấn CSDL)")
+    } else {
+        (value, "CACHE_HIT (đọc từ RAM)")
     }
-
-    // 2. Cache Miss: Truy vấn cơ sở dữ liệu chính (Giả lập I/O tốn 50ms)
-    println!("    [Database Query] Đang truy vấn từ ổ đĩa CSDL cho user_id = {}...", user_id);
-    let db_val = format!("DuLieuNguoiDung_#{}", user_id);
-
-    // 3. Ghi ngược lại vào Cache với TTL = 100ms
-    cache.set(key, db_val.clone(), Duration::from_millis(100));
-
-    (db_val, "CACHE_MISS (50ms)")
 }
 
 fn main() {
     println!("==================================================================");
-    println!("   TANG LUU TRU DEM REDIS & HANG DOI THONG DIEP PHAN TAN RUST     ");
+    println!("   TẦNG LƯU TRỮ ĐỆM REDIS & HÀNG ĐỢI THÔNG ĐIỆP PHÂN TÁN RUST     ");
     println!("==================================================================");
 
     // -------------------------------------------------------------
     // 1. THỬ NGHIỆM MÔ THỨC CACHE-ASIDE VÀ HẾT HẠN TTL
     // -------------------------------------------------------------
-    println!("\n[1] Kiem attempt mo thuc Cache-Aside kem TTL Expiration:");
+    println!("\n[1] Kiểm thử mô thức Cache-Aside kèm TTL Expiration:");
     let cache = SafeCacheEngine::new();
 
     // Lần gọi 1: Chưa có trong cache -> Cache Miss
     let (data1, source1) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 1: Nhan '{}' tu nguon: {}", data1, source1);
-    assert_eq!(source1, "CACHE_MISS (50ms)");
+    println!("    - Lần 1: Nhận '{}' từ nguồn: {}", data1, source1);
+    assert_eq!(source1, "CACHE_MISS (truy vấn CSDL)");
 
     // Lần gọi 2: Đã có trong cache -> Cache Hit tức thì
     let (data2, source2) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 2: Nhan '{}' tu nguon: {}", data2, source2);
-    assert_eq!(source2, "CACHE_HIT (2ms)");
+    println!("    - Lần 2: Nhận '{}' từ nguồn: {}", data2, source2);
+    assert_eq!(source2, "CACHE_HIT (đọc từ RAM)");
     assert_eq!(data1, data2);
 
     // Chờ 120ms để TTL hết hạn
-    println!("    - Dang cho 120ms de TTL het han...");
+    println!("    - Đang chờ 120ms để TTL hết hạn...");
     std::thread::sleep(Duration::from_millis(120));
 
     // Lần gọi 3: TTL đã hết hạn -> Tự động Cache Miss và nạp lại
     let (data3, source3) = fetch_user_data_cache_aside(&cache, 101);
-    println!("    - Lan 3 (Sau TTL): Nhan '{}' tu nguon: {}", data3, source3);
-    assert_eq!(source3, "CACHE_MISS (50ms)");
+    println!(
+        "    - Lần 3 (Sau TTL): Nhận '{}' từ nguồn: {}",
+        data3, source3
+    );
+    assert_eq!(source3, "CACHE_MISS (truy vấn CSDL)");
 
     // -------------------------------------------------------------
-    // 2. THỬ NGHIỆM HÀNG ĐỢI THÔNG ĐIỆP ĐA LUỒNG PRODUCER-CONSUMER
+    // 2. CHỐNG CACHE STAMPEDE: 8 LUỒNG CÙNG MISS MỘT KHÓA NÓNG
     // -------------------------------------------------------------
-    println!("\n[2] Kiem attempt Hang doi Thong diep phan tan (Message Queue):");
+    println!("\n[2] 8 luồng cùng đòi khóa nóng 'product:iphone' vừa hết hạn:");
+    let hot_cache = Arc::new(SafeCacheEngine::<String, String>::new());
+    let db_queries = Arc::new(Mutex::new(0u32));
+    let workers: Vec<_> = (0..8)
+        .map(|_| {
+            let cache = Arc::clone(&hot_cache);
+            let db_queries = Arc::clone(&db_queries);
+            std::thread::spawn(move || {
+                cache.get_or_load(
+                    &"product:iphone".to_string(),
+                    Duration::from_secs(60),
+                    || {
+                        *db_queries.lock().unwrap() += 1;
+                        std::thread::sleep(Duration::from_millis(50)); // truy vấn chậm
+                        "iPhone giảm giá".to_string()
+                    },
+                )
+            })
+        })
+        .collect();
+    for w in workers {
+        w.join().unwrap();
+    }
+    let queries = *db_queries.lock().unwrap();
+    println!(
+        "    - Số truy vấn thực sự chạm CSDL: {} (thay vì 8)",
+        queries
+    );
+    assert_eq!(queries, 1);
+
+    // -------------------------------------------------------------
+    // 3. THỬ NGHIỆM HÀNG ĐỢI THÔNG ĐIỆP ĐA LUỒNG PRODUCER-CONSUMER
+    // -------------------------------------------------------------
+    println!("\n[3] Kiểm thử Hàng đợi Thông điệp (Message Queue):");
     let message_queue = Arc::new(DistributedMessageQueue::<String>::new(5));
 
     // Luồng Producer: Đẩy việc vào hàng đợi
     let producer_q = Arc::clone(&message_queue);
     let producer_handle = std::thread::spawn(move || {
         for i in 1..=4 {
-            let msg = format!("DonHang_#{}", i);
+            let msg = format!("Đơn hàng #{}", i);
             producer_q.push(msg.clone()).unwrap();
-            println!("    [Producer] Da day '{}' vao hang doi an toan.", msg);
+            println!("    [Producer] Đã đẩy '{}' vào hàng đợi an toàn.", msg);
         }
     });
 
     producer_handle.join().unwrap();
-    println!("    - So luong thong diep dang cho trong hang doi: {}", message_queue.len());
+    println!(
+        "    - Số lượng thông điệp đang chờ trong hàng đợi: {}",
+        message_queue.len()
+    );
 
     // Luồng Consumer: Rút việc ra xử lý tuần tự (Worker)
-    println!("\n[3] Tien trinh Worker bat dau rut thong diep xu ly:");
+    println!("\n[4] Tiến trình Worker bắt đầu rút thông điệp xử lý:");
     while let Some(task) = message_queue.pop() {
-        println!("    [Consumer Worker] Dang xu ly thanh cong: {}", task);
+        println!("    [Consumer Worker] Đang xử lý thành công: {}", task);
     }
 
-    assert_eq!(message_queue.len(), 0);
-    println!("    => Toan bo hang doi da duoc giai phong sach se!");
+    assert!(message_queue.is_empty());
+    println!("    => Toàn bộ hàng đợi đã được giải phóng sạch sẽ!");
 
     println!("\n==================================================================");
-    println!("   XAC NHAN: TANG CACHE VA HANG DOI DONG BO AN TOAN TUYET DOI!  ");
+    println!("   XÁC NHẬN: TẦNG CACHE VÀ HÀNG ĐỢI HOẠT ĐỘNG ĐÚNG ĐA LUỒNG!     ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    #[test]
+    fn stampede_loads_once() {
+        let cache = Arc::new(SafeCacheEngine::<u32, u32>::new());
+        let calls = Arc::new(AtomicU32::new(0));
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let cache = Arc::clone(&cache);
+                let calls = Arc::clone(&calls);
+                std::thread::spawn(move || {
+                    cache
+                        .get_or_load(&7, Duration::from_secs(10), || {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            std::thread::sleep(Duration::from_millis(30));
+                            42
+                        })
+                        .0
+                })
+            })
+            .collect();
+        for h in handles {
+            assert_eq!(h.join().unwrap(), 42);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn expired_entry_is_removed() {
+        let cache = SafeCacheEngine::new();
+        cache.set("k", 1, Duration::from_millis(0));
+        assert_eq!(cache.get(&"k"), None);
+        assert_eq!(cache.total_entries(), 0);
+    }
+
+    #[test]
+    fn queue_is_fifo_and_bounded() {
+        let q = DistributedMessageQueue::new(2);
+        q.push(1).unwrap();
+        q.push(2).unwrap();
+        assert!(q.push(3).is_err());
+        assert_eq!(q.pop(), Some(1));
+        assert_eq!(q.pop(), Some(2));
+        assert_eq!(q.pop(), None);
+    }
 }
 ```
 
@@ -292,9 +422,9 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi triển kha
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0502** | `cannot borrow '*self' as mutable because it is also borrowed as immutable` | Bạn vừa đọc dữ liệu trong `HashMap` bộ đệm vừa cố gắng xóa một mục hết hạn. | Sao chép giá trị cần thiết ra ngoài trước khi thực hiện thao tác xóa, hoặc phân tách phạm vi mượn. |
-| **E0382** | `use of moved value: 'message_queue'` | Di chuyển quyền sở hữu (ownership) của hàng đợi vào luồng con mà quên bọc trong con trỏ đếm tham chiếu `Arc`. | Bọc cấu trúc trong `Arc::new(...)` và tạo bản sao `Arc::clone(&queue)` cho mỗi luồng. |
-| **E0277** | `the trait 'Eq' is not implemented for 'MyKey'` | Khóa của bảng băm `HashMap` bắt buộc phải triển khai trait `Hash` và `Eq`. | Bổ sung derive tự động: `#[derive(Hash, PartialEq, Eq, Clone)]` lên trên kiểu khóa. |
-| **E0599** | `no method named 'pop' found for struct 'Arc<...>'` | Gọi trực tiếp phương thức của struct nội bộ trên con trỏ thông minh (smart pointer) `Arc` mà chưa giải tham chiếu. | Rust tự động Deref, nhưng nếu phương thức đòi hỏi mượn khả biến `&mut`, phải bọc trong `Mutex`. |
+| **E0382** | `` borrow of moved value: `message_queue` `` | Di chuyển quyền sở hữu (ownership) của hàng đợi vào luồng con mà quên bọc trong con trỏ đếm tham chiếu `Arc`. | Bọc cấu trúc trong `Arc::new(...)` và tạo bản sao `Arc::clone(&queue)` cho mỗi luồng. |
+| **E0277** | `` the trait bound `MyKey: Eq` is not satisfied `` (và `MyKey: Hash`) | Khóa của bảng băm `HashMap` bắt buộc phải triển khai trait `Hash` và `Eq`. | Bổ sung derive tự động: `#[derive(Hash, PartialEq, Eq, Clone)]` lên trên kiểu khóa. |
+| **E0596** | `` cannot borrow data in an `Arc` as mutable `` | Gọi phương thức nhận `&mut self` (ví dụ `fn pop(&mut self)`) qua con trỏ thông minh `Arc`: `Arc` tự Deref ra `&T` nhưng không bao giờ cho `&mut T` khi đang chia sẻ. | Cho phương thức nhận `&self` và đặt dữ liệu trong `Mutex`/`RwLock` bên trong (như `DistributedMessageQueue`), hoặc bọc cả struct: `Arc<Mutex<T>>`. |
 
 ### Ví dụ phân tích lỗi `E0502` khi vừa duyệt vừa xóa mục Cache hết hạn:
 
@@ -329,8 +459,8 @@ fn delete_correct(map: &mut HashMap<String, u64>) {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Bảo vệ Cơ sở dữ liệu**: Tầng lưu trữ đệm phân tán Redis giải cứu Database khỏi nghẽn cổ chai, giảm độ trễ truy vấn từ hàng chục mili-giây xuống dưới 1 mili-giây.
-2. **Khắc chế 3 Hiểm họa Cache**: Triệt tiêu Cache Stampede bằng khóa phân tán, chống Cache Penetration bằng Bloom Filter, và chống Cache Avalanche bằng khoảng lệch thời gian ngẫu nhiên (TTL Jitter).
+1. **Bảo vệ Cơ sở dữ liệu**: Tầng lưu trữ đệm phân tán Redis giải cứu Database khỏi nghẽn cổ chai, giảm độ trễ đọc dữ liệu nóng từ hàng chục mili-giây xuống cỡ dưới 1 mili-giây.
+2. **Khắc chế 3 Hiểm họa Cache**: Chặn Cache Stampede bằng khóa nạp (single-flight / khóa phân tán), chống Cache Penetration bằng Bloom Filter, và chống Cache Avalanche bằng khoảng lệch thời gian ngẫu nhiên (TTL Jitter).
 3. **Sức mạnh của Hàng đợi Thông điệp**: Đóng vai trò đập thủy điện san phẳng các đợt bùng nổ lưu lượng, tách rời các dịch vụ và bảo đảm độ tin cậy của luồng xử lý.
 4. **An toàn Đa luồng Không Rò rỉ**: Vận dụng chuẩn mực quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm các tiến trình đọc/ghi song song luôn đạt thông lượng cao nhất.
 
@@ -340,7 +470,7 @@ fn delete_correct(map: &mut HashMap<String, u64>) {
 2. **Bài tập 2 (Xây dựng Hàng đợi Thư Chết - Dead-Letter Queue)**:  
    Trong `DistributedMessageQueue`, nếu một thông điệp bị xử lý thất bại quá 3 lần liên tiếp, thay vì vứt bỏ, hãy tự động chuyển thông điệp đó sang một hàng đợi riêng biệt mang tên `DeadLetterQueue` để các kỹ sư quản trị có thể kiểm tra và gỡ lỗi thủ công.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Cache Invalidation là một trong hai bài toán khó nhất?)**:  
-   Chuyên gia Martin Fowler từng nói: *"Chỉ có hai thứ khó trong khoa học máy tính: Đặt tên biến và Hủy tính hợp lệ của Cache (Cache Invalidation)"*. Hãy phân tích một tình huống cụ thể: Khi người dùng đổi mật khẩu, làm thế nào để đảm bảo 10 máy chủ Cache phân tán trên toàn cầu cùng hủy bỏ phiên đăng nhập cũ ngay lập tức mà không để xảy ra kẽ hở bảo mật?
+   Phil Karlton từng nói (Martin Fowler trích lại và làm nó nổi tiếng): *"Chỉ có hai thứ khó trong khoa học máy tính: Hủy tính hợp lệ của Cache (Cache Invalidation) và Đặt tên"*. Hãy phân tích một tình huống cụ thể: Khi người dùng đổi mật khẩu, làm thế nào để đảm bảo 10 máy chủ Cache phân tán trên toàn cầu cùng hủy bỏ phiên đăng nhập cũ ngay lập tức mà không để xảy ra kẽ hở bảo mật?
 
 ---
 
@@ -361,16 +491,16 @@ use std::collections::HashMap;
 /// Cache có đào thải LRU (Least Recently Used): đầy thì bỏ mục lâu nhất chưa dùng.
 pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
     map: HashMap<K, (V, u64)>, // khóa -> (giá trị, dấu thời gian truy cập gần nhất)
-    suc_chua: usize,
-    dong_ho: u64,              // bộ đếm logic, tăng mỗi lần truy cập
+    capacity: usize,
+    clock: u64,                // bộ đếm logic, tăng mỗi lần truy cập
 }
 
 impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
-    pub fn new(suc_chua: usize) -> Self {
-        Self { map: HashMap::new(), suc_chua, dong_ho: 0 }
+    pub fn new(capacity: usize) -> Self {
+        Self { map: HashMap::new(), capacity, clock: 0 }
     }
 
-    fn tick(&mut self) -> u64 { self.dong_ho += 1; self.dong_ho }
+    fn tick(&mut self) -> u64 { self.clock += 1; self.clock }
 
     pub fn get(&mut self, key: &K) -> Option<V> {
         let now = self.tick();
@@ -382,7 +512,7 @@ impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 
     pub fn set(&mut self, key: K, value: V) {
         let now = self.tick();
-        if !self.map.contains_key(&key) && self.map.len() >= self.suc_chua {
+        if !self.map.contains_key(&key) && self.map.len() >= self.capacity {
             // Đầy chỗ -> tìm khóa có dấu thời gian NHỎ NHẤT (lâu nhất chưa dùng) và bỏ.
             if let Some(lru_key) = self.map.iter()
                 .min_by_key(|(_, (_, ts))| *ts)
@@ -398,7 +528,7 @@ impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 }
 
 #[test]
-fn dao_thai_muc_lau_nhat_chua_dung() {
+fn evicts_least_recently_used() {
     let mut c = LruCache::new(2);
     c.set("a", 1);
     c.set("b", 2);
@@ -429,9 +559,9 @@ Hàng đợi thư chết (Dead-Letter Queue): thông điệp thất bại quá 3
 use std::collections::VecDeque;
 
 /// Thông điệp kèm bộ đếm số lần đã thử xử lý.
-pub struct Message { pub payload: String, pub so_lan_thu: u32 }
+pub struct Message { pub payload: String, pub attempts: u32 }
 
-/// Hàng đợi có DLQ: thất bại > 3 lần thì chuyển sang hàng thư chết thay vì vứt bỏ.
+/// Hàng đợi có DLQ: thất bại đủ 3 lần thì chuyển sang hàng thư chết thay vì vứt bỏ.
 pub struct QueueWithDlq {
     main: VecDeque<Message>,
     pub dead_letter: Vec<Message>, // nơi kỹ sư kiểm tra thủ công về sau
@@ -441,16 +571,16 @@ impl QueueWithDlq {
     pub fn new() -> Self { Self { main: VecDeque::new(), dead_letter: Vec::new() } }
 
     pub fn push(&mut self, payload: &str) {
-        self.main.push_back(Message { payload: payload.to_string(), so_lan_thu: 0 });
+        self.main.push_back(Message { payload: payload.to_string(), attempts: 0 });
     }
 
-    /// Xử lý thông điệp kế tiếp. `thanh_cong` mô phỏng kết quả xử lý.
-    /// Nếu thất bại: tăng bộ đếm, đưa lại hàng chính; quá 3 lần -> chuyển DLQ.
-    pub fn process_next(&mut self, thanh_cong: bool) {
+    /// Xử lý thông điệp kế tiếp. `succeeded` mô phỏng kết quả xử lý.
+    /// Nếu thất bại: tăng bộ đếm, đưa lại hàng chính; đủ 3 lần -> chuyển DLQ.
+    pub fn process_next(&mut self, succeeded: bool) {
         if let Some(mut msg) = self.main.pop_front() {
-            if thanh_cong { return; } // xử lý xong, biến mất khỏi hàng
-            msg.so_lan_thu += 1;
-            if msg.so_lan_thu >= 3 {
+            if succeeded { return; } // xử lý xong, biến mất khỏi hàng
+            msg.attempts += 1;
+            if msg.attempts >= 3 {
                 // Thất bại 3 lần liên tiếp -> KHÔNG vứt, chuyển sang hàng thư chết.
                 self.dead_letter.push(msg);
             } else {
@@ -463,7 +593,7 @@ impl QueueWithDlq {
 }
 
 #[test]
-fn chuyen_dlq_sau_3_lan_that_bai() {
+fn moves_to_dlq_after_3_failures() {
     let mut q = QueueWithDlq::new();
     q.push("gửi email lỗi");
     // Ba lần xử lý đều thất bại.
@@ -472,7 +602,7 @@ fn chuyen_dlq_sau_3_lan_that_bai() {
     q.process_next(false); // lần 3 -> chuyển DLQ
     assert_eq!(q.main_len(), 0);              // không còn ở hàng chính
     assert_eq!(q.dead_letter.len(), 1);       // đã vào hàng thư chết
-    assert_eq!(q.dead_letter[0].so_lan_thu, 3);
+    assert_eq!(q.dead_letter[0].attempts, 3);
 }
 ```
 
@@ -512,5 +642,5 @@ Chính khoảng trễ lan truyền giữa các cache tạo ra một **cửa sổ
 | **Danh sách thu hồi tập trung** | Mỗi yêu cầu kiểm nhanh một "sổ đen" phiên bị thu hồi (nguồn duy nhất, sao chép nhanh) | Thêm một lần tra mỗi yêu cầu; nhưng nhất quán tức thì |
 | **Cặp token + phiên bản mật khẩu** | Token nhúng "phiên bản mật khẩu"; đổi mật khẩu tăng phiên bản -> mọi token cũ tự sai | Sạch, nhưng cần thiết kế token từ đầu |
 
-Trong thực tế, hệ thống nghiêm túc **kết hợp**: TTL ngắn cho phiên + một sổ đen thu hồi tập trung cho các sự kiện nhạy cảm (đổi mật khẩu, đăng xuất). Câu nói của Martin Fowler đúng ở chỗ: **không có lời giải hoàn hảo** — mọi phương án đều đánh đổi giữa *tốc độ* (đệm để nhanh), *tính nhất quán* (dữ liệu mới nhất ở mọi nơi), và *tải hệ thống*. Chọn điểm cân bằng nào là tùy dữ liệu: "hơi cũ" chấp nhận được thì ưu tiên tốc độ; dữ liệu an ninh thì phải trả giá tốc độ để đóng cửa sổ tấn công.
+Trong thực tế, hệ thống nghiêm túc **kết hợp**: TTL ngắn cho phiên + một sổ đen thu hồi tập trung cho các sự kiện nhạy cảm (đổi mật khẩu, đăng xuất). Câu nói của Phil Karlton đúng ở chỗ: **không có lời giải hoàn hảo** — mọi phương án đều đánh đổi giữa *tốc độ* (đệm để nhanh), *tính nhất quán* (dữ liệu mới nhất ở mọi nơi), và *tải hệ thống*. Chọn điểm cân bằng nào là tùy dữ liệu: "hơi cũ" chấp nhận được thì ưu tiên tốc độ; dữ liệu an ninh thì phải trả giá tốc độ để đóng cửa sổ tấn công.
 </details>

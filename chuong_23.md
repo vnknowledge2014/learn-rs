@@ -2,9 +2,9 @@
 
 ## Giới thiệu & Mục tiêu học tập
 
-Trong Chương 21 và 18, chúng ta đã khám phá Macro khai báo (`macro_rules!`) và thấy được sức mạnh của việc so khớp khuôn mẫu (pattern matching) để sinh mã nguồn tự động. Tuy nhiên, khi xây dựng các ứng dụng quy mô công nghiệp — chẳng hạn như tự động chuyển đổi struct thành chuỗi JSON trong `serde`, hay tự động sinh mã kết nối cơ sở dữ liệu trong `sqlx` — bạn sẽ sớm chạm tới bức tường giới hạn của `macro_rules!`:
+Trong Chương 21 và 22, chúng ta đã khám phá Macro khai báo (`macro_rules!`) và thấy được sức mạnh của việc so khớp khuôn mẫu (pattern matching) để sinh mã nguồn tự động. Tuy nhiên, khi xây dựng các ứng dụng quy mô công nghiệp — chẳng hạn như tự động chuyển đổi struct thành chuỗi JSON trong `serde`, hay tự động sinh mã kết nối cơ sở dữ liệu trong `sqlx` — bạn sẽ sớm chạm tới bức tường giới hạn của `macro_rules!`:
 - *`macro_rules!` không thể nhìn sâu vào cấu trúc bên trong của một `struct`*: Bạn không thể yêu cầu nó: "Hãy duyệt qua tất cả các trường dữ liệu (fields) của struct này, lấy tên của từng trường và kiểu dữ liệu tương ứng của nó để sinh mã in ấn".
-- *`macro_rules!` không có khả năng tính toán Turing-complete*: Bạn không thể gọi các thuật toán phức tạp, xử lý chuỗi ký tự nâng cao, hay kiểm tra tính hợp lệ logic nghiệp vụ trong quá trình sinh mã.
+- *`macro_rules!` không chạy được mã Rust tuỳ ý*: Về lý thuyết, các macro TT Muncher đệ quy có thể mô phỏng mọi phép tính, nhưng trong thực tế bạn không thể gọi hàm, dùng `String`, `HashMap`, hay kiểm tra logic nghiệp vụ phức tạp trong quá trình sinh mã.
 
 Để vượt qua giới hạn này, Rust cung cấp vũ khí tối thượng của nghệ thuật siêu lập trình: **Macro thủ tục (Procedural Macros - Proc Macros)**. Thay vì so khớp khuôn mẫu thô sơ, Macro thủ tục thực chất là **những hàm Rust bình thường chạy trực tiếp trong quá trình biên dịch (Compile-time)**. Hàm này nhận đầu vào là một dòng thẻ bài mã nguồn (`TokenStream`), phân tích nó thành **Cây cú pháp trừu tượng (Abstract Syntax Tree - AST)** thông qua thư viện `syn`, tính toán xử lý tùy ý, và dùng thư viện `quote` để xuất ra một dòng thẻ bài mã nguồn mới toanh gắn vào chương trình của bạn!
 
@@ -13,7 +13,7 @@ Mục tiêu học tập của chương này:
 - Nắm vững kiến trúc dự án bắt buộc: Crate thư viện riêng biệt với cờ cấu hình **`proc-macro = true`** trong `Cargo.toml`.
 - Khám phá khái niệm **Cây cú pháp trừu tượng (Abstract Syntax Tree - AST)** và cách trình biên dịch `rustc` hiểu mã nguồn.
 - Làm chủ thư viện **`syn`**: Kỹ thuật phân tích cú pháp từ Token thô sang các cấu trúc Rust có kiểu cụ thể (`DeriveInput`, `DataStruct`, `FieldsNamed`).
-- Làm chủ thư viện **`quote`**: Sử dụng macro `quote!` và cơ chế nội suy thẻ bài `#bien` để dập khuôn sinh mã.
+- Làm chủ thư viện **`quote`**: Sử dụng macro `quote!` và cơ chế nội suy thẻ bài `#var` để dập khuôn sinh mã.
 - Báo cáo lỗi biên dịch chính xác tại vị trí dòng mã sai phạm thông qua **`syn::Error`** và **`to_compile_error()`**.
 
 ---
@@ -33,7 +33,7 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
 │   lên kính hiển vi điện tử             │ - Cây bút lông ma thuật tự động lướt    │
 │ - Phóng đại nhìn rõ từng tế bào:       │   trên trang giấy trắng                 │
 │   + Đây là tên người bệnh: `User`      │ - Viết ra hàng trăm dòng điều lệ mới:   │
-│   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl DetailedDescription for User { ... }`   │
+│   + Đây là tế bào 1: `id` kiểu `u64`   │   `impl DetailedDescription for User`   │
 │   + Đây là tế bào 2: `name` kiểu `str` │ - Chuẩn xác từng dấu chấm, dấu phẩy!    │
 │ -> Bóc tách cấu trúc vi mô tường minh! │ -> Sinh mã thần tốc không tốn công sức! │
 └────────────────────────────────────────┴─────────────────────────────────────────┘
@@ -41,11 +41,11 @@ Hãy cùng hình tượng hóa quy trình hoạt động của Macro thủ tục
 
 ### 1. Kính hiển vi phẫu thuật y khoa (Thư viện `syn` - AST Inspection)
 - Hãy tưởng tượng bạn gửi một mẫu hồ sơ struct qua cửa sổ phòng khám:
-  - Ở trạng thái bình thường, đối với máy tính, đoạn mã `struct NhanVien { ten: String, tuoi: u32 }` chỉ là một dãy các ký tự vô hồn hoặc dòng thẻ bài thô.
+  - Ở trạng thái bình thường, đối với máy tính, đoạn mã `struct Employee { name: String, age: u32 }` chỉ là một dãy các ký tự vô hồn hoặc dòng thẻ bài thô.
   - Thư viện **`syn`** đóng vai trò chiếc kính hiển vi điện tử: Nó phân tích mẫu vật thành một cái cây có cấu trúc rõ ràng:
     - Gốc cây: Đây là một cấu trúc dữ liệu loại `Struct`.
-    - Thân cây: Tên của struct là định danh `NhanVien`.
-    - Các cành cây: Có 2 nhánh trường dữ liệu (fields), nhánh 1 tên là `ten` có kiểu `String`, nhánh 2 tên là `tuoi` có kiểu `u32`.
+    - Thân cây: Tên của struct là định danh `Employee`.
+    - Các cành cây: Có 2 nhánh trường dữ liệu (fields), nhánh 1 tên là `name` có kiểu `String`, nhánh 2 tên là `age` có kiểu `u32`.
   - Nhờ có kính hiển vi `syn`, bạn có thể duyệt qua từng cành cây để đọc dữ liệu một cách có trật tự!
 
 ### 2. Cây bút lông ma thuật (Thư viện `quote` - Code Generation)
@@ -70,25 +70,25 @@ Tệp `Cargo.toml` của Crate macro bắt buộc phải có cờ `proc-macro = 
 [package]
 name = "my_macro_crate"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 proc-macro = true # ĐÁNH DẤU ĐÂY LÀ CRATE MACRO THỦ TỤC
 
 [dependencies]
-syn = { version = "2.0", features = ["full", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = "1.0"
+syn = "3"          # thêm features = ["full"] nếu cần phân tích hàm, khối lệnh...
+quote = "1"
+proc-macro2 = "1"
 ```
 
 ### 2. Cây cú pháp trừu tượng AST và Kiểu dữ liệu `DeriveInput` trong `syn`
 
-Khi người dùng đánh dấu `#[derive(MoTa)]` lên một struct:
+Khi người dùng đánh dấu `#[derive(DetailedDescription)]` lên một struct:
 ```rust
-#[derive(MoTa)]
-struct SinhVien {
+#[derive(DetailedDescription)]
+struct Student {
     full_name: String,
-    diem: f64,
+    score: f64,
 }
 ```
 Thư viện `syn` sẽ phân tích đoạn mã trên thành một struct mang tên `syn::DeriveInput`:
@@ -97,7 +97,7 @@ Thư viện `syn` sẽ phân tích đoạn mã trên thành một struct mang t�
 pub struct DeriveInput {
     pub attrs: Vec<Attribute>, // Danh sách thuộc tính #[...]
     pub vis: Visibility,        // pub hay private
-    pub ident: Ident,           // Tên của kiểu dữ liệu (ở đây là "SinhVien")
+    pub ident: Ident,           // Tên của kiểu dữ liệu (ở đây là "Student")
     pub generics: Generics,     // Kiểu generic <T, 'a> nếu có
     pub data: Data,             // Dữ liệu nội dung: Struct, Enum hay Union
 }
@@ -115,11 +115,11 @@ Thư viện `quote` cung cấp macro `quote!` cho phép bạn viết mã Rust nh
 - **`#( #list ),*`**: Cơ chế lặp của `quote!`. Tự động lặp qua một danh sách và ngăn cách các phần tử bởi dấu phẩy!
 
 ```rust
-let ten_struct = &ast.ident;
-let ma_sinh_ra = quote! {
-    impl #ten_struct {
-        pub fn in_ten(&self) {
-            println!("Tôi là thực thể của: {}", stringify!(#ten_struct));
+let name = &ast.ident;
+let generated = quote! {
+    impl #name {
+        pub fn print_type_name(&self) {
+            println!("Tôi là thực thể của: {}", stringify!(#name));
         }
     }
 };
@@ -131,9 +131,11 @@ Nếu người dùng áp dụng macro của bạn lên một `enum` trong khi ma
 
 ```rust
 return syn::Error::new_spanned(
-    ast.ident, 
-    "Macro MoTa chỉ hỗ trợ cho kiểu dữ liệu Struct, không hỗ trợ Enum!"
-).to_compile_error().into();
+    &ast.ident,
+    "DetailedDescription chỉ hỗ trợ struct, không hỗ trợ enum/union",
+)
+.to_compile_error()
+.into();
 ```
 
 Trình biên dịch `rustc` sẽ hiển thị thông báo lỗi màu đỏ đẹp mắt trỏ thẳng vào tên của `enum` đó trên màn hình Terminal của người dùng!
@@ -142,129 +144,245 @@ Trình biên dịch `rustc` sẽ hiển thị thông báo lỗi màu đỏ đẹ
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là thiết kế hoàn chỉnh gồm hai phần:
-1. **Phần 1: Cấu trúc Crate Proc Macro chuẩn công nghiệp** (với `syn` và `quote`).
-2. **Phần 2: Bản mô phỏng và kiểm chứng cơ chế sinh mã AST hoàn chỉnh** có thể thực thi và chạy trực tiếp bằng `rustc` với 0 cảnh báo.
+Dưới đây là một workspace thật gồm **hai crate**, biên dịch và chạy được bằng `cargo run -p ch23` (bài kiểm thử: `cargo test -p ch23`):
+1. **`ch23_macros`** — crate thư viện `proc-macro = true`, chứa derive macro `#[derive(DetailedDescription)]` viết bằng `syn` + `quote`.
+2. **`ch23`** — crate nhị phân định nghĩa trait `DetailedDescription`, **dùng** derive macro ở trên, và dùng thêm `syn::parse_str` để "soi" tận mắt cây AST mà macro nhận được.
+
+**Bước 1 — Crate macro.** Tệp `ch23_macros/Cargo.toml`:
+
+```toml
+[package]
+name = "ch23_macros"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "3"
+quote = "1"
+proc-macro2 = "1"
+```
+
+Tệp `ch23_macros/src/lib.rs`:
 
 ```rust
-// Tệp: src/main.rs
-// Chương trình thực chiến làm chủ Kiến trúc Macro thủ tục (Procedural Macros), syn, quote và AST
+// Tệp: ch23_macros/src/lib.rs
+//! Crate macro thủ tục của Chương 23.
+//!
+//! Một crate `proc-macro = true` CHỈ được xuất ra macro (không xuất được trait,
+//! struct hay hàm thường). Vì vậy trait `DetailedDescription` nằm ở crate dùng
+//! macro (`ch23`), còn crate này chỉ sinh ra khối `impl` cho trait đó.
 
-// ============================================================================
-// PHẦN 1: MÔ HÌNH HÓA ĐỊNH NGHĨA CÂY CÚ PHÁP TRỪU TƯỢNG (AST ANATOMY)
-// Giúp người học thấu hiểu chính xác cấu trúc dữ liệu bên trong của crate `syn`
-// ============================================================================
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstDataField {
-    pub field_name: &'static str,
-    pub kind_data: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructAST {
-    pub ten_struct: &'static str,
-    pub field_list: Vec<AstDataField>,
-}
-
-impl StructAST {
-    /// Hàm mô phỏng công việc của syn: Duyệt cây AST và trích xuất danh sách tên trường
-    pub fn get_list_name(&self) -> Vec<&'static str> {
-        self.field_list
-            .iter()
-            .map(|f| f.field_name)
-            .collect()
-    }
-}
-
-// ============================================================================
-// PHẦN 2: TRAIT VÀ MÃ ĐƯỢC TỰ ĐỘNG SINH RA BỞI QUOTE!
-// ============================================================================
-
-/// Trait deliver ước mà Macro thủ tục sẽ tự động triển khai
-pub trait DetailedDescription {
-    fn in_thong_tin_chi_tiet(&self);
-    fn field_count() -> usize;
-}
-
-// Giả sử lập trình viên viết Struct này:
-pub struct NetworkDevice {
-    pub ip_address: String,
-    pub service_port: u16,
-    pub dang_hoat_dong: bool,
-}
-
-// Đây là đoạn mã mà proc-macro (syn + quote) sẽ TỰ ĐỘNG SINH RA
-// thay vì bắt lập trình viên phải tự tay gõ từng dòng:
-impl DetailedDescription for NetworkDevice {
-    fn in_thong_tin_chi_tiet(&self) {
-        println!("------------------------------------------------------------");
-        println!("THÔNG TIN THỰC THỂ: [ThietBiMang]");
-        println!("  - Trường `dia_chi_ip`      : {}", self.ip_address);
-        println!("  - Trường `cong_dich_vu`    : {}", self.service_port);
-        println!("  - Trường `dang_hoat_dong`  : {}", self.dang_hoat_dong);
-        println!("------------------------------------------------------------");
-    }
-
-    fn field_count() -> usize {
-        3 // Sinh tự động từ fields.len() của syn!
-    }
-}
-
-// ============================================================================
-// PHẦN 3: BẢN ĐẶC TẢ MÃ NGUỒN CỦA PROC-MACRO CRATE (CHUẨN SYN + QUOTE)
-// Đoạn mã này được lưu trong Crate thư viện riêng biệt (proc-macro = true)
-// ============================================================================
-
-/*
-// [my_macro/src/lib.rs]
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
+/// `#[derive(DetailedDescription)]` — sinh `impl DetailedDescription for <Kiểu>`.
+///
+/// Mã sinh ra gọi tên trait KHÔNG kèm đường dẫn, nên ở chỗ dùng trait phải nằm
+/// trong phạm vi (giống ví dụ `HelloMacro` trong The Rust Book).
 #[proc_macro_derive(DetailedDescription)]
-pub fn mo_ta_chi_tiet_derive(input: TokenStream) -> TokenStream {
-    // 1. Phân tích TokenStream thành Cây cú pháp AST bằng syn
+pub fn detailed_description_derive(input: TokenStream) -> TokenStream {
+    // 1. Phân tích TokenStream thành cây cú pháp AST bằng syn
     let ast = parse_macro_input!(input as DeriveInput);
-    let ten_struct = &ast.ident;
+    let name = &ast.ident;
 
-    // 2. Kiểm tra an toàn: Chỉ hỗ trợ Struct có tên trường
+    // 2. Kiểm tra an toàn: chỉ hỗ trợ struct có trường đặt tên.
+    //    Sai thì trả về LỖI BIÊN DỊCH trỏ đúng vào tên kiểu, KHÔNG panic.
     let fields = match &ast.data {
         Data::Struct(s) => match &s.fields {
-            Fields::Named(f) => &f.named,
-            _ => return syn::Error::new_spanned(ten_struct, "Chỉ hỗ trợ Struct có tên trường!")
+            Fields::Named(named) => &named.named,
+            _ => {
+                return syn::Error::new_spanned(
+                    name,
+                    "DetailedDescription chỉ hỗ trợ struct có trường đặt tên",
+                )
                 .to_compile_error()
-                .into(),
+                .into();
+            }
         },
-        _ => return syn::Error::new_spanned(ten_struct, "Chỉ hỗ trợ kiểu dữ liệu Struct!")
+        _ => {
+            return syn::Error::new_spanned(
+                name,
+                "DetailedDescription chỉ hỗ trợ struct, không hỗ trợ enum/union",
+            )
             .to_compile_error()
-            .into(),
+            .into();
+        }
     };
 
-    // 3. Trích xuất tên các trường
-    let ten_truongs = fields.iter().map(|f| &f.ident);
-    let quantity = fields.len();
+    // 3. Trích xuất tên các trường (Fields::Named nên `ident` luôn là Some)
+    let field_idents: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
+    let field_names: Vec<String> = field_idents.iter().map(|i| i.to_string()).collect();
+    let count = field_idents.len();
 
-    // 4. Dùng quote! để sinh mã Rust mới
-    let ma_sinh = quote! {
-        impl DetailedDescription for #ten_struct {
-            fn in_thong_tin_chi_tiet(&self) {
-                println!("THÔNG TIN THỰC THỂ: [{}]", stringify!(#ten_struct));
+    // 4. Giữ nguyên generics của struct gốc để struct generic vẫn dùng được
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+    // 5. Dùng quote! để sinh mã Rust mới; `#( ... )*` lặp qua từng trường
+    let expanded = quote! {
+        impl #impl_generics DetailedDescription for #name #ty_generics #where_clause {
+            fn describe(&self) -> String {
+                let mut out = format!("THÔNG TIN THỰC THỂ: [{}]", stringify!(#name));
                 #(
-                    println!("  - Trường `{}`: {:?}", stringify!(#ten_truongs), self.#ten_truongs);
+                    out.push_str(&format!(
+                        "\n  - Trường `{}`: {:?}",
+                        #field_names,
+                        self.#field_idents
+                    ));
                 )*
+                out
+            }
+
+            fn field_names() -> &'static [&'static str] {
+                &[ #( #field_names ),* ]
             }
 
             fn field_count() -> usize {
-                #quantity
+                #count
             }
         }
     };
 
-    // 5. Chuyển thành TokenStream trả lại cho compiler
-    TokenStream::from(ma_sinh)
+    // 6. Chuyển proc_macro2::TokenStream thành proc_macro::TokenStream trả cho rustc
+    TokenStream::from(expanded)
 }
-*/
+```
+
+> **Về phiên bản `syn`:** chương này dùng `syn` 3.x. Với những gì một derive macro cơ bản cần (`DeriveInput`, `Data`, `Fields`, `syn::Error`, `split_for_impl`), API giống hệt `syn` 2.x; điểm khác dễ thấy nhất là `syn::Field` có thêm hai trường `modifiers` và `default`, nên đừng dựng `Field` bằng cú pháp struct literal trong mã của bạn.
+
+**Bước 2 — Crate dùng macro.** Tệp `ch23/Cargo.toml`:
+
+```toml
+[package]
+name = "ch23"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Crate macro thủ tục do chính chương này viết (proc-macro = true)
+ch23_macros = { path = "../ch23_macros" }
+# Dùng syn ở chế độ thường (không trong macro) để "soi" cây AST lúc chạy
+syn = "3"
+quote = "1"
+```
+
+Tệp `ch23/src/main.rs`:
+
+```rust
+// Tệp: src/main.rs
+// Chương trình thực chiến làm chủ Kiến trúc Macro thủ tục (Procedural Macros), syn, quote và AST
+//
+// Cấu trúc workspace:
+//   ch23_macros/  (lib, proc-macro = true) — chứa #[proc_macro_derive(DetailedDescription)]
+//   ch23/         (bin)                    — định nghĩa trait và DÙNG derive macro
+
+use std::fmt::Debug;
+
+use ch23_macros::DetailedDescription;
+use quote::ToTokens;
+use syn::{Data, DeriveInput, Fields, Visibility};
+
+// ============================================================================
+// PHẦN 1: TRAIT MÀ DERIVE MACRO SẼ TỰ ĐỘNG CÀI ĐẶT
+// ============================================================================
+// Crate proc-macro không xuất được trait, nên trait nằm ở đây. (Trait và derive
+// macro trùng tên `DetailedDescription` không xung đột: macro sống ở không gian
+// tên macro, trait ở không gian tên kiểu — y hệt `Debug` của thư viện chuẩn.)
+
+pub trait DetailedDescription {
+    /// Mô tả từng trường kèm giá trị (sinh tự động bởi quote!)
+    fn describe(&self) -> String;
+    /// Danh sách tên trường (sinh tự động từ Fields::Named của syn)
+    fn field_names() -> &'static [&'static str];
+    /// Số trường (sinh tự động từ fields.len())
+    fn field_count() -> usize;
+
+    /// Phương thức mặc định — KHÔNG do macro sinh ra
+    fn print_details(&self) {
+        println!("------------------------------------------------------------");
+        println!("{}", self.describe());
+        println!("------------------------------------------------------------");
+    }
+}
+
+// ============================================================================
+// PHẦN 2: STRUCT DÙNG DERIVE MACRO THẬT
+// ============================================================================
+
+/// Lập trình viên chỉ viết đúng một dòng #[derive(...)].
+/// Toàn bộ khối `impl DetailedDescription for NetworkDevice` do ch23_macros sinh ra.
+#[derive(Debug, DetailedDescription)]
+pub struct NetworkDevice {
+    pub ip_address: String,
+    pub service_port: u16,
+    pub is_active: bool,
+}
+
+/// Struct generic: macro dùng `split_for_impl()` để giữ nguyên `<T>` và `where`.
+#[derive(DetailedDescription)]
+pub struct Pair<T: Debug> {
+    pub left: T,
+    pub right: T,
+}
+
+// ============================================================================
+// PHẦN 3: "KÍNH HIỂN VI" SYN — PHÂN TÍCH AST NGAY LÚC CHẠY
+// ============================================================================
+// syn không chỉ chạy trong macro: `syn::parse_str` phân tích được mã nguồn
+// dạng chuỗi ở chương trình thường. Ta dùng nó để NHÌN TẬN MẮT cây DeriveInput
+// mà derive macro nhận được.
+
+/// Thông tin của một trường, rút từ cây AST.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldInfo {
+    /// `None` với struct dạng tuple — các trường không có tên
+    pub name: Option<String>,
+    /// Kiểu ở dạng CÚ PHÁP (chưa được phân giải), in lại thành chuỗi
+    pub ty: String,
+    pub is_pub: bool,
+}
+
+/// Tóm tắt cây AST của một khai báo kiểu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstSummary {
+    pub type_name: String,
+    /// "struct", "enum" hoặc "union"
+    pub kind: &'static str,
+    pub fields: Vec<FieldInfo>,
+}
+
+/// Duyệt cây `DeriveInput` giống hệt việc một derive macro sẽ làm.
+pub fn inspect_ast(source: &str) -> syn::Result<AstSummary> {
+    let ast: DeriveInput = syn::parse_str(source)?;
+    let (kind, fields) = match &ast.data {
+        Data::Struct(s) => {
+            let fields = match &s.fields {
+                Fields::Named(named) => named.named.iter().collect(),
+                Fields::Unnamed(unnamed) => unnamed.unnamed.iter().collect(),
+                Fields::Unit => Vec::new(),
+            };
+            ("struct", fields)
+        }
+        Data::Enum(_) => ("enum", Vec::new()),
+        Data::Union(_) => ("union", Vec::new()),
+    };
+    let fields = fields
+        .into_iter()
+        .map(|f| FieldInfo {
+            name: f.ident.as_ref().map(|i| i.to_string()),
+            ty: f.ty.to_token_stream().to_string(),
+            is_pub: matches!(f.vis, Visibility::Public(_)),
+        })
+        .collect();
+    Ok(AstSummary {
+        type_name: ast.ident.to_string(),
+        kind,
+        fields,
+    })
+}
 
 // ============================================================================
 // CHƯƠNG TRÌNH THỰC THI CHÍNH
@@ -275,35 +393,134 @@ fn main() {
     println!("      KIẾN TRÚC PROCEDURAL MACROS: SYN, QUOTE & AST         ");
     println!("============================================================");
 
-    // 1. Mô phỏng quá trình kính hiển vi `syn` phân tích AST của struct
-    let ast_model = StructAST {
-        ten_struct: "ThietBiMang",
-        field_list: vec![
-            AstDataField { field_name: "dia_chi_ip", kind_data: "String" },
-            AstDataField { field_name: "cong_dich_vu", kind_data: "u16" },
-            AstDataField { field_name: "dang_hoat_dong", kind_data: "bool" },
-        ],
-    };
-
+    // 1. Soi cây AST bằng `syn` — đúng thứ mà derive macro nhận được
     println!("\n1. Phân tích Cây cú pháp AST bằng `syn`:");
-    println!("- Tên cấu trúc được phát hiện: {}", ast_model.ten_struct);
-    println!("- Danh sách các cành trường dữ liệu: {:?}", ast_model.get_list_name());
+    let source = "pub struct NetworkDevice { pub ip_address: String, pub service_port: u16, is_active: bool }";
+    match inspect_ast(source) {
+        Ok(summary) => {
+            println!(
+                "- Phát hiện một {} tên `{}`",
+                summary.kind, summary.type_name
+            );
+            for f in &summary.fields {
+                println!(
+                    "  + trường {:<14} kiểu {:<8} {}",
+                    f.name.as_deref().unwrap_or("<không tên>"),
+                    f.ty,
+                    if f.is_pub { "(pub)" } else { "(riêng tư)" }
+                );
+            }
+        }
+        Err(e) => println!("- syn báo lỗi cú pháp: {}", e),
+    }
 
-    // 2. Kiểm chứng mã nguồn sau khi được `quote!` sinh ra tự động
-    println!("\n2. Thực thi phương thức được dập khuôn tự động qua Trait MoTaChiTiet:");
+    // syn::Error cũng là thứ derive macro trả về để báo lỗi đúng vị trí
+    match inspect_ast("struct Broken { x: }") {
+        Ok(_) => println!("(không tới đây)"),
+        Err(e) => println!("- Mã nguồn hỏng -> syn::Error: {}", e),
+    }
+
+    // 2. Gọi các phương thức do derive macro THẬT sinh ra lúc biên dịch
+    println!("\n2. Thực thi phương thức được `quote!` sinh tự động:");
     let router = NetworkDevice {
         ip_address: String::from("192.168.1.1"),
         service_port: 443,
-        dang_hoat_dong: true,
+        is_active: true,
     };
+    router.print_details();
+    println!(
+        "Tên các trường: {:?} (tổng {} trường)",
+        NetworkDevice::field_names(),
+        NetworkDevice::field_count()
+    );
 
-    // Gọi phương thức được sinh tự động bởi Proc Macro
-    router.in_thong_tin_chi_tiet();
-    println!("Tổng số lượng trường của thực thể: {}", NetworkDevice::field_count());
+    // 3. Struct generic vẫn được hỗ trợ nhờ split_for_impl()
+    println!("\n3. Derive trên struct generic Pair<T>:");
+    let pair = Pair {
+        left: "trái",
+        right: "phải",
+    };
+    println!("{}", pair.describe());
 
     println!("\n============================================================");
     println!("   XÁC MINH KIẾN TRÚC PROCEDURAL MACROS HOÀN TOÀN THÀNH CÔNG");
     println!("============================================================");
+}
+
+// ============================================================================
+// KIỂM THỬ: MÃ DO MACRO SINH RA ĐƯỢC KIỂM NHƯ MÃ VIẾT TAY
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derive_generates_field_names_and_count() {
+        assert_eq!(
+            NetworkDevice::field_names(),
+            &["ip_address", "service_port", "is_active"]
+        );
+        assert_eq!(NetworkDevice::field_count(), 3);
+    }
+
+    #[test]
+    fn derive_generates_describe_with_values() {
+        let d = NetworkDevice {
+            ip_address: "10.0.0.1".into(),
+            service_port: 22,
+            is_active: false,
+        };
+        let text = d.describe();
+        assert!(text.starts_with("THÔNG TIN THỰC THỂ: [NetworkDevice]"));
+        assert!(text.contains("`service_port`: 22"));
+        assert!(text.contains("`ip_address`: \"10.0.0.1\""));
+    }
+
+    #[test]
+    fn derive_supports_generics() {
+        assert_eq!(Pair::<i32>::field_count(), 2);
+        let p = Pair { left: 1, right: 2 };
+        assert!(p.describe().contains("`right`: 2"));
+    }
+
+    #[test]
+    fn syn_sees_names_types_and_visibility() {
+        let s = inspect_ast("struct Account { pub name: String, balance: f64 }").unwrap();
+        assert_eq!(s.type_name, "Account");
+        assert_eq!(s.kind, "struct");
+        assert_eq!(
+            s.fields,
+            vec![
+                FieldInfo {
+                    name: Some("name".into()),
+                    ty: "String".into(),
+                    is_pub: true
+                },
+                FieldInfo {
+                    name: Some("balance".into()),
+                    ty: "f64".into(),
+                    is_pub: false
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tuple_struct_fields_have_no_name() {
+        let s = inspect_ast("struct Point(f32, f32);").unwrap();
+        assert_eq!(s.fields.len(), 2);
+        assert!(s.fields.iter().all(|f| f.name.is_none()));
+    }
+
+    #[test]
+    fn syn_reports_enum_and_syntax_errors() {
+        assert_eq!(
+            inspect_ast("enum Color { Red, Green }").unwrap().kind,
+            "enum"
+        );
+        assert!(inspect_ast("struct Broken { x: }").is_err());
+    }
 }
 ```
 
@@ -315,19 +532,31 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0463** | `can't find crate for 'proc_macro'` | Bạn cố gắng sử dụng `extern crate proc_macro;` hoặc dùng các kiểu của `proc_macro` bên trong một crate nhị phân (`bin`) thông thường mà không phải là crate có cờ `proc-macro = true`. | Tạo một crate thư viện con riêng biệt và bổ sung cấu hình `[lib] proc-macro = true` vào tệp `Cargo.toml`. |
-| **Lỗi biên dịch syn** | `expected ident, found ...` | Khi phân tích cú pháp AST, token tiếp theo không phải là một định danh tên biến/hàm hợp lệ như `syn` mong đợi. | Kiểm tra lại cú pháp người dùng truyền vào hoặc sử dụng `syn::parse::Parse` tùy biến để xử lý các token đặc thù. |
-| **E0277** | `the trait bound '...: ToTokens' is not satisfied` | Trong khối `quote! { #bien }`, biến `#bien` không triển khai Trait `quote::ToTokens` (nghĩa là `quote` không biết cách chuyển biến này thành mã Rust). | Đảm bảo kiểu dữ liệu đưa vào `#bien` là một thành phần AST của `syn` (như `Ident`, `Type`, `TokenStream`) hoặc kiểu nguyên thủy có sẵn `ToTokens`. |
-| **Lỗi vị trí thuộc tính** | `cannot find derive macro '...' in this scope` | Crate ứng dụng chính chưa nhập (import) derive macro từ crate thư viện proc-macro. | Thêm tên crate macro vào `Cargo.toml` của dự án và khai báo `use my_macro_crate::TenMacro;`. |
+| **Lỗi cấu hình crate** (không có mã) | ``the `#[proc_macro_derive]` attribute is only usable with crates of the `proc-macro` crate type`` | Bạn viết hàm `#[proc_macro_derive]` (hoặc `#[proc_macro]`, `#[proc_macro_attribute]`) ngay trong `main.rs` hay một crate thư viện thường. | Tạo một crate thư viện riêng và bổ sung `[lib] proc-macro = true` vào `Cargo.toml` của nó. |
+| **Panic lúc chạy** (không phải lỗi biên dịch) | `procedural macro API is used outside of a procedural macro` | Bạn viết `extern crate proc_macro;` trong crate nhị phân — dòng này **biên dịch bình thường**, nhưng khi chương trình gọi tới API như `"...".parse::<proc_macro::TokenStream>()` thì panic, vì cầu nối tới trình biên dịch chỉ tồn tại khi mã chạy *bên trong* `rustc`. | Ngoài macro, dùng `proc_macro2::TokenStream` và `syn::parse_str` (chạy được ở mọi nơi, như hàm `inspect_ast` ở trên). |
+| **Lỗi phân tích của syn** | `expected identifier` | Khi phân tích cú pháp AST, token tiếp theo không phải là một định danh hợp lệ như `syn` mong đợi (vd `syn::parse_str::<syn::Ident>("123")`). | Kiểm tra lại cú pháp người dùng truyền vào hoặc cài `syn::parse::Parse` tuỳ biến để xử lý các token đặc thù. |
+| **E0277** | `the trait bound 'NotTokens: ToTokens' is not satisfied` | Trong khối `quote! { #var }`, biến `#var` không triển khai trait `quote::ToTokens` (nghĩa là `quote` không biết cách chuyển biến này thành mã Rust). | Đảm bảo kiểu dữ liệu đưa vào `#var` là một thành phần AST của `syn` (như `Ident`, `Type`), một `TokenStream`, hoặc kiểu nguyên thủy có sẵn `ToTokens` (số, `&str`, `String`…). |
+| **Lỗi phân giải tên** (không có mã) | `cannot find derive macro 'Mystery' in this scope` | Crate ứng dụng chưa nhập (import) derive macro từ crate proc-macro, hoặc gõ sai tên. | Thêm crate macro vào `[dependencies]` và khai báo `use my_macro_crate::MacroName;`. |
+| **E0404** | ``expected trait, found derive macro `DetailedDescription` `` | Mã sinh ra viết `impl DetailedDescription for ...` (không kèm đường dẫn), nhưng ở chỗ `#[derive]` trait cùng tên **không** nằm trong phạm vi — chỉ có derive macro. | Đưa trait vào phạm vi (`use crate::...::DetailedDescription;`), hoặc cho macro sinh đường dẫn đầy đủ tới trait. |
 
-### Phân tích lỗi thực tế: Cố tình dùng Proc Macro trong Crate thông thường
+### Phân tích lỗi thực tế: Cố tình viết Proc Macro trong Crate thông thường
 
 ```rust
 // Đoạn mã lỗi minh họa (trong tệp main.rs thông thường):
-// extern crate proc_macro; // LỖI E0463: can't find crate for proc_macro!
+// extern crate proc_macro;          // ← dòng này KHÔNG lỗi: crate proc_macro luôn có sẵn
+// use proc_macro::TokenStream;
+//
+// #[proc_macro_derive(Foo)]         // ← LỖI ở đây:
+// pub fn foo(input: TokenStream) -> TokenStream { input }
+// error: the `#[proc_macro_derive]` attribute is only usable with crates
+//        of the `proc-macro` crate type
+//
+// Và nếu bỏ hàm trên đi nhưng vẫn gọi API proc_macro lúc chạy:
+// let ts: proc_macro::TokenStream = "struct A;".parse().unwrap();
+// → biên dịch được, nhưng PANIC: "procedural macro API is used outside of a procedural macro"
 
 // Cách khắc phục chuẩn:
-// 1. Tổ chức dự án dạng Workspace:
+// 1. Tổ chức dự án dạng Workspace (giống ch23 / ch23_macros ở trên):
 //    my_project/
 //    ├── Cargo.toml (Workspace)
 //    ├── my_app/ (Crate chính, bin)
@@ -343,7 +572,7 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
 2. **Quy tắc tổ chức Crate**: Luôn phải nằm trong một crate thư viện độc lập có `[lib] proc-macro = true`.
 3. **Bộ đôi song sát `syn` & `quote`**:
    - `syn`: Kính hiển vi bóc tách mã nguồn thô thành Cây cú pháp trừu tượng AST có kiểu rõ ràng.
-   - `quote`: Cây bút ma thuật dập khuôn và sinh mã Rust mới một cách an toàn thông qua `#bien`.
+   - `quote`: Cây bút ma thuật dập khuôn và sinh mã Rust mới một cách an toàn thông qua `#var`.
 4. **Báo lỗi có tâm**: Dùng `syn::Error::new_spanned` kết hợp `to_compile_error()` để định vị chính xác vị trí lỗi đỏ trên màn hình người dùng.
 
 ### Bài tập rèn luyện tự giải:
@@ -358,7 +587,7 @@ Khi xây dựng và sử dụng Procedural Macros trong Rust, lập trình viên
    Dựa trên các cấu trúc của `syn` (`DeriveInput`, `DataStruct`, `FieldsNamed`), hãy vẽ sơ đồ hình cây biểu diễn các nút cha - con của struct này trong bộ nhớ của trình phân tích AST.
 
 2. **Bài tập 2 (Thiết kế Ý tưởng Derive Macro)**:  
-   Hãy tưởng tượng bạn đang viết một Derive Macro mang tên `#[derive(XuatFileJson)]`. Theo bạn, macro này sẽ cần bóc tách những thông tin gì từ AST của struct và sẽ dùng `quote!` để sinh ra phương thức gì cho struct đó?
+   Hãy tưởng tượng bạn đang viết một Derive Macro mang tên `#[derive(ToJson)]` (xuất struct ra chuỗi JSON). Theo bạn, macro này sẽ cần bóc tách những thông tin gì từ AST của struct và sẽ dùng `quote!` để sinh ra phương thức gì cho struct đó?
 
 3. **Bài tập 3 (So sánh Kiến trúc)**:  
    Tại sao Rust lại quy định khắt khe rằng Macro thủ tục phải nằm trong một Crate riêng biệt và biên dịch thành thư viện động lúc Host Time, thay vì cho phép viết lẫn lộn trong `main.rs` như `macro_rules!`?
@@ -414,7 +643,7 @@ Muốn sinh ra `to_json()` thì cần đúng ba thứ: tên struct, danh sách t
 
 | Thông tin | Lấy từ đâu | Dùng để làm gì |
 |---|---|---|
-| Tên struct | `input.ident` | Viết `impl XuatFileJson for <tên>` |
+| Tên struct | `input.ident` | Viết `impl ToJson for <tên>` |
 | Danh sách trường | `Fields::Named` | Sinh một dòng JSON cho mỗi trường |
 | Tên từng trường | `field.ident` | Làm **khoá** JSON |
 | Kiểu từng trường | `field.ty` | Chọn cách định dạng (chuỗi cần dấu nháy, số thì không) |
@@ -424,19 +653,19 @@ Muốn sinh ra `to_json()` thì cần đúng ba thứ: tên struct, danh sách t
 
 ```text
 // Phác hoạ phần thân macro thủ tục
-let ten = &input.ident;
-let cac_truong = /* trích từ Fields::Named */;
-let dong: Vec<_> = cac_truong.iter().map(|f| {
-    let khoa = f.ident.as_ref().unwrap();
-    let nhan = khoa.to_string();
-    quote! { format!("\"{}\": {:?}", #nhan, self.#khoa) }
+let name = &input.ident;
+let fields = /* trích từ Fields::Named */;
+let entries: Vec<_> = fields.iter().map(|f| {
+    let key = f.ident.as_ref().unwrap();
+    let label = key.to_string();
+    quote! { format!("\"{}\": {:?}", #label, self.#key) }
 }).collect();
 
 quote! {
-    impl XuatFileJson for #ten {
+    impl ToJson for #name {
         fn to_json(&self) -> String {
-            let phan = vec![ #( #dong ),* ];
-            format!("{{{}}}", phan.join(", "))
+            let parts = vec![ #( #entries ),* ];
+            format!("{{{}}}", parts.join(", "))
         }
     }
 }

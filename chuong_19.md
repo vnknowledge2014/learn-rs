@@ -4,7 +4,7 @@
 
 Có một sự thật thú vị: **bạn đã dùng Monad từ Chương 11 rồi mà không hề hay biết.**
 
-Mỗi lần bạn viết `balance.and_then(|x| rut_tien(x))`, bạn đang gọi phép toán mà cả thế giới lập trình hàm gọi là **bind** — trái tim của Monad. Mỗi lần bạn viết `.map()`, bạn đang dùng **Functor**. Mỗi lần bạn gõ toán tử `?`, bạn đang dùng thứ mà Haskell gọi là **do-notation**.
+Mỗi lần bạn viết `balance.and_then(|x| withdraw(x))`, bạn đang gọi phép toán mà cả thế giới lập trình hàm gọi là **bind** — trái tim của Monad. Mỗi lần bạn viết `.map()`, bạn đang dùng **Functor**. Mỗi lần bạn gõ toán tử `?`, bạn đang dùng thứ mà Haskell gọi là **do-notation**.
 
 Vậy tại sao phải học tên gọi của những thứ mình đã biết làm? Ba lý do rất cụ thể:
 
@@ -128,8 +128,8 @@ Một kiểu có `map` cho **cả hai** vị trí gọi là **Bifunctor**. Trong
 
 ```rust
 // Tầng dưới trả lỗi kỹ thuật, tầng trên cần lỗi nghiệp vụ
-doc_tep(path)
-    .map_err(|e| LoiNghiepVu::KhongDocDuocCauHinh(e.to_string()))?;
+read_file(path)
+    .map_err(|e| BusinessError::ConfigUnreadable(e.to_string()))?;
 ```
 
 ### 3. Hàm tử áp dụng (Applicative) và bài toán "báo hết lỗi một lần"
@@ -138,10 +138,10 @@ Toán tử `?` mà bạn học ở Chương 11 có một đặc tính: **ngắn 
 
 ```rust
 fn register(form: &Form) -> Result<User, String> {
-    let name = check_name(&form.name)?;      // Hỏng ở đây thì...
-    let mail = kiem_tra_mail(&form.mail)?;   // ...dòng này không bao giờ chạy
-    let age = check_age(&form.age)?;   // ...và dòng này cũng vậy
-    Ok(User { name, mail, age })
+    let name = check_name(&form.name)?;          // Hỏng ở đây thì...
+    let email = validate_email(&form.email)?;    // ...dòng này không bao giờ chạy
+    let age = check_age(&form.age)?;             // ...và dòng này cũng vậy
+    Ok(User { name, email, age })
 }
 ```
 
@@ -150,7 +150,7 @@ Với một máy chủ nội bộ thì không sao. Nhưng với **biểu mẫu �
 Applicative giải quyết đúng vấn đề này. Vì ba phép kiểm tra **độc lập** với nhau (không cái nào cần kết quả của cái nào), ta có thể chạy cả ba rồi **gom hết lỗi lại**:
 
 ```
-Kết quả: Hong(["Tên quá ngắn (cần ít nhất 4 ký tự)",
+Kết quả: Invalid(["Tên quá ngắn (cần ít nhất 4 ký tự)",
                "Email thiếu ký tự @",
                "Tuổi không phải số nguyên"])
 ```
@@ -160,7 +160,7 @@ Kết quả: Hong(["Tên quá ngắn (cần ít nhất 4 ký tự)",
 | Các bước có phụ thuộc nhau? | **Không** — độc lập | **Có** — bước sau cần kết quả bước trước |
 | Xử lý lỗi | Gom **tất cả** lỗi | Dừng ở lỗi **đầu tiên** |
 | Chạy song song được? | Được | Không |
-| Trong Rust | `Option::zip`, kiểu `Auth` tự viết | `and_then`, toán tử `?` |
+| Trong Rust | `Option::zip`, kiểu `Validation` tự viết | `and_then`, toán tử `?` |
 
 > **Quy tắc chọn**: các trường của một biểu mẫu độc lập nhau → dùng Applicative để báo hết lỗi. Các bước của một quy trình nghiệp vụ nối tiếp nhau → dùng `?` để dừng sớm. Đây là quyết định thiết kế, không phải sở thích.
 
@@ -171,13 +171,13 @@ Bạn có một danh sách chuỗi cần chuyển thành số. Kết quả tự 
 Phép **đảo ngữ cảnh** đó gọi là `sequence` / `traverse`. Trong Rust nó được cài sẵn ngay trong `collect()`:
 
 ```rust
-let tho = vec!["10", "20", "30"];
-let so: Result<Vec<i32>, _> = tho.iter().map(|s| s.parse::<i32>()).collect();
-assert_eq!(so, Ok(vec![10, 20, 30]));
+let raw = vec!["10", "20", "30"];
+let numbers: Result<Vec<i32>, _> = raw.iter().map(|s| s.parse::<i32>()).collect();
+assert_eq!(numbers, Ok(vec![10, 20, 30]));
 
-let hong = vec!["10", "hai muoi", "30"];
-let so: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
-assert!(so.is_err());   // Cả danh sách hỏng vì MỘT phần tử hỏng
+let bad = vec!["10", "hai mươi", "30"];
+let numbers: Result<Vec<i32>, _> = bad.iter().map(|s| s.parse::<i32>()).collect();
+assert!(numbers.is_err());   // Cả danh sách hỏng vì MỘT phần tử hỏng
 ```
 
 Đây là một trong những dòng mã hữu ích nhất trong toàn bộ thư viện chuẩn Rust, và nó hoạt động vì `Result` cài đặt trait `FromIterator`. Cùng họ với nó:
@@ -232,16 +232,16 @@ Trong Haskell, viết chuỗi bind lồng nhau rất khó đọc nên người t
 
 ```rust
 // Viết bằng bind tường minh — "kim tự tháp"
-fn xu_ly_a(s: &str) -> Option<u64> {
-    doc_ma_don(s).and_then(|id| return_price(id).and_then(|price| ap_thue(price)))
+fn process_a(s: &str) -> Option<u64> {
+    parse_order_id(s).and_then(|id| lookup_price(id).and_then(|price| apply_tax(price)))
 }
 
 // Viết bằng `?` — phẳng phiu, đọc từ trên xuống
-fn xu_ly_b(s: &str) -> Option<u64> {
-    let id = doc_ma_don(s)?;
-    let price = return_price(id)?;
-    let last = ap_thue(price)?;
-    Some(last)
+fn process_b(s: &str) -> Option<u64> {
+    let id = parse_order_id(s)?;
+    let price = lookup_price(id)?;
+    let total = apply_tax(price)?;
+    Some(total)
 }
 ```
 
@@ -250,21 +250,21 @@ Hai hàm này **hoàn toàn tương đương**. `?` không phải phép màu —
 Điều này cũng giải thích một giới hạn mà người học hay thắc mắc: **vì sao không trộn được `Option` và `Result` trong cùng một hàm với `?`?** Vì mỗi hàm chỉ "ở trong" đúng một đơn nguyên tại một thời điểm. Muốn chuyển giữa hai thế giới, phải nói rõ:
 
 ```rust
-let x = tim_nguoi_dung(id).ok_or("Không tìm thấy người dùng")?;  // Option -> Result
-let y = doc_so(s).ok();                                          // Result -> Option
+let x = find_user(id).ok_or("Không tìm thấy người dùng")?;  // Option -> Result
+let y = parse_number(s).ok();                                // Result -> Option
 ```
 
-Và một chi tiết ít người biết: toán tử `?` **tự động gọi `From::from` trên kiểu lỗi**. Đó là lý do bạn có thể trả về nhiều loại lỗi khác nhau từ cùng một hàm, miễn là chúng đều `impl From<...> for LoiCuaBan`. (Xem lại Chương 11 và Chương 12.)
+Và một chi tiết ít người biết: toán tử `?` **tự động gọi `From::from` trên kiểu lỗi**. Đó là lý do bạn có thể trả về nhiều loại lỗi khác nhau từ cùng một hàm, miễn là chúng đều `impl From<...> for YourError`. (Xem lại Chương 11 và Chương 12.)
 
 ### 7. "Rust có Monad không?" — Câu chuyện Kiểu bậc cao (HKT)
 
 Câu trả lời trung thực: **Rust có rất nhiều monad cụ thể, nhưng chưa có trait `Monad` tổng quát.**
 
-`Option`, `Result`, `Iterator`, `Future` đều là monad — chúng đều có `map` và `and_then`. Nhưng bạn **không thể** viết một hàm dùng chung cho tất cả:
+`Option`, `Result`, `Iterator`, `Future` đều mang dáng dấp monad — nhưng mỗi kiểu đặt tên một kiểu: `Option`/`Result` có `map` và `and_then`; `Iterator` có `map` và `flat_map` (không có `and_then`); còn `Future` trong thư viện chuẩn **không có** phương thức tổ hợp nào cả — `map`, `then` nằm ở trait `FutureExt` của crate `futures`, và cách dùng chính là `.await`. Chính sự thiếu thống nhất này cho thấy vấn đề: bạn **không thể** viết một hàm dùng chung cho tất cả:
 
 ```rust
 // Đoạn mã này KHÔNG biên dịch được trong Rust:
-// trait Monoid {
+// trait Monad {
 //     fn bind<A, B>(self: Self<A>, f: impl Fn(A) -> Self<B>) -> Self<B>;
 // }
 ```
@@ -276,22 +276,22 @@ Cộng đồng có một cách vòng tránh khéo léo, được thư viện **`
 ```rust
 pub trait HKT<U> {
     type Current;  // kiểu đang chứa bên trong, ví dụ T của Option<T>
-    type DichDen;  // "cùng cái hộp đó nhưng chứa U", ví dụ Option<U>
+    type Target;   // "cùng cái hộp đó nhưng chứa U", ví dụ Option<U>
 }
 
 impl<T, U> HKT<U> for Option<T> {
     type Current = T;
-    type DichDen = Option<U>;
+    type Target = Option<U>;
 }
 
 pub trait Functor<U>: HKT<U> {
-    fn mapping<F>(self, f: F) -> Self::DichDen
+    fn fmap<F>(self, f: F) -> Self::Target
     where
         F: FnMut(Self::Current) -> U;
 }
 ```
 
-Mẹo ở đây: thay vì nói `Self<U>` (không viết được), ta nói `Self::DichDen` và để mỗi kiểu tự khai báo "đích đến" của mình là gì. Chương trình minh họa bên dưới cài đặt đầy đủ mẫu này cho `Option`, `Result` và `Vec`.
+Mẹo ở đây: thay vì nói `Self<U>` (không viết được), ta nói `Self::Target` và để mỗi kiểu tự khai báo "đích đến" của mình là gì. Chương trình minh họa bên dưới cài đặt đầy đủ mẫu này cho `Option`, `Result` và `Vec`.
 
 > **Tin vui**: tính năng **Generic Associated Types (GAT)** đã ổn định từ Rust 1.65 và thu hẹp đáng kể khoảng cách này. Nhiều thư viện hiện đại đã dùng GAT để biểu diễn những trừu tượng trước đây phải chờ HKT.
 
@@ -305,6 +305,11 @@ Chương trình dưới đây xây dựng **Cổng tiếp nhận Đơn đăng k�
 // Tệp: src/main.rs
 // Chương trình thực chiến: Functor, Applicative, Monad và bản đồ sang Rust
 
+// Chương này CỐ Ý viết `x.map(|a| a)`, `x.map(f).flatten()`, `m.and_then(Some)`
+// để kiểm chứng luật Functor/Monad; clippy coi các dạng đó là thừa nên ta tắt
+// đúng ba lint này cho cả tệp.
+#![allow(clippy::map_identity, clippy::map_flatten, clippy::bind_instead_of_map)]
+
 // ============================================================================
 // PHẦN 1: MÔ PHỎNG KIỂU BẬC CAO (HKT) THEO CÁCH CỦA fp-core.rs
 // ============================================================================
@@ -313,31 +318,31 @@ Chương trình dưới đây xây dựng **Cổng tiếp nhận Đơn đăng k�
 /// sang kiểu U thì nó trở thành kiểu gì?"
 pub trait HKT<U> {
     type Current; // T trong Option<T>
-    type DichDen; // Option<U>
+    type Target; // Option<U>
 }
 
 impl<T, U> HKT<U> for Option<T> {
     type Current = T;
-    type DichDen = Option<U>;
+    type Target = Option<U>;
 }
 impl<T, U> HKT<U> for Vec<T> {
     type Current = T;
-    type DichDen = Vec<U>;
+    type Target = Vec<U>;
 }
 impl<T, U, E> HKT<U> for Result<T, E> {
     type Current = T;
-    type DichDen = Result<U, E>;
+    type Target = Result<U, E>;
 }
 
-/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng shared cho Option, Result và Vec.
+/// HÀM TỬ tổng quát: nhờ HKT, một trait duy nhất dùng chung cho Option, Result và Vec.
 pub trait Functor<U>: HKT<U> {
-    fn mapping<F>(self, f: F) -> Self::DichDen
+    fn fmap<F>(self, f: F) -> Self::Target
     where
         F: FnMut(Self::Current) -> U;
 }
 
 impl<T, U> Functor<U> for Option<T> {
-    fn mapping<F>(self, f: F) -> Option<U>
+    fn fmap<F>(self, f: F) -> Option<U>
     where
         F: FnMut(T) -> U,
     {
@@ -345,7 +350,7 @@ impl<T, U> Functor<U> for Option<T> {
     }
 }
 impl<T, U> Functor<U> for Vec<T> {
-    fn mapping<F>(self, f: F) -> Vec<U>
+    fn fmap<F>(self, f: F) -> Vec<U>
     where
         F: FnMut(T) -> U,
     {
@@ -353,7 +358,7 @@ impl<T, U> Functor<U> for Vec<T> {
     }
 }
 impl<T, U, E> Functor<U> for Result<T, E> {
-    fn mapping<F>(self, f: F) -> Result<U, E>
+    fn fmap<F>(self, f: F) -> Result<U, E>
     where
         F: FnMut(T) -> U,
     {
@@ -365,51 +370,55 @@ impl<T, U, E> Functor<U> for Result<T, E> {
 // PHẦN 2: KIỂU XÁC THỰC TÍCH LŨY LỖI (APPLICATIVE VALIDATION)
 // ============================================================================
 
-/// Khác `Result`: khi hỏng, `Auth` giữ lại TOÀN BỘ danh sách lỗi.
+/// Khác `Result`: khi hỏng, `Validation` giữ lại TOÀN BỘ danh sách lỗi.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Auth<T> {
-    Set(T),
-    Hong(Vec<String>),
+pub enum Validation<T> {
+    Valid(T),
+    Invalid(Vec<String>),
 }
 
-impl<T> Auth<T> {
+impl<T> Validation<T> {
     /// FUNCTOR: sơn lại giá trị bên trong mà không đụng tới danh sách lỗi.
-    pub fn mapping<U>(self, f: impl FnOnce(T) -> U) -> Auth<U> {
+    pub fn fmap<U>(self, f: impl FnOnce(T) -> U) -> Validation<U> {
         match self {
-            Auth::Set(x) => Auth::Set(f(x)),
-            Auth::Hong(error) => Auth::Hong(error),
+            Validation::Valid(x) => Validation::Valid(f(x)),
+            Validation::Invalid(errors) => Validation::Invalid(errors),
         }
     }
 
-    /// Chuyển từ Result sang Auth để bắt đầu tích lũy lỗi.
-    pub fn tu_ket_qua(kq: Result<T, String>) -> Self {
-        match kq {
-            Ok(x) => Auth::Set(x),
-            Err(e) => Auth::Hong(vec![e]),
+    /// Chuyển từ Result sang Validation để bắt đầu tích lũy lỗi.
+    pub fn from_result(result: Result<T, String>) -> Self {
+        match result {
+            Ok(x) => Validation::Valid(x),
+            Err(e) => Validation::Invalid(vec![e]),
         }
     }
 
-    pub fn is_set(&self) -> bool {
-        matches!(self, Auth::Set(_))
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Validation::Valid(_))
     }
 }
 
 /// APPLICATIVE: gộp 2 kết quả ĐỘC LẬP. Nếu cả hai hỏng, giữ lại CẢ HAI lỗi.
-pub fn ghep2<A, B>(a: Auth<A>, b: Auth<B>) -> Auth<(A, B)> {
+pub fn zip2<A, B>(a: Validation<A>, b: Validation<B>) -> Validation<(A, B)> {
     match (a, b) {
-        (Auth::Set(x), Auth::Set(y)) => Auth::Set((x, y)),
-        (Auth::Hong(mut e1), Auth::Hong(e2)) => {
+        (Validation::Valid(x), Validation::Valid(y)) => Validation::Valid((x, y)),
+        (Validation::Invalid(mut e1), Validation::Invalid(e2)) => {
             e1.extend(e2); // ← đây chính là chỗ LỖI ĐƯỢC TÍCH LŨY
-            Auth::Hong(e1)
+            Validation::Invalid(e1)
         }
-        (Auth::Hong(e), _) => Auth::Hong(e),
-        (_, Auth::Hong(e)) => Auth::Hong(e),
+        (Validation::Invalid(e), _) => Validation::Invalid(e),
+        (_, Validation::Invalid(e)) => Validation::Invalid(e),
     }
 }
 
-/// Gộp 3 kết quả độc lập — xây trên `ghep2`, đúng tinh thần ghép hàm ở Chương 14.
-pub fn ghep3<A, B, C>(a: Auth<A>, b: Auth<B>, c: Auth<C>) -> Auth<(A, B, C)> {
-    ghep2(ghep2(a, b), c).mapping(|((x, y), z)| (x, y, z))
+/// Gộp 3 kết quả độc lập — xây trên `zip2`, đúng tinh thần ghép hàm ở Chương 14.
+pub fn zip3<A, B, C>(
+    a: Validation<A>,
+    b: Validation<B>,
+    c: Validation<C>,
+) -> Validation<(A, B, C)> {
+    zip2(zip2(a, b), c).fmap(|((x, y), z)| (x, y, z))
 }
 
 // ============================================================================
@@ -417,7 +426,7 @@ pub fn ghep3<A, B, C>(a: Auth<A>, b: Auth<B>, c: Auth<C>) -> Auth<(A, B, C)> {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DonTho {
+pub struct RawForm {
     pub name: String,
     pub email: String,
     pub age: String,
@@ -430,8 +439,8 @@ pub struct User {
     pub age: u32,
 }
 
-pub fn check_name(tho: &str) -> Result<String, String> {
-    let s = tho.trim();
+pub fn check_name(raw: &str) -> Result<String, String> {
+    let s = raw.trim();
     if s.chars().count() < 4 {
         Err(format!("Tên {:?} quá ngắn (cần ít nhất 4 ký tự)", s))
     } else if s.chars().count() > 30 {
@@ -441,8 +450,8 @@ pub fn check_name(tho: &str) -> Result<String, String> {
     }
 }
 
-pub fn validate_email(tho: &str) -> Result<String, String> {
-    let s = tho.trim().to_lowercase();
+pub fn validate_email(raw: &str) -> Result<String, String> {
+    let s = raw.trim().to_lowercase();
     if !s.contains('@') {
         Err(format!("Email {:?} thiếu ký tự @", s))
     } else if !s.contains('.') {
@@ -452,8 +461,8 @@ pub fn validate_email(tho: &str) -> Result<String, String> {
     }
 }
 
-pub fn check_age(tho: &str) -> Result<u32, String> {
-    let s = tho.trim();
+pub fn check_age(raw: &str) -> Result<u32, String> {
+    let s = raw.trim();
     match s.parse::<u32>() {
         Err(_) => Err(format!("Tuổi {:?} không phải số nguyên", s)),
         Ok(n) if !(16..=100).contains(&n) => {
@@ -466,33 +475,33 @@ pub fn check_age(tho: &str) -> Result<u32, String> {
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC A — MONAD: toán tử `?` dừng ngay ở lỗi ĐẦU TIÊN
 // ---------------------------------------------------------------------------
-pub fn short_circuit_register(don: &DonTho) -> Result<User, String> {
-    let name = check_name(&don.name)?;
-    let email = validate_email(&don.email)?;
-    let age = check_age(&don.age)?;
+pub fn register_short_circuit(form: &RawForm) -> Result<User, String> {
+    let name = check_name(&form.name)?;
+    let email = validate_email(&form.email)?;
+    let age = check_age(&form.age)?;
     Ok(User { name, email, age })
 }
 
 // ---------------------------------------------------------------------------
 // CHIẾN LƯỢC B — APPLICATIVE: chạy cả ba, gom TẤT CẢ lỗi
 // ---------------------------------------------------------------------------
-pub fn accumulator_register(don: &DonTho) -> Auth<User> {
-    let name = Auth::tu_ket_qua(check_name(&don.name));
-    let email = Auth::tu_ket_qua(validate_email(&don.email));
-    let age = Auth::tu_ket_qua(check_age(&don.age));
+pub fn register_accumulate(form: &RawForm) -> Validation<User> {
+    let name = Validation::from_result(check_name(&form.name));
+    let email = Validation::from_result(validate_email(&form.email));
+    let age = Validation::from_result(check_age(&form.age));
 
-    ghep3(name, email, age).mapping(|(name, email, age)| User { name, email, age })
+    zip3(name, email, age).fmap(|(name, email, age)| User { name, email, age })
 }
 
 // ============================================================================
 // PHẦN 4: HÀM PHỤ TRỢ CHO PHẦN MONAD TUẦN TỰ
 // ============================================================================
 
-pub fn doc_ma_don(s: &str) -> Option<u32> {
+pub fn parse_order_id(s: &str) -> Option<u32> {
     s.strip_prefix("ORD-")?.parse::<u32>().ok()
 }
 
-pub fn return_price(id: u32) -> Option<u64> {
+pub fn lookup_price(id: u32) -> Option<u64> {
     match id {
         8891 => Some(250_000),
         8892 => Some(1_200_000),
@@ -500,7 +509,7 @@ pub fn return_price(id: u32) -> Option<u64> {
     }
 }
 
-pub fn ap_thue(price: u64) -> Option<u64> {
+pub fn apply_tax(price: u64) -> Option<u64> {
     price.checked_mul(110)?.checked_div(100)
 }
 
@@ -517,27 +526,39 @@ fn main() {
     // 1. FUNCTOR: cùng một `map` cho ba chiếc hộp khác nhau
     // ------------------------------------------------------------------
     println!("\n1. HÀM TỬ (Functor) — MỘT `map`, BA CHIẾC HỘP");
-    let hop_option: Option<i32> = Some(21);
-    let hop_result: Result<i32, String> = Ok(21);
-    let hop_vec: Vec<i32> = vec![1, 2, 3];
+    let boxed_option: Option<i32> = Some(21);
+    let boxed_result: Result<i32, String> = Ok(21);
+    let boxed_vec: Vec<i32> = vec![1, 2, 3];
 
-    println!("   Option : {:?} -> {:?}", hop_option, hop_option.map(|x| x * 2));
-    println!("   Result : {:?} -> {:?}", hop_result.clone(), hop_result.map(|x| x * 2));
+    println!(
+        "   Option : {:?} -> {:?}",
+        boxed_option,
+        boxed_option.map(|x| x * 2)
+    );
+    println!(
+        "   Result : {:?} -> {:?}",
+        boxed_result.clone(),
+        boxed_result.map(|x| x * 2)
+    );
     println!(
         "   Vec    : {:?} -> {:?}",
-        hop_vec.clone(),
-        hop_vec.iter().map(|x| x * 2).collect::<Vec<_>>()
+        boxed_vec.clone(),
+        boxed_vec.iter().map(|x| x * 2).collect::<Vec<_>>()
     );
 
-    let hop_rong: Option<i32> = None;
-    println!("   Hộp rỗng vẫn rỗng: {:?} -> {:?}", hop_rong, hop_rong.map(|x| x * 2));
+    let empty_box: Option<i32> = None;
+    println!(
+        "   Hộp rỗng vẫn rỗng: {:?} -> {:?}",
+        empty_box,
+        empty_box.map(|x| x * 2)
+    );
 
     // Dùng trait Functor tổng quát tự viết (mô phỏng HKT)
-    println!("\n   Qua trait `HamTu` tổng quát (mô phỏng HKT):");
-    println!("   Option: {:?}", Some(5i32).mapping(|x| x + 1));
-    println!("   Vec   : {:?}", vec![1i32, 2, 3].mapping(|x| x * 10));
+    println!("\n   Qua trait `Functor` tổng quát (mô phỏng HKT):");
+    println!("   Option: {:?}", Some(5i32).fmap(|x| x + 1));
+    println!("   Vec   : {:?}", vec![1i32, 2, 3].fmap(|x| x * 10));
     let r: Result<i32, String> = Ok(7);
-    println!("   Result: {:?}", r.mapping(|x| x - 7));
+    println!("   Result: {:?}", r.fmap(|x| x - 7));
 
     // ------------------------------------------------------------------
     // 2. HAI LUẬT FUNCTOR
@@ -557,12 +578,12 @@ fn main() {
     // 3. BIFUNCTOR: Result có hai chân
     // ------------------------------------------------------------------
     println!("\n3. BIFUNCTOR — `Result` CÓ HAI CHÂN");
-    let into_sum: Result<i32, String> = Ok(5);
-    let that_bai: Result<i32, String> = Err("mất kết nối".into());
-    println!("   map     (chân Ok) : {:?}", into_sum.map(|v| v * 100));
+    let success: Result<i32, String> = Ok(5);
+    let failure: Result<i32, String> = Err("mất kết nối".into());
+    println!("   map     (chân Ok) : {:?}", success.map(|v| v * 100));
     println!(
         "   map_err (chân Err): {:?}",
-        that_bai.map_err(|e| format!("[HỆ THỐNG] {}", e))
+        failure.map_err(|e| format!("[HỆ THỐNG] {}", e))
     );
 
     // ------------------------------------------------------------------
@@ -570,8 +591,10 @@ fn main() {
     // ------------------------------------------------------------------
     println!("\n4. ĐƠN NGUYÊN — `and_then` CHÍNH LÀ `bind`");
     for id in ["ORD-8891", "ORD-9999", "SAI-DINH-DANG"] {
-        let ket_qua = doc_ma_don(id).and_then(return_price).and_then(ap_thue);
-        println!("   {:>14} -> {:?}", id, ket_qua);
+        let result = parse_order_id(id)
+            .and_then(lookup_price)
+            .and_then(apply_tax);
+        println!("   {:>14} -> {:?}", id, result);
     }
 
     println!("\n   Đẳng thức định nghĩa: bind(x,f) == x.map(f).flatten()");
@@ -600,66 +623,78 @@ fn main() {
     // 6. TRAVERSABLE: đảo ngữ cảnh Vec<Result> -> Result<Vec>
     // ------------------------------------------------------------------
     println!("\n6. TRAVERSABLE — CÔNG CỤ BỊ BỎ QUÊN NHẤT CỦA RUST");
-    let tot = vec!["10", "20", "30"];
-    let hong = vec!["10", "hai mươi", "30"];
+    let good = ["10", "20", "30"];
+    let bad = ["10", "hai mươi", "30"];
 
-    let result_good: Result<Vec<i32>, _> = tot.iter().map(|s| s.parse::<i32>()).collect();
-    let result_hong: Result<Vec<i32>, _> = hong.iter().map(|s| s.parse::<i32>()).collect();
+    let result_good: Result<Vec<i32>, _> = good.iter().map(|s| s.parse::<i32>()).collect();
+    let result_bad: Result<Vec<i32>, _> = bad.iter().map(|s| s.parse::<i32>()).collect();
     println!("   Vec<Result> -> Result<Vec> (tốt) : {:?}", result_good);
-    println!("   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}", result_hong.is_err());
+    println!(
+        "   Vec<Result> -> Result<Vec> (hỏng): có lỗi = {:?}",
+        result_bad.is_err()
+    );
 
     let has_empty: Option<Vec<i32>> = vec![Some(1), None, Some(3)].into_iter().collect();
     let no_empty: Option<Vec<i32>> = vec![Some(1), Some(2)].into_iter().collect();
     println!("   Vec<Option> -> Option<Vec> (có None): {:?}", has_empty);
     println!("   Vec<Option> -> Option<Vec> (đủ)     : {:?}", no_empty);
 
-    let lat: Option<Result<i32, String>> = Some(Ok(9));
-    println!("   Option<Result> --transpose--> Result<Option>: {:?}", lat.transpose());
+    let nested: Option<Result<i32, String>> = Some(Ok(9));
+    println!(
+        "   Option<Result> --transpose--> Result<Option>: {:?}",
+        nested.transpose()
+    );
 
     // ------------------------------------------------------------------
     // 7. ALTERNATIVE: chuỗi phương án dự phòng
     // ------------------------------------------------------------------
     println!("\n7. ALTERNATIVE — CHUỖI PHƯƠNG ÁN DỰ PHÒNG");
-    let missing_field: Option<&str> = None;
+    let from_env: Option<&str> = None;
     let from_config_file: Option<&str> = Some("8080");
-    let gate = missing_field.or(from_config_file).unwrap_or("3000");
-    println!("   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)", gate);
+    let port = from_env.or(from_config_file).unwrap_or("3000");
+    println!(
+        "   Cổng dùng: {} (biến môi trường -> tệp cấu hình -> mặc định)",
+        port
+    );
 
     // ------------------------------------------------------------------
     // 8. SO SÁNH TRỰC DIỆN: MONAD NGẮN MẠCH vs APPLICATIVE TÍCH LŨY
     // ------------------------------------------------------------------
     println!("\n8. NGẮN MẠCH (Monad) vs TÍCH LŨY LỖI (Applicative)");
-    let don_hong = DonTho {
-        name: "An".into(),             // quá ngắn
+    let bad_form = RawForm {
+        name: "An".into(),            // quá ngắn
         email: "an-tai-gmail".into(), // thiếu @
-        age: "mười tám".into(),      // không phải số
+        age: "mười tám".into(),       // không phải số
     };
 
     println!("\n   [A] Dùng toán tử `?` (Monad — dừng ở lỗi đầu tiên):");
-    match short_circuit_register(&don_hong) {
-        Ok(nd) => println!("       Thành công: {:?}", nd),
+    match register_short_circuit(&bad_form) {
+        Ok(user) => println!("       Thành công: {:?}", user),
         Err(e) => println!("       Báo về 1 lỗi duy nhất: {}", e),
     }
 
-    println!("\n   [B] Dùng `XacThuc` (Applicative — gom hết lỗi):");
-    match accumulator_register(&don_hong) {
-        Auth::Set(nd) => println!("       Thành công: {:?}", nd),
-        Auth::Hong(error) => {
-            println!("       Báo về {} lỗi cùng lúc:", error.len());
-            for (i, l) in error.iter().enumerate() {
-                println!("         {}. {}", i + 1, l);
+    println!("\n   [B] Dùng `Validation` (Applicative — gom hết lỗi):");
+    match register_accumulate(&bad_form) {
+        Validation::Valid(user) => println!("       Thành công: {:?}", user),
+        Validation::Invalid(errors) => {
+            println!("       Báo về {} lỗi cùng lúc:", errors.len());
+            for (i, msg) in errors.iter().enumerate() {
+                println!("         {}. {}", i + 1, msg);
             }
         }
     }
 
     println!("\n   [C] Đơn hợp lệ đi qua cả hai chiến lược:");
-    let don_tot = DonTho {
+    let good_form = RawForm {
         name: "Nguyễn Văn An".into(),
         email: "  An.Nguyen@Example.COM ".into(),
         age: " 28 ".into(),
     };
-    println!("       Ngắn mạch: {:?}", short_circuit_register(&don_tot));
-    println!("       Tích lũy : hợp lệ = {}", accumulator_register(&don_tot).is_set());
+    println!("       Ngắn mạch: {:?}", register_short_circuit(&good_form));
+    println!(
+        "       Tích lũy : hợp lệ = {}",
+        register_accumulate(&good_form).is_valid()
+    );
 
     println!("\n============================================================");
     println!("  map = SƠN TRONG HỘP · zip = GỘP HỘP · and_then = MỞ HỘP   ");
@@ -714,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn bind_bang_map_roi_flatten() {
+    fn bind_equals_map_then_flatten() {
         let f = |n: i32| if n > 0 { Some(n * 10) } else { None };
         for x in [Some(4i32), Some(-1), None] {
             assert_eq!(x.and_then(f), x.map(f).flatten());
@@ -723,49 +758,53 @@ mod tests {
 
     #[test]
     fn traversable_swaps_contexts() {
-        let tot: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
-        assert_eq!(tot, Ok(vec![1, 2, 3]));
+        let good: Result<Vec<i32>, _> = ["1", "2", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert_eq!(good, Ok(vec![1, 2, 3]));
 
-        let hong: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
-        assert!(hong.is_err());
+        let bad: Result<Vec<i32>, _> = ["1", "x", "3"].iter().map(|s| s.parse::<i32>()).collect();
+        assert!(bad.is_err());
 
-        let co_none: Option<Vec<i32>> = vec![Some(1), None].into_iter().collect();
-        assert_eq!(co_none, None);
+        let with_none: Option<Vec<i32>> = vec![Some(1), None].into_iter().collect();
+        assert_eq!(with_none, None);
 
-        let lat: Option<Result<i32, String>> = Some(Ok(9));
-        assert_eq!(lat.transpose(), Ok(Some(9)));
+        let nested: Option<Result<i32, String>> = Some(Ok(9));
+        assert_eq!(nested.transpose(), Ok(Some(9)));
     }
 
     #[test]
     fn applicative_collects_all_three_errors() {
-        let don = DonTho {
+        let form = RawForm {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
             age: "abc".into(),
         };
-        match accumulator_register(&don) {
-            Auth::Hong(error) => {
-                assert_eq!(error.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", error)
+        match register_accumulate(&form) {
+            Validation::Invalid(errors) => {
+                assert_eq!(errors.len(), 3, "Phải gom đủ 3 lỗi, nhận được {:?}", errors)
             }
-            Auth::Set(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
+            Validation::Valid(_) => panic!("Đơn hỏng mà lại được chấp nhận!"),
         }
     }
 
     #[test]
     fn monad_reports_only_first_error() {
-        let don = DonTho {
+        let form = RawForm {
             name: "An".into(),
             email: "khong-co-a-cong".into(),
             age: "abc".into(),
         };
         // Toán tử `?` dừng ngay ở lỗi đầu tiên: chỉ nhận được 1 thông báo.
-        let error = short_circuit_register(&don).unwrap_err();
-        assert!(error.contains("quá ngắn"), "Phải là lỗi ĐẦU TIÊN, nhận: {}", error);
+        let err = register_short_circuit(&form).unwrap_err();
+        assert!(
+            err.contains("quá ngắn"),
+            "Phải là lỗi ĐẦU TIÊN, nhận: {}",
+            err
+        );
     }
 
     #[test]
     fn valid_order_passes_both_strategies() {
-        let don = DonTho {
+        let form = RawForm {
             name: "Nguyễn Văn An".into(),
             email: " An.Nguyen@Example.COM ".into(),
             age: " 28 ".into(),
@@ -775,16 +814,16 @@ mod tests {
             email: "an.nguyen@example.com".to_string(),
             age: 28,
         };
-        assert_eq!(short_circuit_register(&don), Ok(expected.clone()));
-        assert_eq!(accumulator_register(&don), Auth::Set(expected));
+        assert_eq!(register_short_circuit(&form), Ok(expected.clone()));
+        assert_eq!(register_accumulate(&form), Validation::Valid(expected));
     }
 
     #[test]
     fn the_generic_functor_works_for_three_types() {
-        assert_eq!(Some(5i32).mapping(|x| x + 1), Some(6));
-        assert_eq!(vec![1i32, 2, 3].mapping(|x| x * 10), vec![10, 20, 30]);
+        assert_eq!(Some(5i32).fmap(|x| x + 1), Some(6));
+        assert_eq!(vec![1i32, 2, 3].fmap(|x| x * 10), vec![10, 20, 30]);
         let r: Result<i32, String> = Ok(7);
-        assert_eq!(r.mapping(|x| x - 7), Ok(0));
+        assert_eq!(r.fmap(|x| x - 7), Ok(0));
     }
 }
 ```
@@ -797,9 +836,9 @@ mod tests {
 |---|---|---|---|
 | **E0308** | `expected 'Option<i32>', found 'Option<Option<i32>>'` | Bạn dùng `map` ở chỗ cần `and_then`: closure trả về một *hộp mới* nên hộp bị lồng nhau. | Đổi `.map(f)` thành `.and_then(f)`, hoặc giữ `.map(f)` rồi thêm `.flatten()`. |
 | **E0277** | `the '?' operator can only be used in a function that returns 'Result' or 'Option'` | Bạn dùng `?` trong hàm trả về kiểu trần. Toán tử `?` là do-notation, nó phải "ở trong" một đơn nguyên. | Đổi kiểu trả về thành `Result<_, _>` / `Option<_>`, hoặc xử lý bằng `match` / `unwrap_or`. |
-| **E0277** | `'?' couldn't convert the error to 'LoiCuaBan'` | `?` tự gọi `From::from` trên kiểu lỗi, nhưng bạn chưa cài `impl From<LoiGoc> for LoiCuaBan`. | Cài `impl From<...>`, hoặc chuyển thủ công bằng `.map_err(...)` ngay trước dấu `?`. |
-| **E0282** | `type annotations needed` khi gọi `.collect()` | Trình biên dịch không biết bạn muốn `Vec<Result<T,E>>` hay `Result<Vec<T>,E>` — cả hai đều hợp lệ! | Ghi rõ kiểu: `let x: Result<Vec<i32>, _> = ...` hoặc dùng turbofish `.collect::<Result<Vec<_>, _>>()`. |
-| **E0599** | `no method named 'flatten' found` | `flatten` có trên `Option<Option<T>>` và `Iterator`; với `Result` thì hai kiểu lỗi phải trùng nhau. | Thống nhất kiểu lỗi trước, hoặc dùng `.and_then(|x| x)`. |
+| **E0277** | `'?' couldn't convert the error to 'YourError'` | `?` tự gọi `From::from` trên kiểu lỗi, nhưng bạn chưa cài `impl From<SourceError> for YourError`. | Cài `impl From<...>`, hoặc chuyển thủ công bằng `.map_err(...)` ngay trước dấu `?`. |
+| **E0283** | `type annotations needed` khi gọi `.collect()` | Trình biên dịch không biết bạn muốn `Vec<Result<T,E>>` hay `Result<Vec<T>,E>` — cả hai đều hợp lệ! | Ghi rõ kiểu: `let x: Result<Vec<i32>, _> = ...` hoặc dùng turbofish `.collect::<Result<Vec<_>, _>>()`. |
+| **E0599** | `no method named 'flatten' found for enum 'Result<Result<i32, E2>, E1>'` | `flatten` có trên `Option<Option<T>>`, `Iterator`, và `Result<Result<T, E>, E>` (`Result::flatten` đã ổn định từ Rust 1.89) — nhưng với `Result` thì **hai kiểu lỗi phải trùng nhau**. | Thống nhất kiểu lỗi trước (`.map(\|r\| r.map_err(E1::from))`), hoặc dùng `.and_then(\|r\| r.map_err(...))`. |
 
 ### Phân tích lỗi thực tế `E0308` (dùng nhầm `map` thay cho `and_then`):
 
@@ -809,18 +848,18 @@ fn find_age(s: &str) -> Option<u32> {
 }
 
 // ❌ Sai: closure trả về Option nên kết quả bị LỒNG hai lớp
-// fn sai(input: Option<&str>) -> Option<u32> {
+// fn wrong(input: Option<&str>) -> Option<u32> {
 //     input.map(|s| find_age(s))
 //     // LỖI E0308: expected `Option<u32>`, found `Option<Option<u32>>`
 // }
 
 // ✅ Cách 1: dùng and_then (bind) — closure trả về hộp thì dùng bind
-fn dung_1(input: Option<&str>) -> Option<u32> {
+fn fixed_1(input: Option<&str>) -> Option<u32> {
     input.and_then(find_age)
 }
 
 // ✅ Cách 2: giữ map rồi flatten (join) — hoàn toàn tương đương
-fn dung_2(input: Option<&str>) -> Option<u32> {
+fn fixed_2(input: Option<&str>) -> Option<u32> {
     input.map(find_age).flatten()
 }
 ```
@@ -836,7 +875,7 @@ fn dung_2(input: Option<&str>) -> Option<u32> {
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Ba tầng trừu tượng, ba câu hỏi khác nhau**:
    - *Functor* (`map`): "sơn lại ruột hộp" — các bước không biết gì về nhau.
-   - *Applicative* (`zip`, `Auth`): "gộp nhiều hộp độc lập" — gom được **tất cả** lỗi.
+   - *Applicative* (`zip`, `Validation`): "gộp nhiều hộp độc lập" — gom được **tất cả** lỗi.
    - *Monad* (`and_then`, `?`): "mở hộp rồi mới quyết định bước sau" — dừng ở lỗi **đầu tiên**.
 2. **`and_then` chính là `bind`, `flatten` chính là `join`, `?` chính là do-notation.** Bạn đã dùng monad từ Chương 11; chương này chỉ đặt đúng tên và chỉ ra các luật.
 3. **`collect::<Result<Vec<_>, E>>()` và `transpose()` là hai công cụ đắt giá nhất chương.** Chúng biến `Vec<Result>` thành `Result<Vec>` — thao tác mà gần như mọi chương trình đọc dữ liệu ngoài đều cần.
@@ -884,7 +923,7 @@ fn main() {
 </details>
 
 **Bài tập 2 (Traversable trong thực chiến)**
-Cho một lát cắt `&[&str]` chứa các dòng cấu hình dạng `"khoa=value"`. Viết hàm `doc_cau_hinh(dong: &[&str]) -> Result<HashMap<String, String>, String>` sao cho: nếu **mọi** dòng đều hợp lệ thì trả về bảng cấu hình; nếu **bất kỳ** dòng nào thiếu dấu `=` thì trả lỗi kèm nội dung dòng sai. Yêu cầu: dùng `collect()` chứ không dùng vòng lặp `for` với biến `mut`.
+Cho một lát cắt `&[&str]` chứa các dòng cấu hình dạng `"key=value"`. Viết hàm `read_config(lines: &[&str]) -> Result<HashMap<String, String>, String>` sao cho: nếu **mọi** dòng đều hợp lệ thì trả về bảng cấu hình; nếu **bất kỳ** dòng nào thiếu dấu `=` thì trả lỗi kèm nội dung dòng sai. Yêu cầu: dùng `collect()` chứ không dùng vòng lặp `for` với biến `mut`.
 
 <details>
 <summary><b>Gợi ý</b></summary>
@@ -898,24 +937,25 @@ Cho một lát cắt `&[&str]` chứa các dòng cấu hình dạng `"khoa=value
 ```rust
 use std::collections::HashMap;
 
-fn read_config(dong: &[&str]) -> Result<HashMap<String, String>, String> {
-    dong.iter()
-        .map(|d| {
-            d.split_once('=')
+fn read_config(lines: &[&str]) -> Result<HashMap<String, String>, String> {
+    lines
+        .iter()
+        .map(|line| {
+            line.split_once('=')
                 .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
-                .ok_or_else(|| format!("Dòng cấu hình sai định dạng: {:?}", d))
+                .ok_or_else(|| format!("Dòng cấu hình sai định dạng: {:?}", line))
         })
         .collect() // ← Traversable: Iterator<Result<(K,V),E>> -> Result<HashMap<K,V>, E>
 }
 
 fn main() {
-    let tot = ["cong = 8080", "host=localhost"];
-    let bang = read_config(&tot).unwrap();
-    assert_eq!(bang.get("cong"), Some(&"8080".to_string()));
+    let good = ["port = 8080", "host=localhost"];
+    let table = read_config(&good).unwrap();
+    assert_eq!(table.get("port"), Some(&"8080".to_string()));
 
-    let hong = ["cong = 8080", "dong sai khong co dau bang"];
-    assert!(read_config(&hong).is_err());
-    println!("{:?}", read_config(&hong));
+    let bad = ["port = 8080", "dòng sai không có dấu bằng"];
+    assert!(read_config(&bad).is_err());
+    println!("{:?}", read_config(&bad));
 }
 ```
 

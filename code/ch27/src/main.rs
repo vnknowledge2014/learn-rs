@@ -1,21 +1,21 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 /// Cấu trúc nút bên trong danh sách liên kết
-struct Nut<T> {
+struct Node<T> {
     value: T,
-    next: Option<Box<Nut<T>>>,
+    next: Option<Box<Node<T>>>,
 }
 
 /// Cấu trúc Danh sách liên kết đơn (Singly Linked List)
-pub struct ListLienLink<T> {
-    peak: Option<Box<Nut<T>>>,
+pub struct LinkedList<T> {
+    head: Option<Box<Node<T>>>,
     length: usize,
 }
 
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Khởi tạo một danh sách liên kết rỗng
     pub fn new() -> Self {
-        ListLienLink {
-            peak: None,
+        LinkedList {
+            head: None,
             length: 0,
         }
     }
@@ -23,32 +23,32 @@ impl<T> ListLienLink<T> {
     /// Thêm một phần tử mới vào đầu danh sách - Độ phức tạp O(1)
     pub fn push_front(&mut self, value: T) {
         // Tạo nút mới trên Heap thông qua con trỏ thông minh Box
-        // Sử dụng self.dinh.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
-        let nut_moi = Box::new(Nut {
+        // Sử dụng self.head.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
+        let new_node = Box::new(Node {
             value,
-            next: self.peak.take(),
+            next: self.head.take(),
         });
 
         // Gán đỉnh mới cho danh sách
-        self.peak = Some(nut_moi);
+        self.head = Some(new_node);
         self.length += 1;
     }
 
     /// Lấy phần tử ở đầu danh sách ra và trả về giá trị - Độ phức tạp O(1)
     pub fn pop_front(&mut self) -> Option<T> {
-        // .take() thay thế đỉnh bằng None và trả về Some(nut_cu)
-        self.peak.take().map(|nut_cu| {
+        // .take() thay thế đỉnh bằng None và trả về Some(old_head)
+        self.head.take().map(|old_head| {
             // Đưa nút kế tiếp lên làm đỉnh mới
-            self.peak = nut_cu.next;
+            self.head = old_head.next;
             self.length -= 1;
             // Trả về giá trị của nút vừa lấy ra
-            nut_cu.value
+            old_head.value
         })
     }
 
     /// Xem giá trị phần tử ở đầu danh sách mà không đoạt quyền sở hữu - Trả về tham chiếu mượn
     pub fn peek_front(&self) -> Option<&T> {
-        self.peak.as_ref().map(|nut| &nut.value)
+        self.head.as_ref().map(|node| &node.value)
     }
 
     /// Kiểm tra số lượng phần tử hiện tại trong danh sách
@@ -64,19 +64,19 @@ impl<T> ListLienLink<T> {
 
 /// Cài đặt hàm hủy bộ nhớ an toàn (Safe Drop)
 /// Sử dụng vòng lặp tuần tự thay vì đệ quy để triệt tiêu nguy cơ tràn ngăn xếp (Stack Overflow)
-impl<T> Drop for ListLienLink<T> {
+impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
-        let mut current_node = self.peak.take();
+        let mut current_node = self.head.take();
         // Lặp tuần tự gỡ từng Box trên Heap đưa vào biến cục bộ rồi giải phóng
-        while let Some(mut nut) = current_node {
-            current_node = nut.next.take();
-            // nut tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
+        while let Some(mut node) = current_node {
+            current_node = node.next.take();
+            // node tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
         }
     }
 }
 
 // Cài đặt Default trait chuẩn phong cách Rust
-impl<T> Default for ListLienLink<T> {
+impl<T> Default for LinkedList<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -87,7 +87,7 @@ fn main() {
     println!("     HIỆN THỰC DANH SÁCH LIÊN KẾT & SMART POINTERS TRONG RUST");
     println!("============================================================");
 
-    let mut list: ListLienLink<i32> = ListLienLink::new();
+    let mut list: LinkedList<i32> = LinkedList::new();
     println!("Khởi tạo danh sách rỗng: len = {}", list.len());
     assert!(list.is_empty());
 
@@ -99,7 +99,7 @@ fn main() {
     println!("    - Đã thêm 20. Đỉnh hiện tại: {:?}", list.peek_front());
     list.push_front(30);
     println!("    - Đã thêm 30. Đỉnh hiện tại: {:?}", list.peek_front());
-    
+
     println!("    => Tổng số phần tử: {}", list.len());
     assert_eq!(list.len(), 3);
     assert_eq!(list.peek_front(), Some(&30));
@@ -126,7 +126,7 @@ fn main() {
     // 3. Kiểm thử khả năng chịu tải chống tràn ngăn xếp (Drop 100.000 phần tử)
     println!("\n[3] Kiểm thử độ bền của hàm hủy Drop an toàn:");
     {
-        let mut long_list = ListLienLink::new();
+        let mut long_list = LinkedList::new();
         for i in 0..100_000 {
             long_list.push_front(i);
         }
@@ -136,7 +136,7 @@ fn main() {
     println!("    => Giải phóng 100.000 nút bộ nhớ thành công tuyệt đối!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 23               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 27               ");
     println!("============================================================");
 }
 
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn push_pop_is_lifo_at_head() {
-        let mut list: ListLienLink<i32> = ListLienLink::new();
+        let mut list: LinkedList<i32> = LinkedList::new();
         assert!(list.is_empty());
         list.push_front(1);
         list.push_front(2);
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn new_list_is_empty() {
-        let list: ListLienLink<String> = ListLienLink::new();
+        let list: LinkedList<String> = LinkedList::new();
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
         assert_eq!(list.peek_front(), None);
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn dropping_long_list_does_not_overflow_stack() {
         // Bằng chứng cho mục "Drop lặp thay vì đệ quy": 1 triệu nút không sập.
-        let mut list: ListLienLink<u32> = ListLienLink::new();
+        let mut list: LinkedList<u32> = LinkedList::new();
         for i in 0..1_000_000 {
             list.push_front(i);
         }

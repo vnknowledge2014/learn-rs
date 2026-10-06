@@ -33,20 +33,31 @@ pub enum SwapError {
     EmptyPool,
     InsufficientLiquidity,
     /// Người dùng đặt sàn nhận tối thiểu, mà kết quả thấp hơn → huỷ giao dịch.
-    SlippageTooHigh { received: Quantity, min: Quantity },
+    SlippageTooHigh {
+        received: Quantity,
+        min: Quantity,
+    },
 }
 
 impl Pool {
     pub fn new(x: Quantity, y: Quantity, fee_bps: u32) -> Self {
-        Pool { reserve_x: x, reserve_y: y, fee_bps }
+        Pool {
+            reserve_x: x,
+            reserve_y: y,
+            fee_bps,
+        }
     }
 
     /// Hằng số bất biến. Nó chỉ được TĂNG (nhờ phí), không bao giờ giảm.
-    pub fn k(&self) -> u128 { self.reserve_x * self.reserve_y }
+    pub fn k(&self) -> u128 {
+        self.reserve_x * self.reserve_y
+    }
 
     /// Giá hiện thời của X tính theo Y, dạng số thực (chỉ để hiển thị).
     pub fn price_x(&self) -> f64 {
-        if self.reserve_x == 0 { return 0.0; }
+        if self.reserve_x == 0 {
+            return 0.0;
+        }
         self.reserve_y as f64 / self.reserve_x as f64
     }
 
@@ -55,56 +66,67 @@ impl Pool {
     /// Công thức: dy = (y · dx') / (x + dx') với dx' = dx · (1 − phí).
     /// Toàn bộ tính bằng số nguyên — tiền không bao giờ dùng dấu phẩy động.
     pub fn try_swap_x_for_y(&self, x_in: Quantity) -> Result<Quantity, SwapError> {
-        if x_in == 0 { return Err(SwapError::ZeroInput); }
-        if self.reserve_x == 0 || self.reserve_y == 0 { return Err(SwapError::EmptyPool); }
-        let next_phi = x_in * (10_000 - self.fee_bps as u128);
-        let tu = self.reserve_y * next_phi;
-        let mau = self.reserve_x * 10_000 + next_phi;
-        let ra = tu / mau;
-        if ra == 0 || ra >= self.reserve_y { return Err(SwapError::InsufficientLiquidity); }
-        Ok(ra)
+        if x_in == 0 {
+            return Err(SwapError::ZeroInput);
+        }
+        if self.reserve_x == 0 || self.reserve_y == 0 {
+            return Err(SwapError::EmptyPool);
+        }
+        let after_fee = x_in * (10_000 - self.fee_bps as u128);
+        let numerator = self.reserve_y * after_fee;
+        let denominator = self.reserve_x * 10_000 + after_fee;
+        let out = numerator / denominator;
+        if out == 0 || out >= self.reserve_y {
+            return Err(SwapError::InsufficientLiquidity);
+        }
+        Ok(out)
     }
 
     /// Thực hiện hoán đổi, có kiểm tra sàn nhận tối thiểu.
     /// `min_y` chính là "bảo vệ trượt giá" mà ví hiển thị cho bạn.
-    pub fn swap_x_for_y(&mut self, x_in: Quantity, min_y: Quantity)
-        -> Result<Quantity, SwapError>
-    {
-        let ra = self.try_swap_x_for_y(x_in)?;
-        if ra < min_y {
-            return Err(SwapError::SlippageTooHigh { received: ra, min: min_y });
+    pub fn swap_x_for_y(&mut self, x_in: Quantity, min_y: Quantity) -> Result<Quantity, SwapError> {
+        let out = self.try_swap_x_for_y(x_in)?;
+        if out < min_y {
+            return Err(SwapError::SlippageTooHigh {
+                received: out,
+                min: min_y,
+            });
         }
         self.reserve_x += x_in;
-        self.reserve_y -= ra;
-        Ok(ra)
+        self.reserve_y -= out;
+        Ok(out)
     }
 
-    pub fn try_swap_y_for_x(&self, vao_y: Quantity) -> Result<Quantity, SwapError> {
-        let dao = Pool { reserve_x: self.reserve_y, reserve_y: self.reserve_x,
-                                 fee_bps: self.fee_bps };
-        dao.try_swap_x_for_y(vao_y)
+    pub fn try_swap_y_for_x(&self, y_in: Quantity) -> Result<Quantity, SwapError> {
+        let flipped = Pool {
+            reserve_x: self.reserve_y,
+            reserve_y: self.reserve_x,
+            fee_bps: self.fee_bps,
+        };
+        flipped.try_swap_x_for_y(y_in)
     }
 
-    pub fn swap_y_for_x(&mut self, vao_y: Quantity, toi_thieu_x: Quantity)
-        -> Result<Quantity, SwapError>
-    {
-        let ra = self.try_swap_y_for_x(vao_y)?;
-        if ra < toi_thieu_x {
-            return Err(SwapError::SlippageTooHigh { received: ra, min: toi_thieu_x });
+    pub fn swap_y_for_x(&mut self, y_in: Quantity, min_x: Quantity) -> Result<Quantity, SwapError> {
+        let out = self.try_swap_y_for_x(y_in)?;
+        if out < min_x {
+            return Err(SwapError::SlippageTooHigh {
+                received: out,
+                min: min_x,
+            });
         }
-        self.reserve_y += vao_y;
-        self.reserve_x -= ra;
-        Ok(ra)
+        self.reserve_y += y_in;
+        self.reserve_x -= out;
+        Ok(out)
     }
 
     /// Trượt giá: chênh lệch giữa giá thực nhận và giá niêm yết trước giao dịch.
     /// Đây KHÔNG phải phí — nó là hệ quả toán học của đường cong x·y = k,
     /// và nó lớn dần theo quy mô giao dịch so với bể.
     pub fn slippage(&self, x_in: Quantity) -> Option<f64> {
-        let ra = self.try_swap_x_for_y(x_in).ok()?;
-        let gia_niem_yet = self.price_x();
-        let exec_price = ra as f64 / x_in as f64;
-        Some((gia_niem_yet - exec_price) / gia_niem_yet)
+        let out = self.try_swap_x_for_y(x_in).ok()?;
+        let quoted_price = self.price_x();
+        let exec_price = out as f64 / x_in as f64;
+        Some((quoted_price - exec_price) / quoted_price)
     }
 }
 
@@ -122,9 +144,11 @@ impl Pool {
 ///
 /// Chữ "tạm thời" gây hiểu lầm: nó chỉ tạm thời nếu giá QUAY VỀ mức cũ.
 /// Không quay về thì nó vĩnh viễn.
-pub fn impermanent_loss(ty_le_gia: f64) -> f64 {
-    if ty_le_gia <= 0.0 { return 0.0; }
-    2.0 * ty_le_gia.sqrt() / (1.0 + ty_le_gia) - 1.0
+pub fn impermanent_loss(price_ratio: f64) -> f64 {
+    if price_ratio <= 0.0 {
+        return 0.0;
+    }
+    2.0 * price_ratio.sqrt() / (1.0 + price_ratio) - 1.0
 }
 
 // ============================================================================
@@ -135,7 +159,7 @@ pub fn impermanent_loss(ty_le_gia: f64) -> f64 {
 // Hệ quả: bất kỳ ai cũng thấy trước bạn định làm gì, và chen lên trước được.
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TradeWait {
+pub struct PendingTx {
     pub sender: String,
     pub x_in: Quantity,
     pub min_y: Quantity,
@@ -145,20 +169,20 @@ pub struct TradeWait {
 
 /// Người xây khối sắp xếp theo phí ưu tiên GIẢM DẦN. Đây là toàn bộ cơ chế
 /// khiến MEV tồn tại: thứ tự không theo thời gian tới, mà theo số tiền trả.
-pub fn sort_arrange_block(mut cho: Vec<TradeWait>) -> Vec<TradeWait> {
-    // `sort_by` của Rust là sắp xếp ỔN ĐỊNH → phí bằng nhau thì giữ nguyên
+pub fn order_block(mut mempool: Vec<PendingTx>) -> Vec<PendingTx> {
+    // `sort_by_key` của Rust là sắp xếp ỔN ĐỊNH (driftsort) → phí bằng nhau thì giữ nguyên
     // thứ tự, nên kết quả tất định và kiểm thử được.
-    cho.sort_by(|a, b| b.priority_fee.cmp(&a.priority_fee));
-    cho
+    mempool.sort_by_key(|tx| std::cmp::Reverse(tx.priority_fee));
+    mempool
 }
 
 #[derive(Debug, PartialEq)]
-pub struct KetQuaKep {
+pub struct SandwichOutcome {
     /// Nạn nhân nhận được bao nhiêu khi KHÔNG bị kẹp.
     pub receive_if_not_sandwiched: Quantity,
     /// Nạn nhân nhận được bao nhiêu khi BỊ kẹp.
     pub receive_when_sandwiched: Quantity,
-    pub ke_attack_lai: i128,
+    pub attacker_profit: i128,
     /// Giao dịch của nạn nhân có bị chặn nhờ sàn nhận tối thiểu không.
     pub blocked_by_guard: bool,
 }
@@ -166,41 +190,57 @@ pub struct KetQuaKep {
 /// Mô phỏng một cú kẹp để thấy **vì sao phải đặt sàn nhận tối thiểu chặt**.
 ///
 /// Kịch bản: kẻ tấn công thấy giao dịch của nạn nhân trong hàng chờ, trả phí
-/// cao hơn để bid TRƯỚC (đẩy giá lên), để nạn nhân bid ở giá xấu, rồi bán
+/// cao hơn để mua TRƯỚC (đẩy giá lên), để nạn nhân mua ở giá xấu, rồi bán
 /// NGAY SAU đó ăn chênh lệch.
-pub fn simulate_sandwich(be: &Pool, nan_nhan: &TradeWait, von_tan_cong: Quantity)
-    -> KetQuaKep
-{
+pub fn simulate_sandwich(
+    pool: &Pool,
+    victim: &PendingTx,
+    attack_capital: Quantity,
+) -> SandwichOutcome {
     // (a) Nếu không ai chen ngang
-    let clean = be.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
+    let clean = pool.try_swap_x_for_y(victim.x_in).unwrap_or(0);
 
-    // (b) Có kẻ chen ngang, bid trước để đẩy giá
-    let mut b = *be;
-    let prev_out = b.swap_x_for_y(von_tan_cong, 0).unwrap_or(0);
+    // (b) Có kẻ chen ngang, mua trước để đẩy giá
+    let mut b = *pool;
+    let front_run_out = b.swap_x_for_y(attack_capital, 0).unwrap_or(0);
 
-    let receive_when_sandwiched = b.try_swap_x_for_y(nan_nhan.x_in).unwrap_or(0);
+    let receive_when_sandwiched = b.try_swap_x_for_y(victim.x_in).unwrap_or(0);
     // ĐÂY là chỗ sàn nhận tối thiểu cứu nạn nhân: giao dịch bị huỷ, không mất vốn
-    let is_block = receive_when_sandwiched < nan_nhan.min_y;
-    if !is_block {
-        let _ = b.swap_x_for_y(nan_nhan.x_in, nan_nhan.min_y);
+    let is_blocked = receive_when_sandwiched < victim.min_y;
+    if !is_blocked {
+        let _ = b.swap_x_for_y(victim.x_in, victim.min_y);
     }
 
-    // (c) Kẻ tấn công bán lại phần vừa bid
-    let thu_ve = if is_block { 0 } else { b.try_swap_y_for_x(prev_out).unwrap_or(0) };
-    let lai = if is_block { 0 } else { thu_ve as i128 - von_tan_cong as i128 };
+    // (c) Kẻ tấn công bán lại phần vừa mua. Nếu nạn nhân bị huỷ, lãi = 0: kẻ
+    //     tấn công thường gửi cả ba giao dịch thành MỘT GÓI (bundle) cho người
+    //     xây khối, và gói chỉ được đưa vào khối khi trọn vẹn.
+    let recovered = if is_blocked {
+        0
+    } else {
+        b.try_swap_y_for_x(front_run_out).unwrap_or(0)
+    };
+    let profit = if is_blocked {
+        0
+    } else {
+        recovered as i128 - attack_capital as i128
+    };
 
-    KetQuaKep {
+    SandwichOutcome {
         receive_if_not_sandwiched: clean,
-        receive_when_sandwiched: if is_block { 0 } else { receive_when_sandwiched },
-        ke_attack_lai: lai,
-        blocked_by_guard: is_block,
+        receive_when_sandwiched: if is_blocked {
+            0
+        } else {
+            receive_when_sandwiched
+        },
+        attacker_profit: profit,
+        blocked_by_guard: is_blocked,
     }
 }
 
 /// Tính sàn nhận tối thiểu từ mức trượt giá chấp nhận được (phần vạn).
 /// Đặt 5% "cho chắc ăn" chính là mời kẻ tấn công lấy đúng 5% đó.
-pub fn min_venue_recv(amount_in: Quantity, cho_phep_phan_van: u32) -> Quantity {
-    amount_in * (10_000 - cho_phep_phan_van as u128) / 10_000
+pub fn min_amount_out(amount_in: Quantity, tolerance_bps: u32) -> Quantity {
+    amount_in * (10_000 - tolerance_bps as u128) / 10_000
 }
 
 // ============================================================================
@@ -209,8 +249,8 @@ pub fn min_venue_recv(amount_in: Quantity, cho_phep_phan_van: u32) -> Quantity {
 
 #[derive(Debug, PartialEq)]
 pub struct ArbOpportunity {
-    pub has_has_hoi: bool,
-    pub quantity_toi_uu: Quantity,
+    pub has_opportunity: bool,
+    pub optimal_quantity: Quantity,
     pub estimated_return: i128,
     pub dex_price_before: f64,
     pub dex_price_after: f64,
@@ -222,43 +262,60 @@ pub struct ArbOpportunity {
 /// Dùng tìm kiếm tam phân trên hàm lãi thay vì giải công thức đóng: đường cong
 /// có phí và có làm tròn số nguyên, nên công thức đóng lệch với thực tế. Tìm
 /// kiếm trên chính hàm sẽ thực thi thì luôn khớp với những gì xảy ra trên chuỗi.
-pub fn find_arb(be: &Pool, gia_cex: f64, von_toi_da: Quantity) -> ArbOpportunity {
-    let prev_price = be.price_x();
-    let no_has = ArbOpportunity { has_has_hoi: false, quantity_toi_uu: 0, estimated_return: 0,
-                              dex_price_before: prev_price, dex_price_after: prev_price };
-    // Chỉ xét chiều: bid X trên DEX (đưa Y vào) khi X trên DEX RẺ hơn CEX
-    if prev_price >= gia_cex || von_toi_da == 0 { return no_has; }
+pub fn find_arb(pool: &Pool, cex_price: f64, max_capital: Quantity) -> ArbOpportunity {
+    let prev_price = pool.price_x();
+    let no_opportunity = ArbOpportunity {
+        has_opportunity: false,
+        optimal_quantity: 0,
+        estimated_return: 0,
+        dex_price_before: prev_price,
+        dex_price_after: prev_price,
+    };
+    // Chỉ xét chiều: mua X trên DEX (đưa Y vào) khi X trên DEX RẺ hơn CEX
+    if prev_price >= cex_price || max_capital == 0 {
+        return no_opportunity;
+    }
 
-    let lai_when = |vao_y: Quantity| -> i128 {
-        match be.try_swap_y_for_x(vao_y) {
+    let profit_at = |y_in: Quantity| -> i128 {
+        match pool.try_swap_y_for_x(y_in) {
             // Nhận `ra_x` đơn vị X, bán trên CEX được ra_x · gia_cex đơn vị Y
-            Ok(ra_x) => (ra_x as f64 * gia_cex) as i128 - vao_y as i128,
+            Ok(x_out) => (x_out as f64 * cex_price) as i128 - y_in as i128,
             Err(_) => i128::MIN,
         }
     };
 
     // Hàm lãi lõm theo khối lượng → tìm kiếm tam phân
-    let (mut lo, mut hi) = (1u128, von_toi_da);
+    let (mut lo, mut hi) = (1u128, max_capital);
     for _ in 0..200 {
-        if hi <= lo + 2 { break; }
+        if hi <= lo + 2 {
+            break;
+        }
         let m1 = lo + (hi - lo) / 3;
         let m2 = hi - (hi - lo) / 3;
-        if lai_when(m1) < lai_when(m2) { lo = m1 + 1; } else { hi = m2 - 1; }
+        if profit_at(m1) < profit_at(m2) {
+            lo = m1 + 1;
+        } else {
+            hi = m2 - 1;
+        }
     }
-    let mut best = (lo, lai_when(lo));
+    let mut best = (lo, profit_at(lo));
     let mut v = lo;
     while v <= hi && v <= lo + 8 {
-        let l = lai_when(v);
-        if l > best.1 { best = (v, l); }
+        let l = profit_at(v);
+        if l > best.1 {
+            best = (v, l);
+        }
         v += 1;
     }
 
-    if best.1 <= 0 { return no_has; }
-    let mut next = *be;
+    if best.1 <= 0 {
+        return no_opportunity;
+    }
+    let mut next = *pool;
     let _ = next.swap_y_for_x(best.0, 0);
     ArbOpportunity {
-        has_has_hoi: true,
-        quantity_toi_uu: best.0,
+        has_opportunity: true,
+        optimal_quantity: best.0,
         estimated_return: best.1,
         dex_price_before: prev_price,
         dex_price_after: next.price_x(),
@@ -271,28 +328,50 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     println!("\n1. BỂ THANH KHOẢN TÍCH KHÔNG ĐỔI");
-    let be = Pool::new(1_000_000, 2_000_000_000, 30);
-    println!("   Dự trữ: {} X · {} Y", be.reserve_x, be.reserve_y);
-    println!("   Giá niêm yết: 1 X = {:.2} Y · k = {}", be.price_x(), be.k());
+    let pool = Pool::new(1_000_000, 2_000_000_000, 30);
+    println!("   Dự trữ: {} X · {} Y", pool.reserve_x, pool.reserve_y);
+    println!(
+        "   Giá niêm yết: 1 X = {:.2} Y · k = {}",
+        pool.price_x(),
+        pool.k()
+    );
 
     println!("\n2. TRƯỢT GIÁ TĂNG THEO QUY MÔ GIAO DỊCH");
-    println!("   {:>10} {:>16} {:>14} {:>10}", "đưa vào X", "nhận được Y", "giá thực", "trượt giá");
+    println!(
+        "   {:>10} {:>16} {:>14} {:>10}",
+        "đưa vào X", "nhận được Y", "giá thực", "trượt giá"
+    );
     for amount_in in [100u128, 1_000, 10_000, 100_000, 500_000] {
-        let ra = be.try_swap_x_for_y(amount_in).unwrap();
-        println!("   {:>10} {:>16} {:>14.2} {:>9.2}%",
-                 amount_in, ra, ra as f64 / amount_in as f64, be.slippage(amount_in).unwrap() * 100.0);
+        let out = pool.try_swap_x_for_y(amount_in).unwrap();
+        println!(
+            "   {:>10} {:>16} {:>14.2} {:>9.2}%",
+            amount_in,
+            out,
+            out as f64 / amount_in as f64,
+            pool.slippage(amount_in).unwrap() * 100.0
+        );
     }
-    println!("   → Giao dịch bằng 50% bể mất tới {:.0}% giá trị. Đây KHÔNG phải phí,",
-             be.slippage(500_000).unwrap() * 100.0);
+    println!(
+        "   → Giao dịch bằng 50% bể mất tới {:.0}% giá trị. Đây KHÔNG phải phí,",
+        pool.slippage(500_000).unwrap() * 100.0
+    );
     println!("     mà là hình dạng của chính đường cong x·y = k.");
 
     println!("\n3. PHÍ LÀM HẰNG SỐ k LỚN DẦN — đó là lãi của người góp vốn");
-    let mut b2 = be;
-    let k_dau = b2.k();
-    for _ in 0..10 { b2.swap_x_for_y(10_000, 0).unwrap(); }
-    println!("   k trước: {} · sau 10 lần hoán đổi: {}", k_dau, b2.k());
-    println!("   k tăng {:.4}% — phần đó thuộc về người góp vốn.",
-             (b2.k() as f64 / k_dau as f64 - 1.0) * 100.0);
+    let mut pool2 = pool;
+    let k_before = pool2.k();
+    for _ in 0..10 {
+        pool2.swap_x_for_y(10_000, 0).unwrap();
+    }
+    println!(
+        "   k trước: {} · sau 10 lần hoán đổi: {}",
+        k_before,
+        pool2.k()
+    );
+    println!(
+        "   k tăng {:.4}% — phần đó thuộc về người góp vốn.",
+        (pool2.k() as f64 / k_before as f64 - 1.0) * 100.0
+    );
 
     println!("\n4. TỔN THẤT TẠM THỜI");
     println!("   {:>14} {:>18}", "giá đổi", "so với chỉ nắm giữ");
@@ -303,47 +382,86 @@ fn main() {
     println!("     khoản này thì góp vốn mới thật sự có lãi.");
 
     println!("\n5. HÀNG CHỜ CÔNG KHAI — phí quyết định thứ tự, không phải thời gian tới");
-    let cho = vec![
-        TradeWait { sender: "nguoi-dung-thuong".into(), x_in: 50_000,
-                      min_y: 0, priority_fee: 2 },
-        TradeWait { sender: "bot-chen-truoc".into(), x_in: 30_000,
-                      min_y: 0, priority_fee: 500 },
-        TradeWait { sender: "nguoi-kien-nhan".into(), x_in: 1_000,
-                      min_y: 0, priority_fee: 1 },
+    let mempool = vec![
+        PendingTx {
+            sender: "người dùng thường".into(),
+            x_in: 50_000,
+            min_y: 0,
+            priority_fee: 2,
+        },
+        PendingTx {
+            sender: "bot chen trước".into(),
+            x_in: 30_000,
+            min_y: 0,
+            priority_fee: 500,
+        },
+        PendingTx {
+            sender: "người kiên nhẫn".into(),
+            x_in: 1_000,
+            min_y: 0,
+            priority_fee: 1,
+        },
     ];
-    for (i, g) in sort_arrange_block(cho).iter().enumerate() {
-        println!("   #{} {:<20} phí ưu tiên {}", i + 1, g.sender, g.priority_fee);
+    for (i, g) in order_block(mempool).iter().enumerate() {
+        println!(
+            "   #{} {:<20} phí ưu tiên {}",
+            i + 1,
+            g.sender,
+            g.priority_fee
+        );
     }
 
     println!("\n6. TẤN CÔNG KẸP — và cách sàn nhận tối thiểu cứu bạn");
-    let amount_in = be.try_swap_x_for_y(50_000).unwrap();
-    println!("   Nạn nhân định đổi 50 000 X, dự kiến nhận {} Y", amount_in);
-    for wait_op in [5_000u32, 1_000, 100, 50] {
-        let sn = min_venue_recv(amount_in, wait_op);
-        let nn = TradeWait { sender: "nan-nhan".into(), x_in: 50_000,
-                               min_y: sn, priority_fee: 1 };
-        let kq = simulate_sandwich(&be, &nn, 200_000);
-        if kq.blocked_by_guard {
-            println!("   cho phép trượt {:>4.1}% → GIAO DỊCH BỊ HUỶ, nạn nhân không mất vốn",
-                     wait_op as f64 / 100.0);
+    let amount_in = pool.try_swap_x_for_y(50_000).unwrap();
+    println!(
+        "   Nạn nhân định đổi 50 000 X, dự kiến nhận {} Y",
+        amount_in
+    );
+    for slippage_bps in [5_000u32, 1_000, 100, 50] {
+        let min_out = min_amount_out(amount_in, slippage_bps);
+        let victim = PendingTx {
+            sender: "nạn nhân".into(),
+            x_in: 50_000,
+            min_y: min_out,
+            priority_fee: 1,
+        };
+        let outcome = simulate_sandwich(&pool, &victim, 200_000);
+        if outcome.blocked_by_guard {
+            println!(
+                "   cho phép trượt {:>4.1}% → GIAO DỊCH BỊ HUỶ, nạn nhân không mất vốn",
+                slippage_bps as f64 / 100.0
+            );
         } else {
-            let mat = kq.receive_if_not_sandwiched - kq.receive_when_sandwiched;
-            println!("   cho phép trượt {:>4.1}% → nạn nhân mất {:>8} Y · kẻ tấn công lãi {:>8}",
-                     wait_op as f64 / 100.0, mat, kq.ke_attack_lai);
+            let lost = outcome.receive_if_not_sandwiched - outcome.receive_when_sandwiched;
+            println!(
+                "   cho phép trượt {:>4.1}% → nạn nhân mất {:>8} Y · kẻ tấn công lãi {:>6} X",
+                slippage_bps as f64 / 100.0,
+                lost,
+                outcome.attacker_profit
+            );
         }
     }
     println!("   → Đặt 5% \"cho chắc ăn\" chính là công khai mời người khác lấy 5% đó.");
 
     println!("\n7. ARBITRAGE CEX ↔ DEX");
-    let lech = Pool::new(1_000_000, 1_900_000_000, 30); // DEX rẻ hơn
-    let gia_cex = 2_000.0;
-    println!("   Giá DEX {:.2} · giá CEX {:.2} → lệch {:.2}%",
-             lech.price_x(), gia_cex, (gia_cex / lech.price_x() - 1.0) * 100.0);
-    let ch = find_arb(&lech, gia_cex, 500_000_000);
-    if ch.has_has_hoi {
-        println!("   Khối lượng tối ưu: {} Y → lãi ước tính {} Y",
-                 ch.quantity_toi_uu, ch.estimated_return);
-        println!("   Giá DEX sau giao dịch: {:.2} (đã kéo về gần CEX)", ch.dex_price_after);
+    let cheap_dex = Pool::new(1_000_000, 1_900_000_000, 30); // DEX rẻ hơn
+    let cex_price = 2_000.0;
+    println!(
+        "   Giá DEX {:.2} · giá CEX {:.2} → lệch {:.2}%",
+        cheap_dex.price_x(),
+        cex_price,
+        (cex_price / cheap_dex.price_x() - 1.0) * 100.0
+    );
+    let opp = find_arb(&cheap_dex, cex_price, 500_000_000);
+    if opp.has_opportunity {
+        println!(
+            "   Khối lượng tối ưu: {} Y → lãi ước tính {} Y",
+            opp.optimal_quantity, opp.estimated_return
+        );
+        println!(
+            "   Giá DEX sau giao dịch: {:.2} (đã kéo về gần CEX)",
+            opp.dex_price_after
+        );
     }
     println!("   → Chính đội arbitrage giữ cho giá DEX bám sát thị trường.");
     println!("     Họ không làm từ thiện — họ được trả công bằng khoảng lệch đó.");
@@ -357,14 +475,20 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn sample_pool() -> Pool { Pool::new(1_000_000, 2_000_000_000, 30) }
+    fn sample_pool() -> Pool {
+        Pool::new(1_000_000, 2_000_000_000, 30)
+    }
 
     // ---------- Bể thanh khoản ----------
     #[test]
     fn price_derives_from_the_reserve_ratio() {
         let b = sample_pool();
         assert!((b.price_x() - 2_000.0).abs() < 1e-9);
-        assert_eq!(Pool::new(0, 100, 30).price_x(), 0.0, "bể rỗng không chia cho 0");
+        assert_eq!(
+            Pool::new(0, 100, 30).price_x(),
+            0.0,
+            "bể rỗng không chia cho 0"
+        );
     }
 
     #[test]
@@ -375,34 +499,49 @@ mod tests {
         let mut k = b.k();
         for _ in 0..50 {
             b.swap_x_for_y(10_000, 0).unwrap();
-            let k_moi = b.k();
-            assert!(k_moi >= k, "k giảm từ {} xuống {} — bể bị rút ruột", k, k_moi);
-            k = k_moi;
+            let k_new = b.k();
+            assert!(
+                k_new >= k,
+                "k giảm từ {} xuống {} — bể bị rút ruột",
+                k,
+                k_new
+            );
+            k = k_new;
         }
-        assert!(b.k() > sample_pool().k(), "sau 50 lần hoán đổi k phải lớn hơn hẳn");
+        assert!(
+            b.k() > sample_pool().k(),
+            "sau 50 lần hoán đổi k phải lớn hơn hẳn"
+        );
     }
 
     #[test]
     fn with_zero_fee_k_is_nearly_constant() {
         let mut b = Pool::new(1_000_000, 2_000_000_000, 0);
-        let k_dau = b.k();
+        let k_before = b.k();
         b.swap_x_for_y(10_000, 0).unwrap();
         // Chỉ lệch do làm tròn số nguyên, không phải do phí
-        let lech = (b.k() as f64 / k_dau as f64 - 1.0).abs();
-        assert!(lech < 1e-4, "không phí thì k gần như đứng yên, lệch {:.6}", lech);
+        let drift = (b.k() as f64 / k_before as f64 - 1.0).abs();
+        assert!(
+            drift < 1e-4,
+            "không phí thì k gần như đứng yên, lệch {:.6}",
+            drift
+        );
     }
 
     #[test]
     fn more_input_returns_more_but_less_efficiently() {
         let b = sample_pool();
         let mut prev_effective_price = f64::MAX;
-        let mut prev_out = 0u128;
+        let mut front_run_out = 0u128;
         for amount_in in [100u128, 1_000, 10_000, 100_000] {
-            let ra = b.try_swap_x_for_y(amount_in).unwrap();
-            assert!(ra > prev_out, "đưa vào nhiều hơn phải nhận nhiều hơn");
-            let exec_price = ra as f64 / amount_in as f64;
-            assert!(exec_price < prev_effective_price, "nhưng giá mỗi đơn vị phải TỆ dần");
-            prev_out = ra;
+            let out = b.try_swap_x_for_y(amount_in).unwrap();
+            assert!(out > front_run_out, "đưa vào nhiều hơn phải nhận nhiều hơn");
+            let exec_price = out as f64 / amount_in as f64;
+            assert!(
+                exec_price < prev_effective_price,
+                "nhưng giá mỗi đơn vị phải TỆ dần"
+            );
+            front_run_out = out;
             prev_effective_price = exec_price;
         }
     }
@@ -413,12 +552,17 @@ mod tests {
         let mut prev = 0.0;
         for amount_in in [100u128, 1_000, 10_000, 100_000, 500_000] {
             let t = b.slippage(amount_in).unwrap();
-            assert!(t > 0.0, "trượt giá luôn dương — bạn luôn nhận ít hơn giá niêm yết");
+            assert!(
+                t > 0.0,
+                "trượt giá luôn dương — bạn luôn nhận ít hơn giá niêm yết"
+            );
             assert!(t > prev, "và tăng dần theo quy mô");
             prev = t;
         }
-        assert!(b.slippage(500_000).unwrap() > 0.3,
-                "giao dịch bằng nửa bể phải mất hơn 30%");
+        assert!(
+            b.slippage(500_000).unwrap() > 0.3,
+            "giao dịch bằng nửa bể phải mất hơn 30%"
+        );
     }
 
     #[test]
@@ -428,7 +572,12 @@ mod tests {
         let b = sample_pool();
         for amount_in in [1_000_000u128, 10_000_000, 1_000_000_000] {
             match b.try_swap_x_for_y(amount_in) {
-                Ok(ra) => assert!(ra < b.reserve_y, "nhận {} mà bể chỉ có {}", ra, b.reserve_y),
+                Ok(out) => assert!(
+                    out < b.reserve_y,
+                    "nhận {} mà bể chỉ có {}",
+                    out,
+                    b.reserve_y
+                ),
                 Err(e) => assert_eq!(e, SwapError::InsufficientLiquidity),
             }
         }
@@ -438,16 +587,18 @@ mod tests {
     fn invalid_swaps_are_rejected() {
         let b = sample_pool();
         assert_eq!(b.try_swap_x_for_y(0), Err(SwapError::ZeroInput));
-        assert_eq!(Pool::new(0, 0, 30).try_swap_x_for_y(100),
-                   Err(SwapError::EmptyPool));
+        assert_eq!(
+            Pool::new(0, 0, 30).try_swap_x_for_y(100),
+            Err(SwapError::EmptyPool)
+        );
     }
 
     #[test]
     fn reserves_update_correctly_after_a_swap() {
         let mut b = sample_pool();
-        let ra = b.swap_x_for_y(10_000, 0).unwrap();
+        let out = b.swap_x_for_y(10_000, 0).unwrap();
         assert_eq!(b.reserve_x, 1_010_000, "X vào bể");
-        assert_eq!(b.reserve_y, 2_000_000_000 - ra, "Y ra khỏi bể");
+        assert_eq!(b.reserve_y, 2_000_000_000 - out, "Y ra khỏi bể");
     }
 
     #[test]
@@ -457,7 +608,11 @@ mod tests {
         assert!(y > 0);
         let x = b.swap_y_for_x(y, 0).unwrap();
         assert!(x > 0);
-        assert!(x < 10_000, "đổi đi rồi đổi lại phải LỖ, nhận về {} thay vì 10 000", x);
+        assert!(
+            x < 10_000,
+            "đổi đi rồi đổi lại phải LỖ, nhận về {} thay vì 10 000",
+            x
+        );
     }
 
     #[test]
@@ -473,10 +628,10 @@ mod tests {
 
     #[test]
     fn min_out_is_computed_correctly() {
-        assert_eq!(min_venue_recv(1_000_000, 50), 995_000, "0,5%");
-        assert_eq!(min_venue_recv(1_000_000, 100), 990_000, "1%");
-        assert_eq!(min_venue_recv(1_000_000, 5_000), 500_000, "50% là quá lỏng");
-        assert_eq!(min_venue_recv(1_000_000, 0), 1_000_000);
+        assert_eq!(min_amount_out(1_000_000, 50), 995_000, "0,5%");
+        assert_eq!(min_amount_out(1_000_000, 100), 990_000, "1%");
+        assert_eq!(min_amount_out(1_000_000, 5_000), 500_000, "50% là quá lỏng");
+        assert_eq!(min_amount_out(1_000_000, 0), 1_000_000);
     }
 
     // ---------- Tổn thất tạm thời ----------
@@ -488,8 +643,12 @@ mod tests {
     #[test]
     fn impermanent_loss_is_never_positive() {
         for r in [0.01f64, 0.1, 0.5, 0.9, 1.0, 1.1, 2.0, 5.0, 100.0] {
-            assert!(impermanent_loss(r) <= 1e-12,
-                    "r={} cho {} — không bao giờ được dương", r, impermanent_loss(r));
+            assert!(
+                impermanent_loss(r) <= 1e-12,
+                "r={} cho {} — không bao giờ được dương",
+                r,
+                impermanent_loss(r)
+            );
         }
     }
 
@@ -513,7 +672,10 @@ mod tests {
         }
         // Con số hay được trích dẫn: giá gấp đôi → thiệt khoảng 5,7%
         assert!((impermanent_loss(2.0) + 0.0572).abs() < 0.001);
-        assert!((impermanent_loss(4.0) + 0.20).abs() < 0.001, "gấp 4 → thiệt 20%");
+        assert!(
+            (impermanent_loss(4.0) + 0.20).abs() < 0.001,
+            "gấp 4 → thiệt 20%"
+        );
     }
 
     #[test]
@@ -525,41 +687,80 @@ mod tests {
     // ---------- Hàng chờ & MEV ----------
     #[test]
     fn blocks_order_by_descending_priority_fee() {
-        let cho = vec![
-            TradeWait { sender: "a".into(), x_in: 1, min_y: 0, priority_fee: 2 },
-            TradeWait { sender: "b".into(), x_in: 1, min_y: 0, priority_fee: 500 },
-            TradeWait { sender: "c".into(), x_in: 1, min_y: 0, priority_fee: 1 },
+        let mempool = vec![
+            PendingTx {
+                sender: "a".into(),
+                x_in: 1,
+                min_y: 0,
+                priority_fee: 2,
+            },
+            PendingTx {
+                sender: "b".into(),
+                x_in: 1,
+                min_y: 0,
+                priority_fee: 500,
+            },
+            PendingTx {
+                sender: "c".into(),
+                x_in: 1,
+                min_y: 0,
+                priority_fee: 1,
+            },
         ];
-        let sap = sort_arrange_block(cho);
-        assert_eq!(sap.iter().map(|g| g.sender.as_str()).collect::<Vec<_>>(),
-                   vec!["b", "a", "c"], "trả nhiều nhất được xếp đầu");
-        for w in sap.windows(2) {
+        let ordered = order_block(mempool);
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|g| g.sender.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b", "a", "c"],
+            "trả nhiều nhất được xếp đầu"
+        );
+        for w in ordered.windows(2) {
             assert!(w[0].priority_fee >= w[1].priority_fee);
         }
     }
 
     #[test]
     fn ordering_is_stable_on_equal_fees() {
-        let cho: Vec<TradeWait> = (0..5).map(|i| TradeWait {
-            sender: format!("n{}", i), x_in: 1, min_y: 0, priority_fee: 10,
-        }).collect();
-        let sap = sort_arrange_block(cho);
-        assert_eq!(sap.iter().map(|g| g.sender.clone()).collect::<Vec<_>>(),
-                   vec!["n0", "n1", "n2", "n3", "n4"], "phí bằng nhau thì giữ nguyên thứ tự");
+        let mempool: Vec<PendingTx> = (0..5)
+            .map(|i| PendingTx {
+                sender: format!("n{}", i),
+                x_in: 1,
+                min_y: 0,
+                priority_fee: 10,
+            })
+            .collect();
+        let ordered = order_block(mempool);
+        assert_eq!(
+            ordered.iter().map(|g| g.sender.clone()).collect::<Vec<_>>(),
+            vec!["n0", "n1", "n2", "n3", "n4"],
+            "phí bằng nhau thì giữ nguyên thứ tự"
+        );
     }
 
     #[test]
     fn no_min_out_means_the_sandwich_takes_your_money() {
         // `min_y = 0` nghĩa là "nhận bao nhiêu cũng được" — lời mời công khai.
         let b = sample_pool();
-        let nn = TradeWait { sender: "nan-nhan".into(), x_in: 50_000,
-                               min_y: 0, priority_fee: 1 };
-        let kq = simulate_sandwich(&b, &nn, 200_000);
-        assert!(!kq.blocked_by_guard, "không có bảo vệ thì không gì chặn được");
-        assert!(kq.receive_when_sandwiched < kq.receive_if_not_sandwiched,
-                "bị kẹp thì nhận ít hơn: {} so với {}",
-                kq.receive_when_sandwiched, kq.receive_if_not_sandwiched);
-        assert!(kq.ke_attack_lai > 0, "và kẻ tấn công có lãi");
+        let victim = PendingTx {
+            sender: "nạn nhân".into(),
+            x_in: 50_000,
+            min_y: 0,
+            priority_fee: 1,
+        };
+        let outcome = simulate_sandwich(&b, &victim, 200_000);
+        assert!(
+            !outcome.blocked_by_guard,
+            "không có bảo vệ thì không gì chặn được"
+        );
+        assert!(
+            outcome.receive_when_sandwiched < outcome.receive_if_not_sandwiched,
+            "bị kẹp thì nhận ít hơn: {} so với {}",
+            outcome.receive_when_sandwiched,
+            outcome.receive_if_not_sandwiched
+        );
+        assert!(outcome.attacker_profit > 0, "và kẻ tấn công có lãi");
     }
 
     #[test]
@@ -567,107 +768,136 @@ mod tests {
         // Bị huỷ giao dịch là KẾT QUẢ TỐT: bạn chỉ mất phí gas, không mất vốn.
         let b = sample_pool();
         let amount_in = b.try_swap_x_for_y(50_000).unwrap();
-        let nn = TradeWait { sender: "can-than".into(), x_in: 50_000,
-                               min_y: min_venue_recv(amount_in, 50), // 0,5%
-                               priority_fee: 1 };
-        let kq = simulate_sandwich(&b, &nn, 200_000);
-        assert!(kq.blocked_by_guard, "sàn chặt phải chặn được cú kẹp");
-        assert_eq!(kq.ke_attack_lai, 0, "kẻ tấn công không ăn được gì");
+        let victim = PendingTx {
+            sender: "cẩn thận".into(),
+            x_in: 50_000,
+            min_y: min_amount_out(amount_in, 50), // 0,5%
+            priority_fee: 1,
+        };
+        let outcome = simulate_sandwich(&b, &victim, 200_000);
+        assert!(outcome.blocked_by_guard, "sàn chặt phải chặn được cú kẹp");
+        assert_eq!(outcome.attacker_profit, 0, "kẻ tấn công không ăn được gì");
     }
 
     #[test]
     fn a_looser_min_out_means_bigger_losses() {
         let b = sample_pool();
         let amount_in = b.try_swap_x_for_y(50_000).unwrap();
-        let mut thiet_hai_truoc = 0u128;
+        let mut prev_loss = 0u128;
         // Đi từ chặt tới lỏng
-        for wait_op in [50u32, 100, 500, 1_000, 5_000] {
-            let nn = TradeWait { sender: "n".into(), x_in: 50_000,
-                                   min_y: min_venue_recv(amount_in, wait_op),
-                                   priority_fee: 1 };
-            let kq = simulate_sandwich(&b, &nn, 200_000);
-            if !kq.blocked_by_guard {
-                let thiet = kq.receive_if_not_sandwiched - kq.receive_when_sandwiched;
-                assert!(thiet >= thiet_hai_truoc,
-                        "nới sàn nhận thì thiệt hại không được giảm");
-                thiet_hai_truoc = thiet;
+        for slippage_bps in [50u32, 100, 500, 1_000, 5_000] {
+            let victim = PendingTx {
+                sender: "n".into(),
+                x_in: 50_000,
+                min_y: min_amount_out(amount_in, slippage_bps),
+                priority_fee: 1,
+            };
+            let outcome = simulate_sandwich(&b, &victim, 200_000);
+            if !outcome.blocked_by_guard {
+                let loss = outcome.receive_if_not_sandwiched - outcome.receive_when_sandwiched;
+                assert!(
+                    loss >= prev_loss,
+                    "nới sàn nhận thì thiệt hại không được giảm"
+                );
+                prev_loss = loss;
             }
         }
-        assert!(thiet_hai_truoc > 0, "phải có ít nhất một mức bị bóc lột");
+        assert!(prev_loss > 0, "phải có ít nhất một mức bị bóc lột");
     }
 
     #[test]
     fn deeper_pools_are_harder_to_sandwich() {
         // Thanh khoản dày là biện pháp phòng vệ tự nhiên: cùng một cú tấn công
         // đẩy giá được ít hơn hẳn.
-        let nong = Pool::new(100_000, 200_000_000, 30);
-        let next = Pool::new(10_000_000, 20_000_000_000, 30);
-        let thiet = |b: &Pool| {
-            let nn = TradeWait { sender: "n".into(), x_in: 10_000,
-                                   min_y: 0, priority_fee: 1 };
-            let kq = simulate_sandwich(b, &nn, 50_000);
-            (kq.receive_if_not_sandwiched - kq.receive_when_sandwiched) as f64
-                / kq.receive_if_not_sandwiched as f64
+        let shallow = Pool::new(100_000, 200_000_000, 30);
+        let deep = Pool::new(10_000_000, 20_000_000_000, 30);
+        let loss = |b: &Pool| {
+            let victim = PendingTx {
+                sender: "n".into(),
+                x_in: 10_000,
+                min_y: 0,
+                priority_fee: 1,
+            };
+            let outcome = simulate_sandwich(b, &victim, 50_000);
+            (outcome.receive_if_not_sandwiched - outcome.receive_when_sandwiched) as f64
+                / outcome.receive_if_not_sandwiched as f64
         };
-        assert!(thiet(&next) < thiet(&nong),
-                "bể sâu thiệt {:.4} phải nhỏ hơn bể nông {:.4}", thiet(&next), thiet(&nong));
+        assert!(
+            loss(&deep) < loss(&shallow),
+            "bể sâu thiệt {:.4} phải nhỏ hơn bể nông {:.4}",
+            loss(&deep),
+            loss(&shallow)
+        );
     }
 
     // ---------- Arbitrage CEX-DEX ----------
     #[test]
     fn no_opportunity_when_prices_already_match() {
         let b = sample_pool(); // giá 2000
-        let ch = find_arb(&b, 2_000.0, 1_000_000_000);
-        assert!(!ch.has_has_hoi, "giá bằng nhau thì không có gì để ăn");
-        assert_eq!(ch.quantity_toi_uu, 0);
+        let opp = find_arb(&b, 2_000.0, 1_000_000_000);
+        assert!(!opp.has_opportunity, "giá bằng nhau thì không có gì để ăn");
+        assert_eq!(opp.optimal_quantity, 0);
     }
 
     #[test]
     fn no_opportunity_when_the_dex_is_dearer() {
         let b = sample_pool(); // DEX 2000
-        let ch = find_arb(&b, 1_900.0, 1_000_000_000);
-        assert!(!ch.has_has_hoi, "chiều này không có lãi");
+        let opp = find_arb(&b, 1_900.0, 1_000_000_000);
+        assert!(!opp.has_opportunity, "chiều này không có lãi");
     }
 
     #[test]
     fn finds_a_profitable_opportunity_when_the_dex_is_cheaper() {
         let b = Pool::new(1_000_000, 1_900_000_000, 30); // DEX = 1900
-        let ch = find_arb(&b, 2_000.0, 500_000_000);
-        assert!(ch.has_has_hoi);
-        assert!(ch.estimated_return > 0, "lãi phải dương thì mới gọi là cơ hội");
-        assert!(ch.quantity_toi_uu > 0);
+        let opp = find_arb(&b, 2_000.0, 500_000_000);
+        assert!(opp.has_opportunity);
+        assert!(
+            opp.estimated_return > 0,
+            "lãi phải dương thì mới gọi là cơ hội"
+        );
+        assert!(opp.optimal_quantity > 0);
     }
 
     #[test]
     fn arbitrage_pulls_the_dex_toward_the_cex() {
         // Đây là lý do arbitrage tồn tại và có ích: nó khiến giá hội tụ.
         let b = Pool::new(1_000_000, 1_900_000_000, 30);
-        let gia_cex = 2_000.0;
-        let ch = find_arb(&b, gia_cex, 500_000_000);
-        assert!(ch.has_has_hoi);
-        let prev_lech = (gia_cex - ch.dex_price_before).abs();
-        let next_lech = (gia_cex - ch.dex_price_after).abs();
-        assert!(next_lech < prev_lech,
-                "sau arbitrage giá phải gần nhau hơn: {:.2} so với {:.2}", next_lech, prev_lech);
+        let cex_price = 2_000.0;
+        let opp = find_arb(&b, cex_price, 500_000_000);
+        assert!(opp.has_opportunity);
+        let gap_before = (cex_price - opp.dex_price_before).abs();
+        let gap_after = (cex_price - opp.dex_price_after).abs();
+        assert!(
+            gap_after < gap_before,
+            "sau arbitrage giá phải gần nhau hơn: {:.2} so với {:.2}",
+            gap_after,
+            gap_before
+        );
     }
 
     #[test]
     fn the_optimal_size_really_is_optimal() {
         // So với các khối lượng lân cận, khối lượng tìm được phải cho lãi cao nhất.
         let b = Pool::new(1_000_000, 1_900_000_000, 30);
-        let gia_cex = 2_000.0;
-        let ch = find_arb(&b, gia_cex, 500_000_000);
-        let lai = |v: u128| -> i128 {
+        let cex_price = 2_000.0;
+        let opp = find_arb(&b, cex_price, 500_000_000);
+        let profit = |v: u128| -> i128 {
             match b.try_swap_y_for_x(v) {
-                Ok(x) => (x as f64 * gia_cex) as i128 - v as i128,
+                Ok(x) => (x as f64 * cex_price) as i128 - v as i128,
                 Err(_) => i128::MIN,
             }
         };
-        let v = ch.quantity_toi_uu;
+        let v = opp.optimal_quantity;
         for other in [v / 4, v / 2, v * 2, v * 4] {
             if other > 0 && other < 500_000_000 {
-                assert!(lai(v) >= lai(other),
-                        "khối lượng {} cho lãi {} > {} tại {}", other, lai(other), lai(v), v);
+                assert!(
+                    profit(v) >= profit(other),
+                    "khối lượng {} cho lãi {} > {} tại {}",
+                    other,
+                    profit(other),
+                    profit(v),
+                    v
+                );
             }
         }
     }
@@ -675,20 +905,28 @@ mod tests {
     #[test]
     fn zero_capital_means_no_opportunity() {
         let b = Pool::new(1_000_000, 1_900_000_000, 30);
-        assert!(!find_arb(&b, 2_000.0, 0).has_has_hoi);
+        assert!(!find_arb(&b, 2_000.0, 0).has_opportunity);
     }
 
     #[test]
     fn a_wider_dislocation_yields_more_profit() {
         let mut prev = 0i128;
-        for gia_y in [1_950_000_000u128, 1_900_000_000, 1_800_000_000, 1_600_000_000] {
-            let b = Pool::new(1_000_000, gia_y, 30);
-            let ch = find_arb(&b, 2_000.0, 2_000_000_000);
-            assert!(ch.has_has_hoi);
-            assert!(ch.estimated_return > prev,
-                    "lệch giá lớn hơn phải cho lãi lớn hơn: {} so với {}",
-                    ch.estimated_return, prev);
-            prev = ch.estimated_return;
+        for reserve_y in [
+            1_950_000_000u128,
+            1_900_000_000,
+            1_800_000_000,
+            1_600_000_000,
+        ] {
+            let b = Pool::new(1_000_000, reserve_y, 30);
+            let opp = find_arb(&b, 2_000.0, 2_000_000_000);
+            assert!(opp.has_opportunity);
+            assert!(
+                opp.estimated_return > prev,
+                "lệch giá lớn hơn phải cho lãi lớn hơn: {} so với {}",
+                opp.estimated_return,
+                prev
+            );
+            prev = opp.estimated_return;
         }
     }
 }

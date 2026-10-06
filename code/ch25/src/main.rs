@@ -4,18 +4,18 @@ use std::time::Instant;
 /// Minh họa giải thuật O(1) - Truy cập phần tử qua chỉ số mảng
 /// Bất kể danh sách có 10 phần tử hay 10 triệu phần tử,
 /// CPU chỉ cần 1 phép tính cộng địa chỉ bộ nhớ là lấy được giá trị ngay!
-pub fn index_access_o1(list: &[i32], chi_so: usize) -> Option<i32> {
+pub fn index_access_o1(list: &[i32], index: usize) -> Option<i32> {
     // Thao tác kiểm tra biên giới và đọc ô nhớ diễn ra trong thời gian hằng số O(1)
-    list.get(chi_so).copied()
+    list.get(index).copied()
 }
 
 /// Minh họa giải thuật O(N) - Tìm kiếm tuyến tính (Linear Search)
 /// Trong trường hợp xấu nhất (Worst-case), phần tử cần tìm nằm ở cuối danh sách
 /// hoặc không tồn tại, hàm bắt buộc phải duyệt qua toàn bộ N phần tử.
-pub fn linear_search_on(list: &[i32], level_spend: i32) -> Option<usize> {
-    for (pos_value, &value) in list.iter().enumerate() {
-        if value == level_spend {
-            return Some(pos_value); // Tìm thấy tại vị trí pos_value
+pub fn linear_search_on(list: &[i32], target: i32) -> Option<usize> {
+    for (index, &value) in list.iter().enumerate() {
+        if value == target {
+            return Some(index); // Tìm thấy tại vị trí index
         }
     }
     None // Không tìm thấy sau khi duyệt hết N phần tử
@@ -24,7 +24,7 @@ pub fn linear_search_on(list: &[i32], level_spend: i32) -> Option<usize> {
 /// Minh họa giải thuật O(log N) - Tìm kiếm nhị phân (Binary Search)
 /// Điều kiện tiên quyết: Mảng đầu vào PHẢI được sắp xếp tăng dần từ trước.
 /// Tại mỗi bước, ta so sánh mục tiêu với phần tử ở giữa và loại bỏ 50% phạm vi tìm kiếm.
-pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
+pub fn binary_search_ologn(list: &[i32], target: i32) -> Option<usize> {
     if list.is_empty() {
         return None;
     }
@@ -37,9 +37,9 @@ pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
         let mid = left + (right - left) / 2;
         let value_mid = list[mid];
 
-        if value_mid == level_spend {
+        if value_mid == target {
             return Some(mid);
-        } else if value_mid < level_spend {
+        } else if value_mid < target {
             // Mục tiêu nằm ở nửa bên phải, dời biên trái lên
             left = mid + 1;
         } else {
@@ -57,20 +57,20 @@ pub fn binary_search_ologn(list: &[i32], level_spend: i32) -> Option<usize> {
 /// Minh họa độ phức tạp không gian O(1) vs O(N)
 /// Hàm 1: Tính tổng tích lũy tại chỗ - Tiêu tốn O(1) bộ nhớ phụ
 pub fn sum_in_place_o1(list: &[i32]) -> i64 {
-    let mut tong: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
-    for &so in list {
-        tong += so as i64;
+    let mut sum: i64 = 0; // Biến duy nhất trên Stack, không tốn thêm Heap
+    for &x in list {
+        sum += x as i64;
     }
-    tong
+    sum
 }
 
 /// Hàm 2: Tạo mảng nhân đôi - Tiêu tốn O(N) bộ nhớ phụ trên Heap
 pub fn grow_doubling(list: &[i32]) -> Vec<i32> {
-    let mut ket_qua = Vec::with_capacity(list.len());
-    for &so in list {
-        ket_qua.push(so * 2);
+    let mut result = Vec::with_capacity(list.len());
+    for &x in list {
+        result.push(x * 2);
     }
-    ket_qua
+    result
 }
 
 fn main() {
@@ -83,48 +83,54 @@ fn main() {
     println!("Khởi tạo danh sách gồm {} phần tử...", scale);
     let list: Vec<i32> = (0..scale as i32).collect();
 
-    let level_spend: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
+    let target: i32 = 999_999; // Phần tử nằm ở cuối cùng (trường hợp xấu nhất)
 
     // 1. Thực nghiệm O(1) - Truy cập trực tiếp qua chỉ số
-    let bat_dau_o1 = Instant::now();
-    let ket_qua_o1 = index_access_o1(&list, scale - 1);
-    let thoi_gian_o1 = bat_dau_o1.elapsed();
+    let start_o1 = Instant::now();
+    let result_o1 = index_access_o1(&list, scale - 1);
+    let elapsed_o1 = start_o1.elapsed();
     println!("\n[1] Thao tác O(1) - Truy cập chỉ số:");
-    println!("    - Giá trị tìm được: {:?}", ket_qua_o1);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_o1);
+    println!("    - Giá trị tìm được: {:?}", result_o1);
+    println!("    - Thời gian thực thi: {:?}", elapsed_o1);
 
     // 2. Thực nghiệm O(N) - Tìm kiếm tuyến tính duyệt từ đầu đến cuối
-    let bat_dau_on = Instant::now();
-    let ket_qua_on = linear_search_on(&list, level_spend);
-    let thoi_gian_on = bat_dau_on.elapsed();
+    let start_on = Instant::now();
+    let result_on = linear_search_on(&list, target);
+    let elapsed_on = start_on.elapsed();
     println!("\n[2] Thao tác O(N) - Tìm kiếm tuyến tính (Duyệt 1 triệu phần tử):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_on);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_on);
+    println!("    - Vị trí tìm được: {:?}", result_on);
+    println!("    - Thời gian thực thi: {:?}", elapsed_on);
 
     // 3. Thực nghiệm O(log N) - Tìm kiếm nhị phân (Chặt đôi chia để trị)
-    let bat_dau_ologn = Instant::now();
-    let ket_qua_ologn = binary_search_ologn(&list, level_spend);
-    let thoi_gian_ologn = bat_dau_ologn.elapsed();
+    let start_ologn = Instant::now();
+    let result_ologn = binary_search_ologn(&list, target);
+    let elapsed_ologn = start_ologn.elapsed();
     println!("\n[3] Thao tác O(log N) - Tìm kiếm nhị phân (Chỉ tốn ~20 phép chia):");
-    println!("    - Vị trí tìm được: {:?}", ket_qua_ologn);
-    println!("    - Thời gian thực thi: {:?}", thoi_gian_ologn);
+    println!("    - Vị trí tìm được: {:?}", result_ologn);
+    println!("    - Thời gian thực thi: {:?}", elapsed_ologn);
 
     // Xác nhận tính nhất quán của kết quả
-    assert_eq!(ket_qua_on, Some(scale - 1));
-    assert_eq!(ket_qua_ologn, Some(scale - 1));
+    assert_eq!(result_on, Some(scale - 1));
+    assert_eq!(result_ologn, Some(scale - 1));
 
     // 4. So sánh tỷ lệ chênh lệch thời gian giữa O(log N) và O(N)
-    if thoi_gian_ologn.as_nanos() > 0 {
-        let ti_le = thoi_gian_on.as_nanos() as f64 / thoi_gian_ologn.as_nanos() as f64;
-        println!("\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!", ti_le);
+    if elapsed_ologn.as_nanos() > 0 {
+        let ratio = elapsed_on.as_nanos() as f64 / elapsed_ologn.as_nanos() as f64;
+        println!(
+            "\n=> ĐÁNH GIÁ: O(log N) chạy nhanh gấp xấp xỉ {:.1} lần so với O(N)!",
+            ratio
+        );
     }
 
     // 5. Kiểm tra tính năng tiêu thụ bộ nhớ không gian
-    let tong_o1 = sum_in_place_o1(&list[0..100]);
-    let mang_on = grow_doubling(&list[0..100]);
+    let sum_o1 = sum_in_place_o1(&list[0..100]);
+    let doubled = grow_doubling(&list[0..100]);
     println!("\n[4] Không gian bộ nhớ:");
-    println!("    - Tổng O(1) Space: {}", tong_o1);
-    println!("    - Kích thước mảng phụ O(N) Space: {} phần tử", mang_on.len());
+    println!("    - Tổng O(1) Space: {}", sum_o1);
+    println!(
+        "    - Kích thước mảng phụ O(N) Space: {} phần tử",
+        doubled.len()
+    );
     println!("============================================================");
 }
 
@@ -149,12 +155,13 @@ mod tests {
     #[test]
     fn binary_search_matches_linear() {
         let list: Vec<i32> = (0..1000).map(|x| x * 3).collect();
-        for &level_spend in &[0, 297, 1500, 2997, 1, 2998] {
+        for &target in &[0, 297, 1500, 2997, 1, 2998] {
             // hai thuật toán phải cho CÙNG kết luận có/không
             assert_eq!(
-                binary_search_ologn(&list, level_spend).is_some(),
-                linear_search_on(&list, level_spend).is_some(),
-                "bất đồng ở {}", level_spend
+                binary_search_ologn(&list, target).is_some(),
+                linear_search_on(&list, target).is_some(),
+                "bất đồng ở {}",
+                target
             );
         }
         assert_eq!(binary_search_ologn(&list, 297), Some(99));

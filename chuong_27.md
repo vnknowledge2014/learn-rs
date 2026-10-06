@@ -76,15 +76,15 @@ Hãy xem xét đoạn mã lỗi minh họa sau đây:
 ```rust,compile_fail
 // compile-fail
 // Giả định định nghĩa một Node danh sách liên kết
-struct NutLoi {
+struct BrokenNode {
     value: i32,
-    next: Option<NutLoi>, // LỖI BIÊN DỊCH E0072!
+    next: Option<BrokenNode>, // LỖI BIÊN DỊCH E0072!
 }
 ```
-Khi trình biên dịch `rustc` tính toán kích thước vật lý của `NutLoi` trên Ngăn xếp (Stack):
-- `NutLoi` chứa một `i32` (4 bytes) + một `Option<NutLoi>`.
-- Nhưng `NutLoi` bên trong lại chứa một `NutLoi` con, `NutLoi` con lại chứa `NutLoi` cháu...
-- Kích thước của `NutLoi` sẽ là: $4 + 4 + 4 + ... = \infty$ (Vô tận!). Trình biên dịch không thể cấp phát bộ nhớ cho một thứ không rõ kích thước.
+Khi trình biên dịch `rustc` tính toán kích thước vật lý của `BrokenNode` trên Ngăn xếp (Stack):
+- `BrokenNode` chứa một `i32` (4 bytes) + một `Option<BrokenNode>`.
+- Nhưng `BrokenNode` bên trong lại chứa một `BrokenNode` con, `BrokenNode` con lại chứa `BrokenNode` cháu...
+- Kích thước của `BrokenNode` sẽ là: $4 + 4 + 4 + ... = \infty$ (Vô tận!). Trình biên dịch không thể cấp phát bộ nhớ cho một thứ không rõ kích thước.
 
 **Giải pháp với `Box<T>`**:
 ```rust
@@ -99,7 +99,7 @@ Bản thân `Box<T>` là một con trỏ thông minh (smart pointer). Kích thư
 
 | Con trỏ thông minh | Vị trí dữ liệu | Cơ chế sở hữu | Tính khả biến (Mutation) | Đa luồng (Thread-Safe)? |
 |---|---|---|---|---|
-| **`Box<T>`** | Heap | Độc quyền (Single Owner) | Thừa hưởng từ biến chứa nó | Có thể chuyển luồng (`Send`) |
+| **`Box<T>`** | Heap | Độc quyền (Single Owner) | Thừa hưởng từ biến chứa nó | Có thể chuyển luồng (`Send` nếu `T: Send`) |
 | **`Rc<T>`** | Heap | Đồng sở hữu (Reference Counted) | Bất biến (Immutable) | Không (Dùng đơn luồng, đa luồng dùng `Arc`) |
 | **`RefCell<T>`** | Bất kỳ | Theo biến bao bọc | Cho phép sửa đổi nội tại (Interior Mutability) | Không (Đa luồng dùng `Mutex`/`RwLock`) |
 
@@ -169,22 +169,22 @@ Dưới đây là bản thiết kế hoàn chỉnh của một Danh sách liên 
 
 ```rust
 /// Cấu trúc nút bên trong danh sách liên kết
-struct Nut<T> {
+struct Node<T> {
     value: T,
-    next: Option<Box<Nut<T>>>,
+    next: Option<Box<Node<T>>>,
 }
 
 /// Cấu trúc Danh sách liên kết đơn (Singly Linked List)
-pub struct ListLienLink<T> {
-    peak: Option<Box<Nut<T>>>,
+pub struct LinkedList<T> {
+    head: Option<Box<Node<T>>>,
     length: usize,
 }
 
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Khởi tạo một danh sách liên kết rỗng
     pub fn new() -> Self {
-        ListLienLink {
-            peak: None,
+        LinkedList {
+            head: None,
             length: 0,
         }
     }
@@ -192,32 +192,32 @@ impl<T> ListLienLink<T> {
     /// Thêm một phần tử mới vào đầu danh sách - Độ phức tạp O(1)
     pub fn push_front(&mut self, value: T) {
         // Tạo nút mới trên Heap thông qua con trỏ thông minh Box
-        // Sử dụng self.dinh.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
-        let nut_moi = Box::new(Nut {
+        // Sử dụng self.head.take() để lấy quyền sở hữu đỉnh cũ mà không vi phạm quy tắc mượn
+        let new_node = Box::new(Node {
             value,
-            next: self.peak.take(),
+            next: self.head.take(),
         });
 
         // Gán đỉnh mới cho danh sách
-        self.peak = Some(nut_moi);
+        self.head = Some(new_node);
         self.length += 1;
     }
 
     /// Lấy phần tử ở đầu danh sách ra và trả về giá trị - Độ phức tạp O(1)
     pub fn pop_front(&mut self) -> Option<T> {
-        // .take() thay thế đỉnh bằng None và trả về Some(nut_cu)
-        self.peak.take().map(|nut_cu| {
+        // .take() thay thế đỉnh bằng None và trả về Some(old_head)
+        self.head.take().map(|old_head| {
             // Đưa nút kế tiếp lên làm đỉnh mới
-            self.peak = nut_cu.next;
+            self.head = old_head.next;
             self.length -= 1;
             // Trả về giá trị của nút vừa lấy ra
-            nut_cu.value
+            old_head.value
         })
     }
 
     /// Xem giá trị phần tử ở đầu danh sách mà không đoạt quyền sở hữu - Trả về tham chiếu mượn
     pub fn peek_front(&self) -> Option<&T> {
-        self.peak.as_ref().map(|nut| &nut.value)
+        self.head.as_ref().map(|node| &node.value)
     }
 
     /// Kiểm tra số lượng phần tử hiện tại trong danh sách
@@ -233,19 +233,19 @@ impl<T> ListLienLink<T> {
 
 /// Cài đặt hàm hủy bộ nhớ an toàn (Safe Drop)
 /// Sử dụng vòng lặp tuần tự thay vì đệ quy để triệt tiêu nguy cơ tràn ngăn xếp (Stack Overflow)
-impl<T> Drop for ListLienLink<T> {
+impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
-        let mut current_node = self.peak.take();
+        let mut current_node = self.head.take();
         // Lặp tuần tự gỡ từng Box trên Heap đưa vào biến cục bộ rồi giải phóng
-        while let Some(mut nut) = current_node {
-            current_node = nut.next.take();
-            // nut tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
+        while let Some(mut node) = current_node {
+            current_node = node.next.take();
+            // node tự động được giải phóng tại đây mà không cần gọi đệ quy sâu!
         }
     }
 }
 
 // Cài đặt Default trait chuẩn phong cách Rust
-impl<T> Default for ListLienLink<T> {
+impl<T> Default for LinkedList<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -256,7 +256,7 @@ fn main() {
     println!("     HIỆN THỰC DANH SÁCH LIÊN KẾT & SMART POINTERS TRONG RUST");
     println!("============================================================");
 
-    let mut list: ListLienLink<i32> = ListLienLink::new();
+    let mut list: LinkedList<i32> = LinkedList::new();
     println!("Khởi tạo danh sách rỗng: len = {}", list.len());
     assert!(list.is_empty());
 
@@ -268,7 +268,7 @@ fn main() {
     println!("    - Đã thêm 20. Đỉnh hiện tại: {:?}", list.peek_front());
     list.push_front(30);
     println!("    - Đã thêm 30. Đỉnh hiện tại: {:?}", list.peek_front());
-    
+
     println!("    => Tổng số phần tử: {}", list.len());
     assert_eq!(list.len(), 3);
     assert_eq!(list.peek_front(), Some(&30));
@@ -295,7 +295,7 @@ fn main() {
     // 3. Kiểm thử khả năng chịu tải chống tràn ngăn xếp (Drop 100.000 phần tử)
     println!("\n[3] Kiểm thử độ bền của hàm hủy Drop an toàn:");
     {
-        let mut long_list = ListLienLink::new();
+        let mut long_list = LinkedList::new();
         for i in 0..100_000 {
             long_list.push_front(i);
         }
@@ -305,7 +305,7 @@ fn main() {
     println!("    => Giải phóng 100.000 nút bộ nhớ thành công tuyệt đối!");
 
     println!("============================================================");
-    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 23               ");
+    println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 27               ");
     println!("============================================================");
 }
 ```
@@ -318,10 +318,10 @@ Khi thiết kế danh sách liên kết và sử dụng con trỏ thông minh (s
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0072** | `recursive type '...' has infinite size` | Bạn định nghĩa một struct tự chứa chính nó mà không qua một lớp bọc con trỏ (`next: Option<Nut>`). Trình biên dịch không thể tính toán kích thước cố định. | Bao bọc trường đệ quy bằng con trỏ thông minh `Box<T>`: `next: Option<Box<Nut<T>>>`. |
-| **E0507** | `cannot move out of '...' which is behind a shared reference` | Bạn cố lấy quyền sở hữu một nút bằng cách gán `self.dinh` trong khi hàm chỉ có tham chiếu mượn `&mut self`. | Sử dụng phương thức `.take()` của kiểu `Option` để nhấc giá trị ra an toàn và để lại giá trị `None`. |
+| **E0072** | `recursive type '...' has infinite size` | Bạn định nghĩa một struct tự chứa chính nó mà không qua một lớp bọc con trỏ (`next: Option<Node>`). Trình biên dịch không thể tính toán kích thước cố định. | Bao bọc trường đệ quy bằng con trỏ thông minh `Box<T>`: `next: Option<Box<Node<T>>>`. |
+| **E0507** | `cannot move out of '...' which is behind a mutable reference` | Bạn cố lấy quyền sở hữu một nút bằng cách gán `let old = self.head;` trong khi hàm chỉ có tham chiếu mượn `&mut self`. | Sử dụng phương thức `.take()` của kiểu `Option` để nhấc giá trị ra an toàn và để lại giá trị `None`. |
 | **E0599** | `no method named '...' found for struct 'Box<...>'` | Bạn tưởng rằng phải giải phóng con trỏ thủ công như `free()` trong C. Trong Rust, `Box` tự động giải phóng khi ra khỏi phạm vi sống. | Không cần gọi hàm giải phóng thủ công; tận dụng cơ chế RAII tự động của Rust. |
-| **E0506** | `cannot assign to '...' because it is borrowed` | Bạn đang giữ tham chiếu đọc `peek_front()` nhưng lại cố gọi hàm ghi `push_front()` làm thay đổi cấu trúc danh sách. | Tách rời phạm vi mượn đọc trước khi thực hiện hành động sửa đổi. |
+| **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang giữ tham chiếu đọc trả về từ `peek_front()` nhưng lại cố gọi hàm ghi `push_front()` làm thay đổi cấu trúc danh sách. | Tách rời phạm vi mượn đọc trước khi thực hiện hành động sửa đổi. |
 
 ### Ví dụ phân tích lỗi `E0507` và phương pháp khắc phục với `.take()`:
 
@@ -332,16 +332,16 @@ struct NodeDemo {
 }
 
 // Đoạn mã lỗi minh họa E0507: Cố đoạt quyền sở hữu từ tham chiếu mượn
-fn peek_broken(peak: &mut Option<Box<NodeDemo>>) {
-    // let nut_cu = *dinh; // LỖI E0507: cannot move out of `*dinh`!
+fn take_broken(head: &mut Option<Box<NodeDemo>>) {
+    // let old_head = *head; // LỖI E0507: cannot move out of `*head`!
 }
 
 // Cách sửa chữa đúng chuẩn: Sử dụng Option::take()
-fn peek_correct(peak: &mut Option<Box<NodeDemo>>) {
+fn take_correct(head: &mut Option<Box<NodeDemo>>) {
     // .take() sẽ lấy Some(box) ra và gán lại None vào vị trí cũ một cách an toàn
-    let nut_cu = peak.take();
-    if let Some(nut) = nut_cu {
-        println!("Đã lấy được nút ra an toàn: {}", nut.value);
+    let old_head = head.take();
+    if let Some(node) = old_head {
+        println!("Đã lấy được nút ra an toàn: {}", node.value);
     }
 }
 ```
@@ -354,7 +354,7 @@ fn peek_correct(peak: &mut Option<Box<NodeDemo>>) {
 
 ## Kiểm thử tự động (Automated Tests)
 
-Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Một mẫu rất mạnh xuất hiện ở đây: **kiểm chứng chéo** — so kết quả thuật toán tự viết với hàm chuẩn của Rust (`quicksort` đối chiếu `slice::sort`, tìm kiếm nhị phân đối chiếu tìm tuyến tính).
+Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Hãy để ý cách các test nhắm thẳng vào trường hợp biên và vào **bất biến** của cấu trúc dữ liệu, thay vì chỉ thử một ví dụ "đẹp".
 
 ```rust
 #[cfg(test)]
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn push_pop_is_lifo_at_head() {
-        let mut list: ListLienLink<i32> = ListLienLink::new();
+        let mut list: LinkedList<i32> = LinkedList::new();
         assert!(list.is_empty());
         list.push_front(1);
         list.push_front(2);
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn new_list_is_empty() {
-        let list: ListLienLink<String> = ListLienLink::new();
+        let list: LinkedList<String> = LinkedList::new();
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
         assert_eq!(list.peek_front(), None);
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn dropping_long_list_does_not_overflow_stack() {
         // Bằng chứng cho mục "Drop lặp thay vì đệ quy": 1 triệu nút không sập.
-        let mut list: ListLienLink<u32> = ListLienLink::new();
+        let mut list: LinkedList<u32> = LinkedList::new();
         for i in 0..1_000_000 {
             list.push_front(i);
         }
@@ -402,15 +402,15 @@ mod tests {
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Kiểu đệ quy cần `Box`**: Bất kỳ cấu trúc dữ liệu tự tham chiếu nào trong Rust cũng cần con trỏ thông minh (smart pointer) `Box<T>` để ấn định kích thước con trỏ cố định (8 bytes) trên Ngăn xếp (Stack).
-2. **Quyền sở hữu trong danh sách**: Mỗi nút sở hữu nút kế tiếp thông qua `Option<Box<Nut<T>>>`. Đỉnh danh sách sở hữu toàn bộ chuỗi mắt xích phía sau.
+2. **Quyền sở hữu trong danh sách**: Mỗi nút sở hữu nút kế tiếp thông qua `Option<Box<Node<T>>>`. Đỉnh danh sách sở hữu toàn bộ chuỗi mắt xích phía sau.
 3. **Tuyệt chiêu `Option::take()`**: Là chiếc "cờ lê vạn năng" để hoán đổi con trỏ và lấy quyền sở hữu (ownership) mà không bị vi phạm các quy tắc vay mượn (borrow).
 4. **Hàm hủy `Drop` tuần tự**: Luôn tự viết hàm `Drop` cho danh sách liên kết để tránh lỗi tràn ngăn xếp (Stack Overflow) khi danh sách chứa số lượng lớn phần tử.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Bộ đếm phần tử)**:  
-   Không sử dụng trường `length`, hãy viết thêm một phương thức `fn dem_phan_tu_thu_cong(&self) -> usize` cho `ListLienLink`. Phương thức này sử dụng một con trỏ tham chiếu chạy từ đỉnh duyệt lần lượt qua từng nút cho đến khi gặp `None` để đếm tổng số nút. Phân tích độ phức tạp thời gian của phương thức này ($O(N)$).
+   Không sử dụng trường `length`, hãy viết thêm một phương thức `fn count_manually(&self) -> usize` cho `LinkedList`. Phương thức này sử dụng một con trỏ tham chiếu chạy từ đỉnh duyệt lần lượt qua từng nút cho đến khi gặp `None` để đếm tổng số nút. Phân tích độ phức tạp thời gian của phương thức này ($O(N)$).
 2. **Bài tập 2 (Tìm kiếm giá trị)**:  
-   Cài đặt phương thức `fn chua_phan_tu(&self, value: &T) -> bool` kiểm tra xem một giá trị có tồn tại trong danh sách liên kết hay không (với điều kiện `T: PartialEq`).
+   Cài đặt phương thức `fn contains(&self, value: &T) -> bool` kiểm tra xem một giá trị có tồn tại trong danh sách liên kết hay không (với điều kiện `T: PartialEq`).
 3. **Bài tập 3 (Tư duy con trỏ thông minh)**:  
    Tại sao chúng ta không thể sử dụng `Box<T>` đơn thuần để tạo một Danh sách liên kết đôi (Doubly Linked List - nơi mỗi nút vừa trỏ tới nút kế tiếp `next`, vừa trỏ tới nút đứng trước `prev`)? Hãy giải thích vì sao trường hợp này đòi hỏi sự kết hợp giữa `Rc` và `RefCell` hoặc con trỏ thô (Raw Pointer).
 
@@ -421,36 +421,36 @@ mod tests {
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Dùng một biến `&Option<Box<Nut<T>>>` chạy dọc danh sách. Mỗi vòng lặp nhảy sang `nut.next` cho tới khi gặp `None`.
+Dùng một biến `&Option<Box<Node<T>>>` chạy dọc danh sách. Mỗi vòng lặp nhảy sang `node.next` cho tới khi gặp `None`.
 </details>
 
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
 ```rust
-impl<T> ListLienLink<T> {
+impl<T> LinkedList<T> {
     /// Đếm bằng cách DUYỆT, không đọc trường `length`.
     /// Độ phức tạp O(N): phải chạm từng nút đúng một lần.
-    pub fn dem_phan_tu_thu_cong(&self) -> usize {
+    pub fn count_manually(&self) -> usize {
         let mut n = 0;
-        let mut hien_tai = &self.peak;      // mượn ĐỌC, không đụng quyền sở hữu
-        while let Some(nut) = hien_tai {
+        let mut current = &self.head;      // mượn ĐỌC, không đụng quyền sở hữu
+        while let Some(node) = current {
             n += 1;
-            hien_tai = &nut.next;           // nhảy sang nút kế
+            current = &node.next;           // nhảy sang nút kế
         }
         n
     }
 }
 
 #[test]
-fn dem_thu_cong_khop_voi_len() {
-    let mut ds = ListLienLink::new();
-    for i in 0..5 { ds.push_front(i); }
-    assert_eq!(ds.dem_phan_tu_thu_cong(), 5);
-    assert_eq!(ds.dem_phan_tu_thu_cong(), ds.len());
+fn manual_count_matches_len() {
+    let mut list = LinkedList::new();
+    for i in 0..5 { list.push_front(i); }
+    assert_eq!(list.count_manually(), 5);
+    assert_eq!(list.count_manually(), list.len());
 
-    let rong: ListLienLink<i32> = ListLienLink::new();
-    assert_eq!(rong.dem_phan_tu_thu_cong(), 0);
+    let empty: LinkedList<i32> = LinkedList::new();
+    assert_eq!(empty.count_manually(), 0);
 }
 ```
 
@@ -467,34 +467,34 @@ Duyệt giống bài 1, nhưng so sánh giá trị mỗi nút. Cần ràng buộ
 <summary><b>Bài tập 2 — Lời giải</b></summary>
 
 ```rust
-impl<T: PartialEq> ListLienLink<T> {
-    pub fn chua_phan_tu(&self, value: &T) -> bool {
-        let mut hien_tai = &self.peak;
-        while let Some(nut) = hien_tai {
-            if &nut.value == value {
+impl<T: PartialEq> LinkedList<T> {
+    pub fn contains(&self, value: &T) -> bool {
+        let mut current = &self.head;
+        while let Some(node) = current {
+            if &node.value == value {
                 return true;            // THOÁT SỚM — không duyệt tiếp
             }
-            hien_tai = &nut.next;
+            current = &node.next;
         }
         false
     }
 }
 
 #[test]
-fn tim_thay_va_khong_tim_thay() {
-    let mut ds = ListLienLink::new();
-    ds.push_front("b");
-    ds.push_front("a");
-    assert!(ds.chua_phan_tu(&"a"));
-    assert!(ds.chua_phan_tu(&"b"));
-    assert!(!ds.chua_phan_tu(&"z"));
+fn found_and_not_found() {
+    let mut list = LinkedList::new();
+    list.push_front("b");
+    list.push_front("a");
+    assert!(list.contains(&"a"));
+    assert!(list.contains(&"b"));
+    assert!(!list.contains(&"z"));
 
-    let rong: ListLienLink<i32> = ListLienLink::new();
-    assert!(!rong.chua_phan_tu(&1));
+    let empty: LinkedList<i32> = LinkedList::new();
+    assert!(!empty.contains(&1));
 }
 ```
 
-Chú ý `impl<T: PartialEq>` là một khối **riêng**, không gộp vào `impl<T>`. Nhờ vậy `ListLienLink<T>` vẫn dùng được với kiểu `T` không so sánh bằng — chỉ có mỗi `chua_phan_tu` là không gọi được. Đây là cách Rust cho phép "tính năng có điều kiện" mà không hy sinh tính tổng quát.
+Chú ý `impl<T: PartialEq>` là một khối **riêng**, không gộp vào `impl<T>`. Nhờ vậy `LinkedList<T>` vẫn dùng được với kiểu `T` không so sánh bằng — chỉ có mỗi `contains` là không gọi được. Đây là cách Rust cho phép "tính năng có điều kiện" mà không hy sinh tính tổng quát.
 </details>
 
 <details>
@@ -523,9 +523,9 @@ Ba lối thoát, mỗi lối một cái giá:
 
 | Cách | Cơ chế | Cái giá |
 |---|---|---|
-| `Rc<RefCell<Nut>>` cho `next`, `Weak` cho `prev` | Đếm tham chiếu; `Weak` không tính vào số chủ | Kiểm tra mượn lúc **chạy** (`BorrowMutError`), tốn thêm hai bộ đếm mỗi nút |
-| Con trỏ thô `*mut Nut` | Không có luật sở hữu nào | Phải viết `unsafe`, tự bảo đảm không có con trỏ lơ lửng |
-| Chỉ số vào một `Vec<Nut>` | "Con trỏ" là `usize` | An toàn và nhanh, nhưng xoá nút để lại lỗ; phải tự quản lý ô trống |
+| `Rc<RefCell<Node>>` cho `next`, `Weak` cho `prev` | Đếm tham chiếu; `Weak` không tính vào số chủ | Kiểm tra mượn lúc **chạy** (`BorrowMutError`), tốn thêm hai bộ đếm mỗi nút |
+| Con trỏ thô `*mut Node` | Không có luật sở hữu nào | Phải viết `unsafe`, tự bảo đảm không có con trỏ lơ lửng |
+| Chỉ số vào một `Vec<Node>` | "Con trỏ" là `usize` | An toàn và nhanh, nhưng xoá nút để lại lỗ; phải tự quản lý ô trống |
 
 Thư viện chuẩn chọn cách thứ hai: `std::collections::LinkedList` dùng con trỏ thô bên trong, bọc trong API an toàn. Còn các game engine thường chọn cách thứ ba — đó chính là "kho thực thể" của kiến trúc ECS ở Chương 68.
 

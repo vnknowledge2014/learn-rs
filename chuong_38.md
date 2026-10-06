@@ -81,8 +81,8 @@ void authenticate_user() {
 }
 ```
 
-Khi thực thi hàm trên:
-1. Trình biên dịch xếp mảng `password` (16 bytes) nằm ngay phía dưới biến `is_admin` (4 bytes).
+Khi thực thi hàm trên (biên dịch **không** bật bảo vệ ngăn xếp, ví dụ `gcc -O0 -fno-stack-protector`):
+1. Trình biên dịch xếp mảng `password` (16 bytes) nằm ngay phía dưới biến `is_admin` (4 bytes). Lưu ý đây là *một* bố cục có thể xảy ra chứ không phải luật: thứ tự biến trên ngăn xếp do trình biên dịch quyết định. Khi bật `-fstack-protector` (mặc định trên đa số bản phân phối Linux), GCC và Clang **chủ động xếp các mảng ký tự lên phía trên các biến vô hướng**, sát ngay dưới canary — để tràn mảng chỉ có thể đè lên canary (bị phát hiện) chứ không đè được `is_admin`. Kịch bản dưới đây là lý do biện pháp đó ra đời.
 2. Nếu người dùng nhập 16 ký tự `A` (`AAAAAAAAAAAAAAAA`), mảng `password` vừa đầy.
 3. Nếu người dùng nhập 20 ký tự `A`, 4 ký tự cuối cùng sẽ **tràn qua ranh giới** của `password` và ghi đè thẳng vào 4 byte của biến `is_admin`, biến giá trị `0` thành `0x41414141` (khác 0). Kết quả: Kẻ tấn công được cấp quyền Quản trị viên (`root`) mà không cần biết mật khẩu!
 4. Nếu nhập dài hơn nữa (khoảng 32 bytes), dữ liệu sẽ đè nát `Saved RBP` và ghi đè lên `Saved RIP`. Khi hàm kết thúc lệnh `ret`, CPU sẽ nhảy thẳng vào địa chỉ do hacker sắp đặt!
@@ -114,7 +114,7 @@ Rust được thiết kế với triết lý an toàn bộ nhớ tuyệt đối 
    - Thao tác lấy phần tử an toàn thông qua phương thức `.get(i)` trả về `Option<&T>` buộc lập trình viên phải xử lý trường hợp ngoài biên.
 2. **Chống Use-After-Free**:
    - Hệ thống **quyền sở hữu (ownership)** và **thời gian sống (lifetime)**: Trình kiểm tra **mượn (borrow)** của Rust đảm bảo rằng không bao giờ tồn tại một tham chiếu sống lâu hơn dữ liệu mà nó trỏ tới.
-   - Khi một vùng nhớ bị hủy (thông qua trait `Drop`), mọi tham chiếu tới nó đều đã hết hiệu lực từ trước đó ở cấp độ biên dịch. Lỗi Double Free và Use-After-Free hoàn toàn bị triệt tiêu!
+   - Khi một vùng nhớ bị hủy (thông qua trait `Drop`), mọi tham chiếu tới nó đều đã hết hiệu lực từ trước đó ở cấp độ biên dịch. Trong Rust an toàn (không có khối `unsafe`), lỗi Double Free và Use-After-Free hoàn toàn bị triệt tiêu! (Với `unsafe` và con trỏ thô, trách nhiệm quay về tay lập trình viên — xem Chương 39.)
 3. **Chống Format String**:
    - Trong Rust, các macro định dạng như `println!`, `format!`, `eprintln!` phân tích chuỗi định dạng ngay ở thời điểm biên dịch (Compile-time).
    - Tham số đầu tiên bắt buộc phải là một chuỗi hằng số (String Literal), không thể là một biến động do người dùng nhập vào. Trình biên dịch kiểm tra tính tương thích giữa số lượng `{}` và số lượng đối số truyền vào, loại bỏ hoàn toàn khả năng khai thác chuỗi định dạng.
@@ -147,6 +147,12 @@ pub struct SafeBufferManager {
     buffer: [u8; 16], // Bộ đệm cố định 16 bytes
 }
 
+impl Default for SafeBufferManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SafeBufferManager {
     pub fn new() -> Self {
         Self { buffer: [0u8; 16] }
@@ -156,13 +162,13 @@ impl SafeBufferManager {
     pub fn safe_write(&mut self, input_data: &[u8]) -> Result<usize, &'static str> {
         if input_data.len() > self.buffer.len() {
             // Ngăn chặn tràn bộ đệm: Từ chối ghi đè khi dữ liệu quá lớn
-            return Err("Kich thuoc du lieu vuot qua gioi han bo dem (Buffer Overflow prevented)!");
+            return Err("Kích thước dữ liệu vượt quá giới hạn bộ đệm (đã chặn Buffer Overflow)!");
         }
 
-        // Sao chép an toàn đúng số lượng byte hợp lệ
-        for (idx, &byte) in input_data.iter().enumerate() {
-            self.buffer[idx] = byte;
-        }
+        // Sao chép an toàn đúng số lượng byte hợp lệ.
+        // (Kể cả nếu quên kiểm tra ở trên, copy_from_slice cũng panic khi độ dài lệch
+        // chứ không bao giờ ghi lấn ra ngoài mảng như memcpy của C.)
+        self.buffer[..input_data.len()].copy_from_slice(input_data);
 
         Ok(input_data.len())
     }
@@ -175,67 +181,85 @@ impl SafeBufferManager {
 
 fn main() {
     println!("==================================================================");
-    println!("   KIEM CHUNG AN TOAN BO NHO RUST: TRIET TIEU MEMORY CORRUPTION   ");
+    println!("   KIỂM CHỨNG AN TOÀN BỘ NHỚ RUST: TRIỆT TIÊU MEMORY CORRUPTION   ");
     println!("==================================================================");
 
     // -------------------------------------------------------------
     // 1. KIỂM THỬ PHÒNG CHỐNG TRÀN BỘ ĐỆM (BUFFER OVERFLOW)
     // -------------------------------------------------------------
-    println!("\n[1] Thu nghiem phong chong Tran bo dem (Buffer Overflow):");
+    println!("\n[1] Thử nghiệm phòng chống Tràn bộ đệm (Buffer Overflow):");
     let mut manager = SafeBufferManager::new();
 
     let safe_payload = b"MatKhauAnToan"; // 13 bytes (< 16 bytes)
     match manager.safe_write(safe_payload) {
-        Ok(bytes_written) => println!("    - Ghi payload hop le thanh cong: {} bytes", bytes_written),
-        Err(err) => println!("    - Failed: {}", err),
+        Ok(bytes_written) => println!(
+            "    - Ghi payload hợp lệ thành công: {} bytes",
+            bytes_written
+        ),
+        Err(err) => println!("    - Thất bại: {}", err),
     }
 
-    let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 55 bytes
-    println!("    - Thu gui payload tan cong co do dai {} bytes...", exploit_payload.len());
+    let exploit_payload = b"ChuoiPayloadRatDaiCoTinhLamTranBoNhoDeChiChiemThanhGhiRIP"; // 57 bytes
+    println!(
+        "    - Thử gửi payload tấn công có độ dài {} bytes...",
+        exploit_payload.len()
+    );
     match manager.safe_write(exploit_payload) {
-        Ok(_) => println!("    - [NGUY HIEM] Payload da ghi de thanh cong!"),
-        Err(err) => println!("    - [CHẶN ĐỨNG AN TOÀN] Trinh quan ly tu choi: '{}'", err),
+        Ok(_) => println!("    - [NGUY HIỂM] Payload đã ghi đè thành công!"),
+        Err(err) => println!("    - [CHẶN ĐỨNG AN TOÀN] Trình quản lý từ chối: '{}'", err),
     }
 
     // Đọc ngoài biên an toàn qua Option
-    println!("    - Thu doc ky tu tai chi so index = 99:");
+    println!("    - Thử đọc ký tự tại chỉ số index = 99:");
     match manager.safe_read(99) {
-        Some(val) => println!("    - Gia tri: {}", val),
-        None => println!("    - [SAFE BOUNDS] Tra ve None: Chi so ngoai bien duoc xu ly an toan!"),
+        Some(val) => println!("    - Giá trị: {}", val),
+        None => println!("    - [SAFE BOUNDS] Trả về None: Chỉ số ngoài biên được xử lý an toàn!"),
     }
 
     // -------------------------------------------------------------
     // 2. KIỂM THỬ PHÒNG CHỐNG USE-AFTER-FREE (UAF)
     // -------------------------------------------------------------
-    println!("\n[2] Thu nghiem phong chong Use-After-Free (UAF):");
+    println!("\n[2] Thử nghiệm phòng chống Use-After-Free (UAF):");
     {
-        let session = Box::new(SafeUserSession::new("ChuyenGiaBaoMat", false));
-        println!("    - Khoi tao phien lam viec tai Heap: {:p}", session.as_ref());
-        println!("    - Nguoi dung: {}, Admin: {}", session.username, session.is_admin);
+        let session = Box::new(SafeUserSession::new("Chuyên gia bảo mật", false));
+        println!(
+            "    - Khởi tạo phiên làm việc tại Heap: {:p}",
+            session.as_ref()
+        );
+        println!(
+            "    - Người dùng: {}, Admin: {}",
+            session.username, session.is_admin
+        );
 
-        // Trong Rust, khi session ra khoi khoi lenh nay, trait Drop se tu dong
-        // giai phong region nho mot cach sach se. Trinh bien dich Rust tuyet doi
-        // CAM moi hanh vi giu lai con tro tham chieu den session sau khi no da chet!
+        // Trong Rust, khi session ra khỏi khối lệnh này, trait Drop sẽ tự động
+        // giải phóng vùng nhớ một cách sạch sẽ. Trình biên dịch Rust tuyệt đối
+        // CẤM mọi hành vi giữ lại tham chiếu đến session sau khi nó đã chết!
     }
-    println!("    - [UAF ELIMINATED] Vung nho da duoc attempt hoi tu dong.");
-    println!("    - Trinh bien dich dam bao 100% khong con con tro lo lung ton tai!");
+    println!("    - [UAF ELIMINATED] Vùng nhớ đã được thu hồi tự động.");
+    println!("    - Trình biên dịch đảm bảo không còn tham chiếu lơ lửng nào tồn tại!");
 
     // -------------------------------------------------------------
     // 3. KIỂM THỬ PHÒNG CHỐNG LỖ HỔNG FORMAT STRING
     // -------------------------------------------------------------
-    println!("\n[3] Thu nghiem phong chong Lo hong Text dinh dang (Format String):");
+    println!("\n[3] Thử nghiệm phòng chống Lỗ hổng Chuỗi định dạng (Format String):");
     // Giả sử kẻ tấn công cố tình nhập vào chuỗi chứa các mã ma thuật độc hại của C
-    let malicious_user_input = "%x %x %s %p %n ChiemDoatBoNho";
-    println!("    - Text dau vao tu nguoi dung: '{}'", malicious_user_input);
+    let malicious_user_input = "%x %x %s %p %n Chiếm đoạt bộ nhớ";
+    println!(
+        "    - Chuỗi đầu vào từ người dùng: '{}'",
+        malicious_user_input
+    );
 
-    // Trong C: printf(malicious_user_input) se lam ro ri toan bo Stack.
-    // Trong Rust: Text nguoi dung chi la du lieu (data) truyen qua placeholder `{}`
-    println!("    - Ket qua in qua Rust format: \"{}\"", malicious_user_input);
-    println!("    - [FORMAT STRING SECURE] Rust coi chuoi nguoi dung la chuoi thuan túy,");
-    println!("      khong bao gio phan products cac ky tu '%' thanh lenh thuc thi!");
+    // Trong C: printf(malicious_user_input) sẽ làm rò rỉ nội dung Stack.
+    // Trong Rust: chuỗi người dùng chỉ là dữ liệu (data) truyền qua placeholder `{}`
+    println!(
+        "    - Kết quả in qua Rust format: \"{}\"",
+        malicious_user_input
+    );
+    println!("    - [FORMAT STRING SECURE] Rust coi chuỗi người dùng là chuỗi thuần túy,");
+    println!("      không bao giờ phân tích các ký tự '%' thành lệnh thực thi!");
 
     println!("\n==================================================================");
-    println!("   KET LUAN: RUST LOAI BO HOAN TOAN 70% NGUON GOC LO HONG CVE!   ");
+    println!("   KẾT LUẬN: RUST AN TOÀN LOẠI BỎ CẢ LỚP LỖI GÂY RA ~70% CVE!   ");
     println!("==================================================================");
 }
 ```
@@ -258,10 +282,10 @@ Dưới đây là các lỗi biên dịch điển hình mà bạn sẽ gặp khi
 ```rust
 // Đoạn mã lỗi minh họa E0382:
 fn uaf_prevented() {
-    let data = Box::new(String::from("BiMatDoanhNghiep"));
-    
-    // Ham drop() giai phong region nho tren Heap
-    std::mem::drop(data); 
+    let data = Box::new(String::from("Bí mật doanh nghiệp"));
+
+    // Hàm drop() giải phóng vùng nhớ trên Heap
+    std::mem::drop(data);
 
     // LỖI E0382: Trình biên dịch Rust NGĂN CHẶN bạn đọc ô nhớ đã bị giải phóng!
     // println!("Dữ liệu sau khi drop: {}", data);
@@ -269,7 +293,7 @@ fn uaf_prevented() {
 
 // Cách viết an toàn: Không truy cập biến sau khi đã từ bỏ quyền sở hữu
 fn safe_version() {
-    let data = Box::new(String::from("BiMatDoanhNghiep"));
+    let data = Box::new(String::from("Bí mật doanh nghiệp"));
     println!("Dữ liệu an toàn: {}", data);
     // Vùng nhớ sẽ tự động được dọn dẹp sạch sẽ khi hết phạm vi hàm
 }
@@ -283,7 +307,7 @@ fn safe_version() {
 1. **70% Lỗ hổng an ninh**: Bắt nguồn từ các lỗi thao tác bộ nhớ trực tiếp trong C/C++ như Buffer Overflow, Use-After-Free và Format Strings.
 2. **Nguyên lý Buffer Overflow**: Ghi vượt quá dung lượng mảng làm biến dạng dữ liệu kế bên và đè lên Saved Return Address (`RIP`) để chuyển hướng CPU.
 3. **Bản chất của Use-After-Free**: Giữ lại con trỏ cũ (Dangling Pointer) sau khi ô nhớ Heap đã giải phóng và tái sử dụng, cho phép kẻ tấn công tráo đổi nội dung đối tượng.
-4. **Rust là lá chắn tối thượng**: Cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) có kiểm tra biên tự động triệt tiêu hoàn toàn các mối nguy hiểm này từ trong trứng nước.
+4. **Rust là lá chắn tối thượng**: Cơ chế quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) có kiểm tra biên tự động triệt tiêu các mối nguy hiểm này từ trong trứng nước — trong phạm vi Rust an toàn; mỗi khối `unsafe` là một chỗ lá chắn được tạm hạ xuống.
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Xây dựng Bộ đệm vòng an toàn - Safe Ring Buffer)**:  
@@ -311,50 +335,50 @@ const CAP: usize = 8;
 
 /// Bộ đệm vòng KHÔNG THỂ ghi lấn ra ngoài — phép `% CAP` bảo đảm điều đó.
 pub struct SafeRingBuffer {
-    o: [u8; CAP],
-    head: usize,      // vị trí ĐỌC kế tiếp
-    tail: usize,      // vị trí GHI kế tiếp
-    quantity: usize,  // số byte đang có
+    buf: [u8; CAP],
+    head: usize,  // vị trí ĐỌC kế tiếp
+    tail: usize,  // vị trí GHI kế tiếp
+    count: usize, // số byte đang có
 }
 
 impl SafeRingBuffer {
     pub fn new() -> Self {
-        SafeRingBuffer { o: [0; CAP], head: 0, tail: 0, quantity: 0 }
+        SafeRingBuffer { buf: [0; CAP], head: 0, tail: 0, count: 0 }
     }
 
     /// Đầy thì ghi đè byte CŨ NHẤT. Không bao giờ ra ngoài mảng.
     pub fn push(&mut self, byte: u8) {
-        self.o[self.tail] = byte;
+        self.buf[self.tail] = byte;
         self.tail = (self.tail + 1) % CAP;      // <- lá chắn duy nhất cần thiết
-        if self.quantity == CAP {
+        if self.count == CAP {
             self.head = (self.head + 1) % CAP;  // đẩy byte cũ nhất ra
         } else {
-            self.quantity += 1;
+            self.count += 1;
         }
     }
 
     pub fn pop(&mut self) -> Option<u8> {
-        if self.quantity == 0 { return None; }
-        let b = self.o[self.head];
+        if self.count == 0 { return None; }
+        let b = self.buf[self.head];
         self.head = (self.head + 1) % CAP;
-        self.quantity -= 1;
+        self.count -= 1;
         Some(b)
     }
 
-    pub fn len(&self) -> usize { self.quantity }
-    pub fn is_empty(&self) -> bool { self.quantity == 0 }
+    pub fn len(&self) -> usize { self.count }
+    pub fn is_empty(&self) -> bool { self.count == 0 }
 }
 
 #[test]
-fn ghi_100_byte_van_khong_lan_ra_ngoai() {
+fn writing_100_bytes_never_overflows() {
     let mut r = SafeRingBuffer::new();
     for i in 0..100u8 { r.push(i); }
 
     assert_eq!(r.len(), CAP, "số byte KHÔNG BAO GIỜ vượt sức chứa");
 
     // Còn lại đúng 8 byte CUỐI CÙNG: 92..=99
-    let con_lai: Vec<u8> = std::iter::from_fn(|| r.pop()).collect();
-    assert_eq!(con_lai, vec![92, 93, 94, 95, 96, 97, 98, 99]);
+    let remaining: Vec<u8> = std::iter::from_fn(|| r.pop()).collect();
+    assert_eq!(remaining, vec![92, 93, 94, 95, 96, 97, 98, 99]);
     assert!(r.pop().is_none());
 }
 ```
@@ -374,25 +398,25 @@ fn ghi_100_byte_van_khong_lan_ra_ngoai() {
 ```rust
 /// Trích 4 BYTE bắt đầu từ `index`, không bao giờ panic.
 /// Hai thứ có thể sai: vượt biên, và cắt giữa một ký tự UTF-8.
-pub fn lay_4_byte(text: &str, index: usize) -> Result<&str, &'static str> {
+pub fn take_4_bytes(text: &str, index: usize) -> Result<&str, &'static str> {
     text.get(index..index + 4)
         .ok_or("chỉ số ngoài phạm vi hoặc cắt giữa ký tự UTF-8")
 }
 
 #[test]
-fn khong_bao_gio_panic_du_dau_vao_the_nao() {
-    assert_eq!(lay_4_byte("abcdefgh", 0), Ok("abcd"));
-    assert_eq!(lay_4_byte("abcdefgh", 4), Ok("efgh"));
+fn never_panics_on_any_input() {
+    assert_eq!(take_4_bytes("abcdefgh", 0), Ok("abcd"));
+    assert_eq!(take_4_bytes("abcdefgh", 4), Ok("efgh"));
 
     // Vượt biên -> Err, KHÔNG panic
-    assert!(lay_4_byte("abc", 0).is_err());
-    assert!(lay_4_byte("abcdefgh", 100).is_err());
+    assert!(take_4_bytes("abc", 0).is_err());
+    assert!(take_4_bytes("abcdefgh", 100).is_err());
 
     // Cắt GIỮA ký tự nhiều byte -> Err.
-    // "Việt" : 'V'(1) 'i'(1) 'ệ'(3) 't'(1)
+    // "Việt" : 'V' byte 0 | 'i' byte 1 | 'ệ' byte 2..5 (3 byte) | 't' byte 5
     let s = "Việt";
-    assert!(lay_4_byte(s, 1).is_err(), "cắt giữa chữ ệ phải bị từ chối");
-    assert_eq!(lay_4_byte(s, 0), Ok("Việ"), "0..4 rơi đúng ranh giới ký tự");
+    assert!(take_4_bytes(s, 0).is_err(), "0..4 cắt giữa chữ ệ phải bị từ chối");
+    assert_eq!(take_4_bytes(s, 1), Ok("iệ"), "1..5 rơi đúng ranh giới ký tự");
 }
 ```
 
@@ -406,7 +430,7 @@ fn khong_bao_gio_panic_du_dau_vao_the_nao() {
 
 Trên một máy chủ, `panic` trong một yêu cầu có thể giết luồng xử lý — và nếu kẻ tấn công điều khiển được `index`, họ có ngay một lỗ hổng từ chối dịch vụ chỉ bằng cách gửi số bậy.
 
-**Chi tiết dễ bỏ sót:** vế thứ hai. Nhiều người nghĩ chỉ cần kiểm `index + 4 <= text.len()` là đủ. Nhưng `"Việt"` có `len() == 6` byte, và `&s[1..5]` vẫn trong phạm vi mà **vẫn panic** vì nó cắt đôi chữ `ệ`. Chuỗi Rust là UTF-8, `len()` đếm **byte** chứ không đếm ký tự — đây là chỗ mã xử lý tiếng Việt hay vỡ nhất.
+**Chi tiết dễ bỏ sót:** vế thứ hai. Nhiều người nghĩ chỉ cần kiểm `index + 4 <= text.len()` là đủ. Nhưng `"Việt"` có `len() == 6` byte, và `&s[0..4]` vẫn trong phạm vi mà **vẫn panic** vì nó cắt đôi chữ `ệ` (chữ này chiếm byte 2, 3, 4). Ngược lại `&s[1..5]` lại hợp lệ và cho `"iệ"` — cùng độ dài 4 byte, chỉ lệch một vị trí. Chuỗi Rust là UTF-8, `len()` đếm **byte** chứ không đếm ký tự — đây là chỗ mã xử lý tiếng Việt hay vỡ nhất.
 </details>
 
 <details>

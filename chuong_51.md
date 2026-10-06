@@ -5,8 +5,8 @@
 Trong kỷ nguyên của các ứng dụng quy mô toàn cầu, một hệ thống backend không chỉ đơn thuần là nhận một yêu cầu và trả về kết quả. Một máy chủ hiện đại phải xử lý từ hàng chục ngàn đến hàng triệu yêu cầu mỗi giây (RPS - Requests Per Second) với độ trễ phản hồi tính bằng mili-giây.
 
 Để đạt được kỳ tích này, hệ sinh thái Rust đã sản sinh ra hai "vũ khí tối thượng" định hình lại tiêu chuẩn của ngành công nghiệp:
-1. **Axum**: Web framework thế hệ mới được bảo trợ chính thức bởi đội ngũ phát triển Tokio, xây dựng trên nền tảng trừu tượng hóa cực mạnh của thư viện `Tower`. Axum mang tới sự kết hợp hoàn hảo giữa độ an toàn kiểu dữ liệu tuyệt đối (Type-Safe Routing) và tốc độ phục vụ REST API thuộc top đầu thế giới.
-2. **Tonic**: Hiện thực hóa chuẩn mực giao thức **gRPC** (Google Remote Procedure Call) trên nền HTTP/2 và định dạng nhị phân Protocol Buffers (Protobuf). gRPC với Tonic là "huyết mạch" kết nối siêu tốc giữa các microservice nội bộ, giúp tăng thông lượng truyền tải từ 7 đến 10 lần so với chuẩn REST/JSON truyền thống.
+1. **Axum**: Web framework thế hệ mới được bảo trợ chính thức bởi đội ngũ phát triển Tokio, xây dựng trên nền tảng trừu tượng hóa cực mạnh của thư viện `Tower`. Axum mang tới sự kết hợp giữa độ an toàn kiểu dữ liệu (Type-Safe Routing) và tốc độ phục vụ REST API thuộc nhóm đầu trong các bảng đo hiệu năng.
+2. **Tonic**: Hiện thực hóa chuẩn mực giao thức **gRPC** (Google Remote Procedure Call) trên nền HTTP/2 và định dạng nhị phân Protocol Buffers (Protobuf). gRPC với Tonic là "huyết mạch" kết nối giữa các microservice nội bộ: gói tin nhỏ hơn, mã hóa/giải mã rẻ hơn JSON, và nhiều lời gọi chạy song song trên một kết nối — mức tăng thông lượng cụ thể tùy dữ liệu và phải tự đo.
 
 Mục tiêu học tập của bạn:
 - Nắm vững kiến trúc cốt lõi của Axum: Bộ định tuyến Router, các Bộ trích xuất (Extractor) dữ liệu an toàn (Extractors: `Json`, `Path`, `State`), và tầng Middleware với Tower.
@@ -41,7 +41,7 @@ Mục tiêu học tập của bạn:
 │ ├──────────────────────────────────────────────────────────────────────┤         │
 │ │ HTTP/2 Multiplexing: 10 làn xe chạy song song trên cùng 1 cây cầu!   │         │
 │ └──────────────────────────────────────────────────────────────────────┘         │
-│   ===> THÔNG LƯỢNG GẤP 10 LẦN, XE QUA TRẠM VÙN VỤT KHÔNG HỀ CÓ ĐỘ TRỄ!          │
+│   ===> THÔNG LƯỢNG CAO HƠN NHIỀU, XE QUA TRẠM VÙN VỤT!                           │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,8 +51,8 @@ Mục tiêu học tập của bạn:
 
 ### 2. Mã Morse của thuyền trưởng (gRPC với Protocol Buffers)
 - Protobuf loại bỏ toàn bộ các ký tự rườm rà (dấu ngoặc, tên trường). Thay vào đó, nó gán mỗi trường một mã số nhị phân siêu ngắn (Field Tag).
-- Trường `ten` là mã số 1, `tuoi` là mã số 2. Dữ liệu được nén thành chuỗi byte nhị phân ngắn bằng $1/5$ chuỗi JSON.
-- Khi máy tính nhận được gói tin, nó chỉ việc nhảy thẳng tới vị trí byte đó và đọc giá trị tức thì, không cần dò tìm ký tự. Kết hợp với đường cao tốc HTTP/2 (cho phép gửi hàng trăm yêu cầu cùng lúc trên 1 sợi cáp mạng duy nhất mà không bị nghẽn đầu làn), gRPC mang lại tốc độ không đối thủ!
+- Trường `ten` là mã số 1, `tuoi` là mã số 2. Số nguyên được mã hóa varint (số nhỏ chỉ tốn 1 byte). Dữ liệu thường chỉ còn khoảng một nửa đến một phần vài chuỗi JSON tương ứng (bản ghi trong mã minh họa dưới đây: 36 byte so với 83 byte).
+- Khi máy tính nhận được gói tin, nó đọc tuần tự từng cặp (mã trường, giá trị): độ dài của mỗi giá trị biết trước, nên không phải dò dấu ngoặc kép hay chuyển chuỗi `"25"` thành số. Kết hợp với đường cao tốc HTTP/2 (cho phép gửi hàng trăm yêu cầu cùng lúc trên 1 kết nối TCP duy nhất, không bị nghẽn đầu hàng ở tầng HTTP — dù mất gói ở tầng TCP vẫn làm mọi luồng chờ), gRPC rất nhanh cho giao tiếp nội bộ!
 
 ---
 
@@ -63,14 +63,55 @@ Mục tiêu học tập của bạn:
 Khác với các web framework truyền thống trong Python hay JavaScript (nơi lập trình viên phải tự lấy dữ liệu từ `req.body`, `req.params` rồi tự ép kiểu dễ sinh lỗi runtime), Axum vận hành hoàn toàn dựa trên hệ thống kiểm tra kiểu dữ liệu tĩnh của Rust:
 - Mọi tham số truyền vào hàm xử lý (Handler) đều phải triển khai trait `FromRequest` hoặc `FromRequestParts`:
 ```rust
+// (Cần các crate `axum` 0.8, `serde`; khai báo kiểu tối thiểu để đoạn mã biên dịch được)
+use std::sync::Arc;
+
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use serde::{Deserialize, Serialize};
+
+struct AppState; // trạng thái dùng chung (kết nối CSDL, cấu hình...)
+
+#[derive(Deserialize)]
+struct CreateProductReq {
+    name: String,
+    price: u64,
+}
+
+#[derive(Serialize)]
+struct ProductResponse {
+    id: u64,
+    category_id: u32,
+    name: String,
+    price: u64,
+}
+
+struct AppError;
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    }
+}
+
 // Axum tự động xác thực và giải mã kiểu dữ liệu ngay từ chữ ký hàm!
-async fn tao_san_pham(
-    State(app_state): State<Arc<AppState>>, // Trích xuất trạng thái chia sẻ
-    Path(category_id): Path<u32>,          // Trích xuất tham số trên URL
-    Json(payload): Json<CreateProductReq>, // Tự động kiểm tra cú pháp và parse JSON body
-) -> Result<Json<ProductResponse>, AppError> { ... }
+async fn create_product(
+    State(_app_state): State<Arc<AppState>>, // Trích xuất trạng thái chia sẻ
+    Path(category_id): Path<u32>,           // Trích xuất tham số trên URL
+    Json(payload): Json<CreateProductReq>,  // Tự động kiểm tra cú pháp và parse JSON body
+) -> Result<Json<ProductResponse>, AppError> {
+    Ok(Json(ProductResponse {
+        id: 1,
+        category_id,
+        name: payload.name,
+        price: payload.price,
+    }))
+}
 ```
-- Nếu client gửi lên một chuỗi JSON sai kiểu dữ liệu (ví dụ trường `price` cần số nguyên nhưng client gửi chuỗi ký tự), Axum sẽ tự động từ chối yêu cầu với mã lỗi `422 Unprocessable Entity` ngay lập tức mà hàm handler của bạn không hề bị gọi, bảo vệ hệ thống tuyệt đối!
+- Nếu client gửi lên một chuỗi JSON sai kiểu dữ liệu (ví dụ trường `price` cần số nguyên nhưng client gửi chuỗi ký tự), Axum sẽ tự động từ chối yêu cầu với mã lỗi `422 Unprocessable Entity` ngay lập tức mà hàm handler của bạn không hề bị gọi. JSON hỏng cú pháp thì nhận `400 Bad Request`, thiếu header `Content-Type: application/json` thì `415`. Lưu ý: extractor chỉ kiểm *kiểu*; quy tắc nghiệp vụ (giá > 0, tên không rỗng) vẫn phải tự kiểm.
 
 ### 2. Sự Tiến hóa từ HTTP/1.1 lên HTTP/2 trong gRPC
 
@@ -82,19 +123,19 @@ HTTP/2 trong gRPC (Đa dồn kênh - Multiplexing):
 Kết nối TCP: ──[Stream 1: Req]──[Stream 2: Req]──[Stream 1: Res]──[Stream 3: Req]──►
 ```
 - **HTTP/1.1**: Mỗi yêu cầu phải chờ yêu cầu trước đó nhận được phản hồi xong mới được gửi tiếp trên cùng 1 kết nối (hiện tượng Head-of-Line Blocking). Để gửi nhiều yêu cầu, trình duyệt phải mở từ 6 đến 8 kết nối TCP song song, gây lãng phí bộ đệm (buffer) và bắt tay TCP tốn kém.
-- **HTTP/2**: Toàn bộ các cuộc gọi RPC đều được phân chia thành các khung nhị phân (Binary Frames) có đánh số Stream ID, cùng lúc bay trên **duy nhất 1 kết nối TCP**. Dịch vụ A có thể gửi 10,000 lệnh gọi tới Dịch vụ B đồng thời mà không hề bị nghẽn!
+- **HTTP/2**: Toàn bộ các cuộc gọi RPC đều được phân chia thành các khung nhị phân (Binary Frames) có đánh số Stream ID, cùng lúc bay trên **duy nhất 1 kết nối TCP**. Dịch vụ A có thể gửi hàng nghìn lệnh gọi tới Dịch vụ B đồng thời (trong giới hạn `max_concurrent_streams` mà hai bên thỏa thuận) mà không phải chờ nhau ở tầng HTTP.
 
 ### 3. Mô hình Kiến trúc Lai Hiện đại (Hybrid Architecture)
 
 Trong các tập đoàn công nghệ lớn:
 - **Cổng API Gateway phía ngoài (Public Gateway)**: Sử dụng **Axum** đón các yêu cầu từ Web Browser và Mobile App bằng chuẩn REST/JSON thân thiện.
-- **Mạng lưới Dịch vụ nội bộ (Internal Service Mesh)**: Toàn bộ việc trao đổi giữa Service A, Service B, Service C được thực hiện qua **gRPC Tonic** nhị phân siêu tốc, giúp giảm tới 80% độ trễ mạng nội bộ.
+- **Mạng lưới Dịch vụ nội bộ (Internal Service Mesh)**: Toàn bộ việc trao đổi giữa Service A, Service B, Service C được thực hiện qua **gRPC Tonic** nhị phân, giúp giảm đáng kể chi phí tuần tự hóa và độ trễ nội bộ.
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Dịch vụ Điều phối API Thông lượng cao (High-Throughput API Gateway Dispatcher)**: Tự tay cài đặt cơ chế định tuyến Type-Safe theo triết lý của Axum, tích hợp chia sẻ trạng thái an toàn đa luồng `Arc`, kết hợp bộ mã hóa nhị phân mô phỏng chuẩn gRPC Protocol Buffers siêu tốc:
+Dưới đây là mã nguồn Rust hoàn chỉnh hiện thực hóa một **Dịch vụ Điều phối API Thông lượng cao (High-Throughput API Gateway Dispatcher)**: Tự tay cài đặt cơ chế định tuyến Type-Safe theo triết lý của Axum, tích hợp chia sẻ trạng thái an toàn đa luồng `Arc`, kết hợp bộ mã hóa nhị phân theo đúng định dạng dây (wire format) của Protocol Buffers — varint, khóa `(số_trường << 3) | kiểu_dây`, chuỗi có tiền tố độ dài — với bộ giải mã kiểm biên, không bao giờ panic trước gói tin hỏng:
 
 ```rust
 use std::collections::HashMap;
@@ -109,9 +150,15 @@ pub struct ProductEntity {
     pub in_stock: bool,
 }
 
-/// Trạng thái dùng shared toàn dịch vụ (Shared Application State)
+/// Trạng thái dùng chung toàn dịch vụ (Shared Application State)
 pub struct SharedAppState {
     pub catalog: Mutex<HashMap<u64, ProductEntity>>,
+}
+
+impl Default for SharedAppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SharedAppState {
@@ -141,86 +188,130 @@ impl SharedAppState {
     }
 }
 
-/// Mô phỏng Bộ mã hóa nhị phân Protocol Buffers chuẩn gRPC (gRPC Binary Wire Encoding)
+/// Lỗi giải mã gói tin nhị phân
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodeError {
+    Truncated,     // gói bị cắt cụt giữa chừng
+    VarintTooLong, // varint dài quá 10 byte
+    UnsupportedWireType(u8),
+    InvalidUtf8,
+}
+
+/// Bộ mã hóa nhị phân theo ĐÚNG định dạng dây (wire format) của Protocol Buffers
+/// cho thông điệp:
+///   message Product { uint64 id = 1; uint64 price_cents = 2; bool in_stock = 3; string name = 4; }
+/// Mỗi trường là cặp (khóa, giá trị); khóa = (số_trường << 3) | kiểu_dây, cũng mã bằng varint.
 pub struct ProtobufWireCodec;
 
 impl ProtobufWireCodec {
-    /// Mã hóa sản phẩm thành chuỗi byte nhị phân siêu nén
-    /// Tag 1: ID (8B) | Tag 2: Price (8B) | Tag 3: InStock (1B) | Tag 4: Name (Length + Bytes)
+    const WIRE_VARINT: u8 = 0;
+    const WIRE_LEN: u8 = 2;
+
+    /// Varint: mỗi byte chứa 7 bit dữ liệu, bit cao = "còn byte nữa".
+    /// Số nhỏ tốn ít byte: 101 -> 1 byte, 550_000 -> 3 byte (thay vì 8 byte cố định).
+    fn put_varint(mut n: u64, out: &mut Vec<u8>) {
+        while n >= 0x80 {
+            out.push((n as u8) | 0x80);
+            n >>= 7;
+        }
+        out.push(n as u8);
+    }
+
+    fn get_varint(bytes: &[u8], pos: &mut usize) -> Result<u64, DecodeError> {
+        let mut result = 0u64;
+        for shift in (0..70).step_by(7) {
+            let byte = *bytes.get(*pos).ok_or(DecodeError::Truncated)?;
+            *pos += 1;
+            result |= u64::from(byte & 0x7F) << shift;
+            if byte & 0x80 == 0 {
+                return Ok(result);
+            }
+        }
+        Err(DecodeError::VarintTooLong)
+    }
+
+    fn put_key(field: u64, wire_type: u8, out: &mut Vec<u8>) {
+        Self::put_varint((field << 3) | u64::from(wire_type), out);
+    }
+
+    /// Mã hóa sản phẩm thành chuỗi byte nhị phân
     pub fn encode_product(product: &ProductEntity) -> Vec<u8> {
         let mut bytes = Vec::new();
 
-        // Field 1: ID
-        bytes.push(0x08); // Tag 1, Type: Varint
-        bytes.extend_from_slice(&product.id.to_le_bytes());
+        Self::put_key(1, Self::WIRE_VARINT, &mut bytes); // 0x08
+        Self::put_varint(product.id, &mut bytes);
 
-        // Field 2: Price Cents
-        bytes.push(0x10); // Tag 2, Type: Varint
-        bytes.extend_from_slice(&product.price_cents.to_le_bytes());
+        Self::put_key(2, Self::WIRE_VARINT, &mut bytes); // 0x10
+        Self::put_varint(product.price_cents, &mut bytes);
 
-        // Field 3: In Stock
-        bytes.push(0x18); // Tag 3, Type: Varint
-        bytes.push(if product.in_stock { 1 } else { 0 });
+        Self::put_key(3, Self::WIRE_VARINT, &mut bytes); // 0x18
+        Self::put_varint(u64::from(product.in_stock), &mut bytes);
 
-        // Field 4: Name String
-        bytes.push(0x22); // Tag 4, Type: Length-delimited
-        let name_bytes = product.name.as_bytes();
-        bytes.push(name_bytes.len() as u8);
-        bytes.extend_from_slice(name_bytes);
+        // Chuỗi: kiểu "length-delimited" = độ dài (varint, không giới hạn 255) + các byte
+        Self::put_key(4, Self::WIRE_LEN, &mut bytes); // 0x22
+        Self::put_varint(product.name.len() as u64, &mut bytes);
+        bytes.extend_from_slice(product.name.as_bytes());
 
         bytes
     }
 
-    /// Giải mã nhị phân không sao chép từ chuỗi byte gRPC
-    pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, &'static str> {
-        if bytes.len() < 20 {
-            return Err("Kich thuoc byte protobuf qua short!");
-        }
+    /// Giải mã gói tin. Mọi chỗ đọc đều kiểm biên: gói hỏng/cắt cụt trả `Err`,
+    /// KHÔNG bao giờ panic (dữ liệu từ mạng là dữ liệu không tin được).
+    /// Trường lạ được bỏ qua — đúng tinh thần tương thích xuôi/ngược của Protobuf.
+    pub fn decode_product(bytes: &[u8]) -> Result<ProductEntity, DecodeError> {
+        let mut product = ProductEntity {
+            id: 0,
+            name: String::new(),
+            price_cents: 0,
+            in_stock: false,
+        };
 
-        let mut id = 0u64;
-        let mut price = 0u64;
-        let mut in_stock = false;
-        let mut name = String::new();
-
-        let mut idx = 0;
-        while idx < bytes.len() {
-            let tag = bytes[idx];
-            idx += 1;
-
-            match tag {
-                0x08 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    id = u64::from_le_bytes(b);
-                    idx += 8;
+        let mut pos = 0;
+        while pos < bytes.len() {
+            let key = Self::get_varint(bytes, &mut pos)?;
+            let (field, wire_type) = (key >> 3, (key & 0x7) as u8);
+            match wire_type {
+                Self::WIRE_VARINT => {
+                    let value = Self::get_varint(bytes, &mut pos)?;
+                    match field {
+                        1 => product.id = value,
+                        2 => product.price_cents = value,
+                        3 => product.in_stock = value != 0,
+                        _ => {} // trường lạ: bỏ qua
+                    }
                 }
-                0x10 => {
-                    let mut b = [0u8; 8];
-                    b.copy_from_slice(&bytes[idx..idx + 8]);
-                    price = u64::from_le_bytes(b);
-                    idx += 8;
+                Self::WIRE_LEN => {
+                    let len = Self::get_varint(bytes, &mut pos)? as usize;
+                    let end = pos.checked_add(len).ok_or(DecodeError::Truncated)?;
+                    let payload = bytes.get(pos..end).ok_or(DecodeError::Truncated)?;
+                    pos = end;
+                    if field == 4 {
+                        product.name = std::str::from_utf8(payload)
+                            .map_err(|_| DecodeError::InvalidUtf8)?
+                            .to_string();
+                    }
                 }
-                0x18 => {
-                    in_stock = bytes[idx] == 1;
-                    idx += 1;
-                }
-                0x22 => {
-                    let len = bytes[idx] as usize;
-                    idx += 1;
-                    name = String::from_utf8_lossy(&bytes[idx..idx + len]).to_string();
-                    idx += len;
-                }
-                _ => break,
+                other => return Err(DecodeError::UnsupportedWireType(other)),
             }
         }
 
-        Ok(ProductEntity {
-            id,
-            name,
-            price_cents: price,
-            in_stock,
-        })
+        Ok(product)
     }
+}
+
+/// Thoát ký tự đặc biệt khi nhúng chuỗi vào JSON (nếu không, tên chứa `"` sẽ phá JSON)
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Trình điều phối dịch vụ mô phỏng cách Axum Router định tuyến Type-Safe
@@ -237,17 +328,20 @@ impl TypeSafeServiceRouter {
     pub fn handle_rest_get_product(&self, product_id: u64) -> Result<String, &'static str> {
         let catalog = self.state.catalog.lock().unwrap();
         if let Some(prod) = catalog.get(&product_id) {
-            // Giả lập trả về chuỗi định dạng JSON
+            // Giả lập trả về chuỗi định dạng JSON (thực tế: serde_json)
             Ok(format!(
                 r#"{{"id":{},"name":"{}","price_cents":{},"in_stock":{}}}"#,
-                prod.id, prod.name, prod.price_cents, prod.in_stock
+                prod.id,
+                json_escape(&prod.name),
+                prod.price_cents,
+                prod.in_stock
             ))
         } else {
-            Err("404 Not Found: Low tim thay san pham")
+            Err("404 Not Found: Không tìm thấy sản phẩm")
         }
     }
 
-    /// Xử lý yêu cầu dạng gRPC nhị phân siêu tốc
+    /// Xử lý yêu cầu dạng gRPC nhị phân
     pub fn handle_grpc_get_product(&self, product_id: u64) -> Result<Vec<u8>, &'static str> {
         let catalog = self.state.catalog.lock().unwrap();
         if let Some(prod) = catalog.get(&product_id) {
@@ -261,46 +355,124 @@ impl TypeSafeServiceRouter {
 
 fn main() {
     println!("==================================================================");
-    println!("   DICH VU THONG LUONG CAO: AXUM REST & TONIC GRPC TOI UU RUST    ");
+    println!("   DỊCH VỤ THÔNG LƯỢNG CAO: AXUM REST & TONIC GRPC TỐI ƯU RUST    ");
     println!("==================================================================");
 
-    // 1. Khởi tạo trạng thái dùng shared được bọc trong con trỏ Arc
+    // 1. Khởi tạo trạng thái dùng chung được bọc trong con trỏ Arc
     let shared_state = Arc::new(SharedAppState::new());
     let router = TypeSafeServiceRouter::new(shared_state);
 
     // 2. Thử nghiệm gọi cổng REST API (JSON Payload)
-    println!("\n[1] Xu ly qua cong REST API (JSON Text Format):");
+    println!("\n[1] Xử lý qua cổng REST API (JSON Text Format):");
     let rest_response = router.handle_rest_get_product(101).unwrap();
-    println!("    - Payload REST JSON nhan duoc: {}", rest_response);
-    println!("    - Dung luong payload JSON    : {} bytes", rest_response.len());
+    println!("    - Payload REST JSON nhận được: {}", rest_response);
+    println!(
+        "    - Dung lượng payload JSON    : {} bytes",
+        rest_response.len()
+    );
 
     // 3. Thử nghiệm gọi cổng gRPC (Protocol Buffers Binary Format)
-    println!("\n[2] Xu ly qua cong gRPC noi bo (Protobuf Binary Format):");
+    println!("\n[2] Xử lý qua cổng gRPC nội bộ (Protobuf Binary Format):");
     let grpc_binary = router.handle_grpc_get_product(101).unwrap();
-    println!("    - Payload gRPC Binary nhan duoc (Hex): {:02X?}", grpc_binary);
-    println!("    - Dung luong payload gRPC             : {} bytes", grpc_binary.len());
+    println!(
+        "    - Payload gRPC Binary nhận được (Hex): {:02X?}",
+        grpc_binary
+    );
+    println!(
+        "    - Dung lượng payload gRPC             : {} bytes",
+        grpc_binary.len()
+    );
 
     // So sánh kích thước truyền tải
     let savings = ((rest_response.len() as f64 - grpc_binary.len() as f64)
         / rest_response.len() as f64)
         * 100.0;
     println!(
-        "    ==> gRPC Protobuf tiet kiem duoc: {:.1}% bang thong mang!",
+        "    ==> Protobuf nhỏ hơn JSON {:.1}% với bản ghi này (tên trường không đi theo gói tin)",
         savings
     );
 
-    // 4. Giải mã ngược gói tin gRPC (Zero-Copy Validation)
-    println!("\n[3] Phuc hoi thuc the tu goi tin nhi phan gRPC:");
+    // 4. Giải mã ngược gói tin gRPC
+    println!("\n[3] Phục hồi thực thể từ gói tin nhị phân gRPC:");
     let decoded = ProtobufWireCodec::decode_product(&grpc_binary).unwrap();
-    println!("    - ID San pham : {}", decoded.id);
-    println!("    - Ten San pham: {}", decoded.name);
-    println!("    - Gia tien    : {}d", decoded.price_cents);
-    println!("    - Con hang    : {}", decoded.in_stock);
+    println!("    - ID sản phẩm : {}", decoded.id);
+    println!("    - Tên sản phẩm: {}", decoded.name);
+    println!("    - Giá tiền    : {}đ", decoded.price_cents);
+    println!("    - Còn hàng    : {}", decoded.in_stock);
     assert_eq!(decoded.id, 101);
 
+    // 5. Gói tin hỏng không làm sập dịch vụ
+    let truncated = &grpc_binary[..grpc_binary.len() - 3];
+    println!(
+        "\n[4] Gói tin bị cắt cụt -> {:?}",
+        ProtobufWireCodec::decode_product(truncated)
+    );
+
     println!("\n==================================================================");
-    println!("   XAC NHAN: MO HINH HYBRID AXUM & TONIC SAN SANG VAN HANH!     ");
+    println!("   XÁC NHẬN: MÔ HÌNH HYBRID AXUM & TONIC SẴN SÀNG VẬN HÀNH!     ");
     println!("==================================================================");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(name: &str) -> ProductEntity {
+        ProductEntity {
+            id: 150,
+            name: name.to_string(),
+            price_cents: 550_000,
+            in_stock: true,
+        }
+    }
+
+    #[test]
+    fn matches_official_protobuf_bytes() {
+        // Ví dụ kinh điển trong tài liệu Protobuf: trường 1 = 150 -> 08 96 01
+        let bytes = ProtobufWireCodec::encode_product(&sample("ab"));
+        assert_eq!(&bytes[..3], &[0x08, 0x96, 0x01]);
+        assert_eq!(&bytes[bytes.len() - 4..], &[0x22, 0x02, b'a', b'b']);
+    }
+
+    #[test]
+    fn roundtrip_including_long_names() {
+        // Tên > 255 byte: bản cũ ghi độ dài bằng 1 byte `len as u8` nên hỏng gói tin
+        for name in ["Bàn phím cơ", &"x".repeat(300)] {
+            let p = sample(name);
+            let bytes = ProtobufWireCodec::encode_product(&p);
+            assert_eq!(ProtobufWireCodec::decode_product(&bytes), Ok(p));
+        }
+    }
+
+    #[test]
+    fn corrupted_input_is_an_error_not_a_panic() {
+        let bytes = ProtobufWireCodec::encode_product(&sample("hello"));
+        for cut in 0..bytes.len() {
+            // Mọi tiền tố đều không được panic
+            let _ = ProtobufWireCodec::decode_product(&bytes[..cut]);
+        }
+        assert_eq!(
+            ProtobufWireCodec::decode_product(&bytes[..bytes.len() - 1]),
+            Err(DecodeError::Truncated)
+        );
+        assert_eq!(
+            ProtobufWireCodec::decode_product(&[0x0D]), // kiểu dây 5 (fixed32)
+            Err(DecodeError::UnsupportedWireType(5))
+        );
+    }
+
+    #[test]
+    fn json_name_is_escaped() {
+        let state = Arc::new(SharedAppState::new());
+        state
+            .catalog
+            .lock()
+            .unwrap()
+            .insert(7, sample(r#"Sách "Rust""#));
+        let router = TypeSafeServiceRouter::new(state);
+        let json = router.handle_rest_get_product(7).unwrap();
+        assert!(json.contains(r#""name":"Sách \"Rust\"""#));
+    }
 }
 ```
 
@@ -312,39 +484,49 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait 'FromRequest' is not implemented for 'MyCustomType'` | Sử dụng một kiểu dữ liệu tùy chỉnh làm tham số trong hàm handler của Axum mà chưa triển khai trait trích xuất. | Bọc kiểu dữ liệu trong `Json<MyCustomType>` hoặc tự viết `impl<S> FromRequest<S> for MyCustomType`. |
-| **E0599** | `no method named 'into_response' found for type 'MyError'` | Hàm handler trả về một kiểu lỗi tùy chỉnh chưa triển khai trait `IntoResponse` của Axum. | Triển khai trait `IntoResponse` để quy định mã HTTP Status và thông báo JSON trả về khi có lỗi. |
-| **E0277** | `the trait 'Send' is not implemented for 'AppState'` | Trạng thái chia sẻ `State(state)` chứa các cấu trúc không an toàn đa luồng. | Đảm bảo `AppState` chỉ chứa các trường thỏa mãn ràng buộc `Send + Sync`, dùng `Mutex` hoặc `RwLock`. |
+| **E0277** | `` the trait bound `fn(MyCustomType) -> ... {h}: Handler<_, _>` is not satisfied `` | Sử dụng một kiểu dữ liệu tùy chỉnh làm tham số trong hàm handler của Axum mà chưa triển khai trait trích xuất (`FromRequest`/`FromRequestParts`). Thông báo chỉ nói chung chung "không phải Handler". | Bọc kiểu dữ liệu trong `Json<MyCustomType>` hoặc tự viết `impl<S> FromRequest<S> for MyCustomType`. Gắn `#[axum::debug_handler]` lên handler để rustc chỉ đúng tham số sai. |
+| **E0277** | `` the trait bound `fn() -> impl Future<Output = ...> {error_handler}: Handler<_, _>` is not satisfied `` | Hàm handler trả về một kiểu lỗi tùy chỉnh chưa triển khai trait `IntoResponse` của Axum. (Chỉ khi tự gọi `.into_response()` trên kiểu đó mới ra `E0599`.) | Triển khai trait `IntoResponse` để quy định mã HTTP Status và thông báo JSON trả về khi có lỗi. |
+| **E0277** | `` `Rc<String>` cannot be sent between threads safely `` (kèm lỗi `Handler<_, _>` ở trên) | Trạng thái chia sẻ `State(state)` chứa các cấu trúc không an toàn đa luồng như `Rc`, `RefCell`. | Đảm bảo `AppState` chỉ chứa các trường thỏa mãn ràng buộc `Send + Sync`, dùng `Mutex` hoặc `RwLock`. |
 | **E0382** | `use of moved value: 'payload'` | Bạn di chuyển quyền sở hữu (ownership) của `payload` nhiều lần bên trong hàm xử lý. | Sử dụng tham chiếu mượn (borrow) hoặc tạo bản sao độc lập trước khi tái sử dụng. |
 
-### Ví dụ phân tích lỗi `E0599` khi thiếu triển khai IntoResponse:
+### Ví dụ phân tích lỗi `E0277` khi kiểu lỗi chưa triển khai `IntoResponse`:
 
 ```rust
-// Đoạn mã lỗi minh họa E0599:
+// (Cần các crate `axum` 0.8, `serde_json`)
+use axum::{
+    Json, Router,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::get,
+};
+
+// Đoạn mã lỗi minh họa: SystemError chưa cài IntoResponse
 struct SystemError {
-    greeting: String,
+    message: String,
 }
 
-// Hàm handler trả về SystemError nhưng chưa có IntoResponse
-// async fn error_handler() -> Result<&'static str, SystemError> {
-//     Err(SystemError { greeting: "Lỗi nội bộ".into() }) // LỖI E0599!
+// Handler trả về Result<_, SystemError> -> không thỏa trait `Handler`
+// async fn broken_handler() -> Result<&'static str, SystemError> {
+//     Err(SystemError { message: "Lỗi nội bộ".into() })
 // }
+// Router::new().route("/", get(broken_handler)); // LỖI E0277: ...: Handler<_, _> is not satisfied
 
-// Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển đổi sang HTTP Response
-struct StdError {
-    chi_tiet: &'static str,
-}
-
-impl StdError {
-    fn to_http_status(&self) -> (u16, &'static str) {
-        (500, self.chi_tiet)
+// Cách sửa chữa đúng chuẩn: Tự quy định cách chuyển lỗi thành HTTP Response
+impl IntoResponse for SystemError {
+    fn into_response(self) -> Response {
+        let body = Json(serde_json::json!({ "error": self.message }));
+        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
     }
 }
 
-fn check_error() {
-    let err = StdError { chi_tiet: "Lỗi kết nối database" };
-    let (code, msg) = err.to_http_status();
-    println!("Mã lỗi HTTP: {} - Nội dung: {}", code, msg);
+async fn fixed_handler() -> Result<&'static str, SystemError> {
+    Err(SystemError {
+        message: "Lỗi kết nối database".into(),
+    })
+}
+
+fn app() -> Router {
+    Router::new().route("/", get(fixed_handler))
 }
 ```
 
@@ -353,8 +535,8 @@ fn check_error() {
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
-1. **Sức mạnh Type-Safe của Axum**: Tận dụng triệt để hệ thống trích xuất (Extractors) để loại bỏ toàn bộ lỗi ép kiểu dữ liệu ngay từ cổng vào API.
-2. **Ưu thế tuyệt đối của gRPC & Tonic**: Hoạt động trên HTTP/2 Multiplexing với định dạng nhị phân Protocol Buffers, tiết kiệm băng thông và tăng tốc độ xử lý gấp 7-10 lần so với JSON.
+1. **Sức mạnh Type-Safe của Axum**: Tận dụng triệt để hệ thống trích xuất (Extractors) để chặn lỗi sai kiểu dữ liệu ngay từ cổng vào API.
+2. **Ưu thế của gRPC & Tonic**: Hoạt động trên HTTP/2 Multiplexing với định dạng nhị phân Protocol Buffers, tiết kiệm băng thông và giảm chi phí mã hóa/giải mã so với JSON.
 3. **Kiến trúc Lai (Hybrid Architecture)**: Sử dụng Axum RESTful cho giao diện công cộng bên ngoài và Tonic gRPC cho hệ thống giao tiếp vi dịch vụ nội bộ.
 4. **Tối ưu hóa Băng thông & Bộ nhớ**: Kết hợp hài hòa giữa quyền sở hữu (ownership), mượn (borrow), thời gian sống (lifetime), con trỏ thông minh (smart pointer) và bộ nhớ đệm (buffer) để bảo đảm thông lượng tối đa mà không gây rò rỉ bộ nhớ.
 
@@ -440,18 +622,18 @@ fn decode_and_verify(packet: &[u8]) -> Result<u64, &'static str> {
 }
 
 #[test]
-fn timestamp_va_crc_phat_hien_sua_doi() {
+fn timestamp_and_crc_detect_corruption() {
     let packet = encode_with_timestamp_crc(1_700_000_000);
     assert_eq!(decode_and_verify(&packet), Ok(1_700_000_000));
 
     // Sửa một byte giữa gói -> CRC lệch -> bị phát hiện.
-    let mut hong = packet.clone();
-    hong[1] ^= 0xFF;
-    assert!(decode_and_verify(&hong).is_err());
+    let mut corrupted = packet.clone();
+    corrupted[1] ^= 0xFF;
+    assert!(decode_and_verify(&corrupted).is_err());
 }
 ```
 
-Hai kỹ thuật nền tảng ở đây: **varint** làm cho số nhỏ tốn ít byte (số 5 chỉ 1 byte thay vì 8) — đó là lý do Protobuf gọn hơn JSON nhiều lần với dữ liệu số. Và **CRC32 bọc quanh gói** cho bên nhận phát hiện *bất kỳ* thay đổi nào trên đường truyền: đổi một bit là CRC lệch hẳn. Lưu ý CRC chỉ chống **hỏng ngẫu nhiên** (nhiễu đường truyền), *không* chống kẻ tấn công cố ý — kẻ tấn công sửa gói thì tính lại CRC mới được; chống sửa đổi có chủ đích cần chữ ký mật mã (HMAC), không phải CRC.
+Hai kỹ thuật nền tảng ở đây: **varint** làm cho số nhỏ tốn ít byte (số 5 chỉ 1 byte thay vì 8) — đó là lý do Protobuf gọn hơn JSON nhiều lần với dữ liệu số. Và **CRC32 bọc quanh gói** cho bên nhận phát hiện hầu hết thay đổi trên đường truyền: mọi lỗi lật một bit hay một chùm lỗi ngắn hơn 32 bit đều chắc chắn bị bắt, các kiểu hỏng khác lọt qua với xác suất cỡ 1/2³². Lưu ý CRC chỉ chống **hỏng ngẫu nhiên** (nhiễu đường truyền), *không* chống kẻ tấn công cố ý — kẻ tấn công sửa gói thì tính lại CRC mới được; chống sửa đổi có chủ đích cần chữ ký mật mã (HMAC), không phải CRC.
 </details>
 
 <details>
@@ -471,24 +653,24 @@ use std::time::{Duration, Instant};
 pub struct RateLimitLayer {
     // ip -> (số đếm trong cửa sổ, thời điểm bắt đầu cửa sổ)
     counters: HashMap<String, (u32, Instant)>,
-    gioi_han: u32,
-    cua_so: Duration,
+    limit: u32,
+    window: Duration,
 }
 
 impl RateLimitLayer {
     pub fn new() -> Self {
-        Self { counters: HashMap::new(), gioi_han: 100, cua_so: Duration::from_secs(1) }
+        Self { counters: HashMap::new(), limit: 100, window: Duration::from_secs(1) }
     }
 
     /// Trả Ok(()) nếu cho qua, Err(429) nếu vượt giới hạn.
     pub fn check(&mut self, ip: &str, now: Instant) -> Result<(), u16> {
         let e = self.counters.entry(ip.to_string()).or_insert((0, now));
         // Cửa sổ 1 giây đã trôi qua -> đặt lại bộ đếm.
-        if now.duration_since(e.1) >= self.cua_so {
+        if now.duration_since(e.1) >= self.window {
             *e = (0, now);
         }
         e.0 += 1;
-        if e.0 > self.gioi_han {
+        if e.0 > self.limit {
             Err(429) // HTTP 429 Too Many Requests
         } else {
             Ok(())
@@ -497,7 +679,7 @@ impl RateLimitLayer {
 }
 
 #[test]
-fn chan_khi_vuot_100_moi_giay() {
+fn blocks_after_100_per_second() {
     let mut rl = RateLimitLayer::new();
     let t0 = Instant::now();
     // 100 yêu cầu đầu trong cùng cửa sổ: cho qua.

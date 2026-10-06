@@ -51,7 +51,7 @@ Người gác cổng **Borrow Checker** của Rust có một nhiệm vụ tối 
 ### 3. Dòng chữ tạc trên vách đá hoa cương (`'static`)
 Trong công viên có một phiến đá hoa cương ngàn năm tuổi khắc dòng chữ: *"Chân lý không bao giờ đổi thay"*.
 - Dù các sự kiện hội chợ có mở ra rồi dọn dẹp hàng ngàn lần, phiến đá vẫn sừng sững ở đó chừng nào cả quả núi còn tồn tại.
-- Trong Rust, những chuỗi ký tự cố định được nhúng thẳng vào tệp nhị phân của chương trình (như `"Xin chào"`) có vòng đời mang tên `'static` — chúng tồn tại suốt từ giây phút chương trình khởi động cho đến khi tắt máy tính.
+- Trong Rust, những chuỗi ký tự cố định được nhúng thẳng vào tệp nhị phân của chương trình (như `"Xin chào"`) có vòng đời mang tên `'static` — chúng tồn tại suốt từ giây phút chương trình khởi động cho đến khi chương trình kết thúc.
 
 ---
 
@@ -65,15 +65,15 @@ Hãy xem xét đoạn mã bị cấm sau đây để hiểu vì sao Rust lại c
 fn make_greeting_unsafe() -> &String {
     let s = String::from("Chào bạn"); // s sinh ra trên Stack Frame của hàm này
     &s // Cố tình trả về địa chỉ của biến cục bộ s
-} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị attempt hồi!
+} // HÀM KẾT THÚC: Stack Frame bị xóa sổ! Biến s bị thu hồi!
 ```
 Trong các ngôn ngữ như C/C++, trình biên dịch vẫn để bạn chạy đoạn mã trên, dẫn đến con trỏ trỏ vào vùng nhớ rác (Dangling Pointer) gây sập chương trình ngẫu nhiên.
 Rust bảo vệ bạn bằng **hệ thống phòng thủ hai lớp kiên cố**:
 1. **Lớp 1 (Kiểm tra kiểu & Quy tắc lược bỏ vòng đời - Lỗi E0106)**:
-   Khi nhìn vào `fn tao_loi_chao_nguy_hiem() -> &String`, Rust thấy hàm trả về một tham chiếu mượn nhưng lại không hề có bất kỳ tham số đầu vào nào để mượn từ đó. Rust chặn lại ngay với mã:
+   Khi nhìn vào `fn make_greeting_unsafe() -> &String`, Rust thấy hàm trả về một tham chiếu mượn nhưng lại không hề có bất kỳ tham số đầu vào nào để mượn từ đó. Rust chặn lại ngay với mã:
    `error[E0106]: missing lifetime specifier (thiếu chỉ định vòng đời)` kèm lời nhắc: *"Hàm này trả về dữ liệu mượn, nhưng không có dữ liệu nguồn nào để mượn!"*.
 2. **Lớp 2 (Trình kiểm tra mượn Borrow Checker - Lỗi E0515)**:
-   Nếu bạn cố tình thêm một tham số đầu vào (ví dụ `ten: &str`) để đánh lừa Lớp 1, Trình kiểm tra mượn sẽ lập tức quét sâu vào thân hàm và chặn đứng bằng mã:
+   Nếu bạn cố tình thêm một tham số đầu vào (ví dụ `name: &str`) để đánh lừa Lớp 1, Trình kiểm tra mượn sẽ lập tức quét sâu vào thân hàm và chặn đứng bằng mã:
    `error[E0515]: cannot return reference to local variable 's'` (*không thể trả về tham chiếu trỏ tới biến cục bộ*).
 
 ### 2. Giải mã ký hiệu chú thích vòng đời `'a`
@@ -101,17 +101,17 @@ fn longer_of<'a>(x: &'a str, y: &'a str) -> &'a str {
 Bạn không cần phải viết `'a` ở khắp mọi nơi, vì đội ngũ phát triển Rust đã tích hợp sẵn 3 quy tắc tự động suy luận sau vào trình biên dịch:
 
 1. **Quy tắc 1 (Tham số đầu vào)**: Mỗi tham chiếu đầu vào của hàm sẽ được tự động gán cho một vòng đời độc lập riêng biệt (ví dụ: `fn foo(x: &i32, y: &i32)` được ngầm hiểu là `fn foo<'a, 'b>(x: &'a i32, y: &'b i32)`).
-2. **Quy tắc 2 (Một đầu vào duy nhất)**: Nếu hàm chỉ có đúng **một** tham chiếu đầu vào, vòng đời của tham chiếu đó sẽ tự động được gán cho tất cả các tham chiếu trả về (ví dụ: `fn tach(s: &str) -> &str` được ngầm hiểu là `fn tach<'a>(s: &'a str) -> &'a str`).
+2. **Quy tắc 2 (Một đầu vào duy nhất)**: Nếu hàm chỉ có đúng **một** tham chiếu đầu vào, vòng đời của tham chiếu đó sẽ tự động được gán cho tất cả các tham chiếu trả về (ví dụ: `fn first_word(s: &str) -> &str` được ngầm hiểu là `fn first_word<'a>(s: &'a str) -> &'a str`).
 3. **Quy tắc 3 (Phương thức có `&self`)**: Nếu hàm là một phương thức của Struct có tham số đầu vào là `&self` hoặc `&mut self`, thì vòng đời của `self` sẽ tự động được gán cho tất cả các tham chiếu trả về.
 
-Chỉ khi nào hàm có **nhiều tham chiếu đầu vào** và **trả về một tham chiếu** mà không có `self`, Rust mới yêu cầu bạn phải tự tay viết ký hiệu `'a`.
+Chỉ khi nào hàm **trả về một tham chiếu** mà các quy tắc trên không xác định được nó mượn từ đâu — tức là có **nhiều tham chiếu đầu vào** mà không có `self`, hoặc **không có tham chiếu đầu vào nào** (như ví dụ `make_greeting_unsafe` ở trên) — Rust mới yêu cầu bạn phải tự tay viết chú thích vòng đời.
 
 ### 4. Struct chứa Tham chiếu
 
 Nếu bạn muốn tạo một `struct` không tự sở hữu dữ liệu mà chỉ mượn một phần dữ liệu từ nơi khác, bạn bắt buộc phải khai báo vòng đời cho struct đó:
 ```rust
 struct Parser<'a> {
-    du_lieu_nguon: &'a str, // Struct này cam kết không sống lâu hơn du_lieu_nguon
+    source: &'a str, // Struct này cam kết không sống lâu hơn dữ liệu mà source trỏ tới
 }
 ```
 
@@ -126,32 +126,30 @@ Chương trình dưới đây là một "Bộ phân tích cấu hình hệ thố
 // Ứng dụng thực chiến làm chủ Vòng đời (Lifetimes) trong Rust
 
 // 1. Hàm so sánh hai chuỗi và trả về chuỗi dài hơn
-// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng deliver nhau giữa x và y
+// Ký hiệu <'a> tuyên bố: Chuỗi trả về có vòng đời an toàn bằng khoảng giao nhau giữa x và y
 fn pick_longer_message<'a>(x: &'a str, y: &'a str) -> &'a str {
-    if x.len() > y.len() {
-        x
-    } else {
-        y
-    }
+    if x.len() > y.len() { x } else { y }
 }
 
 // 2. Struct nắm giữ tham chiếu mượn dữ liệu nguồn (&'a str)
 // Giúp đọc và trích xuất cấu hình mà KHÔNG tốn dù chỉ 1 byte để sao chép chuỗi mới trên Heap!
 struct SystemConfig<'a> {
-    name_resp_use: &'a str,
-    phi_dich_vu: f64,
+    app_name: &'a str,
+    monthly_fee: f64,
 }
 
 impl<'a> SystemConfig<'a> {
     // Phương thức đọc: Tận dụng Quy tắc suy luận ngầm số 3 (Lifetime Elision)
     // Không cần viết 'a ở kiểu trả về vì Rust tự lấy vòng đời của &self!
-    fn lay_ten(&self) -> &str {
-        self.name_resp_use
+    fn name(&self) -> &str {
+        self.app_name
     }
 
     fn print_info(&self) {
-        println!("- Ứng dụng: '{}' | Phí duy trì: {:.2} USD/tháng", 
-                 self.name_resp_use, self.phi_dich_vu);
+        println!(
+            "- Ứng dụng: '{}' | Phí duy trì: {:.2} USD/tháng",
+            self.app_name, self.monthly_fee
+        );
     }
 }
 
@@ -162,41 +160,41 @@ fn main() {
 
     // --- PHẦN 1: HÀM CÓ CHÚ THÍCH VÒNG ĐỜI 'a ---
     println!("\n1. So sánh hai thông điệp có vòng đời hợp lệ:");
-    let thong_message_1 = String::from("Hệ thống khởi động thành công");
-    let thong_message_2 = String::from("Cảnh báo pin yếu");
+    let message_1 = String::from("Hệ thống khởi động thành công");
+    let message_2 = String::from("Cảnh báo pin yếu");
 
-    // Cả thong_message_1 và thong_message_2 đều đang sống trong cùng phạm vi main
-    let thong_message_main = pick_longer_message(
-        thong_message_1.as_str(), 
-        thong_message_2.as_str()
-    );
-    println!("- Thông điệp dài hơn được chọn: '{}'", thong_message_main);
+    // Cả message_1 và message_2 đều đang sống trong cùng phạm vi main
+    let longer_message = pick_longer_message(message_1.as_str(), message_2.as_str());
+    println!("- Thông điệp dài hơn được chọn: '{}'", longer_message);
 
     // --- PHẦN 2: CHỨNG MINH TÍNH AN TOÀN TRƯỚC VÒNG ĐỜI NGẮN HƠN ---
     println!("\n2. Kiểm soát phạm vi sống lồng nhau an toàn:");
     let parent_string = String::from("Dữ liệu bền vững của công ty");
     {
-        let series_con = String::from("Dữ liệu tạm");
-        let ket_qua_tam = pick_longer_message(parent_string.as_str(), series_con.as_str());
-        println!("- [Bên trong phạm vi con]: Kết quả chọn là: '{}'", ket_qua_tam);
-        // ket_qua_tam chỉ được phép dùng bên trong dấu ngoặc nhọn này!
-        // Nếu cố tình mang ket_qua_tam ra ngoài phạm vi con, compiler sẽ chặn đứng ngay!
+        let child_string = String::from("Dữ liệu tạm");
+        let temp_result = pick_longer_message(parent_string.as_str(), child_string.as_str());
+        println!(
+            "- [Bên trong phạm vi con]: Kết quả chọn là: '{}'",
+            temp_result
+        );
+        // temp_result chỉ được phép dùng bên trong dấu ngoặc nhọn này!
+        // Nếu cố tình mang temp_result ra ngoài phạm vi con, compiler sẽ chặn đứng ngay!
     }
 
     // --- PHẦN 3: STRUCT CHỨA THAM CHIẾU (ZERO-COPY) ---
     println!("\n3. Khởi tạo Struct chứa tham chiếu mượn không tốn RAM:");
-    let config_file = String::from("TenUngDung: RustCloudServer, Phi: 49.99");
+    let config_file = String::from("AppName: RustCloudServer, Fee: 49.99");
 
-    // Lát cắt trích xuất tên ứng dụng trực tiếp từ chuỗi nguồn:
-    let name_cut_can = &config_file[12..27];
+    // Lát cắt trích xuất tên ứng dụng trực tiếp từ chuỗi nguồn (byte 9 đến trước 24):
+    let app_name_slice = &config_file[9..24];
 
     let config = SystemConfig {
-        name_resp_use: name_cut_can,
-        phi_dich_vu: 49.99,
+        app_name: app_name_slice,
+        monthly_fee: 49.99,
     };
 
     config.print_info();
-    println!("- Tên ứng dụng trích xuất qua getter: '{}'", config.lay_ten());
+    println!("- Tên ứng dụng trích xuất qua getter: '{}'", config.name());
 
     // --- PHẦN 4: VÒNG ĐỜI VĨNH CỬU 'static ---
     println!("\n4. Sử dụng hằng số có vòng đời vĩnh cửu ('static):");
@@ -214,8 +212,8 @@ Dưới đây là các thông báo lỗi kinh điển về Lifetimes và cách k
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
 | **E0106** | `missing lifetime specifier: expected named lifetime parameter` | Hàm có từ 2 tham chiếu đầu vào trở lên và trả về 1 tham chiếu, nhưng không có chú thích `'a`. | Thêm khai báo `<'a>` sau tên hàm và gán `'a` vào các tham chiếu đầu vào và đầu ra tương ứng. |
-| **E0597** | `borrowed value does not live long enough` | Bạn tạo một biến tạm thời trong khối ngoặc nhọn con, mượn địa chỉ của nó, nhưng lại cố sử dụng tham chiếu đó ở phạm vi bên ngoài sau khi biến tạm đã qua đời. | Kéo dài tuổi thọ của biến gốc bằng cách khai báo nó ở phạm vi bên ngoài, hoặc chuyển sang trả về giá trị sở hữu (Owned Type như `String` thay vì `&str`). |
-| **E0515** | `cannot return reference to local variable` | Cố tình trả về con trỏ trỏ vào một biến được tạo ra bên trong chính hàm đó. | Thay đổi kiểu trả về của hàm từ dạng mượn (`&String`) sang dạng sở hữu (`String`) để Move dữ liệu ra ngoài cho người gọi. |
+| **E0597** | ``'x' does not live long enough`` (kèm nhãn `borrowed value does not live long enough`) | Bạn tạo một biến tạm thời trong khối ngoặc nhọn con, mượn địa chỉ của nó, nhưng lại cố sử dụng tham chiếu đó ở phạm vi bên ngoài sau khi biến tạm đã qua đời. | Kéo dài tuổi thọ của biến gốc bằng cách khai báo nó ở phạm vi bên ngoài, hoặc chuyển sang trả về giá trị sở hữu (Owned Type như `String` thay vì `&str`). |
+| **E0515** | ``cannot return reference to local variable 's'`` | Cố tình trả về con trỏ trỏ vào một biến được tạo ra bên trong chính hàm đó. | Thay đổi kiểu trả về của hàm từ dạng mượn (`&String`) sang dạng sở hữu (`String`) để Move dữ liệu ra ngoài cho người gọi. |
 
 ---
 
@@ -229,10 +227,10 @@ Dưới đây là các thông báo lỗi kinh điển về Lifetimes và cách k
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập suy luận (Elision practice)**: Hãy cho biết trong các hàm sau đây, hàm nào cần tự tay viết chú thích `'a`, hàm nào được Rust tự động suy luận:
-   - `fn in_loi_chao(ten: &str);`
-   - `fn lay_ky_tu_dau(van_ban: &str) -> &str;`
-   - `fn ghep_ten(ho: &str, ten: &str) -> &str;`
-2. **Bài tập thực hành 2**: Viết một hàm mang tên `chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str` nhận vào hai tham chiếu lát cắt chuỗi (`&str`) và trả về tham chiếu của chuỗi có độ dài ngắn hơn (sử dụng phương thức `.len()`). Trong hàm `main`: tạo hai biến `String` có độ dài khác nhau, gọi hàm và in chuỗi ngắn hơn ra màn hình. Thử giải thích tại sao tham số vòng đời `<'a>` là bắt buộc trong chữ ký hàm này.
+   - `fn greet(name: &str);`
+   - `fn first_char(text: &str) -> &str;`
+   - `fn pick_name(family: &str, given: &str) -> &str;`
+2. **Bài tập thực hành 2**: Viết một hàm mang tên `shorter<'a>(s1: &'a str, s2: &'a str) -> &'a str` nhận vào hai tham chiếu lát cắt chuỗi (`&str`) và trả về tham chiếu của chuỗi có độ dài ngắn hơn (sử dụng phương thức `.len()`). Trong hàm `main`: tạo hai biến `String` có độ dài khác nhau, gọi hàm và in chuỗi ngắn hơn ra màn hình. Thử giải thích tại sao tham số vòng đời `<'a>` là bắt buộc trong chữ ký hàm này.
 3. **Bài tập sửa lỗi (Compiler fix)**: Đoạn mã sau bị lỗi biên dịch:
    ```rust
    fn make_string() -> &str {
@@ -257,14 +255,14 @@ Quy tắc rút gọn vòng đời (lifetime elision) tự lo được khi **ch�
 
 Xét từng hàm:
 
-**`fn in_loi_chao(ten: &str);` — Rust tự lo, KHÔNG cần viết `'a`.**
+**`fn greet(name: &str);` — Rust tự lo, KHÔNG cần viết `'a`.**
 Chỉ nhận một tham chiếu và *không trả về* tham chiếu nào. Không có gì để gắn vòng đời đầu ra vào, nên chẳng có mơ hồ.
 
-**`fn lay_ky_tu_dau(van_ban: &str) -> &str;` — Rust tự lo, KHÔNG cần viết `'a`.**
+**`fn first_char(text: &str) -> &str;` — Rust tự lo, KHÔNG cần viết `'a`.**
 Đúng một tham chiếu vào, một tham chiếu ra. Quy tắc rút gọn nói: đầu ra *phải* mượn từ đầu vào duy nhất đó. Không mơ hồ, Rust tự điền `'a` ngầm.
 
-**`fn ghep_ten(ho: &str, ten: &str) -> &str;` — BẮT BUỘC tự viết `'a`.**
-Hai tham chiếu vào, một tham chiếu ra. Rust không biết kết quả mượn từ `ho` hay từ `ten`, nên **từ chối đoán** và báo lỗi. Bạn phải nói rõ, ví dụ `fn ghep_ten<'a>(ho: &'a str, ten: &'a str) -> &'a str` — buộc cả hai đầu vào và đầu ra sống cùng một vòng đời.
+**`fn pick_name(family: &str, given: &str) -> &str;` — BẮT BUỘC tự viết `'a`.**
+Hai tham chiếu vào, một tham chiếu ra. Rust không biết kết quả mượn từ `family` hay từ `given`, nên **từ chối đoán** và báo lỗi `E0106`. Bạn phải nói rõ, ví dụ `fn pick_name<'a>(family: &'a str, given: &'a str) -> &'a str` — buộc cả hai đầu vào và đầu ra sống cùng một vòng đời.
 
 Nguyên tắc gọn: **rút gọn vòng đời chỉ hoạt động khi không có mơ hồ.** Một tham chiếu vào thì đầu ra chỉ có thể mượn từ nó; nhiều tham chiếu vào thì bạn phải tự chỉ định.
 </details>
@@ -281,20 +279,20 @@ Vì trả về tham chiếu mượn từ *một trong hai* đầu vào, Rust c�
 ```rust
 // <'a> hứa: kết quả sống không lâu hơn ĐẦU VÀO NGẮN TUỔI NHẤT trong s1, s2.
 // Bắt buộc phải có, vì Rust không tự biết kết quả mượn từ s1 hay s2.
-fn chon_chuoi_ngan_hon<'a>(s1: &'a str, s2: &'a str) -> &'a str {
+fn shorter<'a>(s1: &'a str, s2: &'a str) -> &'a str {
     if s1.len() <= s2.len() { s1 } else { s2 }
 }
 
 fn main() {
     let a = String::from("Rust");
     let b = String::from("Ngôn ngữ lập trình");
-    println!("Ngắn hơn: {}", chon_chuoi_ngan_hon(&a, &b));
+    println!("Ngắn hơn: {}", shorter(&a, &b));
 }
 
 #[test]
-fn chon_dung_chuoi_ngan() {
-    assert_eq!(chon_chuoi_ngan_hon("Rust", "Programming"), "Rust");
-    assert_eq!(chon_chuoi_ngan_hon("abcdef", "xy"), "xy");
+fn picks_shorter() {
+    assert_eq!(shorter("Rust", "Programming"), "Rust");
+    assert_eq!(shorter("abcdef", "xy"), "xy");
 }
 ```
 
@@ -310,7 +308,7 @@ Lỗi kinh điển: trả về tham chiếu tới một biến **cục bộ** s�
 <details>
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
-**Vì sao lỗi:** `s` là biến cục bộ, bị **hủy khi hàm kết thúc**. Trả về `&s` là trả về tham chiếu tới vùng nhớ vừa bị giải phóng — một con trỏ treo (dangling reference). Rust chặn ngay với lỗi `cannot return reference to local variable `s``.
+**Vì sao lỗi:** hàm trả về `&str` nhưng không có tham chiếu đầu vào nào để mượn, nên Rust chặn ngay ở Lớp 1 với lỗi `E0106: missing lifetime specifier` (kèm gợi ý: *"you are more likely to want to return an owned value"*). Gốc rễ của vấn đề: `s` là biến cục bộ, bị **hủy khi hàm kết thúc**. Trả về `&s` là trả về tham chiếu tới vùng nhớ vừa bị giải phóng — một con trỏ treo (dangling reference). Nếu bạn cố "chữa" bằng cách viết `-> &'static str`, Lớp 2 sẽ chặn tiếp với ``E0515: cannot return reference to local variable `s` ``.
 
 ```text
 fn make_string() -> &str {        // trả về &str, nhưng mượn từ đâu?

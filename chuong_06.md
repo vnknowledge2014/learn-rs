@@ -45,7 +45,7 @@ Hãy tưởng tượng một căn nhà trên một mảnh đất:
 
 ### 2. Sang tên đổi chủ xe máy (Cơ chế Di chuyển - Move Semantics)
 Giả sử bạn đang sở hữu một chiếc xe máy SH rất đẹp:
-- Bạn làm thủ tục sang tên đổi chủ, trao toàn bộ giấy tờ đăng ký xe và chùm chìa khóa cho người em trai của mình (`let em_trai = xe_cua_ban;`).
+- Bạn làm thủ tục sang tên đổi chủ, trao toàn bộ giấy tờ đăng ký xe và chùm chìa khóa cho người em trai của mình (`let brother = your_bike;`).
 - Kể từ giây phút chiếc chìa khóa rời khỏi tay bạn: **Người em trai là chủ nhân hợp pháp duy nhất của chiếc xe**.
 - Bạn không còn chìa khóa xe trong túi nữa. Nếu bạn cố tình ra cổng tìm chiếc xe để phóng đi chơi, người nhà sẽ chặn bạn lại ngay: *"Anh đã sang tên xe cho em trai rồi, anh không còn quyền sử dụng chiếc xe đó nữa!"*.
 Đây chính là cách Rust ngăn chặn lỗi nguy hiểm: **Khi quyền sở hữu đã bị chuyển đi (Move), biến ban đầu sẽ lập tức bị khóa lại và không thể truy cập được nữa!**
@@ -73,7 +73,7 @@ Bây giờ chúng ta sẽ soi chiếu cơ chế này dưới góc độ các ô 
 Mọi dòng mã Rust bạn viết ra đều bị trình biên dịch giám sát dựa trên 3 quy tắc bất di bất dịch sau:
 1. **Mỗi giá trị trong Rust đều có một Chủ sở hữu duy nhất (được đại diện bởi một biến).**
 2. **Tại một thời điểm bất kỳ, chỉ có duy nhất một chủ sở hữu hợp pháp.**
-3. **Khi chủ sở hữu đi ra khỏi phạm vi sống (Scope - biểu thị bởi dấu ngoặc nhọn đóng `}`), giá trị đó sẽ tự động bị tiêu hủy và trả lại bộ nhớ cho hệ điều hành ngay lập tức.**
+3. **Khi chủ sở hữu đi ra khỏi phạm vi sống (Scope - biểu thị bởi dấu ngoặc nhọn đóng `}`), giá trị đó sẽ tự động bị tiêu hủy (drop) và bộ nhớ của nó được trả lại ngay lập tức.**
 
 ### 2. Mổ xẻ thảm họa "Giải phóng hai lần" (Double Free) trong C/C++ và cách Rust khắc phục
 
@@ -112,9 +112,10 @@ Vì `s1` đã bị vô hiệu hóa, khi ra khỏi scope, **chỉ có duy nhất 
 Làm thế nào để biết khi gán biến thì Rust sẽ **Move (chuyển giao)** hay **Copy (sao chép)**?
 
 - **Kiểu Copy**:
-  - Dành riêng cho các kiểu dữ liệu có kích thước cố định, nằm trọn vẹn 100% trên Stack.
-  - Chi phí sao chép một vài byte trên Stack là siêu rẻ (chỉ mất 1 chu kỳ CPU).
-  - Bao gồm: tất cả các kiểu số nguyên (`i32`, `u64`,...), số thực (`f32`, `f64`), kiểu logic (`bool`), ký tự (`char`), và Tuple (nếu tất cả phần tử bên trong nó đều là kiểu Copy).
+  - Dành cho các kiểu mà việc **sao chép nguyên văn từng bit** là đủ và an toàn — tức là kiểu không sở hữu tài nguyên nào cần dọn dẹp (không cài `Drop`).
+  - Lưu ý: `Copy` nói về **cách sao chép**, không nói về **nơi dữ liệu nằm**. Một `i32` nằm trong `Vec<i32>` thì ở trên Heap nhưng vẫn là `Copy`; ngược lại `[u8; 4096]` là `Copy` nhưng mỗi lần sao chép là chép 4 KB — không hề "miễn phí".
+  - Với các kiểu nhỏ, chi phí sao chép chỉ là chép vài byte — rất rẻ.
+  - Bao gồm: tất cả các kiểu số nguyên (`i32`, `u64`,...), số thực (`f32`, `f64`), kiểu logic (`bool`), ký tự (`char`), tham chiếu chia sẻ `&T` (nhưng **không** phải `&mut T`), con trỏ hàm (`fn(i32) -> i32`), và mảng `[T; N]` cũng như Tuple nếu tất cả phần tử bên trong đều là kiểu Copy.
   - Khi gán `let y = x;`, biến `x` vẫn hoàn toàn nguyên vẹn và dùng bình thường.
 - **Kiểu Move**:
   - Bất kỳ kiểu dữ liệu nào có nắm giữ tài nguyên cấp phát động bên ngoài Stack (như vùng nhớ Heap của `String`, `Vec<T>`, tệp tin đang mở, hoặc kết nối mạng).
@@ -140,21 +141,21 @@ Chương trình dưới đây minh họa toàn bộ các sắc thái của Quy t
 // Chương trình thực chiến làm chủ Quy tắc Sở hữu & Cơ chế Di chuyển (Move Semantics)
 
 // 1. Hàm tiếp nhận quyền sở hữu: Biến truyền vào sẽ bị "nuốt chửng" tại đây!
-fn consume_series(chuoi_nhan_vao: String) {
-    println!("-> [Trong hàm tieu_thu_chuoi]: Đã nhận được: '{}'", chuoi_nhan_vao);
-    // Khi hàm này kết thúc tại dấu ngoặc nhọn dưới, chuoi_nhan_vao đi ra khỏi scope
+fn consume_string(text: String) {
+    println!("-> [Trong hàm consume_string]: Đã nhận được: '{}'", text);
+    // Khi hàm này kết thúc tại dấu ngoặc nhọn dưới, text đi ra khỏi scope
     // Bộ nhớ Heap của chuỗi này sẽ tự động bị giải phóng (DROP) ngay lập tức!
 }
 
 // 2. Hàm tiếp nhận và trả lại quyền sở hữu cho người gọi
-fn append_suffix(mut series: String) -> String {
-    series.push_str(" (Đã được kiểm định)");
-    series // Trả lại quyền sở hữu chuỗi mới về cho nơi gọi hàm
+fn append_suffix(mut text: String) -> String {
+    text.push_str(" (Đã được kiểm định)");
+    text // Trả lại quyền sở hữu chuỗi mới về cho nơi gọi hàm
 }
 
 // 3. Hàm nhận kiểu Copy trên Stack: Không ảnh hưởng gì đến biến gốc
-fn print_int(so: i32) {
-    println!("-> [Trong hàm in_so_nguyen]: Giá trị số là: {}", so);
+fn print_int(n: i32) {
+    println!("-> [Trong hàm print_int]: Giá trị số là: {}", n);
 }
 
 fn main() {
@@ -165,19 +166,22 @@ fn main() {
     // --- PHẦN 1: CƠ CHẾ SAO CHÉP TRÊN STACK (COPY TRAIT) ---
     println!("\n1. Kiểm tra kiểu dữ liệu Copy trên Stack:");
     let base_score = 100;
-    let point_num_copy = base_score; // Tự động nhân bản trên Stack
+    let copied_score = base_score; // Tự động nhân bản trên Stack
 
-    println!("- Điểm gốc: {}, Điểm sao chép: {}", base_score, point_num_copy);
+    println!(
+        "- Điểm gốc: {}, Điểm sao chép: {}",
+        base_score, copied_score
+    );
     print_int(base_score);
     // Biến base_score vẫn sử dụng hoàn toàn bình thường sau khi truyền vào hàm!
     println!("- Sau khi gọi hàm, điểm gốc vẫn còn nguyên: {}", base_score);
 
     // --- PHẦN 2: CƠ CHẾ DI CHUYỂN TRÊN HEAP (MOVE SEMANTICS) ---
     println!("\n2. Kiểm tra cơ chế Di chuyển quyền sở hữu (Move):");
-    let security_certificate = String::from("CHUNG_THU_BAO_MAT_2026");
-    println!("- Biến 'chung_thu_so' đang là chủ sở hữu hợp pháp duy nhất.");
+    let security_certificate = String::from("CHỨNG THƯ BẢO MẬT 2026");
+    println!("- Biến 'security_certificate' đang là chủ sở hữu hợp pháp duy nhất.");
 
-    // Chuyển deliver quyền sở hữu từ security_certificate sang new_owner:
+    // Chuyển giao quyền sở hữu từ security_certificate sang new_owner:
     let new_owner = security_certificate;
     println!("- Đã sang tên đổi chủ thành công cho: {}", new_owner);
 
@@ -187,15 +191,15 @@ fn main() {
     // --- PHẦN 3: DI CHUYỂN VÀO HÀM VÀ MẤT QUYỀN SỞ HỮU ---
     println!("\n3. Chuyển quyền sở hữu vào một hàm con:");
     let greeting = String::from("Xin chào từ Hà Nội");
-    
-    // Khi gọi hàm này, greeting bị Move vào hàm con và biến mất khỏi main!
-    consume_series(greeting);
 
-    // Dòng sau cũng bị lỗi E0382 vì greeting đã bị Drop bên trong hàm con:
+    // Khi gọi hàm này, greeting bị Move vào hàm con và biến mất khỏi main!
+    consume_string(greeting);
+
+    // Dòng sau cũng bị lỗi E0382 vì greeting đã bị move vào hàm con (và bị Drop ở cuối hàm đó):
     // println!("Thử in lại thông điệp: {}", greeting);
 
     // --- PHẦN 4: LẤY LẠI QUYỀN SỞ HỮU THÔNG QUA GIÁ TRỊ TRẢ VỀ ---
-    println!("\n4. Chuyển deliver đi và nhận lại quyền sở hữu qua return:");
+    println!("\n4. Chuyển giao đi và nhận lại quyền sở hữu qua return:");
     let profile = String::from("Hồ sơ ứng viên Nguyễn Văn A");
     let decorated_profile = append_suffix(profile);
     // Lúc này 'profile' đã bị move, nhưng 'decorated_profile' là chủ nhân mới nắm giữ kết quả!
@@ -204,10 +208,10 @@ fn main() {
     // --- PHẦN 5: NHÂN BẢN SÂU BẰNG .clone() KHI CẦN THIẾT ---
     println!("\n5. Nhân bản sâu toàn diện bằng phương thức .clone():");
     let original_data = String::from("Bản quyền sở hữu trí tuệ");
-    let tai_lieu_nhan_ban = original_data.clone(); // Cấp phát thêm một vùng nhớ Heap mới
+    let cloned_data = original_data.clone(); // Cấp phát thêm một vùng nhớ Heap mới
 
     println!("- Bản gốc     : {}", original_data);
-    println!("- Bản nhân bản: {}", tai_lieu_nhan_ban);
+    println!("- Bản nhân bản: {}", cloned_data);
     println!("=> Cả hai biến đều cùng tồn tại và hoạt động độc lập trên 2 vùng Heap riêng biệt!");
 }
 ```
@@ -231,7 +235,7 @@ fn main() {
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Triết lý 1 chủ**: Mỗi giá trị trên bộ nhớ chỉ có duy nhất một chủ sở hữu hợp pháp tại một thời điểm; khi chủ sở hữu ra khỏi scope, bộ nhớ tự động được dọn dẹp sạch sẽ bằng hàm `Drop`.
 2. **Cơ chế Move**: Gán hoặc truyền một kiểu dữ liệu Heap (như `String`) sang biến/hàm khác sẽ chuyển giao quyền sở hữu và vô hiệu hóa vĩnh viễn biến ban đầu, ngăn chặn triệt để lỗi Double Free.
-3. **Cơ chế Copy**: Các kiểu dữ liệu đơn giản nằm hoàn toàn trên Stack (`i32`, `f64`, `bool`, `char`) sẽ tự động sao chép giá trị mà không làm mất biến gốc.
+3. **Cơ chế Copy**: Các kiểu không sở hữu tài nguyên cần dọn (`i32`, `f64`, `bool`, `char`, `&T`, mảng/tuple của các kiểu Copy) sẽ tự động sao chép giá trị mà không làm mất biến gốc.
 4. **Chi phí của `.clone()`**: Dùng `.clone()` khi thực sự cần 2 bản sao độc lập trên Heap, nhưng cần cẩn trọng vì hành động này tiêu tốn thêm bộ nhớ và thời gian cấp phát.
 
 ### Bài tập rèn luyện tự giải:
@@ -244,7 +248,7 @@ fn main() {
    println!("Giá trị: {} và {}", a, c);
    ```
    Hãy giải thích tại sao biến `c` in được mà biến `a` lại báo lỗi.
-2. **Bài tập thực hành 2**: Viết một hàm `tinh_do_dai(s: String) -> (String, usize)` nhận vào một chuỗi, đo độ dài của chuỗi đó, sau đó trả về một bộ đôi Tuple chứa lại chính chuỗi đó và độ dài vừa đo được, để người gọi hàm không bị mất quyền sở hữu chuỗi.
+2. **Bài tập thực hành 2**: Viết một hàm `calculate_length(s: String) -> (String, usize)` nhận vào một chuỗi, đo độ dài của chuỗi đó, sau đó trả về một bộ đôi Tuple chứa lại chính chuỗi đó và độ dài vừa đo được, để người gọi hàm không bị mất quyền sở hữu chuỗi.
 3. **Bài tập tư duy 3**: Tại sao Rust không tự động thực hiện `.clone()` ngầm định cho chúng ta mỗi khi gán biến `String` giống như cách nó làm với số nguyên `i32`? Lợi ích về mặt hiệu năng hệ thống của quyết định thiết kế này là gì?
 
 ---
@@ -260,7 +264,7 @@ fn main() {
 <details>
 <summary><b>Bài tập 1 — Lời giải</b></summary>
 
-**Dòng lỗi: `println!` cố dùng lại `a`.** Biến `c` in được, còn `a` báo lỗi `borrow of moved value: `a``.
+**Dòng lỗi: `println!` cố dùng lại `a`.** Biến `c` in được, còn `a` báo lỗi `E0382` ``borrow of moved value: `a` ``.
 
 Giải thích qua đúng bốn dòng:
 ```text
@@ -288,26 +292,26 @@ Trả lại quyền sở hữu cho người gọi bằng cách **gói chuỗi v�
 
 ```rust
 // Nhận String theo sở hữu, rồi TRẢ LẠI nó (kèm độ dài) để người gọi không mất chuỗi.
-fn tinh_do_dai(s: String) -> (String, usize) {
-    let dai = s.len();   // đo trước khi trả đi
-    (s, dai)             // trả cả chuỗi lẫn độ dài -> người gọi lấy lại quyền sở hữu
+fn calculate_length(s: String) -> (String, usize) {
+    let len = s.len(); // đo trước khi trả đi
+    (s, len) // trả cả chuỗi lẫn độ dài -> người gọi lấy lại quyền sở hữu
 }
 
 fn main() {
     let s = String::from("Rustacean");
-    let (s, dai) = tinh_do_dai(s);   // nhận lại s, giờ vẫn dùng được
-    println!("Chuỗi \"{s}\" dài {dai} ký tự");
+    let (s, len) = calculate_length(s); // nhận lại s, giờ vẫn dùng được
+    println!("Chuỗi \"{s}\" dài {len} byte");
 }
 
 #[test]
-fn tra_lai_ca_chuoi_va_do_dai() {
-    let (s, dai) = tinh_do_dai(String::from("Rustacean"));
-    assert_eq!(dai, 9);
-    assert_eq!(s, "Rustacean");   // chuỗi vẫn nguyên, không bị nuốt mất
+fn returns_string_and_length() {
+    let (s, len) = calculate_length(String::from("Rustacean"));
+    assert_eq!(len, 9);
+    assert_eq!(s, "Rustacean"); // chuỗi vẫn nguyên, không bị nuốt mất
 }
 ```
 
-Cách này **chạy đúng nhưng vụng**: mỗi lần muốn dùng chuỗi sau khi gọi hàm, bạn phải nhận lại nó rồi gán đè — phiền và dễ quên. Bài học cố tình cho bạn nếm sự vụng này để **dẫn tới chương phép mượn**: thay vì chuyển sở hữu đi rồi đòi về, bạn chỉ cần *cho hàm mượn* chuỗi bằng `&String`. Khi đó chữ ký thành `fn tinh_do_dai(s: &String) -> usize` — gọn hơn hẳn, và người gọi không bao giờ mất quyền sở hữu ngay từ đầu. Hãy nhớ cảm giác vụng ở đây; nó là lý do phép mượn tồn tại.
+Cách này **chạy đúng nhưng vụng**: mỗi lần muốn dùng chuỗi sau khi gọi hàm, bạn phải nhận lại nó rồi gán đè — phiền và dễ quên. Bài học cố tình cho bạn nếm sự vụng này để **dẫn tới chương phép mượn**: thay vì chuyển sở hữu đi rồi đòi về, bạn chỉ cần *cho hàm mượn* chuỗi bằng `&String`. Khi đó chữ ký thành `fn calculate_length(s: &String) -> usize` — gọn hơn hẳn, và người gọi không bao giờ mất quyền sở hữu ngay từ đầu. Hãy nhớ cảm giác vụng ở đây; nó là lý do phép mượn tồn tại.
 </details>
 
 <details>

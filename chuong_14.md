@@ -16,7 +16,7 @@ Chương này cũng mở khóa một kỹ thuật cực kỳ thực dụng mà c
 
 Mục tiêu học tập của chương này:
 - Đọc được **chữ ký hàm** như đọc một hợp đồng: `A -> B` nghĩa là gì, và vì sao hai hợp đồng `A -> B` và `B -> C` lại "khớp nối" được thành `A -> C`.
-- Tự tay xây dựng hàm **`ghep` (compose)** và kiểm chứng **luật kết hợp** của phép ghép hàm.
+- Tự tay xây dựng hàm **`compose` (ghép)** và kiểm chứng **luật kết hợp** của phép ghép hàm.
 - Nắm vững **Curry hóa (Currying)**: biến hàm nhiều tham số thành chuỗi hàm một tham số.
 - Làm chủ **Áp dụng từng phần (Partial Application)** và ứng dụng trực tiếp của nó: nhà máy sinh hàm và tiêm phụ thuộc.
 - Hiểu **Lối viết không nêu tham số (Point-free style)**, biết khi nào nên dùng và khi nào nó làm mã khó đọc hơn.
@@ -77,23 +77,23 @@ Chiếc "máy đã khóa 2 núm" đó chính là một **hàm mới** được s
 Trước khi ghép, phải biết đọc. Trong ký hiệu của lập trình hàm, một hàm được viết là:
 
 ```
-tinh_do_dai :: String -> usize
+length_of :: String -> usize
 ```
 
-Đọc là: *"hàm `tinh_do_dai` nhận một `String` và trả về một `usize`"*. Trong Rust ta viết:
+Đọc là: *"hàm `length_of` nhận một `String` và trả về một `usize`"*. Trong Rust ta viết:
 
 ```rust
 fn length_of(s: String) -> usize { s.len() }
 ```
 
-Chữ ký hàm (Function selector) là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
+Chữ ký hàm (function signature) là **hợp đồng đầy đủ** của một hàm thuần túy. Nếu hàm là thuần túy (Chương 13), chữ ký cho bạn biết *gần như mọi thứ* cần biết:
 
 | Chữ ký | Hàm này có thể làm được gì? |
 |---|---|
-| `fn f<T>(x: T) -> T` | **Chỉ có đúng một cách cài đặt**: trả về chính `x`! Vì `T` là kiểu tùy ý, hàm không biết gì về nó nên không thể tự tạo ra một giá trị `T` mới. Đây chính là hàm `identity`. |
+| `fn f<T>(x: T) -> T` | **Chỉ có đúng một cách cài đặt** (nếu bỏ qua panic hay vòng lặp vô tận): trả về chính `x`! Vì `T` là kiểu tùy ý, hàm không biết gì về nó nên không thể tự tạo ra một giá trị `T` mới. Đây chính là hàm `identity`. |
 | `fn f<T>(x: T) -> usize` | Không thể phụ thuộc vào *nội dung* của `x` — chỉ có thể trả về một hằng số. |
 | `fn f(x: &str) -> String` | Có thể cắt, nối, viết hoa... vô số khả năng, vì `&str` và `String` là kiểu cụ thể. |
-| `fn f(x: i32) -> Result<u32, LoiAm>` | Có thể **thất bại**. Chữ ký đã tự thú nhận điều đó. |
+| `fn f(x: i32) -> Result<u32, NegativeError>` | Có thể **thất bại**. Chữ ký đã tự thú nhận điều đó. |
 
 > **Kỹ năng cần rèn**: khi nhìn một hàm lạ trong tài liệu Rust, hãy đọc chữ ký trước, đoán xem nó làm gì, rồi mới đọc phần mô tả. Đây là cách nhanh nhất để làm chủ thư viện chuẩn.
 
@@ -107,6 +107,13 @@ Ta luôn tạo được hàm thứ ba `g ∘ f : A -> C` (đọc là "g sau f"),
 
 Rust không có sẵn toán tử `∘`, nhưng ta tự viết được trong đúng 3 dòng:
 
+> **Xem trước Chương 15**: từ đây chương này dùng **closure** (hàm vô danh `|x| ...`), từ khóa **`move`**, và kiểu **`impl Fn(A) -> B`** trước khi chúng được giảng kỹ ở Chương 15. Bạn chỉ cần trực giác sau là đủ đọc tiếp:
+> - Closure là một hàm viết tại chỗ, có thể "bắt" (dùng) các biến xung quanh nơi nó được tạo.
+> - `move` buộc closure **sở hữu** các biến nó bắt, để nó sống được cả sau khi hàm tạo ra nó đã kết thúc (quên `move` là lỗi `E0373`).
+> - `impl Fn(A) -> B` nghĩa là "một kiểu nào đó gọi được như một hàm `A -> B`, gọi bao nhiêu lần cũng được"; còn `FnMut` là loại closure được phép sửa trạng thái nó bắt giữ (nhầm lẫn hai loại là lỗi `E0525`).
+>
+> Chương 15 sẽ mổ xẻ cả ba trait `Fn`/`FnMut`/`FnOnce` và các lỗi này một cách chi tiết.
+
 ```rust
 pub fn compose<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) -> C {
     move |x| g(f(x))
@@ -116,12 +123,12 @@ pub fn compose<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) ->
 Hãy đọc kỹ chữ ký này — nó chính là định nghĩa toán học viết bằng cú pháp Rust:
 - Nhận vào một hàm `A -> B` và một hàm `B -> C`.
 - Trả về một hàm `A -> C`.
-- Từ khóa `move` là **bắt buộc**: closure trả về phải *sở hữu* `f` và `g`, nếu không chúng sẽ chết ngay khi hàm `ghep` kết thúc.
+- Từ khóa `move` là **bắt buộc**: closure trả về phải *sở hữu* `f` và `g`, nếu không chúng sẽ chết ngay khi hàm `compose` kết thúc.
 
 **Ba tính chất phải nhớ về phép ghép:**
 
 1. **Luật kết hợp (Associativity)**: `h ∘ (g ∘ f) = (h ∘ g) ∘ f`.
-   Nghĩa là bạn ghép ống theo thứ tự nào cũng cho kết quả y hệt — miễn là **thứ tự các ống trên đường ống không đổi**. Nhờ luật này, ta viết `ghep(ghep(f, g), h)` hay `ghep(f, ghep(g, h))` tùy thích.
+   Nghĩa là bạn ghép ống theo thứ tự nào cũng cho kết quả y hệt — miễn là **thứ tự các ống trên đường ống không đổi**. Nhờ luật này, ta viết `compose(compose(f, g), h)` hay `compose(f, compose(g, h))` tùy thích.
 2. **Phần tử đơn vị (Identity element)**: hàm `identity(x) = x` đóng vai trò "đoạn ống thẳng không làm gì". Ghép nó vào đầu hay cuối đều không đổi kết quả: `f ∘ id = id ∘ f = f`.
 3. **Phép ghép KHÔNG giao hoán**: `g ∘ f` khác `f ∘ g`. "Rửa rau rồi thái" khác hẳn "thái rau rồi rửa"!
 
@@ -132,17 +139,17 @@ Hãy đọc kỹ chữ ký này — nó chính là định nghĩa toán học vi
 Nhìn lại đường ống quen thuộc:
 
 ```rust
-let ket_qua: Vec<String> = list
+let result: Vec<String> = list
     .iter()
-    .map(normalize)      // &str -> String
-    .map(them_tien_to)   // String -> String
+    .map(normalize)  // &str -> String
+    .map(add_prefix) // String -> String
     .collect();
 ```
 
 Hai lần `.map()` liên tiếp **chính là một phép ghép hàm**. Và trình biên dịch biết điều đó: nó gộp hai lần `map` thành một vòng lặp duy nhất chạy qua dữ liệu **đúng một lần**, không tạo mảng trung gian. Nói cách khác:
 
 ```
-list.map(f).map(g)   ≡   list.map(ghep(f, g))
+list.map(f).map(g)   ≡   list.map(compose(f, g))
 ```
 
 Đẳng thức này có tên chính thức: **luật ghép của Functor (Functor composition law)** — chúng ta sẽ chứng minh nó ở Chương 19.
@@ -152,15 +159,15 @@ list.map(f).map(g)   ≡   list.map(ghep(f, g))
 **Curry hóa** là kỹ thuật biến một hàm nhận `n` tham số thành một chuỗi `n` hàm, mỗi hàm nhận đúng **1** tham số:
 
 ```
-Hàm gốc      : cong(a, b) -> i64          (nhận 2 tham số cùng lúc)
-Hàm curry hóa: cong(a) -> (b -> i64)      (nhận 1 tham số, trả về MỘT HÀM MỚI)
+Hàm gốc      : add(a, b) -> i64          (nhận 2 tham số cùng lúc)
+Hàm curry hóa: add(a) -> (b -> i64)      (nhận 1 tham số, trả về MỘT HÀM MỚI)
 ```
 
 Trong Rust:
 
 ```rust
 // Dạng thông thường
-fn gate(a: i64, b: i64) -> i64 { a + b }
+fn add(a: i64, b: i64) -> i64 { a + b }
 
 // Dạng đã curry hóa
 fn add_curried(a: i64) -> impl Fn(i64) -> i64 {
@@ -183,7 +190,7 @@ assert_eq!(add_ten(7), 17);   // Dùng lại được vô số lần
 ```rust
 // ❌ Cách làm quen thuộc: hàm tự đi tìm phụ thuộc của mình
 fn send_email(recipient: &str, content: &str) -> Result<(), String> {
-    let server = doc_cau_hinh_tu_bien_moi_truong(); // Phụ thuộc ẩn, không thấy trong chữ ký!
+    let server = read_server_from_env(); // Phụ thuộc ẩn, không thấy trong chữ ký!
     // ... Muốn kiểm thử hàm này thì phải dựng cả biến môi trường.
 }
 
@@ -209,10 +216,10 @@ So sánh hai cách viết cùng một ý:
 
 ```rust
 // Có nêu tham số (pointful): ta phải đặt tên cho biến trung gian `s`
-let length: Vec<usize> = name.iter().map(|s| s.len()).collect();
+let lengths: Vec<usize> = names.iter().map(|s| s.len()).collect();
 
 // Không nêu tham số (point-free): chỉ nói TÊN HÀM cần áp dụng
-let length: Vec<usize> = name.iter().map(String::len).collect();
+let lengths: Vec<usize> = names.iter().map(String::len).collect();
 ```
 
 Ưu điểm: ngắn hơn, và quan trọng hơn là **loại bỏ cơ hội gõ nhầm tên biến**. Công cụ `clippy` thậm chí có một lint tên `clippy::redundant_closure` chuyên nhắc bạn rút gọn `|x| f(x)` thành `f`.
@@ -226,10 +233,10 @@ Trong từ điển thuật ngữ lập trình hàm, **bộ kết hợp (combinat
 | Tên | Chữ ký | Ý nghĩa | Có sẵn trong Rust? |
 |---|---|---|---|
 | **`identity`** | `T -> T` | Trả về chính đầu vào. Là "phần tử đơn vị" của phép ghép. | ✅ `std::convert::identity` |
-| **`const`** | `A -> (B -> A)` | Nuốt tham số thứ hai, luôn trả về giá trị đã khóa sẵn. | ❌ tự viết |
+| **`const`** | `A -> (B -> A)` | Nuốt tham số thứ hai, luôn trả về giá trị đã khóa sẵn. | ❌ tự viết (trong mã dưới đây đặt tên `constant`, vì `const` là từ khóa của Rust) |
 | **`flip`** | `(A, B) -> C` thành `(B, A) -> C` | Đảo thứ tự hai tham số. | ❌ tự viết |
 
-`identity` nghe vô dụng nhưng cực kỳ hữu ích trong thực tế: `data.into_iter().flat_map(identity)` sẽ lọc bỏ toàn bộ `None` khỏi một danh sách `Option`.
+`identity` nghe vô dụng nhưng cực kỳ hữu ích trong thực tế: `data.into_iter().flat_map(identity)` sẽ lọc bỏ toàn bộ `None` khỏi một danh sách `Option` (thư viện chuẩn có sẵn lối tắt cho đúng việc này: `.flatten()`).
 
 ---
 
@@ -254,7 +261,7 @@ pub fn compose<A, B, C>(f: impl Fn(A) -> B, g: impl Fn(B) -> C) -> impl Fn(A) ->
 }
 
 /// Ghép 3 hàm liên tiếp cho tiện dùng.
-pub fn ghep3<A, B, C, D>(
+pub fn compose3<A, B, C, D>(
     f: impl Fn(A) -> B,
     g: impl Fn(B) -> C,
     h: impl Fn(C) -> D,
@@ -263,13 +270,13 @@ pub fn ghep3<A, B, C, D>(
 }
 
 /// Bộ kết hợp `identity`: phần tử đơn vị của phép ghép hàm.
-pub fn closest<T>(x: T) -> T {
+pub fn identity<T>(x: T) -> T {
     x
 }
 
 /// Bộ kết hợp `const`: nuốt tham số, luôn trả về giá trị đã khóa sẵn.
-pub fn queue_num<A: Clone, B>(value: A) -> impl Fn(B) -> A {
-    move |_bo_qua| value.clone()
+pub fn constant<A: Clone, B>(value: A) -> impl Fn(B) -> A {
+    move |_ignored| value.clone()
 }
 
 /// Bộ kết hợp `flip`: đảo thứ tự hai tham số của một hàm.
@@ -282,21 +289,21 @@ pub fn flip_args<A, B, C>(f: impl Fn(A, B) -> C) -> impl Fn(B, A) -> C {
 // ============================================================================
 
 /// Cắt bỏ khoảng trắng thừa ở hai đầu.
-pub fn cut_range_state(s: &str) -> String {
+pub fn trim_whitespace(s: &str) -> String {
     s.trim().to_string()
 }
 
 /// Thu gọn nhiều khoảng trắng liên tiếp thành một khoảng trắng duy nhất.
-pub fn reduce_range(s: String) -> String {
+pub fn collapse_whitespace(s: String) -> String {
     s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
-/// Viết uppercase chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
+/// Viết hoa chữ cái đầu tiên của câu (an toàn với tiếng Việt có dấu).
 pub fn capitalize_first(s: String) -> String {
-    let mut all_ky_from = s.chars();
-    match all_ky_from.next() {
+    let mut chars = s.chars();
+    match chars.next() {
         None => String::new(),
-        Some(first) => first.to_uppercase().collect::<String>() + all_ky_from.as_str(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
 
@@ -305,7 +312,7 @@ pub fn capitalize_first(s: String) -> String {
 // ============================================================================
 
 /// Dạng thông thường: nhận đủ 2 tham số cùng lúc.
-pub fn cat_bot(limit: usize, s: &str) -> String {
+pub fn truncate(limit: usize, s: &str) -> String {
     if s.chars().count() <= limit {
         s.to_string()
     } else {
@@ -315,25 +322,47 @@ pub fn cat_bot(limit: usize, s: &str) -> String {
 }
 
 /// Dạng đã curry hóa: khóa trước `limit`, sinh ra một hàm chuyên dụng.
-pub fn cat_bot_curry(limit: usize) -> impl Fn(&str) -> String {
-    move |s: &str| cat_bot(limit, s)
+pub fn truncate_curried(limit: usize) -> impl Fn(&str) -> String {
+    move |s: &str| truncate(limit, s)
 }
 
 /// Nhà máy sinh bộ lọc từ cấm: khóa sẵn danh sách từ, trả về một vị từ (predicate).
-pub fn make_ban_filter(tu_cam: Vec<String>) -> impl Fn(&str) -> bool {
-    move |van_ban: &str| {
-        let lowercase = van_ban.to_lowercase();
-        !tu_cam.iter().any(|tu| lowercase.contains(tu.as_str()))
+pub fn make_ban_filter(banned_words: Vec<String>) -> impl Fn(&str) -> bool {
+    move |text: &str| {
+        let lowercase = text.to_lowercase();
+        !banned_words
+            .iter()
+            .any(|word| lowercase.contains(word.as_str()))
     }
 }
 
+/// Hạ một ký tự về chữ thường (với tiếng Việt, mỗi chữ hoa ứng đúng một chữ thường).
+fn lower_char(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
 /// Nhà máy sinh bộ che từ cấm bằng dấu sao.
-pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
-    move |van_ban: String| {
-        tu_cam.iter().fold(van_ban, |ket_qua, tu| {
-            let che = "*".repeat(tu.chars().count());
-            ket_qua.replace(tu.as_str(), che.as_str())
-        })
+/// Không phân biệt hoa/thường — khớp với `make_ban_filter`, để "SPAM" cũng bị che.
+pub fn make_censor(banned_words: Vec<String>) -> impl Fn(String) -> String {
+    // Chuẩn bị MỘT LẦN lúc tạo bộ che: mỗi từ cấm thành dãy ký tự chữ thường.
+    let banned: Vec<Vec<char>> = banned_words
+        .iter()
+        .map(|word| word.chars().map(lower_char).collect())
+        .filter(|word: &Vec<char>| !word.is_empty())
+        .collect();
+    move |text: String| {
+        let original: Vec<char> = text.chars().collect();
+        // So khớp trên bản chữ thường, nhưng che trên bản gốc (cùng chỉ số ký tự).
+        let lower: Vec<char> = original.iter().copied().map(lower_char).collect();
+        let mut masked = original;
+        for word in &banned {
+            for start in 0..lower.len() {
+                if lower[start..].starts_with(word) {
+                    masked[start..start + word.len()].fill('*');
+                }
+            }
+        }
+        masked.into_iter().collect()
     }
 }
 
@@ -343,35 +372,35 @@ pub fn tao_bo_che_tu_cam(tu_cam: Vec<String>) -> impl Fn(String) -> String {
 
 /// Bản ghi nhật ký kiểm duyệt (thay cho việc ghi ra tệp thật).
 #[derive(Debug, Clone, PartialEq)]
-pub struct SellRecordLog {
-    pub ma_binh_luan: u32,
-    pub ket_luan: String,
+pub struct LogRecord {
+    pub comment_id: u32,
+    pub verdict: String,
 }
 
 /// "Phụ thuộc" ở đây là hàm ghi nhật ký. Ta KHÓA nó vào trong bộ kiểm duyệt
 /// bằng áp dụng từng phần, thay vì để bộ kiểm duyệt tự đi tìm.
-/// `log_it` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
+/// `log` phải là `FnMut` vì nó ghi thêm vào sổ sau mỗi lần gọi.
 pub fn make_validator<L>(
     check_clean: impl Fn(&str) -> bool,
     sanitize: impl Fn(String) -> String,
-    mut log_it: L,
+    mut log: L,
 ) -> impl FnMut(u32, &str) -> String
 where
-    L: FnMut(SellRecordLog),
+    L: FnMut(LogRecord),
 {
-    move |id: u32, tho: &str| {
-        let standard = cut_range_state(tho);
+    move |id: u32, raw: &str| {
+        let trimmed = trim_whitespace(raw);
         // Kiểm tra TRƯỚC khi che — nếu che trước thì từ cấm biến mất
         // và bộ kiểm tra sẽ luôn báo "hợp lệ". Thứ tự các bước rất quan trọng!
-        let ket_luan = if check_clean(&standard) {
+        let verdict = if check_clean(&trimmed) {
             "HỢP LỆ"
         } else {
             "CHỨA TỪ CẤM — ĐÃ CHE"
         };
-        let cleaned = sanitize(standard);
-        log_it(SellRecordLog {
-            ma_binh_luan: id,
-            ket_luan: ket_luan.to_string(),
+        let cleaned = sanitize(trimmed);
+        log(LogRecord {
+            comment_id: id,
+            verdict: verdict.to_string(),
         });
         cleaned
     }
@@ -389,27 +418,33 @@ fn main() {
     // ------------------------------------------------------------------
     // 1. LẮP REN ỐNG NƯỚC: ghép 3 hàm nhỏ thành 1 đường ống chuẩn hóa
     // ------------------------------------------------------------------
-    let normalize = ghep3(cut_range_state, reduce_range, capitalize_first);
+    let normalize = compose3(trim_whitespace, collapse_whitespace, capitalize_first);
 
-    let tho = "   xin    chào     các bạn  ";
+    let raw = "   xin    chào     các bạn  ";
     println!("\n1. GHÉP HÀM (Composition)");
-    println!("   Đầu vào thô  : {:?}", tho);
-    println!("   Sau đường ống: {:?}", normalize(tho));
+    println!("   Đầu vào thô  : {:?}", raw);
+    println!("   Sau đường ống: {:?}", normalize(raw));
 
     // ------------------------------------------------------------------
     // 2. KIỂM CHỨNG LUẬT KẾT HỢP: h ∘ (g ∘ f) == (h ∘ g) ∘ f
     // ------------------------------------------------------------------
-    let way_a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-    let way_b = compose(cut_range_state, compose(reduce_range, capitalize_first));
-    assert_eq!(way_a(tho), way_b(tho));
+    let way_a = compose(
+        compose(trim_whitespace, collapse_whitespace),
+        capitalize_first,
+    );
+    let way_b = compose(
+        trim_whitespace,
+        compose(collapse_whitespace, capitalize_first),
+    );
+    assert_eq!(way_a(raw), way_b(raw));
     println!("\n2. LUẬT KẾT HỢP");
-    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", way_a(tho));
+    println!("   h∘(g∘f) và (h∘g)∘f cho cùng kết quả: {:?} ✓", way_a(raw));
 
     // ------------------------------------------------------------------
     // 3. LUẬT ĐƠN VỊ: ghép với `identity` không làm thay đổi gì
     // ------------------------------------------------------------------
-    let with_don_pos = compose(closest::<&str>, &normalize);
-    assert_eq!(with_don_pos(tho), normalize(tho));
+    let with_identity = compose(identity::<&str>, &normalize);
+    assert_eq!(with_identity(raw), normalize(raw));
     println!("\n3. LUẬT ĐƠN VỊ");
     println!("   identity ∘ f == f  ✓ (kết quả không đổi)");
 
@@ -417,63 +452,73 @@ fn main() {
     // 4. CURRY HÓA: một hàm gốc sinh ra nhiều hàm chuyên dụng
     // ------------------------------------------------------------------
     println!("\n4. CURRY HÓA & ÁP DỤNG TỪNG PHẦN");
-    let truncate = cat_bot_curry(10); // Máy đã khóa núm "10 ký tự"
-    let cut_long = cat_bot_curry(25);  // Máy đã khóa núm "25 ký tự"
+    let truncate_10 = truncate_curried(10); // Máy đã khóa núm "10 ký tự"
+    let truncate_25 = truncate_curried(25); // Máy đã khóa núm "25 ký tự"
 
     let sentence = "Rust là ngôn ngữ lập trình hệ thống hiện đại";
     println!("   Bản gốc   : {}", sentence);
-    println!("   Cắt còn 10: {}", truncate(sentence));
-    println!("   Cắt còn 25: {}", cut_long(sentence));
+    println!("   Cắt còn 10: {}", truncate_10(sentence));
+    println!("   Cắt còn 25: {}", truncate_25(sentence));
 
     // ------------------------------------------------------------------
     // 5. NHÀ MÁY SINH HÀM: cùng một danh sách từ cấm, hai công cụ khác nhau
     // ------------------------------------------------------------------
-    let tu_cam: Vec<String> = vec!["lừa đảo".to_string(), "spam".to_string()];
-    let is_clean = make_ban_filter(tu_cam.clone());
-    let che_di = tao_bo_che_tu_cam(tu_cam.clone());
+    let banned_words: Vec<String> = vec!["lừa đảo".to_string(), "spam".to_string()];
+    let is_clean = make_ban_filter(banned_words.clone());
+    let censor = make_censor(banned_words.clone());
 
     println!("\n5. NHÀ MÁY SINH HÀM (Closure Factory)");
-    let binh_luan_ban = "Đây là tin spam lừa đảo";
-    println!("   {:?} có sạch không? {}", binh_luan_ban, is_clean(binh_luan_ban));
-    println!("   Sau khi che: {}", che_di(binh_luan_ban.to_string()));
+    let dirty_comment = "Đây là tin spam lừa đảo";
+    println!(
+        "   {:?} có sạch không? {}",
+        dirty_comment,
+        is_clean(dirty_comment)
+    );
+    println!("   Sau khi che: {}", censor(dirty_comment.to_string()));
 
     // ------------------------------------------------------------------
     // 6. TIÊM PHỤ THUỘC: khóa "bộ ghi nhật ký" vào bộ kiểm duyệt
     // ------------------------------------------------------------------
     println!("\n6. TIÊM PHỤ THUỘC BẰNG ÁP DỤNG TỪNG PHẦN");
-    let mut num_log: Vec<SellRecordLog> = Vec::new();
+    let mut log_book: Vec<LogRecord> = Vec::new();
 
     {
         // Phụ thuộc thật: ghi vào sổ nhật ký trong bộ nhớ.
-        let record_in_num = |sell_record: SellRecordLog| num_log.push(sell_record);
-        let mut validator = make_validator(&is_clean, &che_di, record_in_num);
+        let write_to_log = |record: LogRecord| log_book.push(record);
+        let mut validator = make_validator(&is_clean, &censor, write_to_log);
 
         println!("   #101 -> {}", validator(101, "  Bài viết rất hay!  "));
-        println!("   #102 -> {}", validator(102, "  Cẩn thận kẻo bị lừa đảo  "));
+        println!(
+            "   #102 -> {}",
+            validator(102, "  Cẩn thận kẻo bị lừa đảo  ")
+        );
     }
 
-    println!("   Nhật ký attempt được ({} dòng):", num_log.len());
-    for sell_record in &num_log {
-        println!("     - Bình luận #{}: {}", sell_record.ma_binh_luan, sell_record.ket_luan);
+    println!("   Nhật ký thu được ({} dòng):", log_book.len());
+    for record in &log_book {
+        println!(
+            "     - Bình luận #{}: {}",
+            record.comment_id, record.verdict
+        );
     }
 
     // ------------------------------------------------------------------
     // 7. BỘ KẾT HỢP `flip` VÀ `const`
     // ------------------------------------------------------------------
     println!("\n7. BỘ KẾT HỢP flip & const");
-    let chia = |a: f64, b: f64| a / b;
-    let divide_flipped = flip_args(chia);
-    println!("   chia(10, 2)       = {}", chia(10.0, 2.0));
-    println!("   flip(chia)(10, 2) = {}", divide_flipped(10.0, 2.0)); // = chia(2, 10)
+    let divide = |a: f64, b: f64| a / b;
+    let divide_flipped = flip_args(divide);
+    println!("   divide(10, 2)       = {}", divide(10.0, 2.0));
+    println!("   flip(divide)(10, 2) = {}", divide_flipped(10.0, 2.0)); // = divide(2, 10)
 
-    let always_return_ve_0 = queue_num::<i32, &str>(0);
-    println!("   const(0)(\"bất kỳ\") = {}", always_return_ve_0("bất kỳ"));
+    let always_zero = constant::<i32, &str>(0);
+    println!("   const(0)(\"bất kỳ\") = {}", always_zero("bất kỳ"));
 
     // ------------------------------------------------------------------
     // 8. `identity` GIÚP LỌC BỎ None — ỨNG DỤNG THỰC TẾ
     // ------------------------------------------------------------------
     let raw_data: Vec<Option<i32>> = vec![Some(1), None, Some(3), None, Some(5)];
-    let clean: Vec<i32> = raw_data.into_iter().flat_map(closest).collect();
+    let clean: Vec<i32> = raw_data.into_iter().flat_map(identity).collect();
     println!("\n8. identity LỌC BỎ None: {:?}", clean);
     assert_eq!(clean, vec![1, 3, 5]);
 
@@ -481,24 +526,25 @@ fn main() {
     // 9. GHÉP HÀM QUY MÔ LỚN: xử lý cả một danh sách bình luận
     // ------------------------------------------------------------------
     println!("\n9. ÁP DỤNG ĐƯỜNG ỐNG LÊN TOÀN BỘ DỮ LIỆU");
-    let binh_luan_tho = vec![
+    let raw_comments = [
         "   rust rất   thú vị  ",
         " cẩn thận trò spam này ",
         "   giáo trình  hay quá   ",
     ];
 
-    let thong_ke: HashMap<bool, usize> = binh_luan_tho
-        .iter()
-        .map(|b| normalize(b))
-        .fold(HashMap::new(), |mut bang, sentence| {
-            *bang.entry(is_clean(&sentence)).or_insert(0) += 1;
-            bang
-        });
+    let stats: HashMap<bool, usize> =
+        raw_comments
+            .iter()
+            .map(|c| normalize(c))
+            .fold(HashMap::new(), |mut table, sentence| {
+                *table.entry(is_clean(&sentence)).or_insert(0) += 1;
+                table
+            });
 
-    for b in binh_luan_tho.iter() {
-        println!("   {:?} -> {:?}", b, normalize(b));
+    for c in raw_comments.iter() {
+        println!("   {:?} -> {:?}", c, normalize(c));
     }
-    println!("   Thống kê [sạch = true/false]: {:?}", thong_ke);
+    println!("   Thống kê [sạch = true/false]: {:?}", stats);
 
     println!("\n============================================================");
     println!("      HOÀN TẤT: TỪ HÀM NHỎ LẮP THÀNH HỆ THỐNG LỚN          ");
@@ -515,18 +561,24 @@ mod tests {
 
     #[test]
     fn composition_is_associative() {
-        let mau = ["  a   b ", "Xin   chào", "   rust  "];
-        for s in mau {
-            let a = compose(compose(cut_range_state, reduce_range), capitalize_first);
-            let b = compose(cut_range_state, compose(reduce_range, capitalize_first));
+        let samples = ["  a   b ", "Xin   chào", "   rust  "];
+        for s in samples {
+            let a = compose(
+                compose(trim_whitespace, collapse_whitespace),
+                capitalize_first,
+            );
+            let b = compose(
+                trim_whitespace,
+                compose(collapse_whitespace, capitalize_first),
+            );
             assert_eq!(a(s), b(s), "Luật kết hợp bị vi phạm với đầu vào {:?}", s);
         }
     }
 
     #[test]
     fn composition_has_identity() {
-        let f = compose(cut_range_state, capitalize_first);
-        let left = compose(closest::<&str>, &f);
+        let f = compose(trim_whitespace, capitalize_first);
+        let left = compose(identity::<&str>, &f);
         for s in ["  xin chào ", "rust"] {
             assert_eq!(left(s), f(s));
         }
@@ -534,9 +586,9 @@ mod tests {
 
     #[test]
     fn curried_matches_original() {
-        let cat_15 = cat_bot_curry(15);
+        let truncate_15 = truncate_curried(15);
         let sentence = "Rust là ngôn ngữ tuyệt vời";
-        assert_eq!(cat_15(sentence), cat_bot(15, sentence));
+        assert_eq!(truncate_15(sentence), truncate(15, sentence));
     }
 
     #[test]
@@ -544,7 +596,7 @@ mod tests {
         let subtract = |a: i32, b: i32| a - b;
         let flipped_subtract = flip_args(subtract);
         assert_eq!(subtract(10, 3), 7);
-        assert_eq!(flipped_subtract(10, 3), -7); // = tru(3, 10)
+        assert_eq!(flipped_subtract(10, 3), -7); // = subtract(3, 10)
     }
 
     #[test]
@@ -552,6 +604,16 @@ mod tests {
         let filter = make_ban_filter(vec!["spam".to_string()]);
         assert!(filter("bài viết hay"));
         assert!(!filter("đây là SPAM"));
+    }
+
+    #[test]
+    fn censor_is_case_insensitive_like_the_filter() {
+        // Trước đây bộ lọc không phân biệt hoa/thường nhưng bộ che thì có,
+        // nên "SPAM" bị báo là từ cấm mà vẫn không bị che.
+        let censor = make_censor(vec!["spam".to_string(), "lừa đảo".to_string()]);
+        assert_eq!(censor("đây là SPAM".to_string()), "đây là ****");
+        assert_eq!(censor("Lừa Đảo nè".to_string()), "******* nè");
+        assert_eq!(censor("bài viết hay".to_string()), "bài viết hay");
     }
 }
 ```
@@ -562,26 +624,27 @@ mod tests {
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0373** | `closure may outlive the current function, but it borrows '...'` | Bạn trả về một closure từ hàm nhưng closure đó chỉ *mượn* các biến cục bộ. Khi hàm kết thúc, biến chết, closure trở thành con trỏ lơ lửng. | Thêm từ khóa `move` trước dấu `\|`. Đây là lỗi số 1 khi tự viết hàm `ghep`. |
-| **E0308** | `mismatched types: expected 'B', found 'X'` | "Cỡ ren không khớp": đầu ra của hàm thứ nhất không cùng kiểu với đầu vào của hàm thứ hai. | Kiểm tra lại chữ ký hai hàm. Chèn một hàm chuyển đổi (`.to_string()`, `.as_str()`, `From::from`) vào giữa để khớp ren. |
-| **E0507** | `cannot move out of '...', a captured variable in an 'Fn' closure` | Closure trả về từ nhà máy được đánh dấu `Fn` (gọi nhiều lần) nhưng bên trong bạn lại chuyển quyền sở hữu biến đã bắt giữ ra ngoài — lần gọi thứ hai sẽ không còn gì. | Dùng `.clone()` bên trong closure (như hàm `queue_num` ở trên), hoặc chỉ mượn tham chiếu `&`. |
-| **E0525** | `expected a closure that implements 'Fn' … only implements 'FnMut'` | Closure của bạn thay đổi trạng thái bên ngoài (ví dụ ghi vào sổ nhật ký) nên nó là `FnMut`, không phải `Fn`. | Đổi ràng buộc thành `FnMut` và đánh dấu biến closure là `mut` — xem hàm `make_validator` ở trên. |
-| **E0562** | `'impl Trait' is not allowed in this position` | Bạn viết `impl Fn(...)` ở vị trí trường của `struct` hoặc bí danh kiểu (`type`). | Dùng tham số generic `struct S<F: Fn()> { f: F }`, hoặc `Box<dyn Fn(...)>`. |
-| **E0282** | `type annotations needed` | Gọi hàm generic như `closest` hoặc `queue_num` mà trình biên dịch không suy ra được kiểu. | Chỉ định tường minh bằng cú pháp cá voi (turbofish): `closest::<&str>`, `queue_num::<i32, &str>(0)`. |
+| **E0373** | `closure may outlive the current function, but it borrows '...'` | Bạn trả về một closure từ hàm nhưng closure đó chỉ *mượn* các biến cục bộ. Khi hàm kết thúc, biến chết, closure trở thành con trỏ lơ lửng. | Thêm từ khóa `move` trước dấu `\|`. Đây là lỗi số 1 khi tự viết hàm `compose`. |
+| **E0631** | `type mismatch in function arguments` (kèm `expected function signature 'fn(String) -> _', found 'fn(i32) -> _'`) | "Cỡ ren không khớp": đầu ra của hàm thứ nhất không cùng kiểu với đầu vào của hàm thứ hai (với closure, thông báo là `type mismatch in closure arguments`). | Kiểm tra lại chữ ký hai hàm. Chèn một hàm chuyển đổi (`.to_string()`, `.as_str()`, `From::from`) vào giữa để khớp ren. |
+| **E0507** | `cannot move out of '...', a captured variable in an 'Fn' closure` | Closure trả về từ nhà máy được đánh dấu `Fn` (gọi nhiều lần) nhưng bên trong bạn lại chuyển quyền sở hữu biến đã bắt giữ ra ngoài — lần gọi thứ hai sẽ không còn gì. | Dùng `.clone()` bên trong closure (như hàm `constant` ở trên), hoặc chỉ mượn tham chiếu `&`. |
+| **E0525** | `expected a closure that implements the 'Fn' trait, but this closure only implements 'FnMut'` | Closure của bạn thay đổi trạng thái bên ngoài (ví dụ ghi vào sổ nhật ký) nên nó là `FnMut`, không phải `Fn`. | Đổi ràng buộc thành `FnMut` và đánh dấu biến closure là `mut` — xem hàm `make_validator` ở trên. |
+| **E0562** | `'impl Trait' is not allowed in field types` | Bạn viết `impl Fn(...)` làm kiểu của một trường `struct`. | Dùng tham số generic `struct S<F: Fn()> { f: F }`, hoặc `Box<dyn Fn(...)>`. |
+| **E0658** | `'impl Trait' in type aliases is unstable` | Bạn viết `type F = impl Fn(...);` — tính năng này (TAIT) chưa ổn định trên Rust stable. | Như trên: dùng tham số generic hoặc `Box<dyn Fn(...)>`; hoặc viết thẳng `impl Fn(...)` ở vị trí tham số/kiểu trả về của hàm. |
+| **E0282** | `type annotations needed` | Gọi hàm generic như `identity` hoặc `constant` mà trình biên dịch không suy ra được kiểu (ví dụ `let z = constant(0);` — không ai cho biết `B` là gì). | Chỉ định tường minh bằng cú pháp cá voi (turbofish): `identity::<&str>`, `constant::<i32, &str>(0)`. |
 
 ### Phân tích lỗi thực tế `E0373` (quên `move` khi trả về closure):
 
 ```rust
 // ❌ Đoạn mã lỗi minh họa (đã đóng chú thích để tệp vẫn biên dịch được):
-// fn tao_bo_nhan_sai(he_so: i32) -> impl Fn(i32) -> i32 {
-//     |x| x * he_so
+// fn make_multiplier_wrong(factor: i32) -> impl Fn(i32) -> i32 {
+//     |x| x * factor
 //     // LỖI E0373: closure may outlive the current function,
-//     //            but it borrows `he_so`, which is owned by the current function
+//     //            but it borrows `factor`, which is owned by the current function
 // }
 
-// ✅ Cách sửa: thêm `move` để closure ĐOẠT quyền sở hữu `he_so`
-fn tao_bo_nhan_dung(he_so: i32) -> impl Fn(i32) -> i32 {
-    move |x| x * he_so
+// ✅ Cách sửa: thêm `move` để closure ĐOẠT quyền sở hữu `factor`
+fn make_multiplier(factor: i32) -> impl Fn(i32) -> i32 {
+    move |x| x * factor
 }
 ```
 
@@ -597,20 +660,20 @@ fn tao_bo_nhan_dung(he_so: i32) -> impl Fn(i32) -> i32 {
 
 ### Bài tập rèn luyện tự giải:
 
-**Bài tập 1 (Tự xây `ghep4`)**
-Viết hàm `ghep4` ghép bốn hàm liên tiếp `A -> B -> C -> D -> E`. Sau đó dùng nó để xây dựng đường ống xử lý mã sản phẩm: cắt khoảng trắng → viết hoa toàn bộ → thêm tiền tố `"SP-"` → cắt còn tối đa 12 ký tự.
+**Bài tập 1 (Tự xây `compose4`)**
+Viết hàm `compose4` ghép bốn hàm liên tiếp `A -> B -> C -> D -> E`. Sau đó dùng nó để xây dựng đường ống xử lý mã sản phẩm: cắt khoảng trắng → viết hoa toàn bộ → thêm tiền tố `"SP-"` → cắt còn tối đa 12 ký tự.
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Bạn có hai lựa chọn: viết thẳng `move |x| k(h(g(f(x))))`, hoặc tận dụng những gì đã có — `ghep4(f,g,h,k)` chính là `ghep(ghep3(f,g,h), k)`. Nhớ `move`, và nhớ rằng mỗi tham số `impl Fn(...)` là một kiểu generic ẩn danh riêng biệt.
+Bạn có hai lựa chọn: viết thẳng `move |x| k(h(g(f(x))))`, hoặc tận dụng những gì đã có — `compose4(f,g,h,k)` chính là `compose(compose3(f,g,h), k)`. Nhớ `move`, và nhớ rằng mỗi tham số `impl Fn(...)` là một kiểu generic ẩn danh riêng biệt.
 </details>
 
 <details>
 <summary><b>Lời giải</b></summary>
 
 ```rust
-pub fn ghep4<A, B, C, D, E>(
+pub fn compose4<A, B, C, D, E>(
     f: impl Fn(A) -> B,
     g: impl Fn(B) -> C,
     h: impl Fn(C) -> D,
@@ -620,7 +683,7 @@ pub fn ghep4<A, B, C, D, E>(
 }
 
 fn main() {
-    let pipeline = ghep4(
+    let pipeline = compose4(
         |s: &str| s.trim().to_string(),
         |s: String| s.to_uppercase(),
         |s: String| format!("SP-{}", s),
@@ -633,12 +696,12 @@ fn main() {
 </details>
 
 **Bài tập 2 (Nhà máy sinh bộ kiểm tra)**
-Viết hàm `tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String>` trả về một hàm kiểm tra số có nằm trong khoảng `[min, max]` hay không. Nếu hợp lệ trả `Ok(so)`, nếu không trả `Err` kèm thông báo tiếng Việt rõ ràng. Dùng nó để tạo hai bộ kiểm tra: `check_age` (0–120) và `kiem_tra_diem` (0–10).
+Viết hàm `make_range_check(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String>` trả về một hàm kiểm tra số có nằm trong khoảng `[min, max]` hay không. Nếu hợp lệ trả `Ok(value)`, nếu không trả `Err` kèm thông báo tiếng Việt rõ ràng. Dùng nó để tạo hai bộ kiểm tra: `check_age` (0–120) và `check_score` (0–10).
 
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Đây là bài tập về *áp dụng từng phần*: `min` và `max` bị khóa vào closure bằng `move`, còn `so` là tham số để lại cho lúc gọi. Vì `i64` là kiểu `Copy` nên bạn không cần `.clone()`.
+Đây là bài tập về *áp dụng từng phần*: `min` và `max` bị khóa vào closure bằng `move`, còn `value` là tham số để lại cho lúc gọi. Vì `i64` là kiểu `Copy` nên bạn không cần `.clone()`.
 </details>
 
 <details>
@@ -646,11 +709,11 @@ Viết hàm `tao_kiem_tra_khoang(min: i64, max: i64) -> impl Fn(i64) -> Result<i
 
 ```rust
 pub fn make_range_check(min: i64, max: i64) -> impl Fn(i64) -> Result<i64, String> {
-    move |so: i64| {
-        if (min..=max).contains(&so) {
-            Ok(so)
+    move |value: i64| {
+        if (min..=max).contains(&value) {
+            Ok(value)
         } else {
-            Err(format!("Giá trị {} nằm ngoài khoảng cho phép [{}, {}]", so, min, max))
+            Err(format!("Giá trị {} nằm ngoài khoảng cho phép [{}, {}]", value, min, max))
         }
     }
 }
@@ -683,18 +746,18 @@ Hãy nghĩ tới hai hàm cùng đọc/ghi một biến toàn cục, hoặc mộ
 Phép ghép hàm dựa trên một giả định ngầm: **giá trị trả về của `f` là toàn bộ những gì `f` tạo ra**. Nếu `f` còn âm thầm sửa một biến toàn cục hay ghi tệp, thì `g(f(x))` mang theo một "kênh dữ liệu ẩn" mà chữ ký hàm không hề nói tới. Hệ quả:
 
 - Bạn không thể thay `f(x)` bằng giá trị nó trả về (mất tính minh bạch tham chiếu ở Chương 13), nên không thể suy luận về đường ống bằng đẳng thức.
-- Bạn không thể kiểm thử `ghep(f, g)` một cách độc lập, vì kết quả phụ thuộc trạng thái ngoài.
+- Bạn không thể kiểm thử `compose(f, g)` một cách độc lập, vì kết quả phụ thuộc trạng thái ngoài.
 - Bạn không thể chạy song song, vì hai luồng cùng đụng vào trạng thái ẩn đó.
 
 Ví dụ cụ thể:
 
 ```rust
-static mut BO_DEM: i32 = 0;
+static mut COUNTER: i32 = 0;
 
-fn tang_va_lay(_: ()) -> i32 {
-    unsafe { BO_DEM += 1; BO_DEM }   // KHÔNG thuần túy
+fn increment_and_get(_: ()) -> i32 {
+    unsafe { COUNTER += 1; COUNTER }   // KHÔNG thuần túy
 }
 ```
 
-Hàm `tang_va_lay` gọi lần 1 trả `1`, lần 2 trả `2`. Một đường ống gọi nó hai lần sẽ cho kết quả khác nhau mỗi lần chạy, và nếu chạy đa luồng còn phát sinh tranh chấp dữ liệu (data race). Đây chính là lý do Rust bắt buộc phải dùng `unsafe` mới đụng được vào `static mut` — ngôn ngữ đang chủ động cản bạn phá vỡ tính ghép nối.
+Hàm `increment_and_get` gọi lần 1 trả `1`, lần 2 trả `2`. Một đường ống gọi nó hai lần sẽ cho kết quả khác nhau mỗi lần chạy, và nếu chạy đa luồng còn phát sinh tranh chấp dữ liệu (data race). Đây chính là lý do Rust bắt buộc phải dùng `unsafe` mới đụng được vào `static mut` — ngôn ngữ đang chủ động cản bạn phá vỡ tính ghép nối.
 </details>
