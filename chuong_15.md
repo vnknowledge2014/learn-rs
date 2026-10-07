@@ -13,11 +13,11 @@ Rust giải quyết bài toán này một cách tuyệt mỹ thông qua bộ ba 
 Mục tiêu học tập của chương này:
 - Nắm vững cú pháp khai báo **Closure (`|param| { body }`)** và khả năng tự động suy luận kiểu dữ liệu của `rustc`.
 - Thấu hiểu cơ chế **Đóng gói môi trường (Environment Capturing)**: Bản chất Closure trong Rust là một struct vô danh tự động sinh ra trên bộ nhớ ngăn xếp (stack) hoặc vùng nhớ tự do (heap).
-- Phân biệt rạch ròi 3 cấp độ bắt giữ môi trường:
-  - **`Fn`**: Bắt giữ bằng tham chiếu đọc bất biến (`&T`).
-  - **`FnMut`**: Bắt giữ bằng tham chiếu sửa đổi khả biến (`&mut T`).
-  - **`FnOnce`**: Có thể đoạt quyền sở hữu giá trị (`T`) và tiêu thụ môi trường, nên chỉ được gọi **tối đa** một lần.
-- Làm chủ từ khóa **`move`** để cưỡng chế chuyển quyền sở hữu vào trong closure.
+- Phân biệt rạch ròi 3 giao ước closure — quyết định bởi việc **thân closure làm gì** với các giá trị đã bắt giữ:
+  - **`Fn`**: Thân closure chỉ **đọc** các giá trị đã bắt giữ.
+  - **`FnMut`**: Thân closure **sửa đổi** các giá trị đã bắt giữ.
+  - **`FnOnce`**: Thân closure **tiêu thụ** (move ra ngoài) giá trị đã bắt giữ, nên chỉ được gọi **tối đa** một lần.
+- Làm chủ từ khóa **`move`** để cưỡng chế chuyển quyền sở hữu vào trong closure. Lưu ý: `move` chỉ quyết định **cách bắt giữ** (lấy hẳn giá trị thay vì mượn), **không** quyết định trait — một closure `move` sở hữu một `String` nhưng chỉ đọc nó vẫn là `Fn`.
 - Biết cách truyền closure vào hàm thông qua Ràng buộc Trait (Trait Bounds) hoặc con trỏ thông minh (smart pointer) `Box<dyn Fn()>`.
 
 ---
@@ -342,11 +342,11 @@ fn call_twice_fixed<F: FnMut()>(mut f: F) {
 
 ### 4 Điểm cốt lõi cần ghi nhớ:
 1. **Closure là Struct vô danh**: Trình biên dịch tự động tạo cấu trúc dữ liệu lưu trữ các biến được bắt giữ trên Stack, đem lại hiệu năng tối đa (Zero-Cost Abstraction).
-2. **Ba cấp độ bắt giữ**:
-   - `Fn`: Bắt giữ tham chiếu đọc `&T`, gọi nhiều lần, không làm biến đổi môi trường.
-   - `FnMut`: Bắt giữ tham chiếu sửa đổi `&mut T`, gọi nhiều lần, thay đổi trạng thái nội bộ.
-   - `FnOnce`: Có thể đoạt quyền sở hữu `T` và tiêu thụ tài nguyên, nên chỉ được gọi tối đa một lần.
-3. **Từ khóa `move`**: Ép buộc closure đoạt quyền sở hữu toàn bộ các biến môi trường được sử dụng, rất quan trọng khi truyền closure sang luồng mới hoặc trả về từ hàm.
+2. **Ba giao ước closure** (quyết định bởi việc thân closure làm gì với giá trị đã bắt giữ):
+   - `Fn`: Chỉ đọc giá trị đã bắt giữ, gọi nhiều lần, không làm biến đổi môi trường.
+   - `FnMut`: Sửa đổi giá trị đã bắt giữ, gọi nhiều lần, thay đổi trạng thái nội bộ.
+   - `FnOnce`: Tiêu thụ (move ra ngoài) giá trị đã bắt giữ, nên chỉ được gọi tối đa một lần.
+3. **Từ khóa `move`**: Ép buộc closure đoạt quyền sở hữu toàn bộ các biến môi trường được sử dụng, rất quan trọng khi truyền closure sang luồng mới hoặc trả về từ hàm. `move` quyết định *cách bắt giữ*, không quyết định trait: closure `move` chỉ đọc dữ liệu vẫn là `Fn`.
 4. **Linh hoạt đa hình**: Có thể truyền closure tĩnh thông qua Generics `<F: Fn()>` để tối ưu hóa mã máy, hoặc truyền động thông qua Trait Object `Box<dyn Fn()>`.
 
 ### Bài tập rèn luyện tự giải:
@@ -464,13 +464,13 @@ fn main() {
     accumulate(9.0);
     let final_mean = accumulate(7.5);
 
-    // Closure phải kết thúc vòng đời (ra khỏi phạm vi mượn) thì mới đọc lại được biến gốc.
-    drop(accumulate);
+    // Nhờ NLL (Chương 07), quyền mượn sửa của closure kết thúc ngay sau lần gọi cuối,
+    // nên đọc lại biến gốc ở đây là hợp lệ.
     println!("Điểm trung bình cuối: {:.2} trên {} môn", final_mean, subject_count);
 }
 ```
 
 Hai điểm dễ sai:
 - Quên `let mut accumulate` → lỗi **E0596** (`cannot borrow as mutable`).
-- Cố đọc `total` khi closure vẫn còn sống → lỗi **E0502**, vì closure đang giữ quyền mượn sửa. Gọi `drop(accumulate)` (hoặc đặt closure trong một khối `{ }`) để trả quyền mượn lại.
+- Đọc `total` rồi **sau đó lại gọi** `accumulate` → lỗi **E0502**, vì closure vẫn còn được dùng nên quyền mượn sửa của nó chưa kết thúc. NLL tự kết thúc phép mượn sau lần gọi cuối cùng; chỉ khi còn gọi closure sau lần đọc thì mới bị chặn.
 </details>

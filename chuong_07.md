@@ -103,7 +103,7 @@ println!("{}", r3);
 
 Khi bạn muốn trích xuất một từ trong một câu văn dài mà không muốn cấp phát thêm bộ nhớ Heap mới để sao chép từ đó, Rust cung cấp kiểu **Lát cắt chuỗi (`&str`)**:
 - Lát cắt thực chất là một tham chiếu trỏ vào một đoạn liên tiếp của chuỗi ban đầu.
-- Nó chỉ chiếm đúng **16 bytes trên Stack** (gồm 8 bytes con trỏ trỏ tới byte bắt đầu, và 8 bytes lưu **độ dài tính bằng byte** của lát cắt — *không phải* số chữ cái, xem cảnh báo UTF-8 ở cuối mục này).
+- Nó chỉ chiếm đúng **16 bytes trên Stack** (gồm 8 bytes con trỏ trỏ tới byte bắt đầu, và 8 bytes lưu **độ dài tính bằng byte** của lát cắt — *không phải* số chữ cái, xem cảnh báo UTF-8 ở cuối mục 5).
 
 ### 5. Toán tử Giải tham chiếu (Dereference Operator - `*`)
 

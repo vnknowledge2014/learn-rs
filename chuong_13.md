@@ -163,7 +163,9 @@ Có đúng **hai cách** biến một hàm bộ phận thành hàm toàn phần:
 | Cách | Ý tưởng | Ví dụ trong Rust |
 |---|---|---|
 | **Mở rộng đầu ra** | Thêm một "chỗ" cho trường hợp không có câu trả lời | `fn divide(a: i32, b: i32) -> Option<i32>` |
-| **Thu hẹp đầu vào** | Làm cho đầu vào xấu không thể biểu diễn được | `fn divide(a: i32, b: NonZeroI32) -> i32` |
+| **Thu hẹp đầu vào** | Làm cho đầu vào xấu không thể biểu diễn được | `fn divide(a: u32, b: NonZeroU32) -> u32` |
+
+*(Lưu ý: ví dụ thu hẹp đầu vào dùng `u32`. Với số có dấu, `NonZeroI32` vẫn chưa đủ, vì `i32::MIN / -1` bị tràn số và panic — chính vì thế thư viện chuẩn chỉ cài phép chia cho `NonZero` với các kiểu không dấu.)*
 
 Cách thứ hai mạnh hơn nhiều — và nó chính là chủ đề trung tâm của Chương 20.
 
@@ -415,7 +417,7 @@ fn correct_version() {
 
 ## Tóm tắt chương & Bài tập rèn luyện (Summary & Exercises)
 
-### 4 Điểm cốt lõi cần ghi nhớ:
+### 6 Điểm cốt lõi cần ghi nhớ:
 1. **Mệnh lệnh vs Khai báo**: Lập trình mệnh lệnh chỉ đạo CPU làm *như thế nào* bằng các bước thao tác vi mô; Lập trình khai báo tuyên bố *kết quả mong muốn là gì* thông qua chuỗi chuyển hóa dữ liệu.
 2. **Hàm thuần túy (Pure Functions)**: Nhận đầu vào, trả về đầu ra, không tạo tác dụng phụ ra bên ngoài, mang lại sự tin cậy tuyệt đối và triệt tiêu lỗi ngầm.
 3. **Bất biến mặc định**: Bảo vệ dữ liệu không bị sửa đổi ngoài ý muốn; dữ liệu qua đường ống luôn giữ trọn vẹn trạng thái gốc.

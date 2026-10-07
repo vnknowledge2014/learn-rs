@@ -118,7 +118,7 @@ Làm thế nào để biết khi gán biến thì Rust sẽ **Move (chuyển gia
   - Bao gồm: tất cả các kiểu số nguyên (`i32`, `u64`,...), số thực (`f32`, `f64`), kiểu logic (`bool`), ký tự (`char`), tham chiếu chia sẻ `&T` (nhưng **không** phải `&mut T`), con trỏ hàm (`fn(i32) -> i32`), và mảng `[T; N]` cũng như Tuple nếu tất cả phần tử bên trong đều là kiểu Copy.
   - Khi gán `let y = x;`, biến `x` vẫn hoàn toàn nguyên vẹn và dùng bình thường.
 - **Kiểu Move**:
-  - Bất kỳ kiểu dữ liệu nào có nắm giữ tài nguyên cấp phát động bên ngoài Stack (như vùng nhớ Heap của `String`, `Vec<T>`, tệp tin đang mở, hoặc kết nối mạng).
+  - Bất kỳ kiểu dữ liệu nào **không** cài `Copy`. Điển hình là các kiểu nắm giữ tài nguyên bên ngoài Stack (như vùng nhớ Heap của `String`, `Vec<T>`, tệp tin đang mở, hoặc kết nối mạng) — nhưng kể cả một struct tự định nghĩa chỉ chứa số, như `struct Point { x: i32 }`, cũng là kiểu Move nếu bạn chưa `#[derive(Clone, Copy)]` cho nó.
   - Khi gán hoặc truyền vào hàm, quyền sở hữu sẽ bị di chuyển (Move). Biến cũ bị vô hiệu hóa.
 
 ### 4. Phương thức `.clone()` — Khi bạn thực sự muốn nhân bản Heap
@@ -330,7 +330,7 @@ So sánh hai bên:
 - `let y = x;` với `x: String` — nếu clone ngầm thì phải **cấp phát vùng heap mới và chép từng byte** của cả chuỗi. Với chuỗi dài megabyte, một phép gán tưởng chừng miễn phí lại âm thầm cấp phát và sao chép cả megabyte.
 
 **Lợi ích của quyết định "không clone ngầm":**
-1. **Chi phí luôn hiện rõ.** Trong Rust, mọi cấp phát heap đắt đỏ đều *phải* được bạn viết ra: `.clone()`. Đọc code là thấy ngay chỗ nào tốn kém — không có chi phí ẩn dưới dấu `=`. Đây gọi là nguyên tắc **"không trừu tượng nào đắt sau lưng bạn"** (zero-cost abstractions).
+1. **Chi phí luôn hiện rõ.** Trong Rust, mọi cấp phát heap đắt đỏ đều *phải* được bạn viết ra: `.clone()`. Đọc code là thấy ngay chỗ nào tốn kém — không có chi phí ẩn dưới dấu `=`. Đây gọi là nguyên tắc **chi phí tường minh** (explicit cost): không có thao tác đắt đỏ nào xảy ra sau lưng bạn.
 2. **Mặc định là con đường nhanh.** Di chuyển (move) chỉ chuyển phần con trỏ 24 byte trên Stack — nhanh như sao chép số. Bạn chỉ trả giá clone khi *chủ động* yêu cầu.
 3. **Ép người viết cân nhắc.** Phải gõ `.clone()` buộc bạn dừng lại nghĩ "mình có thật sự cần bản sao thứ hai không, hay chỉ cần *mượn* là đủ?". Rất thường xuyên, câu trả lời là mượn — và code trở nên nhanh hơn nhờ chính sự cân nhắc đó.
 

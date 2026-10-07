@@ -348,7 +348,7 @@ Hãy phân biệt cho thật rõ hai tính chất, vì chúng trả lời hai c�
 | **Kết hợp** (associative) | `(a⊕b)⊕c = a⊕(b⊕c)` | **Chia nhỏ dữ liệu ra nhiều luồng** rồi ghép lại |
 | **Giao hoán** (commutative) | `a⊕b = b⊕a` | **Đảo thứ tự phần tử** mà kết quả không đổi |
 
-`fold` và `rfold` duyệt theo hai chiều ngược nhau, nên chúng cho cùng kết quả khi phép gộp **giao hoán** (cộng, nhân, max, min), và cho kết quả khác nhau khi phép gộp **không giao hoán** (nối chuỗi, nối danh sách). Đây là lý do bạn phải biết mình đang gộp bằng phép gì trước khi động tới song song hóa — chủ đề đầy đủ nằm ở Chương 18.
+`fold` và `rfold` duyệt theo hai chiều ngược nhau, nên chúng chắc chắn cho cùng kết quả khi phép gộp vừa **kết hợp** vừa **giao hoán** (cộng, nhân, max, min), và cho kết quả khác nhau khi phép gộp **không giao hoán** (nối chuỗi, nối danh sách). Chỉ giao hoán thôi là chưa đủ: phép "lấy trung bình" `|a, b| (a + b) / 2` giao hoán nhưng không kết hợp, và trên `[10, 3, 2]` thì `fold` cho `3` còn `rfold` cho `6`. Đây là lý do bạn phải biết mình đang gộp bằng phép gì trước khi động tới song song hóa — chủ đề đầy đủ nằm ở Chương 18.
 
 `rfold` và `rev()` đòi hỏi iterator cài đặt **`DoubleEndedIterator`** — tức là biết đi từ hai đầu. `Vec`, mảng, `VecDeque` có; còn iterator đọc từ mạng thì không.
 
@@ -450,10 +450,10 @@ let total: u64 = data.par_iter().map(|x| heavy_compute(x)).sum();
 
 **Đổi đúng một từ.** Và bạn được bảo đảm ba điều:
 1. Kết quả giống hệt bản tuần tự — vì phép `sum` là một **vị nhóm kết hợp** (Chương 18), chia nhỏ rồi ghép lại không đổi kết quả.
-2. Không có tranh chấp dữ liệu — vì closure trong `map` là **hàm thuần túy**, trình biên dịch kiểm tra điều này qua trait `Send`/`Sync` và **từ chối biên dịch** nếu bạn cố sửa trạng thái dùng chung.
-3. Không cần một dòng `Mutex` nào.
+2. Không có tranh chấp dữ liệu — `par_iter().map(...)` đòi closure phải là `Fn + Send + Sync`, nên trình biên dịch **từ chối biên dịch** nếu bạn cố sửa trực tiếp trạng thái dùng chung mà không đồng bộ hóa.
+3. Không cần một dòng `Mutex` nào — miễn là closure của bạn thuần túy.
 
-> Nếu closure của bạn *không* thuần túy (ví dụ ghi vào một biến `mut` bên ngoài), `rayon` sẽ không cho biên dịch. Tính thuần túy ở đây không phải lời khuyên đạo đức — nó là **điều kiện kỹ thuật bắt buộc**, và trình biên dịch là người kiểm tra.
+> Nếu closure của bạn cố **sửa trực tiếp** một biến bên ngoài (tức là `FnMut`) hoặc bắt giữ thứ không `Sync` (như `Rc` hay `RefCell`), `rayon` sẽ không cho biên dịch. Lưu ý trình biên dịch **không** kiểm tra tính thuần túy nói chung: closure có `println!`, dùng biến nguyên tử (atomic) hay `Mutex` vẫn biên dịch được. Điều được bảo đảm là *không có tranh chấp dữ liệu*; còn giữ closure thuần túy là kỷ luật của bạn — và chính nó giúp kết quả song song giống hệt bản tuần tự.
 
 ---
 
@@ -770,8 +770,9 @@ fn main() {
     // 10. collect VÀO NHIỀU KIỂU KHÁC NHAU
     // ------------------------------------------------------------------
     println!("\n10. collect() gom vào nhiều kiểu đích");
-    let text: String = ids.join(", ");
-    println!("   -> String     : {}", text);
+    // String cài FromIterator<&str>: gom thẳng các mảnh chuỗi thành một String.
+    let text: String = ids.iter().flat_map(|id| [*id, " "]).collect();
+    println!("   -> String     : {}", text.trim_end());
 
     let regions: HashSet<&str> = trades.iter().map(|g| g.region.as_str()).collect();
     let mut sorted_regions: Vec<&&str> = regions.iter().collect();
@@ -1042,7 +1043,7 @@ fn correct_example() {
    Cho `let raw = ["12", "abc", "7", "", "30", "-5"];`. Hãy dùng **một** đường ống duy nhất để: bỏ qua mọi dòng không phân tích được thành `u32`, rồi tính tổng các số hợp lệ. Không dùng vòng lặp `for`, không dùng `unwrap()`.
 
 5. **Bài tập 5 (Traversable — "được ăn cả, ngã về không")**:  
-   Vẫn dữ liệu trên, nhưng lần này yêu cầu ngược lại: nếu **mọi** dòng đều hợp lệ thì trả về `Ok(Vec<u32>)`; chỉ cần **một** dòng hỏng là trả về `Err`. Viết bằng đúng một lời gọi `.collect()`.
+   Với dữ liệu tương tự (một mảng có dòng hỏng, ví dụ `["12", "abc", "7"]`, và một mảng toàn dòng tốt, ví dụ `["12", "7", "30"]`), lần này yêu cầu ngược lại: nếu **mọi** dòng đều hợp lệ thì trả về `Ok(Vec<u32>)`; chỉ cần **một** dòng hỏng là trả về `Err`. Viết bằng đúng một lời gọi `.collect()`.
 
 ---
 
