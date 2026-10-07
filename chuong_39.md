@@ -47,7 +47,7 @@ Trong chương này, chúng ta sẽ làm sáng tỏ:
 ```
 
 ### 1. Phòng biến áp cao thế và Ổ cắm an toàn (Unsafe vs Safe Wrapper)
-- **Safe Rust giống như hệ thống điện dân dụng trong nhà bạn**: Tất cả dây dẫn đều được bọc nhựa cách điện, ổ cắm có nắp che an toàn. Trẻ em có thể cắm sạc điện thoại thoại mái mà không thể bị điện giật.
+- **Safe Rust giống như hệ thống điện dân dụng trong nhà bạn**: Tất cả dây dẫn đều được bọc nhựa cách điện, ổ cắm có nắp che an toàn. Trẻ em có thể cắm sạc điện thoại thoải mái mà không thể bị điện giật.
 - **Unsafe Rust giống như phòng trạm biến áp cao thế `220,000 Volts`**: Để cấp điện cho cả thành phố, bắt buộc phải có những thanh đồng trần mang dòng điện cực lớn.
 - Kỹ sư điện bước vào phòng biến áp phải mặc đồ bảo hộ chuyên dụng (từ khóa `unsafe`). Họ phải tự chịu trách nhiệm 100% về mạng sống của mình.
 - Sau khi đấu nối xong, họ đóng cửa phòng trạm, khóa van bảo vệ lại. Bên ngoài chỉ để lộ ra một chiếc công tắc bật/tắt đơn giản (**Safe Abstraction Wrapper**). Người dân chỉ cần dùng công tắc đó một cách an toàn mà không cần biết bên trong chứa dây điện cao thế nguy hiểm ra sao!
@@ -114,7 +114,6 @@ Dưới đây là mã nguồn Rust hoàn chỉnh thể hiện trọn vẹn tri�
 
 ```rust
 use std::alloc::{Layout, alloc, dealloc};
-use std::ffi::CStr;
 use std::os::raw::c_char;
 
 /// Cấu trúc dữ liệu tương thích 100% với định dạng bộ nhớ C ABI
@@ -406,7 +405,7 @@ fn swap_works_even_for_drop_types() {
 }
 ```
 
-**Vì sao `read`/`write` chứ không phải phép gán thường:** `*a = *b` sẽ **giải phóng** giá trị cũ ở `*a` rồi *sao chép* `*b` — với `String` thì bạn có hai `String` cùng trỏ vào một vùng heap, và cả hai đều sẽ giải phóng nó khi hết phạm vi. Đúng lỗi giải phóng hai lần ở Chương 38.
+**Vì sao `read`/`write` chứ không phải phép gán thường:** với `T` không phải `Copy` (như ở đây, `T` generic), `*a = *b` thậm chí **không biên dịch được**: `error[E0507]: cannot move out of *b which is behind a raw pointer`. Cái bẫy thật nằm ở chỗ "lách" lỗi đó bằng `*a = std::ptr::read(b);` — phép gán `=` sẽ **chạy `Drop` cho giá trị cũ ở `*a`**, trong khi `tmp` vẫn đang sở hữu chính giá trị đó. Với `String`, vùng heap cũ bị giải phóng ngay tại phép gán, rồi bị giải phóng lần nữa khi `tmp` được ghi vào `b` và hết phạm vi. Đúng lỗi giải phóng hai lần ở Chương 38 — nên phải dùng `std::ptr::write`, vốn ghi đè **không** gọi `Drop`.
 
 **Điều đáng học nhất là hình dạng của vỏ bọc.** `unsafe fn` đặt gánh nặng chứng minh lên người gọi; `safe_swap` **trả gánh nặng đó về cho hệ thống kiểu**: `&mut T` bảo đảm cả bốn điều kiện, trong đó "không trùng nhau" là thứ Rust bảo đảm mà C không thể. Đây là mẫu thiết kế chuẩn — `unsafe` không biến mất, nó bị **nhốt vào một chỗ nhỏ đã được chứng minh**.
 </details>

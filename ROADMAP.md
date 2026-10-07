@@ -101,7 +101,7 @@ Nguồn: <https://www.openalgo.in/learn> (kiểm kê ngày 05/09/2026). Yêu c�
 | Statistical Arbitrage | 17 | Chuyên sâu | ✅ **Chương 84** — tính dừng, đồng liên kết, Kalman, trung tính thị trường |
 | Quantitative Trading | 78 | Chuyên sâu | ◐ **Chương 84 + 74–78 + 85** — vi cấu trúc, công nghệ HFT và thực thi nằm ở nhóm HFT; thời gian chuỗi, phái sinh, nghiên cứu alpha, kiểm định trung thực ở ch84 |
 | Algo Trading with Python | 32 | Trung cấp | ◐ **Chương 69 + 77 + 85** — chỉ báo, tín hiệu, lệnh, quản trị rủi ro được cài lại bằng Rust; phần SDK riêng của OpenAlgo không chuyển |
-| Futures Trading | 27 | Cơ bản | ◐ **Một phần** — ký quỹ, đòn bẩy, định cỡ vị thế nằm trong ch77; phần đặc thù thị trường Ấn Độ không chuyển |
+| Futures Trading | 27 | Cơ bản | ◐ **Một phần** — định cỡ vị thế và hạn mức nằm trong ch77; ký quỹ, đòn bẩy và phần đặc thù thị trường Ấn Độ không chuyển |
 | Risk Management | 33 | Cơ bản | ◐ **Chương 77 + 84** — định cỡ, dừng lỗ, hạn mức, VaR/ES, sụt giảm |
 | Python for Traders | 40 | Cơ bản | ✗ **Không chuyển** — đây là khoá dạy chính ngôn ngữ Python. Bản tương ứng cho Rust là chặng I (chương 01–30) |
 | Stock Market Basics | 18 | Cơ bản | ✗ **Không chuyển** — kiến thức thị trường, không có phần lập trình được |
@@ -117,7 +117,7 @@ Nguồn: <https://www.openalgo.in/learn> (kiểm kê ngày 05/09/2026). Yêu c�
 
 | Nguồn | Quy mô | Trạng thái |
 |---|---|---|
-| [leetcpu.com](https://www.leetcpu.com/) | 22 bài, 4 nhóm, chạy trên ChampSim | ✅ **Chương 80** — cả 22 bài được ánh xạ sang kỹ thuật tương ứng, xem bảng trong chương |
+| [leetcpu.com](https://www.leetcpu.com/) | 22 bài, 5 nhóm (4 nhóm kỹ thuật + 1 bài chẩn đoán), chạy trên ChampSim | ✅ **Chương 80** — cả 22 bài được ánh xạ sang kỹ thuật tương ứng, xem bảng trong chương |
 | [leetgpu.com](https://leetgpu.com/) | 99 thử thách (19 Dễ / 65 Vừa / 15 Khó) | ✅ **Chương 81** — phân loại 11 nhóm chủ đề, quy về 4 kỹ thuật gốc |
 
 Cả hai trang đều là ứng dụng một trang; dữ liệu được thu thập bằng cách kết xuất trong trình duyệt thật rồi đọc DOM. Nội dung chi tiết từng bài của LeetCPU nằm sau đăng nhập và **không** được truy cập — chúng ta dùng danh sách bài công khai làm phân loại, rồi tự cài kỹ thuật bằng Rust.

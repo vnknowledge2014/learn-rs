@@ -376,15 +376,28 @@ Công thức thẳng: `F = C * 1.8 + 32`. Định dạng 1 chữ số thập ph�
 <summary><b>Bài tập 3 — Lời giải</b></summary>
 
 ```rust
+use std::io;
+
 // Đổi độ C sang độ F. Dùng f64 cho đủ chính xác.
 fn celsius_to_fahrenheit(c: f64) -> f64 {
     c * 1.8 + 32.0
 }
 
 fn main() {
-    let c = 37.0;
-    // {:.1} = định dạng đúng 1 chữ số sau dấu phẩy.
-    println!("{c:.1}°C = {:.1}°F", celsius_to_fahrenheit(c));
+    println!("Nhập nhiệt độ (độ C):");
+
+    // Chuỗi trên Heap để hứng dòng người dùng gõ vào.
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Lỗi: Không thể đọc dữ liệu từ bàn phím!");
+
+    // .trim() bỏ ký tự xuống dòng \n trước khi .parse() — quên trim là parse hỏng!
+    match input.trim().parse::<f64>() {
+        // {:.1} = định dạng đúng 1 chữ số sau dấu phẩy.
+        Ok(c) => println!("{c:.1}°C = {:.1}°F", celsius_to_fahrenheit(c)),
+        Err(_) => println!("'{}' không phải là một con số hợp lệ.", input.trim()),
+    }
 }
 
 #[test]

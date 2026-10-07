@@ -1,4 +1,4 @@
-# Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (OpenAlgo II)
+# Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (Options & Greeks — OpenAlgo II)
 
 ## Giới thiệu & Mục tiêu học tập
 

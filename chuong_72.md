@@ -1,4 +1,4 @@
-# Chương 72: Hợp đồng thông minh với Rust — CosmWasm & Solana
+# Chương 72: Hợp đồng thông minh với Rust — CosmWasm & Solana (Smart Contracts in Rust)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -14,7 +14,7 @@ Rust là ngôn ngữ chính của hai hệ sinh thái hợp đồng thông minh 
 
 Mục tiêu: hiểu cả hai mô hình đủ sâu để **đọc được lỗ hổng**, chứ không chỉ viết được hợp đồng chạy.
 
-> **Lưu ý về mã nguồn.** Crate `ch72` chỉ chứa **lõi thuần tuý** — không phụ thuộc `cosmwasm-std` hay `solana-program`, để `cargo test --workspace` chạy được offline. Các kiểu `Deps`, `Env`, `MessageInfo`, `AccountInfo` được mô phỏng đúng ngữ nghĩa. Mã dùng SDK thật nằm trong phần lý thuyết bên dưới.
+> **Lưu ý về mã nguồn.** Crate `ch72` chỉ chứa **lõi thuần tuý** — không phụ thuộc `cosmwasm-std` hay `solana-program`, để `cargo test --workspace` chạy được offline. Các kiểu `Env`, `MessageInfo` và `Account` (thay cho `AccountInfo` của Solana) được mô phỏng đúng ngữ nghĩa; `Deps`/`DepsMut` được thay bằng `&Store`/`&mut Store`. Mã dùng SDK thật nằm trong phần lý thuyết bên dưới.
 
 ---
 

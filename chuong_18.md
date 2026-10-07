@@ -228,7 +228,8 @@ Kiểm thử theo tính chất kiểm tra **một đẳng thức đúng với m�
 ```rust
 // Với MỌI a, b, c: (a ⊕ b) ⊕ c == a ⊕ (b ⊕ c)
 for (a, b, c) in sample_triples {
-    assert_eq!(a.compose(b).compose(c), a.compose(b.compose(c)));
+    // compose nhận self theo giá trị, nên vế trái phải dùng bản sao (clone)
+    assert_eq!(a.clone().compose(b.clone()).compose(c.clone()), a.compose(b.compose(c)));
 }
 ```
 
@@ -932,7 +933,7 @@ Thử ba số `0, 0, 12`. Tính `(a⊕b)⊕c` rồi `a⊕(b⊕c)` và so sánh. 
 
 `6 ≠ 3` → luật kết hợp bị phá vỡ, nên `NaiveMean` **không** phải nửa nhóm. Nếu bạn đem nó chạy song song, kết quả sẽ thay đổi tùy vào cách chia dữ liệu — một lỗi cực kỳ khó truy vết.
 
-**Thiết kế đúng**: đừng gộp trực tiếp giá trị trung bình. Hãy gộp cặp *(tổng, số lượng)* — vốn là một vị nhóm tích hoàn hảo — rồi mới chia ở **bước cuối cùng**:
+**Thiết kế đúng**: đừng gộp trực tiếp giá trị trung bình. Hãy gộp cặp *(tổng, số lượng)* — một vị nhóm tích (chính xác tuyệt đối với tổng số nguyên; với `f64` phép cộng chỉ kết hợp *xấp xỉ* do sai số làm tròn, nên kết quả song song có thể lệch ở vài chữ số cuối) — rồi mới chia ở **bước cuối cùng**:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]

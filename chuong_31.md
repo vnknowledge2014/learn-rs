@@ -143,9 +143,16 @@ impl UserRecord {
     /// CHUYỂN ĐỔI THÀNH BYTE (Serialization)
     /// Cấu trúc nhị phân đóng gói:
     /// [ID: 4B] + [Tuổi: 1B] + [Độ dài tên: 2B] + [Dữ liệu chuỗi tên: NB]
-    pub fn serialize(&self) -> Vec<u8> {
+    /// Tên dài quá 65.535 byte không vừa trường độ dài `u16`: phải TỪ CHỐI,
+    /// tuyệt đối không ép kiểu `as u16` (sẽ âm thầm cắt cụt và làm hỏng tệp).
+    pub fn serialize(&self) -> io::Result<Vec<u8>> {
         let name_bytes = self.full_name.as_bytes();
-        let name_len = name_bytes.len() as u16;
+        let name_len = u16::try_from(name_bytes.len()).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Tên dài quá 65.535 byte, không vừa trường độ dài u16",
+            )
+        })?;
 
         // Ước tính trước kích thước để cấp phát bộ nhớ một lần duy nhất
         let mut byte_buffer = Vec::with_capacity(4 + 1 + 2 + name_bytes.len());
@@ -159,7 +166,7 @@ impl UserRecord {
         // 4. Ghi Chuỗi byte nội dung tên UTF-8
         byte_buffer.extend_from_slice(name_bytes);
 
-        byte_buffer
+        Ok(byte_buffer)
     }
 
     /// GIẢI MÃ TỪ BYTE (Deserialization)
@@ -225,7 +232,7 @@ impl BinaryStore {
     pub fn append_record(&mut self, record: &UserRecord) -> io::Result<u64> {
         // Nhảy đến cuối tệp để ghi nối đuôi tuần tự (Sequential Append)
         let offset = self.file.seek(SeekFrom::End(0))?;
-        let bytes_to_write = record.serialize();
+        let bytes_to_write = record.serialize()?;
         self.file.write_all(&bytes_to_write)?;
         // write_all chỉ chép dữ liệu vào bộ nhớ đệm trang (page cache) của hệ điều hành.
         // `File::flush()` KHÔNG giúp gì (File không có bộ đệm phía người dùng);
@@ -328,6 +335,28 @@ fn main() -> io::Result<()> {
     println!("               HOÀN TẤT THỰC NGHIỆM CHƯƠNG 31               ");
     println!("============================================================");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialize_roundtrip() {
+        let r = UserRecord::new(7, 42, "Phạm Thị Dung");
+        let bytes = r.serialize().unwrap();
+        let (back, used) = UserRecord::deserialize(&bytes).unwrap();
+        assert_eq!(back, r);
+        assert_eq!(used, bytes.len());
+    }
+
+    #[test]
+    fn oversized_name_is_rejected_not_truncated() {
+        // 65.540 byte: nếu ép `as u16` sẽ thành 4 và tệp bị hỏng âm thầm
+        let r = UserRecord::new(1, 1, &"a".repeat(65_540));
+        let err = r.serialize().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
 }
 ```
 

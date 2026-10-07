@@ -1,4 +1,4 @@
-# Chương 78: Thị trường blockchain — AMM, MEV & Chênh lệch giá CEX–DEX
+# Chương 78: Thị trường blockchain — AMM, MEV & Chênh lệch giá CEX–DEX (Blockchain Market Microstructure)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -401,7 +401,7 @@ pub fn find_arb(pool: &Pool, cex_price: f64, max_capital: Quantity) -> ArbOpport
 
     let profit_at = |y_in: Quantity| -> i128 {
         match pool.try_swap_y_for_x(y_in) {
-            // Nhận `ra_x` đơn vị X, bán trên CEX được ra_x · gia_cex đơn vị Y
+            // Nhận `x_out` đơn vị X, bán trên CEX được x_out · cex_price đơn vị Y
             Ok(x_out) => (x_out as f64 * cex_price) as i128 - y_in as i128,
             Err(_) => i128::MIN,
         }

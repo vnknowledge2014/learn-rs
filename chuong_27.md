@@ -119,12 +119,12 @@ Câu trả lời là **không**, nhờ kỹ thuật **chia sẻ cấu trúc (str
    Bản gốc            Bản mới (sau khi sửa D)
       A                     A'
      / \                   / \
-    B   C      →          B   C'      ← chỉ A và C được tạo mới
+    B   C      →          B   C'      ← A, C và D được tạo mới (A', C', D')
        / \                   / \
       D   E                 D'  E     ← B và E DÙNG CHUNG, không sao chép
 ```
 
-Với một cây cân bằng có một triệu nút, sửa một nút chỉ tốn khoảng **20 nút mới** thay vì một triệu. Cả hai phiên bản cùng tồn tại, cùng bất biến, cùng an toàn để đọc từ nhiều luồng.
+Với một cây cân bằng có một triệu nút, sửa một nút chỉ tốn khoảng **20 nút mới** thay vì một triệu. Cả hai phiên bản cùng tồn tại và cùng bất biến; nếu dùng `Arc` thay cho `Rc` (vốn không `Send`/`Sync`) thì chúng còn an toàn để đọc đồng thời từ nhiều luồng.
 
 Đó chính là nguyên lý của các **cấu trúc dữ liệu bền vững (persistent data structures)**. Trong hệ sinh thái Rust, crate `im` và `rpds` cung cấp sẵn `Vector`, `HashMap`, `HashSet` bất biến hoạt động theo cách này.
 
@@ -345,10 +345,6 @@ fn take_correct(head: &mut Option<Box<NodeDemo>>) {
     }
 }
 ```
-
----
-
-
 
 ---
 

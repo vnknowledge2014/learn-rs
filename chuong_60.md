@@ -54,7 +54,7 @@ Mục tiêu học tập:
 ### 1. Quy hoạch động — hai điều kiện cần
 
 Một bài toán giải được bằng QHĐ khi có **cả hai** đặc điểm:
-1. **Bài toán con chồng lặp (overlapping subproblems)**: cùng một bài toán con được tính lại nhiều lần. Fibonacci ngây thơ tính `fib(30)` hàng triệu lần.
+1. **Bài toán con chồng lặp (overlapping subproblems)**: cùng một bài toán con được tính lại nhiều lần. Tính `fib(30)` bằng đệ quy ngây thơ tốn khoảng 2,7 triệu lời gọi — riêng `fib(2)` bị tính lại hơn nửa triệu lần.
 2. **Cấu trúc con tối ưu (optimal substructure)**: lời giải tối ưu của bài lớn dựng được từ lời giải tối ưu của bài con.
 
 Hai cách cài:

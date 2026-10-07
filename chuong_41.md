@@ -52,7 +52,7 @@ Mục tiêu học tập của bạn:
 - Bất kể một người mang quốc tịch nào, trang bìa cuốn hộ chiếu luôn có con dấu biểu trưng độc nhất không thể làm giả.
 - Trong thế giới nhị phân, mọi định dạng tệp tin đều bắt đầu bằng một chuỗi **Magic Bytes** cố định ở offset 0:
   - Nếu bạn đổi tên tệp mã độc từ `virus.exe` thành `hinh_anh_dep.jpg`, người dùng Windows có thể bị lừa.
-  - Nhưng một bộ phân tích nhị phân (Binary Parser) viết bằng Rust sẽ đọc ngay 2 byte đầu tiên: Nếu thấy ký tự `MZ` (`0x4D 0x5A` - tên viết tắt của kỹ sư Mark Zbikowski, tác giả kiến trúc MS-DOS), chương trình sẽ gióng chuông báo động ngay: *"Đây là tệp thực thi Windows trá hình, không phải ảnh JPEG!"*.
+  - Nhưng một bộ phân tích nhị phân (Binary Parser) viết bằng Rust sẽ đọc ngay 2 byte đầu tiên: Nếu thấy ký tự `MZ` (`0x4D 0x5A` - tên viết tắt của kỹ sư MS-DOS Mark Zbikowski, người thiết kế định dạng tệp EXE), chương trình sẽ gióng chuông báo động ngay: *"Đây là tệp thực thi Windows trá hình, không phải ảnh JPEG!"*.
 
 ---
 

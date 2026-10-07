@@ -468,4 +468,15 @@ Toán tử `?` nói: "nếu `Ok` thì lấy giá trị ra đi tiếp; nếu `Err
 **b) Khi `main` trả về `Err(...)`:**
 
 Rust in nội dung lỗi (qua `Debug`) ra luồng lỗi chuẩn (stderr), rồi tiến trình **thoát với mã khác 0** (thường là `1`). Đây là điều quan trọng với kịch bản shell và công cụ tự động hóa: mã thoát khác 0 là quy ước phổ quát báo "chương trình thất bại". Nhờ vậy `./my_program && echo OK` sẽ *không* in OK khi `main` trả `Err` — hệ sinh thái Unix hiểu ngay chương trình đã hỏng, mà bạn không phải tự gọi `std::process::exit`.
+
+**So sánh với `panic!`:**
+
+| | `main` trả `Err(e)` | `panic!` |
+|---|---|---|
+| Thông báo trên stderr | `Error: <e in theo Debug>` | `thread 'main' panicked at src/main.rs:…` kèm thông điệp panic |
+| Dọn dẹp tài nguyên | Hàm trả về bình thường, mọi biến được `Drop` theo thứ tự | Xổ cuộn ngăn xếp (stack unwinding), gọi `Drop` trên đường đi |
+| Mã thoát | `1` | `101` |
+| Ý nghĩa | Lỗi **dự kiến**, đã được xử lý có chủ đích | Lỗi **ngoài dự kiến** — một bug hoặc bất biến bị phá vỡ |
+
+Nói gọn: `Err` từ `main` là "chương trình thất bại một cách có kiểm soát", còn `panic!` là "chương trình gặp điều không bao giờ được phép xảy ra".
 </details>

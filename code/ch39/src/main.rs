@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 use std::alloc::{Layout, alloc, dealloc};
-use std::ffi::CStr;
 use std::os::raw::c_char;
 
 /// Cấu trúc dữ liệu tương thích 100% với định dạng bộ nhớ C ABI

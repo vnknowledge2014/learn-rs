@@ -99,7 +99,7 @@ impl CacheStats {
 pub struct CacheSim {
     pub num_sets: usize,
     pub ways: usize,
-    /// tập → danh sách (thẻ, dấu thời gian dùng gần nhất), dài tối đa `positive_count`
+    /// tập → danh sách (thẻ, dấu thời gian dùng gần nhất), dài tối đa `ways`
     sets: Vec<Vec<(u64, u64)>>,
     seen: std::collections::HashSet<u64>,
     clock: u64,
@@ -107,7 +107,7 @@ pub struct CacheSim {
 }
 
 impl CacheSim {
-    /// `kich_thuoc_byte` là tổng dung lượng; `positive_count` là số đường mỗi tập.
+    /// `size_bytes` là tổng dung lượng; `ways` là số đường mỗi tập.
     pub fn new(size_bytes: usize, ways: usize) -> Self {
         let num_lines = size_bytes / CACHE_LINE_BYTES;
         let num_sets = (num_lines / ways).max(1);
@@ -281,7 +281,7 @@ impl BranchPredictor {
         }
     }
 
-    /// `id_nhanh` là vị trí lệnh nhánh; `actual` là kết quả thật.
+    /// `branch_id` là vị trí lệnh nhánh; `actual` là kết quả thật.
     pub fn predict(&mut self, branch_id: usize, actual: bool) -> bool {
         self.branch_count += 1;
         let state = self.state.entry(branch_id).or_insert(1);
@@ -348,7 +348,7 @@ pub struct IlpAnalysis {
     /// Chuỗi phụ thuộc dài nhất — cận dưới của số chu kỳ, bất kể CPU rộng bao nhiêu.
     pub critical_path: u64,
     pub ilp: f64,
-    /// Số chu kỳ ước tính trên CPU rộng `do_rong` lệnh/chu kỳ.
+    /// Số chu kỳ ước tính trên CPU rộng `width` lệnh/chu kỳ.
     pub estimated_cycles: u64,
 }
 

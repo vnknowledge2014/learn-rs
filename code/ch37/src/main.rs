@@ -61,7 +61,7 @@ fn main() {
         text_addr
     );
 
-    // 2. Phân đoạn Dữ liệu (.data, .bss     // 2. Phân đoạn Dữ liệu (.data & .rodata) .rodata)
+    // 2. Phân đoạn Dữ liệu (.data, .bss & .rodata)
     let data_addr = &GLOBAL_DATA_VAR as *const AtomicI32 as usize;
     let bss_addr = &GLOBAL_BSS_VAR as *const AtomicU64 as usize;
     let rodata_addr = READ_ONLY_STRING.as_ptr() as usize;

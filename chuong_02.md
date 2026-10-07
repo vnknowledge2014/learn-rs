@@ -78,11 +78,18 @@ Cargo sẽ tự động kiến tạo một không gian làm việc chuẩn mực
 
 ```
 first_project/
-├── Cargo.toml          <-- Tệp cấu hình dự án (Metadata & Dependencies)
-├── Cargo.lock          <-- Tệp ghi chép phiên bản chính xác của các thư viện phụ thuộc
+├── .git/               <-- Kho Git mới được khởi tạo sẵn
 ├── .gitignore          <-- Tệp quy ước các thư mục không tải lên Git
+├── Cargo.toml          <-- Tệp cấu hình dự án (Metadata & Dependencies)
 └── src/
     └── main.rs         <-- Mã nguồn chính của chương trình
+```
+
+Sau lần `cargo build` (hoặc `cargo check`, `cargo run`) đầu tiên, Cargo tạo thêm:
+
+```
+├── Cargo.lock          <-- Tệp ghi chép phiên bản chính xác của các thư viện phụ thuộc
+└── target/             <-- Thư mục chứa kết quả biên dịch
 ```
 
 - **`src/main.rs`**: Điểm khởi đầu của chương trình. Mọi ứng dụng Rust dạng thực thi đều bắt đầu chạy từ hàm có tên là `fn main()`.

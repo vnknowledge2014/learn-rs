@@ -1,4 +1,4 @@
-# Chương 76: Phục dựng phiên giao dịch — Ghi phiên, Đồng hồ ảo & Phát lại
+# Chương 76: Phục dựng phiên giao dịch — Ghi phiên, Đồng hồ ảo & Phát lại (Session Capture & Replay)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -358,7 +358,7 @@ pub enum ReplaySpeed {
 }
 
 impl ReplaySpeed {
-    /// Thời gian THỰC (nano-giây) phải chờ, ứng với `khoang_cach_ns` trong dữ liệu.
+    /// Thời gian THỰC (nano-giây) phải chờ, ứng với `gap_ns` trong dữ liệu.
     pub fn wall_delay(&self, gap_ns: u64) -> u64 {
         match self {
             ReplaySpeed::RealTime => gap_ns,

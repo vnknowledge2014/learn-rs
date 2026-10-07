@@ -51,7 +51,7 @@ pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
     };
     let socket_addr = SocketAddr::new(ip_addr, port);
     // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt.
-    // Kết nối thành công thì _stream tự động đóng khi ra khỏi phạm vi (RAII).
+    // Kết nối thành công thì TcpStream tạm thời bị drop ngay, socket tự đóng (RAII).
     TcpStream::connect_timeout(&socket_addr, timeout).is_ok()
 }
 

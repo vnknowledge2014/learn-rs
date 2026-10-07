@@ -163,7 +163,7 @@ Mã nguồn giờ đây chảy thẳng từ trên xuống dưới như một dò
 
 Trước khi đi tiếp, hãy ghi nhớ một điều sẽ được khai triển đầy đủ ở **Chương 19**:
 
-> Phương thức `and_then` mà bạn vừa dùng để "phá kim tự tháp tử thần" có một cái tên chính thức trong toàn bộ thế giới lập trình hàm: **`bind`**. Và `map` cộng `bind` chính là định nghĩa của một **Đơn nguyên (Monad)**.
+> Phương thức `and_then` mà bạn vừa dùng để "phá kim tự tháp tử thần" có một cái tên chính thức trong toàn bộ thế giới lập trình hàm: **`bind`**. Và `bind` cùng với `pure` (đưa một giá trị trần vào hộp — trong Rust là `Some`/`Ok`), thỏa mãn các luật đơn nguyên, chính là định nghĩa của một **Đơn nguyên (Monad)**; `map` suy ra được từ hai phép này.
 
 Quy tắc phân biệt chỉ gồm một câu:
 
@@ -202,7 +202,7 @@ Vấn đề thực tế: các hàm bạn có trong tay **không cùng một hìn
 | **Hàm ghi tàu** (switch) | `A -> Result<B, E>` | `validate_email` | **`.and_then(f)`** — nối thẳng, đây là dạng chuẩn |
 | **Hàm một ray** (one-track) | `A -> B` | `s.to_uppercase()` | **`.map(f)`** — nâng lên ray thành công |
 | **Hàm cụt** (dead-end) | `&A -> ()` | `log_order(&order)` | **`.inspect(f)`** — chạy tác dụng phụ rồi trả nguyên giá trị |
-| **Hàm có thể panic** | `A -> B` (nhưng sập được) | thư viện C qua FFI | `std::panic::catch_unwind` rồi `.map_err(...)` |
+| **Hàm có thể panic** | `A -> B` (nhưng sập được) | hàm Rust bên thứ ba có `unwrap()`/`panic!` | `std::panic::catch_unwind` rồi `.map_err(...)` |
 
 Và hai công cụ nữa để làm việc với **ray thất bại**:
 - **`.map_err(f)`** — đổi *kiểu* lỗi khi đi từ tầng dưới lên tầng trên (đây là "chân thứ hai" của Bifunctor, Chương 19).
@@ -551,7 +551,7 @@ fn correct_closure(condition: bool, step: i32) {
    }
 
    fn main() {
-       let words = ["Rust", "an toàn", "nhanh", "đồng thời", "bộ nhớ"];
+       let words = ["Rust", "an toàn", "tiếng", "đồng thời", "bộ nhớ"];
 
        // Đếm theo SỐ CHỮ CÁI, không phải số byte
        let long = count_matching(&words, |s: &&str| s.chars().count() > 5);
@@ -565,7 +565,7 @@ fn correct_closure(condition: bool, step: i32) {
    }
    ```
 
-   Thử dùng `.len()` thay cho `.chars().count()` và bạn sẽ nhận kết quả `4` — sai, vì `"nhanh"` chỉ có 5 chữ nhưng `"bộ nhớ"` thì `.len()` đếm ra tận 9 byte. Đây là lỗi kinh điển khi xử lý tiếng Việt.
+   Thử dùng `.len()` thay cho `.chars().count()` và bạn sẽ nhận kết quả `4` — sai, vì `"tiếng"` chỉ có 5 chữ nhưng `.len()` đếm ra tận 7 byte (chữ `'ế'` chiếm 3 byte), nên nó bị tính nhầm là "dài hơn 5". Đây là lỗi kinh điển khi xử lý tiếng Việt.
    </details>
 
 2. **Bài tập 2 (Xây dựng Bộ kết hợp tính toán an toàn)**:  

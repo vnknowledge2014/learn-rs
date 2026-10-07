@@ -91,7 +91,7 @@ Chữ ký hàm (function signature) là **hợp đồng đầy đủ** của m�
 | Chữ ký | Hàm này có thể làm được gì? |
 |---|---|
 | `fn f<T>(x: T) -> T` | **Chỉ có đúng một cách cài đặt** (nếu bỏ qua panic hay vòng lặp vô tận): trả về chính `x`! Vì `T` là kiểu tùy ý, hàm không biết gì về nó nên không thể tự tạo ra một giá trị `T` mới. Đây chính là hàm `identity`. |
-| `fn f<T>(x: T) -> usize` | Không thể phụ thuộc vào *nội dung* của `x` — chỉ có thể trả về một hằng số. |
+| `fn f<T>(x: T) -> usize` | Không thể phụ thuộc vào *nội dung* của `x` — chỉ có thể trả về một hằng số (hoặc một giá trị chỉ phụ thuộc vào *kiểu* `T`, như `std::mem::size_of::<T>()`). |
 | `fn f(x: &str) -> String` | Có thể cắt, nối, viết hoa... vô số khả năng, vì `&str` và `String` là kiểu cụ thể. |
 | `fn f(x: i32) -> Result<u32, NegativeError>` | Có thể **thất bại**. Chữ ký đã tự thú nhận điều đó. |
 

@@ -542,7 +542,7 @@ fn app() -> Router {
 
 ### Bài tập rèn luyện tự giải:
 1. **Bài tập 1 (Bổ sung Trường Timestamp và Checksum vào Protobuf)**:  
-   Mở rộng `ProtobufWireCodec` thêm trường số 5 chứa dấu mốc thời gian `created_at: u64` và mã kiểm tra tính toàn vẹn CRC32. Cập nhật hàm giải mã để tự động kiểm tra xem gói tin có bị can thiệp trên đường truyền hay không.
+   Mở rộng `ProtobufWireCodec` thêm trường số 5 chứa dấu mốc thời gian `created_at: u64` và mã kiểm tra tính toàn vẹn CRC32. Cập nhật hàm giải mã để tự động kiểm tra xem gói tin có bị hỏng trên đường truyền hay không.
 2. **Bài tập 2 (Xây dựng Middleware Giới hạn Tần suất - Rate-Limiting Tower Layer)**:  
    Thiết kế một lớp trung gian Middleware đếm số lượng yêu cầu của một Client IP. Nếu client gửi quá 100 yêu cầu trong vòng 1 giây, lập tức trả về mã lỗi HTTP `429 Too Many Requests`.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao gRPC chưa thay thế hoàn toàn REST?)**:  
@@ -576,6 +576,7 @@ fn encode_varint(mut n: u64, out: &mut Vec<u8>) {
 fn decode_varint(data: &[u8], pos: &mut usize) -> Option<u64> {
     let (mut result, mut shift) = (0u64, 0);
     while *pos < data.len() {
+        if shift >= 64 { return None; } // varint quá dài: gói hỏng, tránh tràn phép dịch
         let byte = data[*pos]; *pos += 1;
         result |= ((byte & 0x7F) as u64) << shift;
         if byte & 0x80 == 0 { return Some(result); } // hết chuỗi varint
@@ -584,7 +585,7 @@ fn decode_varint(data: &[u8], pos: &mut usize) -> Option<u64> {
     None
 }
 
-/// CRC32 (đa thức IEEE) để kiểm gói có bị sửa trên đường truyền không.
+/// CRC32 (đa thức IEEE) để kiểm gói có bị hỏng trên đường truyền không.
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
     for &b in data {
@@ -608,13 +609,13 @@ fn encode_with_timestamp_crc(created_at: u64) -> Vec<u8> {
     packet
 }
 
-/// Giải mã + KIỂM CRC: Err nếu gói bị can thiệp trên đường truyền.
+/// Giải mã + KIỂM CRC: Err nếu gói bị hỏng trên đường truyền.
 fn decode_and_verify(packet: &[u8]) -> Result<u64, &'static str> {
     if packet.len() < 4 { return Err("gói quá ngắn"); }
     let (body, crc_bytes) = packet.split_at(packet.len() - 4);
     let stored = u32::from_le_bytes(crc_bytes.try_into().unwrap());
     if crc32(body) != stored {
-        return Err("CRC không khớp — gói tin đã bị sửa trên đường truyền!");
+        return Err("CRC không khớp — gói tin đã bị hỏng trên đường truyền!");
     }
     let mut pos = 0;
     let _tag = decode_varint(body, &mut pos).ok_or("thiếu thẻ")?;

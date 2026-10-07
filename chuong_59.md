@@ -597,7 +597,7 @@ Ba thành phần này thường là *dịch vụ hạ tầng* bạn cấu hình 
 
 - **DNS** (Domain Name System): "danh bạ" của Internet, dịch `congty.vn` → địa chỉ IP. Một mẹo mở rộng: DNS có thể trả về *nhiều* IP (DNS round-robin) — một tầng cân bằng tải thô sơ ngay trước khi request tới máy chủ.
 - **CDN** (Content Delivery Network): đặt bản sao nội dung tĩnh (ảnh, JS, CSS) ở hàng trăm điểm gần người dùng. Về bản chất đây là **cache-aside phân tán theo địa lý** (Chương 52) — giảm độ trễ và gánh nặng cho máy chủ gốc.
-- **Reverse Proxy** (nginx, Caddy): đứng trước các máy chủ ứng dụng, làm cửa ngõ duy nhất. Nó thường kiêm luôn: cân bằng tải (mục 1), kết thúc TLS, giới hạn tần suất (mục 5), và bộ đệm. Trong Rust, bạn có thể tự viết reverse proxy bằng `tokio` + `hyper` — nhưng thường dùng công cụ có sẵn.
+- **Reverse Proxy** (nginx, Caddy): đứng trước các máy chủ ứng dụng, làm cửa ngõ duy nhất. Nó thường kiêm luôn: cân bằng tải (mục 2), kết thúc TLS, giới hạn tần suất (mục 5), và bộ đệm. Trong Rust, bạn có thể tự viết reverse proxy bằng `tokio` + `hyper` — nhưng thường dùng công cụ có sẵn.
 
 > **Nguyên tắc thiết kế**: đẩy càng nhiều việc ra *rìa* (edge) càng tốt. CDN xử lý nội dung tĩnh, reverse proxy xử lý TLS và rate limit, để máy chủ ứng dụng chỉ tập trung vào logic nghiệp vụ — đúng tinh thần "lõi thuần túy, vỏ mệnh lệnh" ở Chương 20, nhưng ở quy mô hạ tầng.
 
@@ -694,7 +694,7 @@ Token bucket cho phép bùng nổ. Đôi khi ta muốn giới hạn *chặt* "t�
 <details>
 <summary><b>Gợi ý</b></summary>
 
-Dùng `VecDeque<u64>` chứa dấu thời gian. Mỗi yêu cầu ở thời điểm `t`: loại mọi dấu `< t - 60`, rồi nếu số còn lại `< N` thì cho và ghi `t`. Đừng gọi `Instant::now()` bên trong — nhận `t` làm tham số để test được (Chương 55, bài tập 2).
+Dùng `VecDeque<u64>` chứa dấu thời gian. Mỗi yêu cầu ở thời điểm `t`: loại mọi dấu đã ra khỏi cửa sổ (`oldest + 60 <= t` — viết dạng cộng để không tràn `u64` khi `t < 60`), rồi nếu số còn lại `< N` thì cho và ghi `t`. Đừng gọi `Instant::now()` bên trong — nhận `t` làm tham số để test được (Chương 55, bài tập 2).
 </details>
 
 <details>

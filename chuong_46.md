@@ -303,10 +303,10 @@ Dưới đây là các lỗi biên dịch điển hình nhất về quyền sở
 
 | Mã lỗi `rustc` | Nguyên nhân sâu xa của Trọng tài Rust | Đoạn mã vi phạm mẫu | Hướng dẫn Prompt để AI tự sửa chữa |
 | :--- | :--- | :--- | :--- |
-| **`E0382`** | **Use of moved value**<br>AI chuyển quyền sở hữu của một biến vào hàm hoặc khối đóng gói (closure) rồi tiếp tục gọi lại biến đó ở dòng sau. | ```rust // compile-fail\nlet data = vec![1, 2, 3];\nstd::thread::spawn(move || { println!("{:?}", data); });\nprintln!("{:?}", data);``` | Yêu cầu AI: *"Hãy truyền bản sao mượn hoặc dùng con trỏ thông minh chia sẻ dữ liệu `std::sync::Arc` thay vì di chuyển quyền sở hữu duy nhất vào luồng"*. |
-| **`E0502`** | **Cannot borrow as mutable because also borrowed as immutable**<br>AI vi phạm luật mượn cơ bản: Vừa mượn đọc bất biến (`&`) vừa mượn ghi khả biến (`&mut`) trong cùng một phạm vi. | ```rust // compile-fail\nlet mut v = vec![1, 2];\nlet first = &v[0];\nv.push(3);\nprintln!("{}", first);``` | Yêu cầu AI: *"Hãy kết thúc việc mượn đọc trước khi thực hiện thao tác sửa đổi, hoặc tách thành các khối lệnh `{}` riêng biệt để giới hạn thời gian sống"*. |
-| **`E0106`** | **Missing lifetime specifier**<br>Hàm nhận vào nhiều tham chiếu và trả về một tham chiếu nhưng trình biên dịch không thể tự suy luận (Lifetime Elision) mối liên kết. | ```rust // compile-fail\nfn longest(x: &str, y: &str) -> &str { if x.len() > y.len() { x } else { y } }``` | Hướng dẫn AI: *"Hãy bổ sung tham số thời gian sống tường minh `'a` vào chữ ký hàm: `fn longest<'a>(x: &'a str, y: &'a str) -> &'a str`"*. |
-| **`E0499`** | **Cannot borrow as mutable more than once at a time**<br>AI cố gắng tạo ra hai con trỏ sửa đổi (`&mut`) cùng trỏ vào một vùng dữ liệu cùng một thời điểm. | ```rust // compile-fail\nlet mut s = String::from("a");\nlet r1 = &mut s;\nlet r2 = &mut s;\nprintln!("{}, {}", r1, r2);``` | Nhắc nhở AI: *"Rust áp dụng quy tắc Độc quyền ghi (Exclusive Mutability). Chỉ được phép có duy nhất MỘT tham chiếu khả biến tại một thời điểm để ngăn chặn Data Race"*. |
+| **`E0382`** | **Use of moved value**<br>AI chuyển quyền sở hữu của một biến vào hàm hoặc khối đóng gói (closure) rồi tiếp tục gọi lại biến đó ở dòng sau. | `let data = vec![1, 2, 3];`<br>`std::thread::spawn(move \|\| { println!("{:?}", data); });`<br>`println!("{:?}", data);` | Yêu cầu AI: *"Hãy truyền bản sao mượn hoặc dùng con trỏ thông minh chia sẻ dữ liệu `std::sync::Arc` thay vì di chuyển quyền sở hữu duy nhất vào luồng"*. |
+| **`E0502`** | **Cannot borrow as mutable because also borrowed as immutable**<br>AI vi phạm luật mượn cơ bản: Vừa mượn đọc bất biến (`&`) vừa mượn ghi khả biến (`&mut`) trong cùng một phạm vi. | `let mut v = vec![1, 2];`<br>`let first = &v[0];`<br>`v.push(3);`<br>`println!("{}", first);` | Yêu cầu AI: *"Hãy kết thúc việc mượn đọc trước khi thực hiện thao tác sửa đổi, hoặc tách thành các khối lệnh `{}` riêng biệt để giới hạn thời gian sống"*. |
+| **`E0106`** | **Missing lifetime specifier**<br>Hàm nhận vào nhiều tham chiếu và trả về một tham chiếu nhưng trình biên dịch không thể tự suy luận (Lifetime Elision) mối liên kết. | `fn longest(x: &str, y: &str) -> &str { if x.len() > y.len() { x } else { y } }` | Hướng dẫn AI: *"Hãy bổ sung tham số thời gian sống tường minh `'a` vào chữ ký hàm: `fn longest<'a>(x: &'a str, y: &'a str) -> &'a str`"*. |
+| **`E0499`** | **Cannot borrow as mutable more than once at a time**<br>AI cố gắng tạo ra hai con trỏ sửa đổi (`&mut`) cùng trỏ vào một vùng dữ liệu cùng một thời điểm. | `let mut s = String::from("a");`<br>`let r1 = &mut s;`<br>`let r2 = &mut s;`<br>`println!("{}, {}", r1, r2);` | Nhắc nhở AI: *"Rust áp dụng quy tắc Độc quyền ghi (Exclusive Mutability). Chỉ được phép có duy nhất MỘT tham chiếu khả biến tại một thời điểm để ngăn chặn Data Race"*. |
 
 ---
 
@@ -365,7 +365,7 @@ Hãy kiểm chứng lời khẳng định đó: giải thích vì sao hàm trên
 <details>
 <summary><b>Bài tập 1 — Gợi ý</b></summary>
 
-Quy tắc mượn ví như mượn sách thư viện: nhiều người cùng *đọc* một cuốn thì được; nhưng khi một người đang *sửa* (viết vào) cuốn đó thì không ai được đọc, kể cả chính họ đọc bản khác.
+Quy tắc mượn ví như mượn sách thư viện: nhiều người cùng *đọc* một cuốn thì được; nhưng khi một người đang *sửa* (viết vào) cuốn đó thì không ai khác được đọc hay sửa nó cho tới khi người đó trả sách.
 </details>
 
 <details>

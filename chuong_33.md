@@ -447,7 +447,7 @@ fn child_broken(node: &DemoNode) {
     }
 }
 
-// Cách sửa chữa đúng chuẩn: Mượn tham chiếu &Box hoặc mượn trực tiếp &NutDemo
+// Cách sửa chữa đúng chuẩn: Mượn tham chiếu &Box hoặc mượn trực tiếp &DemoNode
 fn child_correct(node: &DemoNode) {
     match node {
         DemoNode::Internal(children) => {

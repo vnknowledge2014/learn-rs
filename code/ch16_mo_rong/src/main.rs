@@ -306,8 +306,9 @@ fn main() {
     // 10. collect VÀO NHIỀU KIỂU KHÁC NHAU
     // ------------------------------------------------------------------
     println!("\n10. collect() gom vào nhiều kiểu đích");
-    let text: String = ids.join(", ");
-    println!("   -> String     : {}", text);
+    // String cài FromIterator<&str>: gom thẳng các mảnh chuỗi thành một String.
+    let text: String = ids.iter().flat_map(|id| [*id, " "]).collect();
+    println!("   -> String     : {}", text.trim_end());
 
     let regions: HashSet<&str> = trades.iter().map(|g| g.region.as_str()).collect();
     let mut sorted_regions: Vec<&&str> = regions.iter().collect();

@@ -96,7 +96,7 @@ Con số quan trọng: cùng `2n³` phép tính, nhưng số lần trượt cach
 
 ### 4. Dự đoán rẽ nhánh và mã không rẽ nhánh
 
-Bộ dự đoán 2-bit bão hoà có bốn trạng thái: chắc chắn không nhảy → có thể không → có thể nhảy → chắc chắn nhảy. Cần **hai** lần sai liên tiếp mới đổi hướng dự đoán, nên nó chịu được nhiễu tốt.
+Bộ dự đoán 2-bit bão hoà có bốn trạng thái: chắc chắn không nhảy → có thể không → có thể nhảy → chắc chắn nhảy. Từ trạng thái "chắc chắn", cần **hai** lần sai liên tiếp mới đổi hướng dự đoán, nên nó chịu được nhiễu tốt.
 
 Nhưng với dữ liệu ngẫu nhiên, không bộ dự đoán nào cứu được — tỉ lệ đúng về 50%, và mỗi lần sai mất khoảng 15 chu kỳ.
 
@@ -128,7 +128,7 @@ Và luôn có **phần dư**: mảng 1000 phần tử với vector 4 phần tử
 
 Danh sách dưới đây được **lấy trực tiếp từ leetcpu.com** (thu thập ngày 05/09/2026). Nền tảng đó chạy mã C của bạn trên **ChampSim** — bộ mô phỏng vi kiến trúc chính xác theo chu kỳ, 200 triệu lệnh — rồi trả về IPC, MPKI và số liệu bộ dự đoán rẽ nhánh. Chuỗi công cụ của họ là `gcc` → `objdump` → vết Intel PIN → ChampSim → bảng chỉ số.
 
-Chúng ta không mô phỏng vi kiến trúc chính xác theo chu kỳ như ChampSim; chúng ta cài **cùng những kỹ thuật đó bằng Rust** và **đếm** số lần trượt cache, số lần đoán sai bằng các mô hình đơn giản, tất định (`CacheSim`, `BranchPredictor`) — thay vì đo đồng hồ — để kết quả tái lập được và kiểm thử được. Bốn nhóm của họ ánh xạ đúng vào bốn phần của chương này.
+Chúng ta không mô phỏng vi kiến trúc chính xác theo chu kỳ như ChampSim; chúng ta cài **cùng những kỹ thuật đó bằng Rust** và **đếm** số lần trượt cache, số lần đoán sai bằng các mô hình đơn giản, tất định (`CacheSim`, `BranchPredictor`) — thay vì đo đồng hồ — để kết quả tái lập được và kiểm thử được. Năm nhóm của họ (bốn nhóm kỹ thuật cộng một bài chẩn đoán) đều có kỹ thuật tương ứng trong chương này.
 
 | # | Bài | Mức | Nhóm | Kỹ thuật tương ứng trong chương |
 |---|---|---|---|---|
@@ -265,7 +265,7 @@ impl CacheStats {
 pub struct CacheSim {
     pub num_sets: usize,
     pub ways: usize,
-    /// tập → danh sách (thẻ, dấu thời gian dùng gần nhất), dài tối đa `positive_count`
+    /// tập → danh sách (thẻ, dấu thời gian dùng gần nhất), dài tối đa `ways`
     sets: Vec<Vec<(u64, u64)>>,
     seen: std::collections::HashSet<u64>,
     clock: u64,
@@ -273,7 +273,7 @@ pub struct CacheSim {
 }
 
 impl CacheSim {
-    /// `kich_thuoc_byte` là tổng dung lượng; `positive_count` là số đường mỗi tập.
+    /// `size_bytes` là tổng dung lượng; `ways` là số đường mỗi tập.
     pub fn new(size_bytes: usize, ways: usize) -> Self {
         let num_lines = size_bytes / CACHE_LINE_BYTES;
         let num_sets = (num_lines / ways).max(1);
@@ -447,7 +447,7 @@ impl BranchPredictor {
         }
     }
 
-    /// `id_nhanh` là vị trí lệnh nhánh; `actual` là kết quả thật.
+    /// `branch_id` là vị trí lệnh nhánh; `actual` là kết quả thật.
     pub fn predict(&mut self, branch_id: usize, actual: bool) -> bool {
         self.branch_count += 1;
         let state = self.state.entry(branch_id).or_insert(1);
@@ -514,7 +514,7 @@ pub struct IlpAnalysis {
     /// Chuỗi phụ thuộc dài nhất — cận dưới của số chu kỳ, bất kể CPU rộng bao nhiêu.
     pub critical_path: u64,
     pub ilp: f64,
-    /// Số chu kỳ ước tính trên CPU rộng `do_rong` lệnh/chu kỳ.
+    /// Số chu kỳ ước tính trên CPU rộng `width` lệnh/chu kỳ.
     pub estimated_cycles: u64,
 }
 

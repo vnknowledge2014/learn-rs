@@ -76,7 +76,7 @@ Mục tiêu học tập:
 
 ### 1. Chi phí đóng gói là có thật
 
-Gửi 5 byte `"hello"` qua HTTP trên TCP/IP/Ethernet tốn **77 byte** trên dây: 18 byte dòng yêu cầu HTTP tối thiểu (`GET / HTTP/1.1\r\n\r\n` — HTTP/1.1 thật còn bắt buộc header `Host`) + 20 TCP + 20 IP + 14 Ethernet (chưa kể 4 byte FCS và phần mở đầu của khung). Tức **93% là bao bì** — và con số thật còn tệ hơn.
+Gửi 5 byte `"hello"` qua HTTP trên TCP/IP/Ethernet tốn **77 byte** trên dây: 5 byte dữ liệu + 18 byte dòng yêu cầu HTTP tối thiểu (`GET / HTTP/1.1\r\n\r\n` — HTTP/1.1 thật còn bắt buộc header `Host`) + 20 TCP + 20 IP + 14 Ethernet (chưa kể 4 byte FCS và phần mở đầu của khung). Tức **93% là bao bì** — và con số thật còn tệ hơn.
 
 Đây không phải chi tiết học thuật. Nó giải thích:
 - Vì sao gộp nhiều thao tác nhỏ thành một yêu cầu lớn luôn nhanh hơn.
@@ -894,7 +894,7 @@ mod tests {
 
 ### Bài tập rèn luyện tự giải
 
-**Bài 1.** Mở rộng máy trạng thái TCP để hỗ trợ **`RST`** (đặt lại kết nối): từ mọi trạng thái đã có kết nối, nhận `RST` đều đưa về `Closed` ngay lập tức, không qua `TIME_WAIT`. (RFC quy định `LISTEN` *bỏ qua* RST — socket đang nghe không có kết nối nào để hủy.)
+**Bài 1.** Mở rộng máy trạng thái TCP để hỗ trợ **`RST`** (đặt lại kết nối): từ mọi trạng thái đã có kết nối, nhận `RST` đều đưa về `Closed` ngay lập tức, không qua `TIME_WAIT`. (RFC quy định `LISTEN` *bỏ qua* RST — socket đang nghe không có kết nối nào để hủy. Ngoại lệ thứ hai: theo RFC 9293, kết nối ở `SYN_RECEIVED` vốn đi lên từ mở thụ động sẽ *quay về* `LISTEN` khi nhận RST; máy trạng thái của chương không lưu kết nối đến từ đâu nên bài tập bỏ qua chi tiết này.)
 
 <details>
 <summary><b>Gợi ý</b></summary>

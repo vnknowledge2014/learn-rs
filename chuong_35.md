@@ -91,7 +91,7 @@ Hội đồng chuẩn SQL định nghĩa 4 cấp độ cô lập từ yếu đ�
 3. `Repeatable Read`: Đảm bảo đọc một dòng nhiều lần luôn ra cùng kết quả (chuẩn mặc định của MySQL).
 4. `Serializable`: Các giao dịch chạy như thể tuần tự từng cái một (an toàn nhất nhưng chậm nhất).
 
-MVCC thường hiện thực một mức nằm giữa 3 và 4 gọi là **Snapshot Isolation (SI)**: mỗi giao dịch đọc từ một *ảnh chụp* các giao dịch **đã commit** tại thời điểm nó bắt đầu, và hai giao dịch đồng thời không được cùng commit thay đổi trên một khoá (**first-committer-wins**). SI chặn được Dirty Read, Non-repeatable Read, Phantom (trong ảnh chụp) và Lost Update — nhưng vẫn để lọt một dị thường tinh vi gọi là *write skew* (hai giao dịch đọc chung dữ liệu rồi ghi vào hai khoá *khác nhau*), nên SI chưa phải Serializable.
+MVCC thường hiện thực một mức nằm (xấp xỉ) giữa 3 và 4 gọi là **Snapshot Isolation (SI)**: mỗi giao dịch đọc từ một *ảnh chụp* các giao dịch **đã commit** tại thời điểm nó bắt đầu, và hai giao dịch đồng thời không được cùng commit thay đổi trên một khoá (**first-committer-wins**). SI chặn được Dirty Read, Non-repeatable Read, Phantom (trong ảnh chụp) và Lost Update — nhưng vẫn để lọt một dị thường tinh vi gọi là *write skew* (hai giao dịch đọc chung dữ liệu rồi ghi vào hai khoá *khác nhau*), nên SI chưa phải Serializable.
 
 ### 3. Cơ chế hoạt động của MVCC trong Động cơ lưu trữ
 

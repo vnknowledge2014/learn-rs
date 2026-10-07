@@ -49,7 +49,7 @@ Trong lập trình Rust:
 ## Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
 ### 1. Vòng đời của Spec-Driven Development (SDD)
-Một quy trình SDD chuẩn mực gồm 4 giai đoạn tuần tự:
+Một quy trình SDD chuẩn mực gồm 5 giai đoạn tuần tự:
 
 ```
 [1. Viết SPEC.md] ──► [2. Định nghĩa Types/Traits] ──► [3. AI viết Tests (RED)] ──► [4. AI viết Logic (GREEN)]
@@ -363,10 +363,10 @@ Dưới đây là các lỗi biên dịch thường phát sinh trong chu trình 
 
 | Mã lỗi `rustc` | Nguyên nhân gốc rễ trong quá trình TDD | Đoạn mã vi phạm mẫu | Giải pháp sửa chữa chuẩn quy trình |
 | :--- | :--- | :--- | :--- |
-| **`E0369`** + **`E0277`** | **Binary operation `==` cannot be applied / `Point` doesn't implement `Debug`**<br>AI sử dụng `assert_eq!(a, b)` trong bài test nhưng kiểu dữ liệu tùy biến chưa được dẫn xuất trait so sánh (`PartialEq` → E0369) và trait in ấn (`Debug` → E0277). | ```rust // compile-fail\nstruct Point { x: i32 }\nassert_eq!(Point { x: 1 }, Point { x: 1 });``` | Bổ sung macro dẫn xuất `#[derive(Debug, PartialEq, Eq)]` phía trên định nghĩa cấu trúc dữ liệu. |
-| **`E0308`** | **Mismatched types in assertions**<br>Trong bài test, AI so sánh một giá trị kiểu `Result<(), ValidationError>` với một kiểu lỗi chưa bọc trong `Err(...)`. | ```rust // compile-fail\nlet res: Result<(), i32> = Err(404);\nassert_eq!(res, 404);``` | Sửa lại biểu thức so sánh cho khớp kiểu: `assert_eq!(res, Err(404));`. |
-| **`E0433`** | **Failed to resolve: use of undeclared module/crate**<br>AI tự tiện gọi các thư viện kiểm thử nâng cao (như `mockall` hoặc `proptest`) khi dự án chưa khai báo trong `Cargo.toml`. | ```rust // compile-fail\nuse proptest::prelude::*;``` | Yêu cầu AI chỉ sử dụng khung kiểm thử tích hợp chuẩn của Rust (`#[cfg(test)]`, `assert!`) trừ khi bạn cho phép nạp thêm dependency. |
-| **`E0451`** | **Field is private**<br>AI viết module kiểm thử tách rời nhưng các trường của struct cần kiểm tra không được gắn từ khóa `pub`. (Nếu chính *struct* là private thì mới là `E0603`.) | ```rust // compile-fail\nmod inner { pub struct Item { count: u32 } }\nlet it = inner::Item { count: 5 };``` | Thêm từ khóa `pub` trước các trường hoặc cung cấp phương thức khởi tạo công khai `pub fn new(...)`. |
+| **`E0369`** + **`E0277`** | **Binary operation `==` cannot be applied / `Point` doesn't implement `Debug`**<br>AI sử dụng `assert_eq!(a, b)` trong bài test nhưng kiểu dữ liệu tùy biến chưa được dẫn xuất trait so sánh (`PartialEq` → E0369) và trait in ấn (`Debug` → E0277). | `struct Point { x: i32 }`<br>`assert_eq!(Point { x: 1 }, Point { x: 1 });` | Bổ sung macro dẫn xuất `#[derive(Debug, PartialEq, Eq)]` phía trên định nghĩa cấu trúc dữ liệu. |
+| **`E0308`** | **Mismatched types in assertions**<br>Trong bài test, AI so sánh một giá trị kiểu `Result<(), ValidationError>` với một kiểu lỗi chưa bọc trong `Err(...)`. | `let res: Result<(), i32> = Err(404);`<br>`assert_eq!(res, 404);` | Sửa lại biểu thức so sánh cho khớp kiểu: `assert_eq!(res, Err(404));`. |
+| **`E0433`** | **Failed to resolve: use of undeclared module/crate**<br>AI tự tiện gọi các thư viện kiểm thử nâng cao (như `mockall` hoặc `proptest`) khi dự án chưa khai báo trong `Cargo.toml`. | `use proptest::prelude::*;` | Yêu cầu AI chỉ sử dụng khung kiểm thử tích hợp chuẩn của Rust (`#[cfg(test)]`, `assert!`) trừ khi bạn cho phép nạp thêm dependency. |
+| **`E0451`** | **Field is private**<br>AI viết module kiểm thử tách rời nhưng các trường của struct cần kiểm tra không được gắn từ khóa `pub`. (Nếu chính *struct* là private thì mới là `E0603`.) | `mod inner { pub struct Item { count: u32 } }`<br>`let it = inner::Item { count: 5 };` | Thêm từ khóa `pub` trước các trường hoặc cung cấp phương thức khởi tạo công khai `pub fn new(...)`. |
 
 ---
 

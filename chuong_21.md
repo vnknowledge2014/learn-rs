@@ -78,8 +78,6 @@ Mã nguồn thô (.rs)
       │                                   (Bung code mới ngay trên AST,
       │                                    trước khi kiểm tra kiểu)
       ▼
-      │
-      ▼
 [4. Kiểm tra kiểu & Vay mượn (Type & Borrow Checker)] ──► Kiểm tra quyền sở hữu (ownership)
       │
       ▼
@@ -440,7 +438,7 @@ Ba trường hợp hàm bất lực:
 
 **1. Số lượng tham số tuỳ ý.** `println!("{} {}", a, b)` và `println!("{}", a)` là cùng một macro. Hàm Rust có **arity cố định** — muốn hỗ trợ 1..N tham số phải viết N hàm, hoặc ép người dùng đóng gói vào `Vec`/tuple (và khi đó mọi phần tử phải cùng kiểu).
 
-**2. Cần chính VĂN BẢN của tham số.** `assert_eq!(a, b)` khi thất bại in ra cả *tên biểu thức* lẫn *giá trị*: `assertion failed: a == b`. Hàm chỉ nhận được giá trị — nó không có cách nào biết người gọi đã viết gì. Tương tự `dbg!(x * 2)` in ra được `x * 2 = 14`.
+**2. Cần chính VĂN BẢN của tham số.** `assert!(a == b)` khi thất bại in ra chính *văn bản biểu thức*: `assertion failed: a == b`. Hàm chỉ nhận được giá trị — nó không có cách nào biết người gọi đã viết gì. Tương tự `dbg!(x * 2)` in ra được `x * 2 = 14`. (Riêng `assert_eq!` từ Rust 1.73 chỉ in ``assertion `left == right` failed`` kèm hai giá trị, không in văn bản biểu thức.)
 
 **3. Sinh ra định nghĩa mới.** Macro có thể mở rộng thành `struct`, `impl`, `fn` — những thứ hàm không tạo được vì hàm chạy *sau khi* biên dịch đã xong. Đây là cơ sở của `#[derive(Debug)]`: nó viết hộ bạn một khối `impl`.
 

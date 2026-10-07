@@ -82,7 +82,7 @@ Máy quét (Scanner)                                  Máy chủ mục tiêu (Ta
 Kỹ thuật quét mà chúng ta triển khai mang tên **TCP Connect Scan**:
 - Chương trình của chúng ta yêu cầu Hệ điều hành hoàn thành trọn vẹn quy trình bắt tay 3 bước thông qua lời gọi hàm `TcpStream::connect_timeout`.
 - **Ưu điểm**: Hoạt động được trên mọi hệ điều hành (Linux, macOS, Windows) mà không đòi hỏi quyền hạn Quản trị viên tối cao (Root/Administrator), không cần cấu hình Raw Socket phức tạp.
-- **Tính toán Timeout**: Nếu kết nối tới một cổng đóng bị lọc bởi tường lửa (Firewall), hệ điều hành có thể treo luồng tới 30 giây nếu không có cấu hình timeout. Bằng cách thiết lập `Duration::from_millis(200..500)`, chúng ta có thể quét hàng ngàn cổng trong chớp mắt.
+- **Tính toán Timeout**: Nếu kết nối tới một cổng đóng bị lọc bởi tường lửa (Firewall), hệ điều hành có thể treo luồng từ vài chục giây tới ~2 phút (Linux mặc định thử lại SYN khoảng 127 giây) nếu không có cấu hình timeout. Bằng cách đặt thời gian chờ khoảng 200–500 ms (`Duration::from_millis(...)`), chúng ta có thể quét hàng ngàn cổng trong chớp mắt.
 
 ### 2. Kiến trúc Đa luồng và Kênh truyền tin (`std::sync::mpsc`)
 
@@ -160,7 +160,7 @@ pub fn check_single_port(ip: &str, port: u16, timeout: Duration) -> bool {
     };
     let socket_addr = SocketAddr::new(ip_addr, port);
     // Thực hiện bắt tay TCP Connect với thời gian chờ nghiêm ngặt.
-    // Kết nối thành công thì _stream tự động đóng khi ra khỏi phạm vi (RAII).
+    // Kết nối thành công thì TcpStream tạm thời bị drop ngay, socket tự đóng (RAII).
     TcpStream::connect_timeout(&socket_addr, timeout).is_ok()
 }
 

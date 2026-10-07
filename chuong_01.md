@@ -169,13 +169,13 @@ Vậy làm thế nào máy tính hiểu được những gì chúng ta viết?
 
 - Các ngôn ngữ cổ điển như **C/C++**: Cho phép bạn trực tiếp can thiệp vào các địa chỉ ô nhớ trên RAM. Điều này giúp chương trình chạy nhanh xé gió, nhưng nếu người lập trình sơ suất trỏ nhầm vào ô nhớ cấm, chương trình sẽ sập ngay lập tức hoặc tạo ra lỗ hổng bảo mật nghiêm trọng để hacker đánh cắp dữ liệu.
 - Các ngôn ngữ có "Bộ gom rác" (Garbage Collector) như **Python, Java, Go**: Tự động cử một "nhân viên dọn vệ sinh" chạy ngầm trong máy để dọn rác bộ nhớ. Điều này giúp lập trình viên nhàn nhã hơn, nhưng phải trả giá bằng việc chương trình thỉnh thoảng bị khựng lại (GC pauses), tốn nhiều RAM và không phù hợp cho các hệ thống yêu cầu tốc độ thời gian thực.
-- **Rust xuất hiện như một kỳ tích công nghệ**: Mang lại tốc độ tối đa ngang ngửa C/C++ vì không cần bộ gom rác, nhưng lại **an toàn 100%** trước các lỗi bộ nhớ nhờ người gác cổng thông minh mang tên **Borrow Checker** kiểm tra tỉ mỉ ngay từ lúc biên dịch!
+- **Rust xuất hiện như một kỳ tích công nghệ**: Mang lại tốc độ tối đa ngang ngửa C/C++ vì không cần bộ gom rác, nhưng lại **an toàn bộ nhớ** (trong phần Rust an toàn — Safe Rust) nhờ người gác cổng thông minh mang tên **Borrow Checker** kiểm tra tỉ mỉ ngay từ lúc biên dịch!
 
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
 
-Dưới đây là một chương trình Rust hoàn chỉnh. Chương trình này sẽ trực tiếp "hỏi" hệ điều hành và CPU để in ra kích thước vật lý (tính theo Byte) của các kiểu dữ liệu trên thanh RAM máy tính của bạn:
+Dưới đây là một chương trình Rust hoàn chỉnh. Chương trình này dùng `std::mem::size_of` (con số do trình biên dịch tính sẵn ngay lúc biên dịch) để in ra kích thước vật lý (tính theo Byte) của các kiểu dữ liệu trên thanh RAM máy tính của bạn:
 
 ```rust
 // File: src/main.rs
@@ -261,7 +261,8 @@ Khi viết chương trình đầu tiên, người mới bắt đầu rất dễ 
 | **E0425** | `cannot find value 'x' in this scope` (hoặc `cannot find function 'prinln' in this scope`) | Sử dụng một tên biến chưa từng được khai báo bằng `let`, hoặc vừa gõ sai tên vừa quên dấu chấm than `!` (ví dụ `prinln("...")`) nên trình biên dịch đi tìm một *hàm* không tồn tại. | Khai báo biến trước khi dùng (`let x = ...;`) hoặc kiểm tra lại tên hàm và bổ sung dấu `!` nếu là Macro. |
 | **E0423** | `expected function, found macro 'println'` | Gõ đúng tên nhưng quên dấu `!` (`println("...")`): `println` là macro, không gọi như hàm được. | Thêm dấu `!`: `println!("...")`. |
 | **E0308** | `mismatched types: expected 'u8', found 'i32'` | Gán một biến có kiểu số có dấu hoặc kích thước lớn hơn vào một biến kiểu số nhỏ hơn (ví dụ: `let y: i32 = 10; let x: u8 = y;`). | Dùng phương thức chuyển đổi kiểu dữ liệu an toàn (`.try_into()`) hoặc đồng nhất kiểu dữ liệu của hai biến. *(Lưu ý: Nếu viết trực tiếp số âm `let x: u8 = -1;`, Rust sẽ báo lỗi `E0600: cannot apply unary operator '-' to type 'u8'`)*. |
-| **Cảnh báo `unused`** | `warning: variable does not need to be mutable` hoặc `unused variable` | Khai báo một biến trên bộ nhớ nhưng không bao giờ dùng tới trong chương trình. | Xóa biến thừa, hoặc thêm tiền tố dấu gạch dưới `_` (ví dụ `_ten_bien`) để báo cho trình biên dịch biết đây là biến cố ý chưa dùng. |
+| **Cảnh báo `unused`** | `warning: unused variable` | Khai báo một biến trên bộ nhớ nhưng không bao giờ dùng tới trong chương trình. | Xóa biến thừa, hoặc thêm tiền tố dấu gạch dưới `_` (ví dụ `_ten_bien`) để báo cho trình biên dịch biết đây là biến cố ý chưa dùng. |
+| **Cảnh báo `unused_mut`** | `warning: variable does not need to be mutable` | Khai báo biến bằng `let mut` nhưng không bao giờ thay đổi giá trị của nó. | Bỏ từ khóa `mut`. |
 
 ---
 

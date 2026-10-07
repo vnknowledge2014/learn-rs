@@ -91,7 +91,7 @@ Khi thực thi hàm trên (biên dịch **không** bật bảo vệ ngăn xếp,
 
 Lỗ hổng Use-After-Free xảy ra chủ yếu trên vùng nhớ động `Heap`:
 - **Bước 1 (Allocate)**: Chương trình gọi `malloc()` xin cấp phát một khối nhớ chứa cấu trúc người dùng, ví dụ `UserSession` (trong đó có con trỏ hàm chỉ tới logic phân quyền).
-- **Bước 2 (Free)**: Người dùng đăng xuất, chương trình gọi `free(session_ptr)` để trả lại ô nhớ cho hệ điều hành. Tuy nhiên, lập trình viên quên gán `session_ptr = NULL`. Con trỏ này trở thành **Dangling Pointer**.
+- **Bước 2 (Free)**: Người dùng đăng xuất, chương trình gọi `free(session_ptr)` để trả lại ô nhớ cho trình cấp phát (allocator). Tuy nhiên, lập trình viên quên gán `session_ptr = NULL`. Con trỏ này trở thành **Dangling Pointer**.
 - **Bước 3 (Reallocate / Heap Spraying)**: Kẻ tấn công tạo ra một đối tượng dữ liệu giả mạo (ví dụ gửi một ảnh hoặc văn bản tải lên) có cùng kích thước byte. Trình quản lý Heap sẽ tái sử dụng lại chính khối ô nhớ vừa bị thu hồi đó để chứa dữ liệu độc hại của kẻ tấn công.
 - **Bước 4 (Trigger)**: Chương trình vô tình gọi lại `session_ptr->authenticate()`. Thay vì gọi mã gốc, CPU nhảy vào con trỏ độc hại mà kẻ tấn công vừa bơm vào khối nhớ!
 
@@ -399,7 +399,10 @@ fn writing_100_bytes_never_overflows() {
 /// Trích 4 BYTE bắt đầu từ `index`, không bao giờ panic.
 /// Hai thứ có thể sai: vượt biên, và cắt giữa một ký tự UTF-8.
 pub fn take_4_bytes(text: &str, index: usize) -> Result<&str, &'static str> {
-    text.get(index..index + 4)
+    // `index + 4` có thể TRÀN SỐ khi index gần usize::MAX (panic ở bản debug)
+    // -> dùng checked_add để cả phép cộng cũng không bao giờ panic.
+    let end = index.checked_add(4).ok_or("chỉ số ngoài phạm vi")?;
+    text.get(index..end)
         .ok_or("chỉ số ngoài phạm vi hoặc cắt giữa ký tự UTF-8")
 }
 
@@ -411,6 +414,7 @@ fn never_panics_on_any_input() {
     // Vượt biên -> Err, KHÔNG panic
     assert!(take_4_bytes("abc", 0).is_err());
     assert!(take_4_bytes("abcdefgh", 100).is_err());
+    assert!(take_4_bytes("abcdefgh", usize::MAX).is_err()); // không tràn số
 
     // Cắt GIỮA ký tự nhiều byte -> Err.
     // "Việt" : 'V' byte 0 | 'i' byte 1 | 'ệ' byte 2..5 (3 byte) | 't' byte 5

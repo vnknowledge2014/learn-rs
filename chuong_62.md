@@ -770,6 +770,77 @@ mod exercise1 {
 Lưu `(phiên_bản_nguồn, giá_trị_đã_tính)` trong một `RefCell`. Khi `get()`, nếu phiên bản nguồn không đổi, trả giá trị cache; nếu đổi, tính lại và cập nhật cache. Điều kiện tiên quyết để cache đúng: hàm tính phải THUẦN TÚY (Chương 13).
 </details>
 
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+use std::cell::Cell;
+
+/// `Derived` có bộ nhớ hóa (memo): chỉ tính lại khi PHIÊN BẢN của tín hiệu nguồn đổi.
+pub struct Memo<T> {
+    source_version: Box<dyn Fn() -> u64>,
+    compute: Box<dyn Fn() -> T>,
+    cache: RefCell<Option<(u64, T)>>, // (phiên bản nguồn lúc tính, giá trị đã tính)
+    pub computations: Cell<u32>,      // đếm số lần THỰC SỰ tính — để test thấy được
+}
+
+impl<T: Clone> Memo<T> {
+    pub fn new<S: Clone + PartialEq + 'static>(
+        source: &Signal<S>,
+        compute: impl Fn(&S) -> T + 'static,
+    ) -> Self {
+        let for_version = source.clone(); // clone tín hiệu = thêm tay cầm Rc, rẻ
+        let for_compute = source.clone();
+        Memo {
+            source_version: Box::new(move || for_version.version()),
+            compute: Box::new(move || compute(&for_compute.get())),
+            cache: RefCell::new(None),
+            computations: Cell::new(0),
+        }
+    }
+
+    pub fn get(&self) -> T {
+        let now = (self.source_version)();
+        if let Some((version, value)) = &*self.cache.borrow()
+            && *version == now
+        {
+            return value.clone(); // nguồn không đổi -> trả cache, KHÔNG tính lại
+        }
+        // Khoá mượn chung ở trên đã nhả trước khi ta mượn ghi ở đây.
+        let value = (self.compute)();
+        self.computations.set(self.computations.get() + 1);
+        *self.cache.borrow_mut() = Some((now, value.clone()));
+        value
+    }
+}
+
+#[cfg(test)]
+mod exercise2 {
+    use super::*;
+    #[test]
+    fn memo_recomputes_only_when_source_changes() {
+        let price = Signal::new(100i64);
+        let with_tax = Memo::new(&price, |p| p * 110 / 100);
+
+        assert_eq!(with_tax.get(), 110);
+        assert_eq!(with_tax.get(), 110);
+        assert_eq!(with_tax.computations.get(), 1, "lần 2 phải lấy từ cache");
+
+        price.set(100); // cùng giá trị -> `set` bỏ qua, phiên bản KHÔNG tăng
+        assert_eq!(with_tax.get(), 110);
+        assert_eq!(with_tax.computations.get(), 1);
+
+        price.set(200); // đổi thật -> phiên bản tăng -> tính lại đúng một lần
+        assert_eq!(with_tax.get(), 220);
+        assert_eq!(with_tax.get(), 220);
+        assert_eq!(with_tax.computations.get(), 2);
+    }
+}
+```
+
+Mấu chốt là dùng **phiên bản** của tín hiệu làm "dấu vân tay" cho cache: so một số `u64` rẻ hơn nhiều so với so cả giá trị nguồn, và vì `set` không tăng phiên bản khi giá trị không đổi, cache sống sót qua cả những lần "đặt lại y hệt". Điều kiện để cache đúng là `compute` phải **thuần túy** (Chương 13): nếu nó đọc thêm một tín hiệu khác mà `Memo` không theo dõi, cache sẽ trả giá trị cũ. Leptos (`Memo::new`) và React (`useMemo` với danh sách phụ thuộc) giải đúng bài toán này — Leptos tự ghi lại *mọi* tín hiệu được đọc trong `compute`, còn React bắt bạn liệt kê tay.
+</details>
+
 **Bài tập 3 (Tư duy: chọn kiến trúc frontend)**
 Với mỗi dự án, chọn: (a) Rust+WASM thuần (Leptos), (b) JS frontend + Rust core qua Tauri, (c) chỉ JavaScript. Giải thích:
 1. Công cụ chỉnh sửa ảnh nặng tính toán chạy trong trình duyệt.

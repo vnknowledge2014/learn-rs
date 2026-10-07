@@ -371,7 +371,7 @@ struct Coord {
     y: i32,
 }
 
-// Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu ToaDo
+// Đoạn mã lỗi minh họa: Cố tạo BST cho kiểu Coord
 fn broken_bst() {
     // let mut tree = BinarySearchTree::new();
     // tree.insert(Coord { x: 1, y: 2 }); // LỖI E0277: Coord không thỏa mãn trait Ord!
@@ -391,10 +391,6 @@ fn correct_bst() {
     println!("Cây BST chứa tọa độ hoạt động mượt mà! Số nút = {}", tree.len());
 }
 ```
-
----
-
-
 
 ---
 

@@ -1,4 +1,4 @@
-# Bảng Thuật Ngữ Việt – Anh (Vietnamese–English Glossary)
+# Bảng thuật ngữ Việt–Anh (Vietnamese–English Glossary)
 
 Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 85 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
@@ -192,12 +192,12 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Nén gộp | Compaction |
 | Giao dịch | Transaction |
 | Nguyên tử / Nhất quán / Cô lập / Bền vững | Atomicity / Consistency / Isolation / Durability |
-| Đọc rác / Đọc không lặp lại / Đọc bóng id | Dirty / Non-repeatable / Phantom read |
+| Đọc rác / Đọc không lặp lại / Đọc bóng ma | Dirty / Non-repeatable / Phantom read |
 | Kiểm soát đồng thời đa phiên bản | MVCC |
-| Ảnh chụp (giao dịch) | Snapshot | Tập giao dịch đã commit mà một giao dịch nhìn thấy |
-| Người commit trước thắng | First-committer-wins | Luật chống mất cập nhật của Snapshot Isolation |
-| Lệch ghi | Write skew | Dị thường Snapshot Isolation không chặn được |
-| Chép khoá lên / chuyển khoá lên | Copy-up / push-up | Tách nút lá B+Tree chép khoá; tách nút trong chuyển khoá |
+| Ảnh chụp (giao dịch) | Snapshot — tập giao dịch đã commit mà một giao dịch nhìn thấy |
+| Người commit trước thắng | First-committer-wins — luật chống mất cập nhật của Snapshot Isolation |
+| Lệch ghi | Write skew — dị thường Snapshot Isolation không chặn được |
+| Chép khoá lên / chuyển khoá lên | Copy-up / push-up — tách nút lá B+Tree chép khoá; tách nút trong chuyển khoá |
 
 ## 7. An toàn thông tin (Chương 37–42)
 
@@ -566,7 +566,7 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Khoảng thật trung bình | ATR — Average True Range | Tốt nhất để định cỡ dừng lỗ |
 | Khoảng nhảy giá | Gap | |
 | Giá bình quân theo khối lượng | VWAP | Chuẩn đánh giá thực thi |
-| Phân kỳ | Divergence | Xác nhận muộn `nhin_lai` phiên |
+| Phân kỳ | Divergence | Xác nhận muộn `lookback` phiên |
 | Đuôi béo | Fat tail | Cực đoan xảy ra thường hơn mô hình |
 | Quyền chọn mua / bán | Call / Put option | |
 | Giá thực hiện | Strike price | |
@@ -599,13 +599,12 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Kiểm định tiến | Walk-forward validation | Phòng vệ mạnh nhất |
 | Ngoài mẫu | Out-of-sample | |
 | Danh mục hiệu quả | Efficient frontier | Nổi tiếng bất ổn |
-| Co id trận hiệp phương sai | Covariance shrinkage | Ledoit–Wolf |
+| Co ma trận hiệp phương sai | Covariance shrinkage | Ledoit–Wolf |
 | Ngang bằng rủi ro | Risk parity | Cân bằng theo rủi ro, không theo vốn |
 | Đóng góp rủi ro | Risk contribution | |
+| Iron condor | Iron condor | Giữ tên tiếng Anh |
 
 ---
-| Chống tự khớp | Self-trade prevention | Lệnh của ta không được khớp với nhau |
-| Iron condor | Iron condor | Giữ tên tiếng Anh |
 
 ## 18. Hệ sinh thái HFT tích hợp (Chương 85)
 
@@ -630,6 +629,7 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Tính nhân quả | Causality | Không thấy dữ liệu tương lai |
 | Bất biến hệ thống | System invariant | Thứ đáng tin, khác với lãi lỗ |
 | Sản phẩm phụ của mô hình | Model artifact | Kết quả đúng cơ học mà sai kinh tế |
+| Chống tự khớp | Self-trade prevention | Lệnh của ta không được khớp với nhau |
 
 ---
 
@@ -2104,7 +2104,7 @@ Bảng dưới đối chiếu tên cũ với tên mới, dành cho ai đã đọ
 | `TapUtxo{o}` | `UtxoSet{outputs}` |
 | `TransactionError::SpendsMoreThanReceives{ra}` | `{total_out}` |
 | `BlockHeader.so_ngau_nhien` / `Block::dao` | `nonce` / `mine` |
-| `BlockError::BelowDifficulty{set,can}` / `CoinbaseOverpays{lay,can}` | `{got,need}` / `{claimed,allowed→need}` |
+| `BlockError::BelowDifficulty{set,can}` / `CoinbaseOverpays{lay,can}` | `{got,need}` / `{claimed,allowed}` |
 | `Chain.peak` / `peak_height` / `utxo_tai` / `them` | `tip` / `tip_height` / `utxo_at` / `add_block` |
 | `MaNut` | `NodeId` |
 | `RoutingTable{toi,xor}::{them,tong_so_nut}` | `{own_id,buckets}::{insert,known_nodes}` |
