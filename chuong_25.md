@@ -30,7 +30,7 @@ Hãy quên đi các định nghĩa toán học khô khan. Để thấu hiểu Bi
 │   O(1)      │ Bật công tắc đèn / Rót 1 ly nước lọc  │ Vẫn mất 1 giây duy nhất    │
 │   O(log N)  │ Chặt đôi danh bạ tìm tên A-Z          │ Từ 3 lần lật lên 10 lần lật│
 │   O(N)      │ Rửa từng chiếc bát đĩa sau bữa tiệc   │ Từ 10 phút lên 16 tiếng!   │
-│   O(N log N)│ Chia bát đĩa theo bàn rồi rửa theo ca │ Từ 30 giây lên 10 giây x 10│
+│   O(N log N)│ Chia bát đĩa theo bàn rồi rửa theo ca │ Từ ~33 lên ~10.000 (x300)  │
 │   O(N^2)    │ Mọi khách mời lần lượt bắt tay nhau   │ Từ 100 cái lên 1.000.000!  │
 └─────────────┴───────────────────────────────────────┴────────────────────────────┘
 ```
@@ -292,10 +292,6 @@ fn correct_example() {
     println!("Dữ liệu mượn hợp lệ, vẫn còn sử dụng được: độ dài = {}", n);
 }
 ```
-
----
-
-
 
 ---
 

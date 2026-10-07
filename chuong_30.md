@@ -321,12 +321,12 @@ Dưới đây là các lỗi biên dịch điển hình nhất khi lập trình 
 
 | Mã lỗi | Thông báo mẫu từ trình biên dịch | Nguyên nhân cốt lõi | Cách khắc phục nhanh |
 |---|---|---|---|
-| **E0277** | `the trait bound 'UserBroken: Hash' is not satisfied` (kèm `...: Eq`) | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
+| **E0599** | `the method 'insert' exists for struct 'HashMap<UserBroken, &str>', but its trait bounds were not satisfied` | Bạn sử dụng một kiểu dữ liệu tự định nghĩa làm Khóa (Key) cho `HashMap` nhưng kiểu đó chưa cài đặt trait `Hash` và `Eq`. Vì `HashMap::new()` không đòi hai trait này, lỗi chỉ lộ ra khi gọi `insert`/`get` — các phương thức có ràng buộc `K: Hash + Eq`. | Thêm chỉ dẫn derive tự động: `#[derive(Hash, PartialEq, Eq)]` phía trên khai báo struct. |
 | **E0502** | `cannot borrow '...' as mutable because it is also borrowed as immutable` | Bạn đang lặp qua danh sách láng giềng mượn bất biến `&graph.adjacency_list[u]` nhưng bên trong thân vòng lặp lại gọi `graph.add_edge()` làm thay đổi đồ thị. | Thu thập các chỉ số cần biến đổi vào một vector tạm trước khi thực hiện ghi đè. |
 | **E0382** | `use of moved value: 'word'` | Bạn gọi `counts.insert(word, 1)` khiến chuỗi `word` bị di chuyển quyền sở hữu (ownership), sau đó lại dùng lại `word` ở dòng lệnh tiếp theo. | Dùng phương thức `.clone()` tạo bản sao độc lập, hoặc lưu tham chiếu mượn chuỗi `&str` nếu chuỗi có thời gian sống (lifetime) dài hơn bảng băm. |
 | **E0308** | `mismatched types: expected '&_', found 'String'` | Bạn truyền một giá trị sở hữu `String` vào phương thức tra cứu `.get()` của HashMap vốn đòi hỏi một tham chiếu (`&String` hoặc `&str`). | Thêm dấu `&` phía trước biến chuỗi: `counts.get(&word)`. |
 
-### Ví dụ phân tích lỗi `E0277` khi dùng struct làm khóa cho `HashMap`:
+### Ví dụ phân tích lỗi `E0599` khi dùng struct làm khóa cho `HashMap`:
 
 ```rust
 // Struct chưa thỏa mãn trait Hash và Eq
@@ -338,7 +338,7 @@ fn broken_hash() {
     // Tạo map rỗng thì được (HashMap::new không đòi Hash/Eq)...
     let mut map: std::collections::HashMap<UserBroken, &str> = std::collections::HashMap::new();
     // ...nhưng insert/get đòi K: Hash + Eq:
-    // map.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0277!
+    // map.insert(UserBroken { id: 1 }, "Admin"); // LỖI E0599: trait bounds were not satisfied!
     map.clear();
 }
 
@@ -354,10 +354,6 @@ fn correct_hash() {
     println!("Tra cứu khóa người dùng thành công: {:?}", map.get(&UserIdiomatic { id: 1 }));
 }
 ```
-
----
-
-
 
 ---
 

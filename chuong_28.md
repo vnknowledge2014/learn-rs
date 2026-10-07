@@ -105,7 +105,7 @@ let front_item = list.remove(0); // Buộc CPU phải dời toàn bộ các ph�
 
 ### 3. Bí mật bên trong của `VecDeque<T>` (Vòng đệm tròn - Circular Buffer)
 
-`VecDeque<T>` giải quyết triệt để bài toán trên bằng cách biến một mảng phẳng thành một **vòng tròn khép kín** sử dụng hai con trỏ chỉ số: `head` (đầu) và `tail` (đuôi) — bản cài đặt hiện tại của thư viện chuẩn lưu `head` và `len` rồi tính `tail = (head + len) % capacity`, về bản chất là một:
+`VecDeque<T>` giải quyết triệt để bài toán trên bằng cách biến một mảng phẳng thành một **vòng tròn khép kín** sử dụng hai con trỏ chỉ số: `head` (đầu) và `tail` (đuôi) — bản cài đặt hiện tại của thư viện chuẩn lưu `head` và `len` rồi tính `tail = (head + len) % capacity` — về bản chất vẫn là mô hình hai con trỏ như hình dưới:
 
 ```
        Chỉ số:   0      1      2      3      4      5      6      7
@@ -339,10 +339,6 @@ fn pop_correct(mut stack: Vec<i32>) {
 
 ---
 
-
-
----
-
 ## Kiểm thử tự động (Automated Tests)
 
 Cấu trúc dữ liệu và thuật toán là nơi kiểm thử tỏ ra hữu ích nhất: một lỗi ở biên (mảng rỗng, một phần tử, giá trị trùng, trường hợp xấu nhất) thường ẩn rất kỹ. Thêm module `#[cfg(test)]` dưới đây vào cuối tệp `main.rs`, rồi chạy `cargo test`. Hãy để ý cách các test nhắm thẳng vào trường hợp biên và vào **bất biến** của cấu trúc dữ liệu, thay vì chỉ thử một ví dụ "đẹp".
@@ -553,7 +549,7 @@ fn two_stacks_preserve_fifo_order() {
 }
 ```
 
-**Vì sao đây là O(1) khấu hao dù `pop` đôi khi tốn O(N):** mỗi phần tử được chuyển từ `inbox` sang `outbox` **đúng một lần** trong cả vòng đời của nó. Chia tổng chi phí cho tổng số thao tác ra một hằng số. Đây chính là *thời gian khấu hao* (amortized time) mà Chương 25 nói tới — cùng loại lập luận với việc `Vec` nhân đôi dung lượng.
+**Vì sao đây là O(1) khấu hao dù `pop` đôi khi tốn O(N):** mỗi phần tử được chuyển từ `inbox` sang `outbox` **đúng một lần** trong cả vòng đời của nó. Chia tổng chi phí cho tổng số thao tác ra một hằng số. Đây chính là *thời gian khấu hao* (amortized time) mà Chương 26 nói tới — cùng loại lập luận với việc `Vec` nhân đôi dung lượng.
 
-Cái bẫy: nếu đổ mỗi lần `pop` (không kiểm `outbox.is_empty()`), lập luận khấu hao sụp đổ và bạn có O(N) thật cho mỗi thao tác.
+Cái bẫy: nếu đổ mỗi lần `pop` (không kiểm `outbox.is_empty()`), các phần tử MỚI trong `inbox` bị đổ chồng lên trên các phần tử CŨ còn nằm trong `outbox` — thứ tự FIFO bị phá vỡ ngay, chưa kể lập luận khấu hao cũng sụp đổ và mỗi thao tác tốn O(N) thật.
 </details>

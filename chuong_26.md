@@ -273,7 +273,7 @@ Dưới đây là các lỗi biên dịch phổ biến nhất liên quan đến 
 |---|---|---|---|
 | **E0277** | `the size for values of type '[i32]' cannot be known at compilation time` | Bạn cố gắng truyền một mảng chưa rõ kích thước bằng giá trị `fn handle(arr: [i32])`. Kiểu `[T]` là kiểu kích thước động (DST), không thể nằm trực tiếp trên Stack mà không có con trỏ. | Đổi tham số sang tham chiếu lát cắt `&[i32]` hoặc mảng kích thước cố định `[i32; 10]`. |
 | **E0502** | `cannot borrow 'vec' as mutable because it is also borrowed as immutable` | Bạn tạo một lát cắt `let s = &vec[0..2];` rồi sau đó gọi `vec.push(10);` trong khi `s` vẫn đang được sử dụng. Phép `push` có thể khiến vector đổi nhà trên Heap, biến con trỏ `s` thành con trỏ lơ lửng (Dangling Pointer)! Rust ngăn chặn triệt để điều này. | Kết thúc việc sử dụng lát cắt `s` trước khi gọi các hàm làm biến đổi vector như `.push()`, hoặc sao chép dữ liệu ra nếu cần. |
-| **E0308** | `mismatched types: expected '[i32; 4]', found '[i32; 5]'` | Trong Rust, độ dài của mảng tĩnh là một phần của hệ thống kiểu dữ liệu! Mảng 4 phần tử có kiểu dữ liệu hoàn toàn khác mảng 5 phần tử. | Nếu hàm cần nhận mảng có độ dài bất kỳ, hãy đổi kiểu tham số sang lát cắt `&[i32]`. |
+| **E0308** | `mismatched types` (kèm `expected an array with a size of 4, found one with a size of 5`) | Trong Rust, độ dài của mảng tĩnh là một phần của hệ thống kiểu dữ liệu! Mảng 4 phần tử có kiểu dữ liệu hoàn toàn khác mảng 5 phần tử. | Nếu hàm cần nhận mảng có độ dài bất kỳ, hãy đổi kiểu tham số sang lát cắt `&[i32]`. |
 | **E0596** | `cannot borrow '...' as mutable, as it is not declared as mutable` | Bạn cố gắng tạo một lát cắt khả biến `&mut arr[..]` từ một mảng hoặc vector khai báo bằng `let` bất biến. | Thêm từ khóa `mut` khi khai báo biến: `let mut arr = ...;`. |
 
 ### Ví dụ phân tích lỗi `E0502` và cơ chế bảo vệ của Rust:
@@ -306,10 +306,6 @@ fn e0502_correct() {
     println!("Danh sách sau khi thêm mới: {:?}", list);
 }
 ```
-
----
-
-
 
 ---
 

@@ -45,7 +45,7 @@ Hãy quan sát hai hình ảnh đời sống trực quan dưới đây để hi�
 │                                                                                  │
 │ [2. BUFFER POOL: BÀN HỌC THƯ VIỆN CÓ ĐÚNG 3 CHỖ ĐỂ SÁCH]                         │
 │                                                                                  │
-│ Thư viện có 10.000 cuốn sách (Ổ đĩa đĩa cứng SSD)                                 │
+│ Thư viện có 10.000 cuốn sách (Ổ đĩa SSD)                                         │
 │ Mặt bàn bạn chỉ để được tối đa 3 cuốn sách (Buffer Pool RAM)                     │
 │                                                                                  │
 │ Muốn đọc cuốn thứ 4?                                                             │
