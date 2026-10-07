@@ -41,7 +41,7 @@ Ngược lại, một Tổng đạo diễn tài hoa làm việc hoàn toàn khá
 Trong lập trình Rust cùng AI:
 - Bạn là **Tổng đạo diễn kiến trúc (System Architect)**: Bạn vẽ ra bản vẽ hệ thống, xác định dữ liệu đầu vào, kết quả đầu ra, và các quy tắc nghiệp vụ bất khả xâm phạm.
 - AI là **đoàn đóng thế siêu tốc**: Viết các đoạn mã lặp lại, dựng khung mã giả, sinh dữ liệu mẫu, và triển khai các hàm chi tiết theo hợp đồng bạn đã đặt ra.
-- Trình biên dịch `rustc` là **Trưởng ban kiểm định an toàn phim trường**: Bất kỳ dây cáp bảo hiểm nào bị lỏng (lỗi vi phạm thời gian sống lifetime, rò rỉ vùng nhớ, hoặc dữ liệu bị mượn borrow sai quy tắc) đều bị đình chỉ quay ngay lập tức!
+- Trình biên dịch `rustc` là **Trưởng ban kiểm định an toàn phim trường**: Bất kỳ dây cáp bảo hiểm nào bị lỏng (lỗi vi phạm thời gian sống lifetime, hoặc dữ liệu bị mượn borrow sai quy tắc) đều bị đình chỉ quay ngay lập tức!
 
 ---
 
@@ -280,10 +280,10 @@ Khi lập trình cùng trợ lý AI, AI có thể vô tình sinh ra mã vi phạ
 
 | Mã lỗi `rustc` | Tên lỗi & Nguyên nhân điển hình do AI tạo ra | Đoạn mã vi phạm mẫu | Cách khắc phục chuẩn kiến trúc |
 | :--- | :--- | :--- | :--- |
-| **`E0308`** | **Mismatched types (Không khớp kiểu dữ liệu)**<br>AI thường nhầm lẫn giữa chuỗi mượn `&str` và chuỗi cấp phát `String`, hoặc nhầm giữa số nguyên `u64` và số thực `f64`. | ```rust // compile-fail\nlet s: String = "xin chào";``` | Dùng `.to_string()` hoặc `String::from("...")` để chuyển từ `&str` sang `String`. |
-| **`E0382`** | **Use of moved value (Sử dụng giá trị đã bị chuyển quyền sở hữu)**<br>AI quen tư duy Python/JS nên dùng lại biến sau khi đã chuyển quyền sở hữu (ownership) vào hàm khác. | ```rust // compile-fail\nlet s = String::from("Rust");\nlet s2 = s;\nprintln!("{}", s);``` | Truyền tham chiếu mượn (borrow) `&s` thay vì chuyển giao quyền sở hữu, hoặc dùng `.clone()` nếu thực sự cần nhân bản. |
-| **`E0599`** | **No method named found for type (Không tìm thấy phương thức)**<br>AI tự "bịa" (hallucinate) ra một phương thức không có thật, hoặc quên chưa `use` Trait chứa phương thức đó vào phạm vi. | ```rust // compile-fail\nlet v = vec![1, 2, 3];\nv.sort_descending();``` | Kiểm tra tài liệu chuẩn của thư viện. Đưa Trait vào phạm vi (`use crate::...`) hoặc tự định nghĩa phương thức trong Trait tương ứng. |
-| **`E0061`** | **This function takes X arguments but Y arguments were supplied**<br>AI gọi hàm nhưng cung cấp thiếu hoặc thừa đối số do nhớ sai phiên bản API cũ. | ```rust // compile-fail\nfn add(a: i32, b: i32) -> i32 { a + b }\nadd(10);``` | Kiểm tra chữ ký hàm (function signature) trong mã nguồn và truyền đúng số lượng kiểu tham số theo yêu cầu. |
+| **`E0308`** | **Mismatched types (Không khớp kiểu dữ liệu)**<br>AI thường nhầm lẫn giữa chuỗi mượn `&str` và chuỗi cấp phát `String`, hoặc nhầm giữa số nguyên `u64` và số thực `f64`. | `let s: String = "xin chào";` | Dùng `.to_string()` hoặc `String::from("...")` để chuyển từ `&str` sang `String`. |
+| **`E0382`** | **Use of moved value (Sử dụng giá trị đã bị chuyển quyền sở hữu)**<br>AI quen tư duy Python/JS nên dùng lại biến sau khi đã chuyển quyền sở hữu (ownership) vào hàm khác. | `let s = String::from("Rust");`<br>`let s2 = s;`<br>`println!("{}", s);` | Truyền tham chiếu mượn (borrow) `&s` thay vì chuyển giao quyền sở hữu, hoặc dùng `.clone()` nếu thực sự cần nhân bản. |
+| **`E0599`** | **No method named found for type (Không tìm thấy phương thức)**<br>AI tự "bịa" (hallucinate) ra một phương thức không có thật, hoặc quên chưa `use` Trait chứa phương thức đó vào phạm vi. | `let v = vec![1, 2, 3];`<br>`v.sort_descending();` | Kiểm tra tài liệu chuẩn của thư viện. Đưa Trait vào phạm vi (`use crate::...`) hoặc tự định nghĩa phương thức trong Trait tương ứng. |
+| **`E0061`** | **This function takes X arguments but Y arguments were supplied**<br>AI gọi hàm nhưng cung cấp thiếu hoặc thừa đối số do nhớ sai phiên bản API cũ. | `fn add(a: i32, b: i32) -> i32 { a + b }`<br>`add(10);` | Kiểm tra chữ ký hàm (function signature) trong mã nguồn và truyền đúng số lượng kiểu tham số theo yêu cầu. |
 
 ---
 

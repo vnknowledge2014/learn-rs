@@ -68,8 +68,8 @@ Một công cụ dòng lệnh chuẩn sản xuất (Production-Grade CLI Tool) t
 
 1. **Tầng giao diện dòng lệnh (CLI Interface Layer)**:
    - Tiếp nhận tham số người dùng nhập từ bàn phím.
-   - Nhận diện các cờ (flags) như `--verbose`, `--threshold`, hoặc tên đường dẫn tệp tin nhật ký.
-   - Tự động hiển thị thực đơn hướng dẫn sử dụng (`--help`) khi người dùng nhập sai tham số.
+   - Nhận diện các cờ (flags) như `--verbose` (`-v`), `--error-only` (`-e`), và tên đường dẫn tệp tin nhật ký.
+   - In dòng hướng dẫn sử dụng khi người dùng nhập thiếu hoặc sai tham số (cờ lạ), rồi thoát với mã `1`.
 2. **Tầng xử lý dữ liệu và Bộ nhớ đệm (I/O & Buffer Layer)**:
    - Khi xử lý tệp nhật ký dung lượng lớn (hàng Gigabytes), tuyệt đối không bao giờ nạp toàn bộ tệp vào RAM bằng `fs::read_to_string`.
    - Sử dụng cơ chế đọc theo dòng qua bộ nhớ đệm (buffer) để giữ mức tiêu thụ RAM luôn cố định ở vài Megabytes, bất kể tệp lớn đến đâu.
@@ -84,7 +84,7 @@ Một công cụ dòng lệnh chuẩn sản xuất (Production-Grade CLI Tool) t
 ### 2. Các bước triển khai Vibe Coding thực tế
 Trong dự án này, chúng ta tiến hành tuần tự 4 bước phối hợp cùng AI:
 - **Bước 1**: Phác thảo cấu trúc cấu hình `CliConfig` và bộ dữ liệu `LogEntry`.
-- **Bước 2**: Định nghĩa các trạng thái lỗi trong `LogCliError` và yêu cầu AI viết các bài test kiểm chứng việc phân tích dòng log.
+- **Bước 2**: Quy định cách báo lỗi (`parse_from_args` trả `Result<CliConfig, String>`, dòng dị dạng được đếm thay vì làm sập chương trình) và yêu cầu AI viết các bài test kiểm chứng việc phân tích dòng log.
 - **Bước 3**: Nhờ AI sinh mã cho bộ phân tích `LogAnalyzer` với các đường ống hàm Iterator.
 - **Bước 4**: Ghép nối vào hàm `main()` có bắt lỗi hoàn chỉnh, sử dụng Trình biên dịch Rust làm Trọng tài tối cao để triệt tiêu mọi cảnh báo và lỗi cú pháp.
 
@@ -477,10 +477,10 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi xây dựng
 
 | Mã lỗi `rustc` | Nguyên nhân gốc rễ khi viết công cụ CLI | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh chuẩn kiến trúc |
 | :--- | :--- | :--- | :--- |
-| **`E0061`** | **This function takes X arguments but Y were supplied**<br>AI gọi hàm phân tích tham số nhưng quên truyền lát cắt đối số hoặc truyền sai số lượng. | ```rust // compile-fail\nCliConfig::parse_from_args();``` | Kiểm tra chữ ký hàm: `parse_from_args(args: &[String])` và truyền đúng tham chiếu lát cắt `&args`. |
-| **`E0382`** | **Use of moved value in argument loop**<br>AI lặp qua danh sách `args` bằng vòng lặp `for arg in args` (tiêu thụ quyền sở hữu) thay vì mượn tham chiếu. | ```rust // compile-fail\nlet args = vec!["a".to_string()];\nfor x in args {}\nprintln!("{:?}", args);``` | Mượn tham chiếu `for arg in &args` để không làm mất quyền sở hữu của danh sách đối số ban đầu. |
-| **`E0284`** | **Type annotations needed**<br>AI gọi `parse()` nhưng không cung cấp chỉ định kiểu dữ liệu đích cần chuyển đổi, nên trình biên dịch không biết cần `FromStr` của kiểu nào. | ```rust // compile-fail\nlet n = "123".parse().unwrap();``` | Khai báo rõ kiểu dữ liệu đích cần parse: `"123".parse::<u64>()` hoặc chỉ định kiểu biến `let n: u64 = ...`. |
-| **`E0308`** | **Mismatched types in CLI match expression**<br>Nhánh kiểm tra cờ dòng lệnh trả về chuỗi `String` trong khi một nhánh khác lại trả về lát cắt tĩnh `&'static str`. | ```rust // compile-fail\nlet s = if true { "a" } else { String::from("b") };``` | Thống nhất kiểu dữ liệu của tất cả các nhánh trong biểu thức điều kiện (chuyển tất cả về `String` bằng `.to_string()`). |
+| **`E0061`** | **This function takes X arguments but Y were supplied**<br>AI gọi hàm phân tích tham số nhưng quên truyền lát cắt đối số hoặc truyền sai số lượng. | `CliConfig::parse_from_args();` | Kiểm tra chữ ký hàm: `parse_from_args(args: &[String])` và truyền đúng tham chiếu lát cắt `&args`. |
+| **`E0382`** | **Use of moved value in argument loop**<br>AI lặp qua danh sách `args` bằng vòng lặp `for arg in args` (tiêu thụ quyền sở hữu) thay vì mượn tham chiếu. | `let args = vec!["a".to_string()];`<br>`for x in args {}`<br>`println!("{:?}", args);` | Mượn tham chiếu `for arg in &args` để không làm mất quyền sở hữu của danh sách đối số ban đầu. |
+| **`E0284`** | **Type annotations needed**<br>AI gọi `parse()` nhưng không cung cấp chỉ định kiểu dữ liệu đích cần chuyển đổi, nên trình biên dịch không biết cần `FromStr` của kiểu nào. | `let n = "123".parse().unwrap();` | Khai báo rõ kiểu dữ liệu đích cần parse: `"123".parse::<u64>()` hoặc chỉ định kiểu biến `let n: u64 = ...`. |
+| **`E0308`** | **Mismatched types in CLI match expression**<br>Nhánh kiểm tra cờ dòng lệnh trả về chuỗi `String` trong khi một nhánh khác lại trả về lát cắt tĩnh `&'static str`. | `let s = if true { "a" } else { String::from("b") };` | Thống nhất kiểu dữ liệu của tất cả các nhánh trong biểu thức điều kiện (chuyển tất cả về `String` bằng `.to_string()`). |
 
 ---
 

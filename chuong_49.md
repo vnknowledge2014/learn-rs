@@ -121,7 +121,7 @@ pub enum Poll<T> {
 
 ### 3. Kiến trúc Động cơ Điều phối Tokio (Tokio Runtime Architecture)
 
-Runtime Tokio được chia thành hai thành phần cộng sinh hoàn hảo:
+Runtime Tokio được chia thành ba thành phần cộng sinh hoàn hảo:
 1. **Bộ phản ứng (The Reactor)**: Giao tiếp trực tiếp với hệ điều hành thông qua `mio` (`epoll`/`kqueue`), chịu trách nhiệm theo dõi các sự kiện mạng, bộ đếm thời gian (timers), và kích hoạt `Waker` khi sự kiện xảy ra.
 2. **Bộ điều hành (The Executor)**:
    - Sử dụng thuật toán **Cắp việc (Work-Stealing Algorithm)**: Mỗi nhân CPU quản lý một hàng đợi tác vụ cục bộ (Local Run Queue).

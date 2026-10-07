@@ -7,7 +7,7 @@ Trong thế giới an ninh mạng chuyên nghiệp, có một câu châm ngôn k
 Chứng chỉ **OSCP (Offensive Security Certified Professional)** được coi là tiêu chuẩn vàng toàn cầu về kỹ năng tấn công thực chiến: Học viên bị ném vào một mạng lưới máy chủ thực tế và phải tự mình tìm ra lỗ hổng, khai thác ban đầu, và leo thang đặc quyền tối cao trong vòng 24 giờ liên tục. Khi bạn nhìn nhận hệ thống qua lăng kính của một chiến binh OSCP, bạn sẽ không còn nhìn mã nguồn như những dòng chữ đơn thuần, mà nhìn thấy các bề mặt tấn công (attack surfaces) tiềm tàng.
 
 Trong chương cuối cùng của Chủ đề 7, chúng ta sẽ trang bị:
-- **Tư duy tấn công thực chiến OSCP**: Chu trình 5 giai đoạn từ thu thập thông tin trinh sát, dò quét dịch vụ, khai thác ban đầu, đến leo thang đặc quyền (Privilege Escalation).
+- **Tư duy tấn công thực chiến OSCP**: Chu trình 4 giai đoạn từ thu thập thông tin trinh sát, dò quét dịch vụ, khai thác ban đầu, đến leo thang đặc quyền (Privilege Escalation).
 - **Mô hình hóa mối đe dọa (Threat Modeling)** theo tiêu chuẩn công nghiệp **STRIDE** của Microsoft: Nhận diện và đo lường rủi ro có hệ thống.
 - Các cơ chế phòng vệ phần cứng và hệ điều hành hiện đại: **ASLR** (Trộn ngẫu nhiên địa chỉ), **DEP/NX** (Cấm thực thi vùng dữ liệu), và **Stack Canaries** (Chim hoàng yến ngăn xếp).
 - **Kỹ thuật Gia cố nhị phân (Binary Hardening)** cho các ứng dụng Rust thông qua cờ biên dịch trong `Cargo.toml`: `panic = "abort"`, `overflow-checks = true`, `lto = true`.

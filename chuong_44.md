@@ -298,10 +298,10 @@ Dưới đây là các lỗi biên dịch thường gặp nhất khi lập trìn
 
 | Mã lỗi `rustc` | Nguyên nhân gốc rễ do sai lệch ngữ cảnh | Đoạn mã vi phạm mẫu | Giải pháp điều chỉnh Prompt & Context |
 | :--- | :--- | :--- | :--- |
-| **`E0061`** | **Mismatched number of arguments**<br>AI nhớ phiên bản hàm cũ vì trong context bạn không cung cấp chữ ký hàm hiện tại. | ```rust // compile-fail\nfn process_event(id: u64, name: &str) {}\nprocess_event(10);``` | Luôn đưa chữ ký hàm chính xác vào khối `Domain Contracts` trong System Prompt để AI đối chiếu số lượng tham số. |
-| **`E0425`** | **Cannot find value/function in this scope**<br>AI gọi một hàm tiện ích mà không biết nó nằm ở mô-đun nào vì context bị thiếu thông tin `use`. | ```rust // compile-fail\nlet data = read_file_to_string("config.json");``` | Bổ sung câu lệnh quy chuẩn vào Prompt: *"Mọi hàm bên ngoài bắt buộc phải ghi rõ đường dẫn đầy đủ hoặc khai báo `use std::...` tường minh"*. |
-| **`E0599`** | **No method named found for type**<br>AI gọi một phương thức thuộc về Trait nhưng chưa import Trait đó vào phạm vi tệp tin. | ```rust // compile-fail\nuse std::io;\nlet mut f = io::stdout();\nf.write_all(b"hello");``` | Cung cấp danh sách các Trait cốt lõi trong prompt (ví dụ: `use std::io::Write;`) và nhắc nhở AI luôn đưa Trait vào phạm vi hoạt động. |
-| **`E0382`** | **Use of moved value in loop**<br>AI chuyển quyền sở hữu (ownership) của một chuỗi String vào bên trong phân đoạn ngữ cảnh lặp lại. | ```rust // compile-fail\nlet s = String::from("context");\nfor _ in 0..2 { drop(s); }``` | Nhắc nhở AI áp dụng quy tắc mượn (borrow) tham chiếu `&str` hoặc `&ContextSegment` thay vì tiêu thụ quyền sở hữu trong các thao tác lặp. |
+| **`E0061`** | **Mismatched number of arguments**<br>AI nhớ phiên bản hàm cũ vì trong context bạn không cung cấp chữ ký hàm hiện tại. | `fn process_event(id: u64, name: &str) {}`<br>`process_event(10);` | Luôn đưa chữ ký hàm chính xác vào khối `Domain Contracts` trong System Prompt để AI đối chiếu số lượng tham số. |
+| **`E0425`** | **Cannot find value/function in this scope**<br>AI gọi một hàm tiện ích mà không biết nó nằm ở mô-đun nào vì context bị thiếu thông tin `use`. | `let data = read_file_to_string("config.json");` | Bổ sung câu lệnh quy chuẩn vào Prompt: *"Mọi hàm bên ngoài bắt buộc phải ghi rõ đường dẫn đầy đủ hoặc khai báo `use std::...` tường minh"*. |
+| **`E0599`** | **No method named found for type**<br>AI gọi một phương thức thuộc về Trait nhưng chưa import Trait đó vào phạm vi tệp tin. | `use std::io;`<br>`let mut f = io::stdout();`<br>`f.write_all(b"hello");` | Cung cấp danh sách các Trait cốt lõi trong prompt (ví dụ: `use std::io::Write;`) và nhắc nhở AI luôn đưa Trait vào phạm vi hoạt động. |
+| **`E0382`** | **Use of moved value in loop**<br>AI chuyển quyền sở hữu (ownership) của một chuỗi String vào bên trong phân đoạn ngữ cảnh lặp lại. | `let s = String::from("context");`<br>`for _ in 0..2 { drop(s); }` | Nhắc nhở AI áp dụng quy tắc mượn (borrow) tham chiếu `&str` hoặc `&ContextSegment` thay vì tiêu thụ quyền sở hữu trong các thao tác lặp. |
 
 ---
 
@@ -374,6 +374,10 @@ RÀNG BUỘC CỨNG:
 XỬ LÝ KHI TỆP KHÔNG TỒN TẠI:
 - Không tự tạo tệp. Trả về Err(io::Error) để người gọi quyết định.
 
+VÍ DỤ MẪU (few-shot):
+    Tệp chứa:  "# cổng web\n80\n443\nabc\n\n8080"
+    Kết quả:   Ok(vec![80, 443, 8080])
+
 ĐỊNH DẠNG ĐẦU RA:
 - Chỉ trả về mã Rust trong một khối ```rust, kèm 3 test đơn vị:
   tệp hợp lệ, tệp không tồn tại, và tệp chứa dòng rác.
@@ -383,11 +387,11 @@ XỬ LÝ KHI TỆP KHÔNG TỒN TẠI:
 
 | Thành phần | Câu gốc | Bản nâng cấp |
 |---|---|---|
-| **Vai trò** (persona) | không | "kỹ sư Rust cấp cao, mã sản xuất" |
-| **Nhiệm vụ** rõ ràng | mơ hồ | chữ ký hàm chính xác |
-| **Ràng buộc** cứng | không | cấm unwrap, u16, bỏ qua chú thích |
-| **Xử lý ca biên** | không | tệp thiếu -> trả Err |
-| **Định dạng đầu ra** | không | kiểu trả về + test bắt buộc |
+| **1. Persona & Role** | không | "kỹ sư Rust cấp cao, mã sản xuất" |
+| **2. Hard Constraints** | không | cấm unwrap, u16, bỏ qua chú thích, tệp thiếu -> trả Err |
+| **3. Domain Contracts** | không | chữ ký hàm bắt buộc `read_port_list` |
+| **4. Input/Output Spec** | mơ hồ | định dạng tệp vào, kiểu trả về, khối mã + 3 test |
+| **5. Few-shot Examples** | không | một cặp tệp mẫu -> kết quả mong đợi |
 
 Bài học: chất lượng đầu ra của AI **tỉ lệ thuận với độ rõ của ràng buộc bạn đặt ra**. Câu mơ hồ "đọc file trả về cổng" để AI tự đoán kiểu trả về (Vec<String>? Vec<i32>?), tự đoán cách xử lý lỗi (thường là rải `.unwrap()` — đúng thứ ta muốn cấm). Một System Prompt chặt biến AI từ "đoán ý" thành "thực thi đặc tả".
 </details>
@@ -395,7 +399,7 @@ Bài học: chất lượng đầu ra của AI **tỉ lệ thuận với độ r
 <details>
 <summary><b>Bài tập 2 — Gợi ý</b></summary>
 
-Cửa sổ ngữ cảnh là bộ nhớ làm việc hữu hạn của mô hình. Chiến lược đúng: chỉ đưa vào những gì *liên quan trực tiếp* tới việc sửa, cố tình bỏ 49 tệp còn lại.
+Cửa sổ ngữ cảnh là bộ nhớ làm việc hữu hạn của mô hình. Chiến lược đúng: chỉ đưa vào những gì *liên quan trực tiếp* tới việc sửa, cố tình bỏ phần lớn các tệp còn lại.
 </details>
 
 <details>
@@ -445,7 +449,7 @@ fn save_data_to_file(path: &str, content: &[u8]) -> Result<(), std::io::Error> {
 }
 ```
 
-**Vì sao Rust thiết kế "phải import trait mới gọi được phương thức":** đây là cơ chế **coherence** giữ cho không gian tên phương thức sạch sẽ. Nhiều trait khác nhau có thể cùng đặt một phương thức tên `write` cho cùng một kiểu; nếu mọi phương thức trait đều tự động hiện diện, sẽ có xung đột tên khắp nơi. Buộc `use` trait làm cho *nguồn gốc* mỗi phương thức trở nên tường minh — đọc phần `use` đầu tệp là biết những khả năng nào đang được kích hoạt.
+**Vì sao Rust thiết kế "phải import trait mới gọi được phương thức":** đây là quy tắc **phân giải phương thức theo trait trong phạm vi** (trait-in-scope method resolution): trình biên dịch chỉ xét phương thức của những trait đang được `use`, giữ cho không gian tên phương thức sạch sẽ. Nhiều trait khác nhau có thể cùng đặt một phương thức tên `write` cho cùng một kiểu; nếu mọi phương thức trait đều tự động hiện diện, sẽ có xung đột tên khắp nơi. Buộc `use` trait làm cho *nguồn gốc* mỗi phương thức trở nên tường minh — đọc phần `use` đầu tệp là biết những khả năng nào đang được kích hoạt.
 
 Đây là lỗi AI mắc rất thường xuyên: nó sinh mã gọi `write_all`, `read_to_string`, `flush`... nhưng quên dòng `use` cho trait tương ứng (`Write`, `Read`). Mẹo nhận diện: khi thấy `no method named X found for struct Y` mà bạn *biết* phương thức đó tồn tại, gần như chắc chắn là **thiếu `use` trait** — trình biên dịch Rust thường gợi ý ngay dòng `use` cần thêm ở cuối thông báo lỗi.
 </details>

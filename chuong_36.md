@@ -699,7 +699,7 @@ fn crc32_matches_standard_vector() {
 ```
 Trong `rebuild_keydir`, sau khi đọc một bản ghi, **tính lại CRC** trên vùng dữ liệu và so với 4 byte CRC đã lưu. Khớp thì nạp vào KeyDir; **lệch thì bỏ qua bản ghi hỏng** (và dừng nếu muốn chặt chẽ) — vì đĩa có thể hỏng bit, hoặc ghi dở khi mất điện giữa chừng.
 
-Đây là lý do mọi định dạng lưu trữ nghiêm túc (SSTable, WAL, gói TCP) đều mang checksum: **RAM và mạng thì tin được, nhưng đĩa và thời gian thì không** — CRC là tấm lưới bắt lỗi âm thầm trước khi nó lan thành dữ liệu sai.
+Đây là lý do mọi định dạng lưu trữ nghiêm túc (SSTable, WAL, gói TCP) đều mang checksum: **đĩa, mạng và thời gian đều không tin được** — CRC là tấm lưới bắt lỗi âm thầm trước khi nó lan thành dữ liệu sai.
 </details>
 
 <details>
