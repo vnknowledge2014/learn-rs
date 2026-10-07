@@ -156,6 +156,8 @@ if !TAKEN { TAKEN = true; hand_out_peripherals() }
 
 `AtomicBool::swap` làm cả hai việc trong **một** thao tác không thể bị cắt ngang: đặt giá trị mới *và* trả về giá trị cũ. Nếu giá trị cũ là `true`, ta biết chắc có người lấy trước — không có khe hở nào.
 
+> **Lưu ý với Cortex-M0/M0+** (dòng chip đã nêu ở mục 5): kiến trúc ARMv6-M không có lệnh so-sánh-và-hoán-đổi (CAS), nên trên target `thumbv6m-none-eabi` chỉ có `load`/`store` nguyên tử — `AtomicBool::swap` và `compare_exchange` **không tồn tại**, mã sẽ không biên dịch. Ở đó hãy làm "đọc-rồi-ghi" bên trong một vùng găng (`critical_section::with(|_| ...)`, đúng cách `cortex_m::Peripherals::take()` làm), hoặc dùng crate `portable-atomic` để mô phỏng thao tác nguyên tử.
+
 ---
 
 ## Mã nguồn minh họa thực chiến (Idiomatic Runnable Rust Blueprint)
@@ -1073,7 +1075,7 @@ use core::cell::UnsafeCell;
 use core::sync::atomic::AtomicUsize;   // `Ordering` chương đã nhập ở trên
 
 pub struct SpscQueue<const N: usize> {
-    o: UnsafeCell<[u8; N]>,
+    buf: UnsafeCell<[u8; N]>,
     head: AtomicUsize,   // CHỈ người tiêu thụ ghi — vị trí ĐỌC
     tail: AtomicUsize,  // CHỈ người sản xuất ghi — vị trí GHI
 }
@@ -1084,7 +1086,7 @@ unsafe impl<const N: usize> Sync for SpscQueue<N> {}
 impl<const N: usize> SpscQueue<N> {
     pub const fn new() -> Self {
         SpscQueue {
-            o: UnsafeCell::new([0; N]),
+            buf: UnsafeCell::new([0; N]),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
         }
@@ -1097,7 +1099,7 @@ impl<const N: usize> SpscQueue<N> {
         if tail_next == self.head.load(Ordering::Acquire) {
             return Err(b); // đầy — hy sinh byte còn hơn chặn ngắt
         }
-        unsafe { (*self.o.get())[tail] = b; }
+        unsafe { (*self.buf.get())[tail] = b; }
         // Release: bảo đảm lệnh ghi dữ liệu ở trên HOÀN TẤT trước khi
         // người tiêu thụ nhìn thấy con trỏ mới.
         self.tail.store(tail_next, Ordering::Release);
@@ -1110,7 +1112,7 @@ impl<const N: usize> SpscQueue<N> {
         if head == self.tail.load(Ordering::Acquire) {
             return None; // rỗng
         }
-        let b = unsafe { (*self.o.get())[head] };
+        let b = unsafe { (*self.buf.get())[head] };
         self.head.store((head + 1) % N, Ordering::Release);
         Some(b)
     }
@@ -1129,5 +1131,5 @@ fn spsc_holds_n_minus_one() {
 }
 ```
 
-Điểm tinh tế nhất là **hy sinh một ô nhớ**: hàng đợi `N` ô chỉ chứa được `N-1` phần tử, vì `head == tail` phải chỉ nghĩa "rỗng". Nếu cho phép chứa đủ `N`, trạng thái đầy và rỗng trông giống hệt nhau và không cách nào phân biệt mà không thêm biến đếm — mà thêm biến đếm thì lại cần cả hai bên cùng ghi, phá vỡ tính không-khóa.
+Điểm tinh tế nhất là **hy sinh một ô nhớ**: hàng đợi `N` ô chỉ chứa được `N-1` phần tử, vì `head == tail` phải chỉ nghĩa "rỗng". Nếu cho phép chứa đủ `N`, trạng thái đầy và rỗng trông giống hệt nhau (`head == tail` trong cả hai trường hợp). Hy sinh một ô là cách đơn giản nhất. Cách khác là để `head`/`tail` **chạy tự do** (chỉ tăng, `wrapping_add`) và lấy vị trí bằng `% N` (N là lũy thừa của 2): khi đó `tail - head == 0` là rỗng, `== N` là đầy — mỗi con trỏ vẫn chỉ có một bên ghi nên vẫn không cần khóa. Một biến đếm nguyên tử dùng chung (`fetch_add`/`fetch_sub`) cũng vẫn không-khóa, nhưng cần thao tác đọc-sửa-ghi nguyên tử — thứ Cortex-M0 không có.
 </details>

@@ -1012,6 +1012,76 @@ Trong Axum, middleware bọc quanh handler. Mô phỏng: viết hàm `with_loggi
 Middleware chính là *hàm bậc cao bọc handler* — nhận yêu cầu, làm gì đó trước, gọi handler, làm gì đó sau, trả phản hồi. Đo thời gian, ghi log, kiểm xác thực đều là middleware. Nhớ hàm `measure_exec_time` ở Chương 17.
 </details>
 
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+fn method_name(m: Method) -> &'static str {
+    match m {
+        Method::Get => "GET",
+        Method::Post => "POST",
+        Method::Put => "PUT",
+        Method::Delete => "DELETE",
+    }
+}
+
+/// Middleware ghi nhật ký: làm gì đó TRƯỚC (ghi lại phương thức + đường dẫn,
+/// vì `req` sắp bị chuyển vào router), gọi router, làm gì đó SAU (ghi mã trạng
+/// thái), rồi trả nguyên phản hồi. Router và handler không hề biết mình bị bọc.
+pub fn with_logging(
+    app: &Router,
+    req: Request,
+    state: &AppState,
+    log: &mut Vec<String>,
+) -> Response {
+    let line = format!("{} {}", method_name(req.method), req.path); // TRƯỚC
+    let response = app.handle(req, state);
+    log.push(format!("{} -> {}", line, response.status)); // SAU
+    response
+}
+
+#[cfg(test)]
+mod exercise_2 {
+    use super::*;
+    #[test]
+    fn logging_middleware_records_every_request() {
+        let app = build_router();
+        let state = AppState::new();
+        let mut log = Vec::new();
+        let created = with_logging(
+            &app,
+            request(Method::Post, "/products", "name=A;price=1"),
+            &state,
+            &mut log,
+        );
+        assert_eq!(created.status, 201); // phản hồi đi qua NGUYÊN VẸN
+        with_logging(
+            &app,
+            request(Method::Get, "/products/9", ""),
+            &state,
+            &mut log,
+        );
+        with_logging(
+            &app,
+            request(Method::Put, "/products/1", ""),
+            &state,
+            &mut log,
+        );
+        assert_eq!(
+            log,
+            [
+                "POST /products -> 201",
+                "GET /products/9 -> 404",
+                "PUT /products/1 -> 405"
+            ]
+        );
+    }
+}
+```
+
+Chú ý thứ tự: phải chép `method`/`path` ra *trước* khi gọi `app.handle(req, ...)`, vì `req` bị chuyển quyền sở hữu vào router (dùng lại sau đó là `E0382`). Trong Axum, cùng ý tưởng này là `axum::middleware::from_fn` hoặc lớp `TraceLayer` của `tower-http` — một hàm bọc quanh dịch vụ bên trong, nhận yêu cầu, gọi `next.run(req).await`, rồi xem phản hồi. Đo thời gian (như `measure_exec_time` ở Chương 17) hay kiểm xác thực đều viết theo đúng khuôn này.
+</details>
+
 **Bài tập 3 (Tư duy: chọn mã trạng thái)**
 Với mỗi tình huống, chọn mã HTTP đúng:
 1. Người dùng gửi form đăng ký với email đã tồn tại.

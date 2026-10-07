@@ -1101,8 +1101,10 @@ Vì sao vòng lặp tổ hợp nguy hiểm? Vì mạch không bao giờ ổn đ�
 
 ```rust
 impl Circuit {
-    /// Bất biến: mọi cổng chỉ được tham chiếu tới nút có chỉ số NHỎ HƠN.
-    /// Vi phạm = có vòng lặp tổ hợp = mạch không bao giờ ổn định.
+    /// Bất biến: mọi cổng chỉ được tham chiếu tới nút có chỉ số NHỎ HƠN (thứ tự tô-pô).
+    /// Giữ được bất biến này thì CHẮC CHẮN không có vòng lặp tổ hợp. Đây là kiểm tra
+    /// THẬN TRỌNG: một tham chiếu "tới trước" chưa chắc tạo vòng lặp, nhưng vẫn bị
+    /// từ chối vì bộ mô phỏng tính các nút theo đúng thứ tự chỉ số.
     pub fn assert_acyclic(&self) -> Result<(), String> {
         for (i, n) in self.nodes.iter().enumerate() {
             let inputs: Vec<usize> = match n {
@@ -1113,7 +1115,7 @@ impl Circuit {
             for src in inputs {
                 if src >= i {
                     return Err(format!(
-                        "vòng lặp tổ hợp: nút {i} lấy đầu vào từ nút {src} (không nhỏ hơn)"
+                        "vi phạm thứ tự tô-pô (có thể có vòng lặp tổ hợp): nút {i} lấy đầu vào từ nút {src}"
                     ));
                 }
             }

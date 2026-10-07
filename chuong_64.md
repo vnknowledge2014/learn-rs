@@ -725,7 +725,7 @@ mod tests {
 | Lỗi | Nguyên nhân trong chương này | Cách sửa |
 |---|---|---|
 | `E0369`: binary operation `==` cannot be applied to type `Vec<Process>` | `#[derive(PartialEq)]` trên `ScheduleResult` nhưng `Process` bên trong lại không có | Thêm `PartialEq` vào derive của **mọi** kiểu lồng bên trong |
-| `E0502`: cannot borrow `procs` as mutable because it is also borrowed as immutable | Vòng `for p in procs.iter()` rồi lại `procs.push(...)` bên trong | Thu thập vào `Vec` mới, hoặc dùng chỉ số `for i in 0..tt.len()` |
+| `E0502`: cannot borrow `procs` as mutable because it is also borrowed as immutable | Vòng `for p in procs.iter()` rồi lại `procs.push(...)` bên trong | Thu thập vào `Vec` mới, hoặc dùng chỉ số `for i in 0..procs.len()` |
 | `E0382: use of moved value` | Truyền `Vec<Process>` vào `schedule_fcfs` rồi truyền tiếp vào `schedule_sjf` | Mỗi thuật toán một bản sao: dùng closure `let make_processes = \|\| vec![...]` |
 | *Không phải lỗi*: tưởng sẽ panic `index out of bounds` | `refs[i + 1..]` khi `i` là phần tử cuối | Rust cho phép `refs[len..]` (lát cắt rỗng); chỉ `refs[len + 1..]` mới panic — đây là lý do `optimal_replacement` không panic |
 | Đệ quy tràn ngăn xếp trong `dfs` (lúc chạy) | Đồ thị chờ có chu trình mà quên đánh dấu màu xám | Đúng ba màu: trắng → xám (đang thăm) → đen (xong) |

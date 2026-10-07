@@ -9,7 +9,7 @@ Trải qua một hành trình phi thường gồm 9 chủ đề lớn: Từ nh�
 Trong dự án tốt nghiệp này, chúng ta sẽ hợp nhất toàn bộ tinh hoa kiến thức của giáo trình để tự tay thiết kế và lập trình: **Một Động cơ Xử lý Đơn hàng Phân tán (Distributed Order Processing Engine) đạt chuẩn sản xuất!**
 
 Hệ thống này tích hợp 5 phân hệ cốt lõi:
-1. **Tầng tiếp nhận & Xác thực bảo mật (API Ingestion & Threat Validation)**: Kiểm tra tính hợp lệ của dữ liệu đầu vào, chống tấn công Injection và kiểm soát giới hạn tải.
+1. **Tầng tiếp nhận & Xác thực bảo mật (API Ingestion & Threat Validation)**: Kiểm tra tính hợp lệ của dữ liệu đầu vào, chống tấn công Injection (giới hạn tải/tần suất là hướng mở rộng — xem token bucket ở Chương 59).
 2. **Cơ chế Triệt tiêu trùng lặp (Idempotency Key Engine)**: Bảo đảm dù mạng bị chập chờn khiến khách hàng bấm nút "Đặt hàng" 10 lần liên tiếp, tài khoản của họ cũng chỉ bị trừ tiền đúng 1 lần duy nhất.
 3. **Máy trạng thái Vòng đời Đơn hàng (Order State Machine)**: Quản lý nghiêm ngặt các bước chuyển trạng thái từ `Pending` -> `Validated` -> `Paid` -> `Fulfilled` (hoặc `Cancelled`).
 4. **Xử lý Đồng thời An toàn (Concurrent Processing)**: Động cơ được chia sẻ qua `Arc`, nhiều luồng gọi `submit_order` cùng lúc; trạng thái dùng chung được bảo vệ bằng `Mutex` với thứ tự khóa cố định. (Biến nó thành một pipeline actor với `std::sync::mpsc` như Chương 50 là một hướng mở rộng hay.)
@@ -64,7 +64,7 @@ Hãy hình dung cỗ máy phân tán này như một **Dây chuyền Trung tâm 
 Trong kiến trúc thương mại điện tử phân tán, trạng thái của một đơn hàng phải tuân thủ nghiêm ngặt các quy tắc chuyển dịch (State Transitions), không bao giờ được phép "nhảy cóc":
 
 ```
-   [CREATED] (Đã tạo mới)
+   [PENDING] (Đã tạo mới)
        │
        ▼
  [VALIDATED] (Đã kiểm tra kho & xác thực hợp lệ)
@@ -75,7 +75,7 @@ Trong kiến trúc thương mại điện tử phân tán, trạng thái của m
        ▼
   [FULFILLED] (Đã đóng gói xuất kho thành công - Điểm kết thúc)
 ```
-- Không thể chuyển từ `Created` thẳng sang `Fulfilled` mà chưa qua bước `Paid`.
+- Không thể chuyển từ `Pending` thẳng sang `Fulfilled` mà chưa qua bước `Paid`.
 - Không thể chuyển từ `Fulfilled` sang `Cancelled` khi hàng đã rời kho.
 - Trong Rust, chúng ta mô hình hóa các trạng thái này bằng `enum` có kiểu dữ liệu mạnh mẽ kết hợp mẫu so khớp `match`, biến mọi hành vi chuyển trạng thái bất hợp pháp thành lỗi được kiểm soát (`Err`) thay vì dữ liệu hỏng âm thầm. (Muốn biến chúng thành *lỗi biên dịch* thì dùng mẫu typestate — mỗi trạng thái một kiểu riêng.)
 
@@ -976,6 +976,18 @@ Nếu Payment THẤT BẠI ở bước 3 -> chạy NGƯỢC các giao dịch bù
   [Order Service]     đánh dấu đơn Cancelled    (bù cho bước 1)
   -> hệ thống trở về trạng thái nhất quán, KHÔNG cần khóa toàn cục
 ```
+
+**Điều phối qua sự kiện (choreography) — không có "nhạc trưởng":** trong biến thể mà đề bài yêu cầu, *không* có dịch vụ trung tâm nào ra lệnh từng bước. Mỗi dịch vụ chỉ **lắng nghe sự kiện** trên hàng đợi thông điệp (Chương 52) và **phát sự kiện** của mình:
+
+```text
+  Order Service      phát  OrderCreated
+  Inventory Service  nghe  OrderCreated      -> giữ hàng, phát InventoryReserved
+  Payment Service    nghe  InventoryReserved -> ngân hàng TỪ CHỐI, phát PaymentFailed
+  Inventory Service  nghe  PaymentFailed     -> HOÀN hàng vào kho (bù), phát InventoryReleased
+  Order Service      nghe  PaymentFailed     -> đánh dấu đơn Cancelled (bù)
+```
+
+So với kiểu **điều phối tập trung (orchestration)** — một Saga Orchestrator gọi lần lượt từng dịch vụ và tự quyết định chạy bù — choreography không có điểm chết đơn lẻ và các dịch vụ ghép lỏng hơn; đổi lại, luồng nghiệp vụ nằm rải rác trong nhiều bộ lắng nghe nên khó theo dõi khi chuỗi dài. Mỗi bộ lắng nghe cũng phải **idempotent** (chính bài học Idempotency Key của chương này), vì hàng đợi có thể giao lại cùng một sự kiện nhiều lần.
 
 **Đánh đổi phải nói thẳng — Saga hy sinh tính cô lập:**
 

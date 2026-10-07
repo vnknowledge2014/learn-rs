@@ -76,7 +76,7 @@ Trong chương này, chúng ta sẽ chinh phục:
            /        \
           /__________\
 Tính Sẵn sàng       Tính Chịu Phân Rã
-(Partition Tolerance)
+(Availability)      (Partition Tolerance)
 ```
 
 - **Tính Nhất quán (Consistency - C)**: Mọi thao tác đọc đều nhận được dữ liệu của lần ghi mới nhất hoặc trả về lỗi. Tuyệt đối không bao giờ trả về dữ liệu cũ đã lỗi thời.
@@ -616,7 +616,7 @@ fn update_correct(node: &mut DemoNode) {
 2. **Bài tập 2 (Phục hồi Đồng bộ Nhật ký khi Node sống lại)**:  
    Giả sử Node 3 bị sập nguồn trong 1 tiếng và bị thiếu mất 10 bản ghi nhật ký. Hãy viết hàm `sync_follower_log` cho phép Leader tự động phát hiện vị trí bản ghi không khớp và gửi lại các bản ghi còn thiếu để đưa Node 3 về trạng thái nhất quán với toàn cụm.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Raft lại thay thế Paxos?)**:  
-   Trước khi Raft ra đời vào năm 2014, Paxos là thuật toán đồng thuận thống trị thế giới. Tại sao tác giả Diego Ongaro lại sáng tạo ra Raft với mục tiêu hàng đầu là "Tính dễ hiểu (Understandability)"? Hãy phân tích sự khác biệt giữa cấu trúc có Leader độc tôn của Raft so với tính đối xứng phức tạp của Multi-Paxos.
+   Trước khi Raft ra đời vào năm 2014, Paxos là thuật toán đồng thuận thống trị thế giới. Tại sao tác giả Diego Ongaro lại sáng tạo ra Raft với mục tiêu hàng đầu là "Tính dễ hiểu (Understandability)"? Hãy phân tích sự khác biệt giữa cấu trúc có Leader độc tôn của Raft so với Multi-Paxos — vốn cũng dùng một leader ổn định nhưng được đặc tả rời rạc, thiếu nhiều chi tiết.
 
 ---
 
@@ -764,16 +764,18 @@ Raft và Paxos giải cùng bài toán đồng thuận, nhưng Raft đặt 'tín
 
 Câu trả lời nằm ở một sự thật phũ phàng của ngành: **Paxos đúng về mặt toán học nhưng nổi tiếng là khó hiểu và khó cài đặt đúng.** Chính Leslie Lamport (tác giả Paxos) viết bài báo gốc dưới dạng một truyện ngụ ngôn về nghị viện Hy Lạp khiến nó càng khó nắm. Hệ quả thực tế: các kỹ sư đọc Paxos, gật gù rằng nó đúng, rồi *không cài nổi* — và những bản cài "Paxos" ngoài đời thường là các biến thể chắp vá (Multi-Paxos) mà không ai chắc còn đúng không. Ongaro lập luận: **một thuật toán đồng thuận mà con người không hiểu nổi thì không thể cài đúng, không thể vận hành, không thể dạy** — nên *tính dễ hiểu* tự nó là một mục tiêu kỹ thuật chính đáng, ngang hàng với tính đúng đắn.
 
-**Khác biệt cấu trúc cốt lõi — Leader độc tôn (Raft) so với đối xứng (Multi-Paxos):**
+**Khác biệt cấu trúc cốt lõi — Raft đặc tả trọn vẹn so với Multi-Paxos đặc tả rời rạc:**
+
+Lưu ý: chỉ Paxos đơn quyết định (Basic Paxos) mới thật sự đối xứng — nút nào cũng có thể đề xuất. Multi-Paxos trong thực tế *cũng* bầu một leader ổn định (distinguished proposer); khác biệt nằm ở chỗ bài báo gốc không đặc tả đầy đủ cách bầu leader, cách thay thành viên, cách xử lý lỗ hổng nhật ký — mỗi bản cài tự lấp chỗ trống theo một kiểu.
 
 | | Raft | Multi-Paxos |
 |---|---|---|
-| **Vai trò** | Leader độc tôn rõ ràng; mọi ghi đi qua Leader | Đối xứng — nút nào cũng có thể đề xuất, vai trò mờ |
-| **Luồng dữ liệu** | Một chiều: Leader -> follower | Nhiều bên thương lượng qua lại |
+| **Vai trò** | Leader độc tôn rõ ràng; mọi ghi đi qua Leader | Có leader ổn định, nhưng cách chọn và chuyển giao leader không được đặc tả — mỗi bản cài một kiểu |
+| **Luồng dữ liệu** | Một chiều: Leader -> follower; nhật ký luôn liền mạch | Mỗi ô nhật ký là một lần đồng thuận riêng; nhật ký có thể có lỗ hổng phải lấp sau |
 | **Cách hiểu** | Tách thành 3 bài toán con rời: bầu Leader, sao chép nhật ký, an toàn | Trộn lẫn, khó tách để suy luận từng phần |
 | **Khi Leader chết** | Bầu lại rõ ràng theo term tăng dần | Có thể có nhiều đề xuất cạnh tranh, phức tạp hơn |
 
-**Raft đơn giản hóa bằng cách *áp đặt cấu trúc*:** thay vì để mọi nút bình đẳng thương lượng (như Paxos), Raft **bầu ra một Leader độc tôn** và quy định *mọi* thay đổi phải đi qua Leader theo một chiều. Điều này thu hẹp không gian trạng thái phải suy luận: bạn chỉ cần hiểu "Leader nói, follower nghe theo và khớp nhật ký". Ongaro còn cố ý **chia Raft thành ba bài toán con độc lập** — (1) bầu Leader, (2) sao chép nhật ký, (3) đảm bảo an toàn — để người học nắm từng mảnh riêng rồi ghép lại, thay vì nuốt cả khối như Paxos.
+**Raft đơn giản hóa bằng cách *áp đặt cấu trúc*:** thay vì để mỗi bản cài tự quyết cách chọn leader và lấp lỗ hổng nhật ký (như Multi-Paxos), Raft **bầu ra một Leader độc tôn** và quy định *mọi* thay đổi phải đi qua Leader theo một chiều. Điều này thu hẹp không gian trạng thái phải suy luận: bạn chỉ cần hiểu "Leader nói, follower nghe theo và khớp nhật ký". Ongaro còn cố ý **chia Raft thành ba bài toán con độc lập** — (1) bầu Leader, (2) sao chép nhật ký, (3) đảm bảo an toàn — để người học nắm từng mảnh riêng rồi ghép lại, thay vì nuốt cả khối như Paxos.
 
-Cái giá của sự đơn giản: Leader độc tôn là **điểm nghẽn** (mọi ghi qua một nút) và tạo một khoảng ngừng khi Leader chết (phải bầu lại). Paxos đối xứng về lý thuyết mềm dẻo hơn. Nhưng Ongaro đặt cược đúng: **với đa số hệ thống thực tế, một thuật toán *dễ hiểu và cài đúng* giá trị hơn một thuật toán *tối ưu lý thuyết nhưng không ai cài nổi*.** Kết quả lịch sử chứng minh điều đó — Raft nay là nền tảng của etcd, Consul, TiKV, CockroachDB và vô số hệ thống production, trong khi Paxos thuần phần lớn vẫn nằm trong các bài báo.
+Cái giá của sự đơn giản: Leader độc tôn là **điểm nghẽn** (mọi ghi qua một nút) và tạo một khoảng ngừng khi Leader chết (phải bầu lại). Basic Paxos đối xứng về lý thuyết mềm dẻo hơn. Nhưng Ongaro đặt cược đúng: **với đa số hệ thống thực tế, một thuật toán *dễ hiểu và cài đúng* giá trị hơn một thuật toán *tối ưu lý thuyết nhưng không ai cài nổi*.** Kết quả lịch sử chứng minh điều đó — Raft nay là nền tảng của etcd, Consul, TiKV, CockroachDB và vô số hệ thống production, trong khi các bản cài Paxos (Chubby, Spanner, Megastore) phần lớn là mã nội bộ khó tái sử dụng.
 </details>

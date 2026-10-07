@@ -468,7 +468,7 @@ fn delete_correct(map: &mut HashMap<String, u64>) {
 1. **Bài tập 1 (Bổ sung Thuật toán Đào thải trang LRU vào Cache)**:  
    Mở rộng `SafeCacheEngine`: Khi bộ nhớ đệm đạt tới giới hạn dung lượng tối đa (ví dụ 1,000 mục), hãy tự động tìm và xóa mục có thời gian truy cập lâu nhất (Least Recently Used) để nhường chỗ cho mục mới.
 2. **Bài tập 2 (Xây dựng Hàng đợi Thư Chết - Dead-Letter Queue)**:  
-   Trong `DistributedMessageQueue`, nếu một thông điệp bị xử lý thất bại quá 3 lần liên tiếp, thay vì vứt bỏ, hãy tự động chuyển thông điệp đó sang một hàng đợi riêng biệt mang tên `DeadLetterQueue` để các kỹ sư quản trị có thể kiểm tra và gỡ lỗi thủ công.
+   Trong `DistributedMessageQueue`, nếu một thông điệp bị xử lý thất bại đủ 3 lần, thay vì vứt bỏ, hãy tự động chuyển thông điệp đó sang một hàng đợi riêng biệt mang tên `DeadLetterQueue` để các kỹ sư quản trị có thể kiểm tra và gỡ lỗi thủ công.
 3. **Bài tập 3 (Suy ngẫm kiến trúc: Tại sao Cache Invalidation là một trong hai bài toán khó nhất?)**:  
    Phil Karlton từng nói (Martin Fowler trích lại và làm nó nổi tiếng): *"Chỉ có hai thứ khó trong khoa học máy tính: Hủy tính hợp lệ của Cache (Cache Invalidation) và Đặt tên"*. Hãy phân tích một tình huống cụ thể: Khi người dùng đổi mật khẩu, làm thế nào để đảm bảo 10 máy chủ Cache phân tán trên toàn cầu cùng hủy bỏ phiên đăng nhập cũ ngay lập tức mà không để xảy ra kẽ hở bảo mật?
 

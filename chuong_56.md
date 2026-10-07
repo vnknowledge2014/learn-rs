@@ -950,16 +950,125 @@ Thêm vào `Harness` một trường `max_tokens: usize` và vào `StopReason` m
 <summary><b>Lời giải</b></summary>
 
 ```rust
-// Thêm vào enum:  StopReason::OutOfTokens
-// Trong run_agent_loop, sau mỗi lời gọi công cụ:
-//     used_tokens += result_text.len() / 4;   // xấp xỉ: 4 ký tự ~ 1 token
-//     if used_tokens > harness.max_tokens {
-//         return LoopResult { answer: None, num_steps: step,
-//                                stop_reason: StopReason::OutOfTokens, log: history };
-//     }
+// Để lời giải biên dịch được cạnh mã gốc của chương, ta không sửa `Harness` và
+// `StopReason` mà bọc chúng: thêm ngân sách token và một lý do dừng mới.
+#[derive(Debug, PartialEq)]
+pub enum StopReasonV2 {
+    Base(StopReason), // ba cái phanh cũ
+    OutOfTokens,      // ← phanh thứ tư
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LoopResultV2 {
+    pub answer: Option<String>,
+    pub num_steps: usize,
+    pub used_tokens: usize,
+    pub stop_reason: StopReasonV2,
+    pub log: Vec<String>,
+}
+
+/// Đếm token xấp xỉ: khoảng 4 ký tự ~ 1 token (làm tròn lên).
+pub fn approx_tokens(text: &str) -> usize {
+    text.chars().count().div_ceil(4)
+}
+
+/// `run_agent_loop` cộng thêm phanh thứ tư: `max_tokens` (đặt `usize::MAX` để tắt).
+pub fn run_agent_loop_v2(
+    task: &str,
+    brain: &dyn Brain,
+    harness: &Harness,
+    max_tokens: usize,
+) -> LoopResultV2 {
+    let mut history: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut used_tokens = 0;
+    let stop = |reason, answer, step, used, log| LoopResultV2 {
+        answer,
+        num_steps: step,
+        used_tokens: used,
+        stop_reason: reason,
+        log,
+    };
+
+    for step in 1..=harness.max_calls {
+        match brain.decide(task, &history) {
+            Action::Answer(t) => {
+                history.push(format!("[{}] TRẢ LỜI: {}", step, t));
+                let done = StopReasonV2::Base(StopReason::Done);
+                return stop(done, Some(t), step, used_tokens, history);
+            }
+            Action::CallTool { name, param } => {
+                let call_key = format!("{}::{}", name, param);
+                if !seen.insert(call_key.clone()) {
+                    history.push(format!("[{}] PHÁT HIỆN LẶP: {}", step, call_key));
+                    let looped = StopReasonV2::Base(StopReason::LoopDetected);
+                    return stop(looped, None, step, used_tokens, history);
+                }
+                let result_text = match harness.call(&name, &param) {
+                    ToolResult::Finished(v) => v,
+                    ToolResult::Failed(e) => format!("LỖI: {}", e),
+                };
+                // DỪNG #4: kết quả công cụ cũng bị nạp vào ngữ cảnh -> tốn token.
+                used_tokens += approx_tokens(&result_text);
+                history.push(format!("[{}] {}({}) -> {}", step, name, param, result_text));
+                if used_tokens > max_tokens {
+                    return stop(StopReasonV2::OutOfTokens, None, step, used_tokens, history);
+                }
+            }
+        }
+    }
+    let out = StopReasonV2::Base(StopReason::OutOfCalls);
+    stop(out, None, harness.max_calls, used_tokens, history)
+}
+
+#[cfg(test)]
+mod exercise_2 {
+    use super::*;
+
+    fn bulky_harness() -> Harness {
+        let mut store = HashMap::new();
+        store.insert("rust".to_string(), "x".repeat(400)); // ~100 token mỗi lần tra
+        store.insert("wasm".to_string(), "y".repeat(400));
+        Harness::new(5).register(Box::new(LookupTool { store }))
+    }
+
+    fn brain() -> FakeBrain {
+        FakeBrain {
+            scenarios: vec![
+                Action::CallTool {
+                    name: "lookup".into(),
+                    param: "rust".into(),
+                },
+                Action::CallTool {
+                    name: "lookup".into(),
+                    param: "wasm".into(),
+                },
+                Action::Answer("xong".into()),
+            ],
+        }
+    }
+
+    #[test]
+    fn stops_when_token_budget_exceeded() {
+        // Ngân sách 150 token: lượt 1 tốn 100 (còn trong hạn), lượt 2 lên 200 -> dừng.
+        let r = run_agent_loop_v2("nv", &brain(), &bulky_harness(), 150);
+        assert_eq!(r.stop_reason, StopReasonV2::OutOfTokens);
+        assert_eq!((r.num_steps, r.used_tokens), (2, 200));
+        assert_eq!(r.answer, None);
+    }
+
+    #[test]
+    fn generous_budget_behaves_like_original_loop() {
+        let r = run_agent_loop_v2("nv", &brain(), &bulky_harness(), 10_000);
+        assert_eq!(r.stop_reason, StopReasonV2::Base(StopReason::Done));
+        assert_eq!(r.answer.as_deref(), Some("xong"));
+        // Vẫn ít lượt hơn ngân sách lượt gọi (5) — chính ngân sách TOKEN mới là phanh.
+        assert_eq!(r.num_steps, 3);
+    }
+}
 ```
 
-Trong sản phẩm thật, thay phép chia 4 bằng `tiktoken-rs` để đếm token chính xác theo đúng bộ mã hóa của mô hình.
+Đề bài gợi ý thêm trường thẳng vào `Harness`/`StopReason`; ở đây ta bọc chúng (`StopReasonV2`, tham số `max_tokens`) để lời giải chạy được cạnh mã gốc mà không phải sửa chương — trong dự án của bạn, sửa thẳng kiểu gốc là gọn nhất. Chú ý thứ tự: cộng token của kết quả *trước* rồi mới kiểm, vì kết quả công cụ sẽ bị nạp vào ngữ cảnh ở lượt sau dù ta có dùng nó hay không. Trong sản phẩm thật, thay phép chia 4 bằng `tiktoken-rs` để đếm token chính xác theo đúng bộ mã hóa của mô hình.
 </details>
 
 **Bài tập 3 (Tư duy: chọn chiến lược truy xuất)**

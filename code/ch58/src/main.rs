@@ -219,7 +219,7 @@ impl Table {
 // ============================================================================
 
 /// Trung bình trượt cửa sổ `w` — mẫu cơ bản của phân tích chuỗi thời gian.
-/// Dùng `slice::windows` (Chương 16): mỗi cửa sổ là một lát cắt MƯỢN, không sao
+/// Dùng `slice::windows` của thư viện chuẩn: mỗi cửa sổ là một lát cắt MƯỢN, không sao
 /// chép. Bản này cần cả dãy trong RAM và cộng lại `w` số mỗi bước (O(n·w)); bản
 /// streaming thật giữ một tổng chạy (cộng phần tử vào, trừ phần tử ra) — O(1)/bước.
 pub fn moving_average(data: &[f64], w: usize) -> Vec<f64> {
@@ -477,7 +477,7 @@ mod tests {
         // id=3 không có bên phải -> bị loại
         let j = inner_join(&t, &p, "id");
         assert_eq!(j.num_rows(), 2);
-        assert_eq!(j.column_names.len(), 3); // id, ten, score_right
+        assert_eq!(j.column_names.len(), 3); // id, name, score_right
     }
 
     #[test]

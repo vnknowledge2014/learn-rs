@@ -67,7 +67,7 @@ Nói cách khác: cả một động cơ GROUP BY của cơ sở dữ liệu ph�
 
 ### 4. Window function và chuỗi thời gian
 
-**Trung bình trượt** làm mượt nhiễu và làm lộ xu hướng. Nó dùng `slice::windows(w)` (Chương 16) — trượt một cửa sổ độ rộng cố định qua dãy. Với dữ liệu lớn thật, phiên bản streaming chỉ giữ cửa sổ hiện tại trong RAM (O(w) bộ nhớ) thay vì cả dãy, và cập nhật một tổng chạy thay vì cộng lại cả cửa sổ.
+**Trung bình trượt** làm mượt nhiễu và làm lộ xu hướng. Nó dùng `slice::windows(w)` của thư viện chuẩn — trượt một cửa sổ độ rộng cố định qua dãy. Với dữ liệu lớn thật, phiên bản streaming chỉ giữ cửa sổ hiện tại trong RAM (O(w) bộ nhớ) thay vì cả dãy, và cập nhật một tổng chạy thay vì cộng lại cả cửa sổ.
 
 **Phát hiện bất thường** dựa trên độ lệch chuẩn có một cạm bẫy thống kê quan trọng mà bài kiểm thử trong chương này phơi bày: *một điểm cực lạ tự làm phồng độ lệch chuẩn đến mức che chính nó*. Đây là lý do thống kê bền vững (robust statistics) dùng **trung vị và MAD** (median absolute deviation) thay cho trung bình và σ.
 
@@ -307,7 +307,7 @@ impl Table {
 // ============================================================================
 
 /// Trung bình trượt cửa sổ `w` — mẫu cơ bản của phân tích chuỗi thời gian.
-/// Dùng `slice::windows` (Chương 16): mỗi cửa sổ là một lát cắt MƯỢN, không sao
+/// Dùng `slice::windows` của thư viện chuẩn: mỗi cửa sổ là một lát cắt MƯỢN, không sao
 /// chép. Bản này cần cả dãy trong RAM và cộng lại `w` số mỗi bước (O(n·w)); bản
 /// streaming thật giữ một tổng chạy (cộng phần tử vào, trừ phần tử ra) — O(1)/bước.
 pub fn moving_average(data: &[f64], w: usize) -> Vec<f64> {
@@ -565,7 +565,7 @@ mod tests {
         // id=3 không có bên phải -> bị loại
         let j = inner_join(&t, &p, "id");
         assert_eq!(j.num_rows(), 2);
-        assert_eq!(j.column_names.len(), 3); // id, ten, score_right
+        assert_eq!(j.column_names.len(), 3); // id, name, score_right
     }
 
     #[test]
@@ -676,6 +676,99 @@ mod exercise_1 {
 <summary><b>Gợi ý</b></summary>
 
 Giống `inner_join` nhưng khi không tìm thấy khóa ở chỉ mục phải, vẫn thêm hàng trái và đệm `Value::Null` cho đủ số cột phải. Đây là join hay dùng nhất khi làm giàu (enrich) dữ liệu — giữ nguyên bảng chính, gắn thêm thông tin nếu có.
+</details>
+
+<details>
+<summary><b>Lời giải</b></summary>
+
+```rust
+/// Left join: giữ MỌI hàng bảng trái; hàng không khớp thì các cột phải là `Null`.
+/// Như SQL: khóa `NULL` bên trái không khớp gì, nhưng hàng đó VẪN được giữ.
+pub fn left_join(left: &Table, right: &Table, key: &str) -> Table {
+    let left_key = left.column_index(key).expect("khóa không có ở bảng trái");
+    let right_key = right.column_index(key).expect("khóa không có ở bảng phải");
+
+    // Chỉ mục băm trên bảng phải — y hệt `inner_join`
+    let mut index: HashMap<String, Vec<usize>> = HashMap::new();
+    for h in 0..right.num_rows() {
+        let cell = &right.columns[right_key][h];
+        if *cell != Value::Null {
+            index.entry(format!("{:?}", cell)).or_default().push(h);
+        }
+    }
+
+    let mut names: Vec<String> = left.column_names.clone();
+    for (i, t) in right.column_names.iter().enumerate() {
+        if i != right_key {
+            names.push(format!("{}_right", t));
+        }
+    }
+    let mut result = Table::new(names.iter().map(|s| s.as_str()).collect());
+    let right_width = right.column_names.len() - 1; // bỏ cột khóa trùng
+
+    for h in 0..left.num_rows() {
+        let left_row: Vec<Value> = (0..left.column_names.len())
+            .map(|i| left.columns[i][h].clone())
+            .collect();
+        let cell = &left.columns[left_key][h];
+        let matches = if *cell == Value::Null {
+            None // NULL không khớp gì
+        } else {
+            index.get(&format!("{:?}", cell))
+        };
+        match matches {
+            Some(right_rows) => {
+                for &rr in right_rows {
+                    let mut row = left_row.clone();
+                    for i in 0..right.column_names.len() {
+                        if i != right_key {
+                            row.push(right.columns[i][rr].clone());
+                        }
+                    }
+                    result.add_row(row);
+                }
+            }
+            // KHÁC inner_join ở đúng chỗ này: không khớp vẫn giữ, đệm Null cho đủ cột
+            None => {
+                let mut row = left_row;
+                row.extend(std::iter::repeat_n(Value::Null, right_width));
+                result.add_row(row);
+            }
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod exercise_2 {
+    use super::*;
+    #[test]
+    fn left_join_keeps_unmatched_rows_with_null() {
+        let mut cities = Table::new(vec!["city", "region"]);
+        cities.add_row(vec![
+            Value::Text("Hà Nội".into()),
+            Value::Text("Bắc".into()),
+        ]);
+        cities.add_row(vec![
+            Value::Text("Đà Nẵng".into()),
+            Value::Text("Trung".into()),
+        ]);
+        let mut population = Table::new(vec!["city", "population"]);
+        population.add_row(vec![Value::Text("Hà Nội".into()), Value::Number(8.4)]);
+
+        let j = left_join(&cities, &population, "city");
+        assert_eq!(j.num_rows(), 2); // inner_join chỉ cho 1 hàng
+        assert_eq!(j.column_names, ["city", "region", "population_right"]);
+        assert_eq!(j.get(0, "population_right"), Some(&Value::Number(8.4)));
+        // Đà Nẵng không có dân số -> vẫn còn, cột phải là Null
+        assert_eq!(j.get(1, "city"), Some(&Value::Text("Đà Nẵng".into())));
+        assert_eq!(j.get(1, "population_right"), Some(&Value::Null));
+        assert_eq!(inner_join(&cities, &population, "city").num_rows(), 1);
+    }
+}
+```
+
+Khác biệt duy nhất so với `inner_join` nằm ở nhánh `None`: hàng trái không tìm thấy đối tác vẫn được ghi ra, các cột phải đệm `Value::Null`. Vì thế số hàng của left join **luôn ≥** số hàng bảng trái (bằng nhau khi mỗi khóa khớp tối đa một hàng phải) — một bất biến đáng viết thành test khi làm giàu dữ liệu, vì nếu khóa phải bị trùng thì bảng kết quả sẽ "phình" âm thầm.
 </details>
 
 **Bài tập 3 (Tư duy: dạng hàng hay dạng cột?)**
