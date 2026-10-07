@@ -358,7 +358,7 @@ impl Position {
         cash: 0,
     };
 
-    /// Phép `ghep` này KẾT HỢP và có ĐƠN VỊ `EMPTY` → đúng định nghĩa vị nhóm.
+    /// Phép `compose` này KẾT HỢP và có ĐƠN VỊ `EMPTY` → đúng định nghĩa vị nhóm.
     /// Nhờ vậy có thể gộp lãi/lỗ song song bằng `rayon` mà kết quả không đổi.
     pub fn compose(self, k: Position) -> Position {
         Position {

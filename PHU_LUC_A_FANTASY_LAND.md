@@ -1,4 +1,4 @@
-# Phụ lục A — Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust
+# Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust
 
 ## Vì sao có phụ lục này?
 
@@ -12,7 +12,7 @@ Chương 18, 19 và 20 đã dạy kỹ **sáu** cấu trúc quan trọng nhất 
 
 ## 1. Bản đồ phụ thuộc: cái nào xây trên cái nào
 
-Mỗi mũi tên đọc là *"xây dựng trên"*. Đi từ trên xuống là đi từ ít đòi hỏi tới nhiều đòi hỏi.
+Mỗi mũi tên đọc là *"được mở rộng thành"*: `A ▼ B` nghĩa là B xây trên A (B phải cài cả A). Đi từ trên xuống là đi từ ít đòi hỏi tới nhiều đòi hỏi. Những cấu trúc đứng một mình (không mũi tên vào) không đòi hỏi cấu trúc nào khác.
 
 ```
   NHÁNH 1 — ĐẠI SỐ TRÊN MỘT KIỂU              NHÁNH 2 — ĐẠI SỐ TRÊN HÀM
@@ -22,30 +22,35 @@ Mỗi mũi tên đọc là *"xây dựng trên"*. Đi từ trên xuống là đi
            ▼                                              ▼
          Ord  (thứ tự)                                 Category  (+ mũi tên đơn vị)
 
-        Magma  (gộp được)
+        Magma  (gộp được — không thuộc 24 cấu trúc, chỉ để dẫn dắt)
            │  + luật kết hợp
            ▼
-       Semigroup                             NHÁNH 3 — ĐẠI SỐ TRÊN NGỮ CẢNH
-           │  + phần tử đơn vị                ──────────────────────────────
-           ▼                                       Functor  ◄── Filterable
-        Monoid                                       │
-           │  + phần tử nghịch đảo                    ├──────────► Bifunctor
-           ▼                                          │            Profunctor
-         Group                                        │            Contravariant
-                                                      ▼
-                                                    Apply
-                                                   ╱     ╲
-                                        Applicative       Chain ──► ChainRec
-                                             │  ╲          ╱
-                                             │   ╲        ╱
-                                             │    ▼      ▼
-                                             │     Monad
-                                             ▼
-                                    Alt ──► Plus ──► Alternative
+       Semigroup
+           │  + phần tử đơn vị
+           ▼
+        Monoid
+           │  + phần tử nghịch đảo
+           ▼
+         Group
 
-                                    Ord ──► Foldable
+  NHÁNH 3 — ĐẠI SỐ TRÊN NGỮ CẢNH
+  ──────────────────────────────
+  Đứng một mình (không đòi hỏi gì): Filterable · Contravariant · Foldable
 
-                                     Extend ──► Comonad   (đối ngẫu của Chain/Monad)
+                                    Functor
+             ┌───────────┬─────────────┼─────────────┬───────────┐
+             ▼           ▼             ▼             ▼           ▼
+         Bifunctor   Profunctor      Apply          Alt        Extend
+                                    ╱     ╲          │           │
+                                   ▼       ▼         ▼           ▼
+                           Applicative    Chain     Plus       Comonad
+                              │    ╲     ╱    ╲       │       (đối ngẫu của Chain/Monad)
+                              │     ▼   ▼      ▼      │
+                              │     Monad   ChainRec  │
+                              │                       │
+                              └──────► Alternative ◄──┘
+
+                  Functor + Foldable ──► Traversable
 ```
 
 **Ba nhánh, ba câu hỏi khác nhau:**
@@ -143,13 +148,13 @@ promap :  (C -> A)  +  Func<A, B>  +  (B -> D)  =  Func<C, D>
 
 Fantasy Land tách riêng `Filterable` vì không phải hàm tử nào cũng lọc được: bạn `map` được một cặp `(A, B)` nhưng không thể "lọc bớt" nó — cặp luôn có đúng hai phần.
 
-Trong Rust, `Filterable` chính là **`filter_map`** mà Chương 16 đã dạy. Luật quan trọng nhất của nó là *phân phối*:
+Trong Rust, `Filterable` tương ứng với **`Iterator::filter`** — và với **`filter_map`** mà Chương 16 đã dạy, lọc và biến đổi cùng lúc. Luật quan trọng nhất của nó là *phân phối*: lọc theo `p && q` cũng như lọc theo `p` rồi lọc theo `q`:
 
 ```
-xs.filter_map(f).filter_map(g)  ==  xs.filter_map(|x| f(x).and_then(g))
+xs.filter(|x| p(x) && q(x))  ==  xs.filter(p).filter(q)
 ```
 
-Chính luật này cho phép trình biên dịch gộp hai vòng lọc thành một.
+Luật này bảo đảm bạn được tách hay gộp các bước lọc mà không đổi kết quả. (Trong Rust, hai lời gọi `filter` liên tiếp vốn đã chạy trong cùng một vòng lặp nhờ bộ lặp lười biếng — không phải nhờ trình biên dịch "biết" luật này.)
 
 ### 3.6. Alt, Plus, Alternative — đại số của "phương án dự phòng"
 

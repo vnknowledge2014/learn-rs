@@ -1,4 +1,4 @@
-# Chương 82: Phân tích kỹ thuật bằng Rust — Nến, Chỉ báo & Bẫy nhìn trộm tương lai (OpenAlgo I)
+# Chương 82: Phân tích kỹ thuật bằng Rust — Nến, Chỉ báo & Bẫy nhìn trộm tương lai (Technical Analysis — OpenAlgo I)
 
 ## Giới thiệu & Mục tiêu học tập
 

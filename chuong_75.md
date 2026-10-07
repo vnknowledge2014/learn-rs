@@ -1,4 +1,4 @@
-# Chương 75: Dữ liệu thị trường — Giao thức nhị phân, Phát hiện khe & Sổ lệnh
+# Chương 75: Dữ liệu thị trường — Giao thức nhị phân, Phát hiện khe & Sổ lệnh (Market Data Pipeline)
 
 ## Giới thiệu & Mục tiêu học tập
 

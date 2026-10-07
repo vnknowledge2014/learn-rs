@@ -1,4 +1,4 @@
-# Chương 77: Chiến lược & Quản trị rủi ro — Cổng rủi ro, Tín hiệu & Định cỡ vị thế
+# Chương 77: Chiến lược & Quản trị rủi ro — Cổng rủi ro, Tín hiệu & Định cỡ vị thế (Strategy & Risk Management)
 
 ## Giới thiệu & Mục tiêu học tập
 

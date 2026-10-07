@@ -371,7 +371,7 @@ impl LitVenue {
         }
     }
 
-    /// Tiêu thụ `can` đơn vị của lệnh THỊ TRƯỜNG tại (chiều, giá), theo FIFO.
+    /// Tiêu thụ `wanted` đơn vị của lệnh THỊ TRƯỜNG tại (chiều, giá), theo FIFO.
     /// Trả về số thực sự tiêu được.
     fn consume_market(&mut self, c: Side, g: Price, mut wanted: Quantity) -> Quantity {
         let mut taken = 0;
@@ -494,7 +494,7 @@ impl LitVenue {
         }
     }
 
-    /// Khớp lệnh của ta tại ĐÚNG một mức giá, không vượt quá `tran` đơn vị.
+    /// Khớp lệnh của ta tại ĐÚNG một mức giá, không vượt quá `bound` đơn vị.
     /// Ưu tiên thời gian trong nội bộ mức.
     fn fill_ours_at_level(&mut self, side: Side, price: Price, bound: Quantity) -> Vec<Fill> {
         let mut out = Vec::new();
@@ -535,7 +535,7 @@ impl LitVenue {
         out
     }
 
-    /// Lệnh treo của ta cũ hơn `tuoi_ns` — nhà tạo lập thật làm mới báo giá
+    /// Lệnh treo của ta cũ hơn `max_age_ns` — nhà tạo lập thật làm mới báo giá
     /// liên tục, và báo giá cũ là rủi ro chứ không phải cơ hội.
     pub fn our_orders_older_than(&self, now: Nanos, max_age_ns: Nanos) -> Vec<OrderId> {
         self.our_orders
@@ -1762,7 +1762,7 @@ pub fn generate_session(event_count: usize, seed: u64, anchor_price: Price) -> R
         let r = hash64(seed ^ (i as u64).wrapping_mul(0x1000193));
         t += 1_000 + (r % 200_000);
 
-        // Bước ngẫu nhiên có neo: kéo giá về `gia_neo` để chuỗi không trôi mất.
+        // Bước ngẫu nhiên có neo: kéo giá về `anchor_price` để chuỗi không trôi mất.
         let step = (hash64(r) % 5) as Price - 2;
         current_price = (current_price + step)
             .max(anchor_price - 40)

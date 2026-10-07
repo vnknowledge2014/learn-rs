@@ -14,7 +14,7 @@ Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình 
 - **Người "sợ toán":** Không có công thức đại số hay hình học nào bắt buộc. Mọi khái niệm — kể cả Big-O hay Vị nhóm — đều được giải thích bằng tư duy logic và ví dụ đời thực trước, ký hiệu toán học chỉ đến sau.
 - **Lập trình viên muốn học Rust:** Nếu bạn đã biết code nhưng thấy Rust khó hiểu (đặc biệt là Borrow Checker), những "ví dụ không dùng toán" ở đây sẽ giúp bạn giác ngộ.
 - **Kỹ sư muốn đi xuống tầng thấp hoặc ra ngoài web:** Chủ đề 18–21 đưa bạn tới hệ điều hành, giao thức mạng, vi điều khiển `no_std`, thiết kế mạch số, game engine và hệ thống giao dịch — những nơi Rust có lợi thế thật sự chứ không chỉ là lựa chọn thời thượng.
-- **Người muốn đi thật sâu vào một lĩnh vực:** Chủ đề 22–25 (Chương 70–84) là bốn chặng chuyên sâu độc lập — blockchain dựng từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng FPGA/CPU/GPU, và tài chính định lượng. Mỗi chặng đọc được riêng sau khi đã xong Chương 01–30.
+- **Người muốn đi thật sâu vào một lĩnh vực:** Chủ đề 22–25 (Chương 70–85) là bốn chặng chuyên sâu độc lập — blockchain dựng từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng FPGA/CPU/GPU, và tài chính định lượng. Mỗi chặng đọc được riêng sau khi đã xong Chương 01–30.
 - **Người đã biết Rust muốn học lập trình hàm nghiêm túc:** Chủ đề 3 (Chương 13–20) đi trọn con đường từ hàm thuần túy tới Monad và mô hình hóa nghiệp vụ bằng kiểu — đầy đủ luật, đầy đủ kiểm thử.
 
 ---
@@ -81,7 +81,7 @@ Tóm tắt từng chủ đề:
 
 **Phụ lục tra cứu:**
 - **[Lộ trình học tập](./ROADMAP.md)**: đồ thị phụ thuộc giữa các chương, bốn nhánh học theo mục tiêu, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
-- **[Phụ lục A — 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
+- **[Phụ lục A: 24 Cấu trúc Đại số Fantasy Land trong Rust](./PHU_LUC_A_FANTASY_LAND.md)**: bản đồ đầy đủ từ Setoid tới Profunctor, mỗi cấu trúc kèm định nghĩa, luật, ánh xạ sang thư viện chuẩn Rust và mã chạy được. Đọc sau Chương 18–20.
 - **[Bảng thuật ngữ Việt–Anh](./GLOSSARY.md)**: 503 thuật ngữ chốt cách dịch nhất quán toàn giáo trình, cộng hơn 1500 cặp đối chiếu định danh cũ ↔ mới cho ai đã đọc bản trước.
 
 ---

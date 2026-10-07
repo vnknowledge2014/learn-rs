@@ -1,4 +1,4 @@
-# Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (OpenAlgo III)
+# Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (Quant & Statistical Arbitrage — OpenAlgo III)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -78,7 +78,7 @@ Hai cặp có tương quan gần như bằng nhau (0,989 so với 0,977). Nhưng
 
 Giao dịch cặp đặt cược rằng chênh lệch giữa hai tài sản sẽ quay về trung bình. Nếu chênh lệch **không** kéo về, đó không phải giao dịch — đó là một vị thế mở vô thời hạn.
 
-Tương quan đo **đồng chuyển động của lợi suất**: hai chuỗi có xu hướng cùng tăng cùng giảm. Nhưng hai chuỗi ngẫu nhiên đều có xu hướng đi lên vẫn cho tương quan cao mà chênh lệch của chúng đi lang thang không giới hạn.
+Tương quan (tính trên chuỗi giá, như thí nghiệm ở trên) đo **đồng chuyển động**: hai chuỗi có xu hướng cùng tăng cùng giảm hay không. Nhưng hai chuỗi ngẫu nhiên đều có xu hướng đi lên vẫn cho tương quan cao mà chênh lệch của chúng đi lang thang không giới hạn.
 
 Đồng liên kết (Cointegration) đo **tính dừng của phần dư**. Đó mới là điều kiện cần cho giao dịch cặp.
 
@@ -1322,7 +1322,7 @@ Chương 84 khép lại phần chủ đề của một hành trình bắt đầu
 
 Nhưng thứ đọng lại không phải là danh sách chủ đề. Đó là một tập thói quen mà mọi chương đều lặp lại:
 
-- **Chạy thì mới biết.** Mỗi khối mã trong sách này đã được biên dịch và kiểm thử. Nhiều kết luận ban đầu của chính tác giả đã bị chính máy tính bác bỏ — quyền bán châu Âu, tích phân Euler, phân vị đuôi, `HashMap` phá tính tất định.
+- **Chạy thì mới biết.** Mọi crate và mọi lời giải bài tập trong sách này đều đã được biên dịch và kiểm thử. Nhiều kết luận ban đầu của chính tác giả đã bị chính máy tính bác bỏ — quyền bán châu Âu, tích phân Euler, phân vị đuôi, `HashMap` phá tính tất định.
 - **Đối chiếu với sự thật bên ngoài.** SHA-256 khớp vector FIPS. Keccak khớp chữ ký ERC-20 công khai. Tự kiểm tra bằng chính mình thì không chứng minh được gì.
 - **Kiểu dữ liệu là nơi mã hoá luật.** `Deps` với `DepsMut`, typestate, newtype cho tiền tệ. Thứ gì trình biên dịch bắt được thì con người không cần nhớ.
 - **Biết giới hạn của thứ mình xây.** Vega bằng 0 thì không khôi phục được biến động. Quá khớp là toán học. Một mô hình đúng hôm nay chưa chắc đúng ngày mai.

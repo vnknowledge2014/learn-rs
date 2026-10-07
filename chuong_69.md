@@ -108,7 +108,7 @@ Hai lỗi đắt tiền nhất trong hệ thống giao dịch:
 
 Typestate loại bỏ cả hai ở tầng biên dịch:
 
-```rust
+```
 Order<Draft>  ──check()──►  Order<RiskChecked>  ──send()──►  Order<Sent>
      ▲                                ▲                              ▲
  vừa tạo ra                    đã qua hạn mức                đã vào sổ lệnh
@@ -522,7 +522,7 @@ impl Position {
         cash: 0,
     };
 
-    /// Phép `ghep` này KẾT HỢP và có ĐƠN VỊ `EMPTY` → đúng định nghĩa vị nhóm.
+    /// Phép `compose` này KẾT HỢP và có ĐƠN VỊ `EMPTY` → đúng định nghĩa vị nhóm.
     /// Nhờ vậy có thể gộp lãi/lỗ song song bằng `rayon` mà kết quả không đổi.
     pub fn compose(self, k: Position) -> Position {
         Position {
@@ -1406,7 +1406,7 @@ Chú ý `take_while` chứ không phải `filter`: vì `BTreeMap` đã sắp th�
 
 Tính trung bình và độ lệch chuẩn trên cửa sổ `n` nến gần nhất. Mua khi `giá < trung bình - k·độ lệch`, bán khi `giá > trung bình + k·độ lệch`. Đây chính là dải Bollinger.
 
-Vì đang dùng số nguyên tick, hãy tính phương sai bằng số nguyên rồi lấy căn bằng `(x as f64).sqrt() as i64` — hoặc dùng độ lệch tuyệt đối trung bình (MAD) để tránh hẳn dấu phẩy động, như Chương 58 đã bàn về thống kê bền vững.
+Vì đang dùng số nguyên tick, hãy tính phương sai bằng số nguyên rồi lấy căn bằng `(x as f64).sqrt() as i64` — hoặc dùng độ lệch tuyệt đối trung bình (mean absolute deviation) để tránh hẳn dấu phẩy động. Lưu ý: nó chỉ ít nhạy với giá trị dị biệt hơn σ, chưa bền như MAD-trung vị (median absolute deviation) mà Chương 58 dùng cho thống kê bền vững.
 
 Dự đoán trước khi chạy: trên dữ liệu **bước ngẫu nhiên**, hồi quy về trung bình thường trông tốt hơn theo xu hướng — nhưng cả hai đều thua chi phí về dài hạn. Đó là bài học chứ không phải thất bại.
 </details>
@@ -1434,7 +1434,7 @@ impl Strategy for MeanReversion {
         let n = self.window as i64;
         let avg: Price = window.iter().map(|c| c.close).sum::<Price>() / n;
 
-        // Độ lệch tuyệt đối trung bình — toàn số nguyên, bền với giá trị dị biệt
+        // Độ lệch tuyệt đối trung bình — toàn số nguyên, ít nhạy với dị biệt hơn σ
         let mad: i64 = window.iter().map(|c| (c.close - avg).abs()).sum::<i64>() / n;
         let price = history.last().unwrap().close;
         let threshold = self.k * mad;

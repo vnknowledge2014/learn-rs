@@ -50,7 +50,7 @@ impl LaunchConfig {
         self.warps_per_block() * THREADS_PER_WARP - self.threads_per_block
     }
 
-    /// Số luồng chạy nhưng không có việc (vì `total_amount` > n).
+    /// Số luồng chạy nhưng không có việc (vì `total_threads()` > n).
     pub fn idle_threads(&self, n: usize) -> usize {
         self.total_threads().saturating_sub(n)
     }
@@ -136,7 +136,7 @@ pub struct CoalescingAnalysis {
     pub efficiency: f64,
 }
 
-/// Đếm số giao dịch bộ nhớ cho một warp truy cập theo `buoc_nhay`.
+/// Đếm số giao dịch bộ nhớ cho một warp truy cập theo `stride`.
 pub fn coalescing_analysis(
     quantity: usize,
     bytes_per_element: usize,
@@ -271,7 +271,7 @@ pub fn reduce_steps(n: usize) -> usize {
 // ============================================================================
 // Bản ngây thơ: mỗi luồng đọc cả một hàng và một cột từ bộ nhớ toàn cục —
 // mỗi phần tử bị đọc lại n lần. Bản theo lát: cả khối cùng nạp một lát vào
-// bộ nhớ chia sẻ, rồi mọi luồng dùng chung. Số lần đọc toàn cục giảm `lat` lần.
+// bộ nhớ chia sẻ, rồi mọi luồng dùng chung. Số lần đọc toàn cục giảm `tile` lần.
 
 #[derive(Debug, PartialEq)]
 pub struct GemmAnalysis {
@@ -300,7 +300,7 @@ pub fn gemm_naive(n: usize) -> GemmAnalysis {
 pub fn tiled_gemm(n: usize, tile: usize) -> GemmAnalysis {
     let n64 = n as u64;
     let l = tile.max(1) as u64;
-    // Mỗi lát được nạp một lần rồi dùng lại `lat` lần bởi cả khối
+    // Mỗi lát được nạp một lần rồi dùng lại `tile` lần bởi cả khối
     let read_global = 2 * n64 * n64 * n64 / l;
     let read_shared = 2 * n64 * n64 * n64;
     GemmAnalysis {

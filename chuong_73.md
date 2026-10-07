@@ -1,4 +1,4 @@
-# Chương 73: Ethereum với Rust — Keccak-256, ABI, RLP & Alloy
+# Chương 73: Ethereum với Rust — Keccak-256, ABI, RLP & Alloy (Ethereum Tooling in Rust)
 
 ## Giới thiệu & Mục tiêu học tập
 

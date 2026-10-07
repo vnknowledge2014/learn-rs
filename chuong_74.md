@@ -1,4 +1,4 @@
-# Chương 74: Nền tảng HFT — Đo độ trễ, Vòng Disruptor & Bố cục bộ nhớ
+# Chương 74: Nền tảng HFT — Đo độ trễ, Vòng Disruptor & Bố cục bộ nhớ (HFT Foundations)
 
 ## Giới thiệu & Mục tiêu học tập
 
@@ -119,6 +119,8 @@ Một ngân sách "dây tới lệnh" điển hình của hệ thống dùng ph�
 Nhìn bảng này, ta thấy ngay: **hơn nửa thời gian nằm ở card mạng**, không nằm trong logic. Đó là lý do các hãng HFT chuyển sang FPGA (chương 79) — không phải vì code chậm, mà vì lớp mạng là trần cứng.
 
 Đây cũng là **định luật Amdahl** áp dụng thẳng: tối ưu tín hiệu chiến lược nhanh gấp đôi chỉ cải thiện tổng thể khoảng 7%.
+
+Lưu ý: `main` của chương dùng một ngân sách **khác** (`sample_budget`, tổng 3 400 ns) — của hệ thống phần mềm **không** kernel bypass, nên nút thắt ở đó là lời gọi hệ thống gửi lệnh (44%) chứ không phải card mạng. Hai bảng minh hoạ cùng một bài học: tìm chặng đắt nhất trước, rồi mới tối ưu.
 
 ### 5. Bố cục cấu trúc phải là quyết định có chủ đích
 

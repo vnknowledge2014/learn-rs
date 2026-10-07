@@ -209,11 +209,11 @@
 
 <!-- Toàn bộ phần lập trình được của giáo trình OpenAlgo, cài lại từ đầu bằng Rust không thư viện ngoài: phân tích kỹ thuật với bất biến chống nhìn trộm tương lai được kiểm thử; định giá quyền chọn Black-Scholes, Greeks và biến động ngụ ý kèm giới hạn số học của nó; và chênh lệch thống kê với đồng liên kết, bộ lọc Kalman, kiểm định tiến và bằng chứng thực nghiệm về quá khớp. -->
 
-- [Chương 82: Phân tích kỹ thuật bằng Rust — Nến, Chỉ báo & Bẫy nhìn trộm tương lai (Technical Analysis)](chuong_82.md)
-- [Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (Options & Greeks)](chuong_83.md)
-- [Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (Quant & Statistical Arbitrage)](chuong_84.md)
+- [Chương 82: Phân tích kỹ thuật bằng Rust — Nến, Chỉ báo & Bẫy nhìn trộm tương lai (Technical Analysis — OpenAlgo I)](chuong_82.md)
+- [Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (Options & Greeks — OpenAlgo II)](chuong_83.md)
+- [Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (Quant & Statistical Arbitrage — OpenAlgo III)](chuong_84.md)
 
 ---
 
 [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md)
-[Bảng thuật ngữ Việt–Anh](GLOSSARY.md)
+[Bảng thuật ngữ Việt–Anh (Vietnamese–English Glossary)](GLOSSARY.md)
