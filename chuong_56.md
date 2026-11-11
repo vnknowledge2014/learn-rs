@@ -77,6 +77,10 @@ Nghiên cứu về mô hình ngôn ngữ cho thấy một hiện tượng nhất
 
 Hệ quả thực hành rất cụ thể: sau khi đã chọn được các mẩu ngữ cảnh, **thứ tự sắp xếp vẫn còn quan trọng**. Chiến lược đơn giản mà hiệu quả: xếp giảm dần theo độ liên quan rồi **rải xen kẽ ra hai đầu**, để những mẩu quan trọng nhất nằm ở đầu và cuối, mẩu ít quan trọng bị đẩy vào giữa.
 
+> [!NOTE]
+> **Lưu ý kiến trúc về bộ đệm KV-cache trong hội thoại đa lượt**:
+> Giải thuật sắp xếp `lost_in_middle_order` ở trên đặc biệt hiệu quả cho **truy vấn RAG đơn lượt**, nơi ngữ cảnh được tạo mới hoàn toàn ở mỗi yêu cầu. Tuy nhiên, trong **tác tử hội thoại đa lượt**, việc hoán đổi vị trí các đoạn tài liệu sau mỗi lượt sẽ làm xáo trộn tiền tố (*prefix drift*), phá hủy hoàn toàn khả năng tái sử dụng bộ nhớ đệm Khóa–Giá trị (*KV-cache* / cây tiền tố `RadixAttention`) ở tầng phục vụ suy luận, khiến chi phí API tăng vọt từ 1,25x đến 2,0x. Trong hệ thống sản xuất, hãy kết hợp tiền tố đóng băng (`PrefixStablePrompt`) và gương ngữ cảnh tự quản (`LiveContextMirror`) như được hướng dẫn chuyên sâu tại **Chủ đề 26 (Chương 86)** và **Chương 94**.
+
 ### 3. Harness Engineering — không gian hành động là một hợp đồng kiểu
 
 Một tác tử không "biết làm mọi thứ". Nó chỉ làm được đúng những gì bạn **cấp công cụ**. Tập công cụ đó gọi là **bộ khung (harness)**, và trong Rust nó được biểu diễn tự nhiên bằng `trait`:

@@ -245,6 +245,154 @@ pub fn mod_pow(mut base: u64, mut exp: u64, modulo: u64) -> u64 {
     results
 }
 
+// ============================================================================
+// 5. SO KHỚP CHUỖI (String Matching)
+// ============================================================================
+
+/// Xây bảng tiền tố (failure function) cho thuật toán KMP.
+/// `table[i]` = độ dài tiền tố thực dài nhất của `pattern[0..=i]` cũng là hậu tố.
+/// Phức tạp: O(M) với M = len(pattern).
+fn build_kmp_table(pattern: &[u8]) -> Vec<usize> {
+    let m = pattern.len();
+    let mut table = vec![0usize; m];
+    let mut len = 0; // độ dài tiền tố khớp hiện tại
+    let mut i = 1;
+    while i < m {
+        if pattern[i] == pattern[len] {
+            len += 1;
+            table[i] = len;
+            i += 1;
+        } else if len != 0 {
+            len = table[len - 1]; // lùi lại theo bảng, KHÔNG tăng i
+        } else {
+            table[i] = 0;
+            i += 1;
+        }
+    }
+    table
+}
+
+/// Tìm tất cả vị trí xuất hiện của `pattern` trong `text` bằng thuật toán KMP.
+/// Phức tạp: O(N + M) với N = len(text), M = len(pattern).
+/// Ứng dụng: grep, IDE find, trình biên dịch, kiểm tra plagiarism.
+pub fn kmp_search(text: &str, pattern: &str) -> Vec<usize> {
+    let mut result = Vec::new();
+    let t = text.as_bytes();
+    let p = pattern.as_bytes();
+    let n = t.len();
+    let m = p.len();
+    if m == 0 || m > n {
+        return result;
+    }
+    let table = build_kmp_table(p);
+    let mut j = 0; // số ký tự đã khớp trong pattern
+    for (i, &ti) in t.iter().enumerate() {
+        while j > 0 && ti != p[j] {
+            j = table[j - 1]; // lùi theo bảng thay vì quay lại đầu
+        }
+        if ti == p[j] {
+            j += 1;
+        }
+        if j == m {
+            result.push(i + 1 - m); // vị trí bắt đầu của match
+            j = table[j - 1]; // tiếp tục tìm match chồng lặp
+        }
+    }
+    result
+}
+
+/// Tìm tất cả vị trí xuất hiện của `pattern` trong `text` bằng băm cuộn Rabin-Karp.
+/// Phức tạp: trung bình O(N + M), xấu nhất O(NM) khi nhiều va chạm băm.
+/// Ứng dụng: phát hiện sao chép mã nguồn, so sánh tệp nhị phân.
+pub fn rabin_karp_search(text: &str, pattern: &str) -> Vec<usize> {
+    let mut result = Vec::new();
+    let t = text.as_bytes();
+    let p = pattern.as_bytes();
+    let n = t.len();
+    let m = p.len();
+    if m == 0 || m > n {
+        return result;
+    }
+
+    const BASE: u64 = 257;
+    const MOD: u64 = 1_000_000_007;
+
+    // Tính hash của pattern và cửa sổ đầu tiên
+    let mut p_hash: u64 = 0;
+    let mut t_hash: u64 = 0;
+    let mut high_pow: u64 = 1; // BASE^(m-1) mod MOD — dùng để bỏ ký tự đầu khi trượt
+    for i in 0..m {
+        p_hash = (p_hash.wrapping_mul(BASE).wrapping_add(u64::from(p[i]))) % MOD;
+        t_hash = (t_hash.wrapping_mul(BASE).wrapping_add(u64::from(t[i]))) % MOD;
+        if i > 0 {
+            high_pow = high_pow.wrapping_mul(BASE) % MOD;
+        }
+    }
+
+    for i in 0..=(n - m) {
+        // So sánh hash trước, rồi xác nhận từng ký tự để tránh false positive
+        if p_hash == t_hash && t[i..i + m] == *p {
+            result.push(i);
+        }
+        // Trượt cửa sổ sang phải 1 vị trí
+        if i + m < n {
+            t_hash = (t_hash
+                .wrapping_add(MOD)
+                .wrapping_sub(u64::from(t[i]).wrapping_mul(high_pow) % MOD))
+                % MOD;
+            t_hash = (t_hash.wrapping_mul(BASE).wrapping_add(u64::from(t[i + m]))) % MOD;
+        }
+    }
+    result
+}
+
+// ============================================================================
+// 6. CÂY FENWICK (Binary Indexed Tree) — truy vấn đoạn O(log N)
+// ============================================================================
+
+/// Cây Fenwick (Binary Indexed Tree): hỗ trợ cập nhật điểm và truy vấn tổng tiền tố
+/// trong O(log N) mỗi thao tác.
+/// Ứng dụng: bảng xếp hạng trực tuyến, đếm nghịch thế, tổng đoạn động.
+pub struct FenwickTree {
+    /// Mảng nội bộ lưu giá trị tích lũy — chỉ số bắt đầu từ 1.
+    tree: Vec<i64>,
+}
+
+impl FenwickTree {
+    /// Tạo cây Fenwick kích thước `n` (chỉ số 1..=n), toàn bộ giá trị bằng 0.
+    pub fn new(n: usize) -> Self {
+        Self {
+            tree: vec![0i64; n + 1],
+        }
+    }
+
+    /// Cộng `delta` vào vị trí `i` (1-indexed). Phức tạp: O(log N).
+    pub fn update(&mut self, mut i: usize, delta: i64) {
+        while i < self.tree.len() {
+            self.tree[i] += delta;
+            i += i.isolate_lowest_one(); // di chuyển tới nút cha
+        }
+    }
+
+    /// Trả tổng tiền tố `a[1] + a[2] + ... + a[i]`. Phức tạp: O(log N).
+    pub fn prefix_sum(&self, mut i: usize) -> i64 {
+        let mut s: i64 = 0;
+        while i > 0 {
+            s += self.tree[i];
+            i &= i - 1; // tắt bit thấp nhất — tương đương i -= i & i.wrapping_neg()
+        }
+        s
+    }
+
+    /// Trả tổng đoạn `a[l] + a[l+1] + ... + a[r]` (1-indexed). Phức tạp: O(log N).
+    pub fn range_sum(&self, l: usize, r: usize) -> i64 {
+        if l > r {
+            return 0;
+        }
+        self.prefix_sum(r) - if l > 1 { self.prefix_sum(l - 1) } else { 0 }
+    }
+}
+
 fn main() {
     println!("═══════════════════════════════════════════════════════════════");
     println!("   KHOA HỌC MÁY TÍNH: QUY HOẠCH ĐỘNG · QUAY LUI · THAM LAM     ");
@@ -296,6 +444,23 @@ fn main() {
     println!("   ƯCLN(48, 36) = {}, BCNN = {}", gcd(48, 36), lcm(48, 36));
     println!("   Số nguyên tố < 30: {:?}", sieve_primes(30));
     println!("   (7^256) mod 13 = {}", mod_pow(7, 256, 13));
+
+    println!("\n5. SO KHỚP CHUỖI");
+    let kmp_res = kmp_search("ababcababd", "ab");
+    println!("   KMP tìm \"ab\" trong \"ababcababd\": {:?}", kmp_res);
+    let rk_res = rabin_karp_search("ababcababd", "ab");
+    println!("   Rabin-Karp cùng bài: {:?}", rk_res);
+
+    println!("\n6. CÂY FENWICK");
+    let mut ft = FenwickTree::new(5);
+    for i in 1..=5 {
+        ft.update(i, i as i64);
+    }
+    println!(
+        "   Fenwick [1..5]: prefix_sum(5) = {}, range_sum(2,4) = {}",
+        ft.prefix_sum(5),
+        ft.range_sum(2, 4)
+    );
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   NHẬN RA CẤU TRÚC BÀI TOÁN → CHỌN ĐÚNG KỸ THUẬT GIẢI          ");
@@ -390,5 +555,109 @@ mod tests {
         assert_eq!(mod_pow(7, 256, 13), 9);
         // không tràn số dù số mũ lớn
         assert_eq!(mod_pow(123456789, 987654321, 1_000_000_007), 652541198);
+    }
+
+    // ── KMP ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_kmp_basic() {
+        assert_eq!(kmp_search("ababcababd", "ab"), vec![0, 2, 5, 7]);
+    }
+
+    #[test]
+    fn test_kmp_no_match() {
+        assert_eq!(kmp_search("hello world", "xyz"), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn test_kmp_empty_pattern() {
+        // Mẫu rỗng không khớp gì cả
+        assert_eq!(kmp_search("abc", ""), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn test_kmp_overlapping() {
+        // "aa" xuất hiện chồng lặp trong "aaaa": vị trí 0, 1, 2
+        assert_eq!(kmp_search("aaaa", "aa"), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_kmp_pattern_equals_text() {
+        assert_eq!(kmp_search("abc", "abc"), vec![0]);
+    }
+
+    #[test]
+    fn test_kmp_pattern_longer() {
+        assert_eq!(kmp_search("ab", "abc"), Vec::<usize>::new());
+    }
+
+    // ── Rabin-Karp ──────────────────────────────────────────────
+
+    #[test]
+    fn test_rabin_karp_basic() {
+        assert_eq!(rabin_karp_search("ababcababd", "ab"), vec![0, 2, 5, 7]);
+    }
+
+    #[test]
+    fn test_rabin_karp_no_match() {
+        assert_eq!(rabin_karp_search("hello world", "xyz"), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn test_rabin_karp_single_char() {
+        // "a" trong "banana" ở vị trí 1, 3, 5
+        assert_eq!(rabin_karp_search("banana", "a"), vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn test_rabin_karp_agrees_with_kmp() {
+        let text = "aabaabaab";
+        let pattern = "aab";
+        assert_eq!(kmp_search(text, pattern), rabin_karp_search(text, pattern));
+    }
+
+    // ── Fenwick Tree ────────────────────────────────────────────
+
+    #[test]
+    fn test_fenwick_tree_basic() {
+        let mut ft = FenwickTree::new(5);
+        for i in 1..=5 {
+            ft.update(i, i as i64); // [1, 2, 3, 4, 5]
+        }
+        assert_eq!(ft.prefix_sum(1), 1);
+        assert_eq!(ft.prefix_sum(3), 6); // 1+2+3
+        assert_eq!(ft.prefix_sum(5), 15); // 1+2+3+4+5
+    }
+
+    #[test]
+    fn test_fenwick_tree_range_sum() {
+        let mut ft = FenwickTree::new(5);
+        for i in 1..=5 {
+            ft.update(i, i as i64);
+        }
+        assert_eq!(ft.range_sum(2, 4), 9); // 2+3+4
+        assert_eq!(ft.range_sum(1, 5), 15);
+        assert_eq!(ft.range_sum(3, 3), 3); // đoạn đơn
+    }
+
+    #[test]
+    fn test_fenwick_tree_single_element() {
+        let mut ft = FenwickTree::new(1);
+        ft.update(1, 42);
+        assert_eq!(ft.prefix_sum(1), 42);
+        assert_eq!(ft.range_sum(1, 1), 42);
+        ft.update(1, -10);
+        assert_eq!(ft.prefix_sum(1), 32);
+    }
+
+    #[test]
+    fn test_fenwick_tree_negative_delta() {
+        let mut ft = FenwickTree::new(3);
+        ft.update(1, 10);
+        ft.update(2, 20);
+        ft.update(3, 30);
+        ft.update(2, -5); // giảm 5 tại vị trí 2
+        assert_eq!(ft.prefix_sum(3), 55); // 10+15+30
+        assert_eq!(ft.range_sum(2, 3), 45); // 15+30
     }
 }

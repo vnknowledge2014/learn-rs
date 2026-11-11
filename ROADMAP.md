@@ -2,7 +2,7 @@
 
 Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) không trả lời được: **học theo thứ tự nào**, **bỏ qua được gì**, và **cái gì cố tình không có trong giáo trình**.
 
-- 85 chương · 25 chủ đề · 90 crate · 994 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
+- 97 chương · 27 chủ đề · 102 crate · 1.482 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
 - `cargo test --workspace` phải xanh trước khi bạn tin bất cứ điều gì trong sách
 
 ---
@@ -13,7 +13,7 @@ Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) khô
 |---|---|---|
 | **I — Nền tảng** | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
 | **II — Hệ thống** | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
-| **III — Chuyên sâu** | 70–85 | Bốn lĩnh vực Rust có lợi thế không thể thay thế |
+| **III — Chuyên sâu** | 70–97 | Sáu lĩnh vực Rust có lợi thế không thể thay thế |
 
 Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành các nhánh đọc song song được.
 
@@ -53,6 +53,17 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
   │      ★ 85: HỆ SINH THÁI TÍCH HỢP ★          │
   │      (yêu cầu ĐỦ 74–78; nên đọc sau 70–73)  │
   └─────────────────────────────────────────────┘
+                                   │
+      ┌────────────────────────────┴───────────────────────────┐
+      │                                                        │
+      ▼                                                        ▼
+┌──────────────────────────────────────────┐    ┌──────────────────────────────────────────┐
+│ Kỹ nghệ Tác tử 86–90 (yêu cầu 01–30, 56) │    │ Kiến trúc LLM 92–96 (yêu cầu 01–30, 26)  │
+│                │                         │    │                │                         │
+│                ▼                         │    │                ▼                         │
+│ ★ 91: ĐẠI DỰ ÁN TÁC TỬ TỰ HÀNH ★         │    │ ★ 97: ĐẠI DỰ ÁN MICRO-LLM & RLVR ★       │
+│ (yêu cầu ĐỦ 86–90)                       │    │ (yêu cầu ĐỦ 92–96; nối công cụ với 86–87)│
+└──────────────────────────────────────────┘    └──────────────────────────────────────────┘
 ```
 
 **Điều kiện tiên quyết thực sự**, không phải gợi ý:
@@ -66,12 +77,16 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
 | 80–81 | 74 (bố cục bộ nhớ) | Chương 74 giới thiệu dòng cache, AoS/SoA |
 | 82–84 | không có | Đọc độc lập được, chỉ cần chặng I |
 | **85** | **74, 75, 76, 77, 78** | Nó **nối** đúng năm chương đó lại |
+| 86–90 | 01–30, 56 | Cần cấu trúc dữ liệu, typestate và kiến trúc tác tử cơ bản ở ch56 |
+| **91** | **86, 87, 88, 89, 90** | Nó **nối** trọn vẹn bộ khung tác tử tự hành cấp sản xuất |
+| 92–96 | 01–30, và 26 | Cần thao tác mảng/lát cắt bộ nhớ, con trỏ thông minh và tensor |
+| **97** | **92, 93, 94, 95, 96** | Nó **nối** toàn bộ đường ống Micro-LLM và RLVR từ số không |
 
 ---
 
-## 3. Bốn nhánh theo mục tiêu
+## 3. Sáu nhánh theo mục tiêu
 
-Chọn một nhánh, đọc hết, rồi quay lại chọn nhánh khác. Đừng đọc song song bốn nhánh.
+Chọn một nhánh, đọc hết, rồi quay lại chọn nhánh khác. Đừng đọc song song sáu nhánh.
 
 ### Nhánh A — Kỹ sư hệ thống / backend
 `01–30` → `31–36` (CSDL) → `48–54` (phân tán) → `55` (kiểm thử) → `59` (mở rộng) → `61–63` (web/desktop) → `64–65` (HĐH/mạng)
@@ -86,6 +101,16 @@ Chọn một nhánh, đọc hết, rồi quay lại chọn nhánh khác. Đừng
 
 ### Nhánh D — Hiệu năng & phần cứng
 `01–30` → `74` (bố cục bộ nhớ) → `80` (CPU sâu) → `81` (GPU) → `66–67` (nhúng, phần cứng số) → `79` (FPGA cho giao dịch)
+
+### Nhánh E — Kỹ sư Tác tử AI, Bộ khung & Hệ tự hành
+`01–30` → `34–35` (CSDL/WAL/MVCC) → `48–50, 54` (hệ phân tán/Actor/lũy đẳng) → `55–57, 59` (kiểm thử/bảo mật web/mở rộng) → `70, 76–77` (mã hóa/đồng hồ ảo/quản trị rủi ro) → `86–90` → **`91` ★**
+
+> Nhánh chuyên sâu về kỹ nghệ harness, quản lý ngân sách KV-cache, chuẩn hóa SKILL.md, đồ thị kép, độ bền WAL/Saga, và điều phối đa tác tử cấp sản xuất. Chương 91 tích hợp toàn bộ thành bộ khung tác tử lập trình tự hành an toàn.
+
+### Nhánh F — Kỹ sư Kiến trúc LLM, Động cơ Suy luận & Hậu huấn luyện RLVR
+`01–30` → `55, 64` (kiểm thử/lập lịch HĐH) → `80–81` (CPU sâu/SIMD, GPU/SIMT) → `83–84` (toán số học/xác suất) → `92–96` → **`97` ★** *(đọc nối với `86, 94` để nắm trọn hai phía máy khách–máy chủ của KV-cache)*
+
+> Nhánh xây dựng toàn bộ mô hình ngôn ngữ lớn từ con số 0 bằng thuần Rust std: từ Byte-BPE, autograd ngược, Transformer hiện đại (RMSNorm, RoPE/YaRN, SwiGLU, GQA, MLA, MoE) tới động cơ phục vụ (Muon, Paged/RadixAttention, speculative decoding), căn chỉnh SFT/LoRA/DPO và học tăng cường RLVR (GRPO).
 
 ---
 
@@ -124,25 +149,66 @@ Cả hai trang đều là ứng dụng một trang; dữ liệu được thu th�
 
 ---
 
-## 6. Cái gì cố tình KHÔNG có trong giáo trình
+## 6. Bản đồ phủ Harness Patterns & 14 Kho AI / Agent / LLM Quốc Tế (15 Nguồn)
+
+Nguồn: Phân tích kiểm toán đối chiếu toàn bộ mẫu kiến trúc tác tử (`R0`) và 14 kho mã nguồn AI / Agent / LLM quốc tế (`#1`–`#14`) với `learn-rs`.
+
+### Bảng 6.1 — Bản đồ phủ mẫu kiến trúc tác tử (`ashishpatel26/agent-harness-engineering-pattern` — 13 chương · 192 mẫu)
+
+| Nhóm | Số mẫu | Trạng thái trong giáo trình | Mô tả kỹ thuật |
+|---|---:|---|---|
+| **Đã có trong Ch 01–85** | 50 | ✅ **Chương 56 & các chương khác** | `pack_context`, `lost_in_middle_order`, `run_agent_loop`, `KnowledgeGraph`, `MiniLsmEngine`/WAL, `CircuitBreaker`, Actor `mpsc`, Raft, `safe_path`, `TokenBucket`, `sha256`, cache/SIMD/SIMT |
+| **Loại bỏ / Thay bằng rustc** | 68 | ✗ **Không cần thiết trong Rust** | Các mẫu kiểm tra kiểu động Python, runtime monkey-patching, retry vô điều kiện được thay thế hoàn toàn bằng hệ thống kiểu tĩnh, Borrow Checker, Ownership, Enum Result/Option của Rust |
+| **Cài đặt mới trong Chủ đề 26** | 74 | ✅ **Chương 86–90** | Vòng lặp SSE, chặn max_tokens, KV-cache prefix freeze, sổ cái PicoDollars, PreToolHook, SecretString, LlmGateway 3 tầng, TurnWal, SessionTree, Saga, Mediator, WorktreeSandbox, LoopDrill |
+| **Đại dự án tích hợp Coding-Agent** | 5 | ✅ **Chương 91** | Nối trọn vẹn 5 cơ chế cốt lõi: vòng lặp streaming, công cụ định kiểu, đồ thị kiểm soát, phục hồi sự cố và điều phối tự hành |
+
+> **Kỷ luật phòng sạch cho R0**: Do kho gốc `ashishpatel26` không có giấy phép (`license: null` — All Rights Reserved), toàn bộ 192 mẫu chỉ được tiếp thu dưới dạng phân loại kiến trúc; tuyệt đối không dịch văn xuôi, không chép sơ đồ hay chuyển ngữ mã nguồn Python sang `learn-rs`.
+
+### Bảng 6.2 — Bản đồ phủ 14 Kho GitHub AI / Agent / Context / Loop / Graph / LLM Quốc Tế (`#1`–`#14`)
+
+| # | Kho nguồn | Giấy phép | Quy mô | Trạng thái | Nội dung chắt lọc sang Rust 2024 thuần `std` |
+|---|---|---|---:|---|---|
+| **#1** | `rohitg00/ai-engineering-from-scratch` | `MIT` | 542 bài, 11k tệp | ◐ **Ch 87–90, 92–97** | Byte-BPE, autograd ngược, MLA, MoE, Paged/RadixAttention, LoRA, GRPO, BM25+RRF, SKILL.md; bỏ thị giác/âm thanh |
+| **#2** | `alchaincyf/loop-engineering-orange-book` | `MIT` ("Work") | 9 chương, PDF | ◐ **Ch 88, 90** | Stripe Minions Blueprints, đan xen nút kiểm tra tất định, tách Giám khảo Tầng 1 (Transcript) vs Tầng 2 (Environment) |
+| **#3** | `cobusgreyling/loop-engineering` | `MIT` | 723 tệp, 496 tests | ◐ **Ch 89, 90** | Các công cụ `loop-*` (worktree cô lập, context, sync, drill); cài lại bằng Rust 2024 thuần `std` |
+| **#4** | `walkinglabs/learn-harness-engineering` | `MIT` | 15 dự án, 2.7k tệp | ◐ **Ch 86, 87, 89** | Pi SessionTree rẽ nhánh không mất dữ liệu, bất biến "Model-visible means logged", kiểm tra kiến trúc; không đụng vào `docs/vi/` |
+| **#5** | `jasontang-ai/Context-Engineering` | `MIT` | 298 tệp | ◐ **Ch 86** | Công thức nén ngữ cảnh, bảo toàn tiền tố KV-cache; tự viết mới bằng Rust loại bỏ hoàn toàn lỗi cú pháp Python |
+| **#6** | `muratcankoylan/Agent-Skills-for-Context-Engineering` | `MIT` | 511 tệp, 198 tests | ◐ **Ch 87, 90** | Chuẩn SKILL.md 3 tầng, phân cấp AGENTS.md, hiến pháp an toàn SoD RBAC, bánh cóc tự tiến hóa hai tập tách RSI Ratchet |
+| **#7** | `dair-ai/Prompt-Engineering-Guide` | `MIT` | 1.5k tệp | ◐ **Ch 88** | Khung suy luận ToT (Tree of Thoughts), Plan-and-Solve, Reflexion, đóng vai trò nền tảng cho đồ thị nhận thức |
+| **#8** | `codejunkie99/graph-engineering` | `MIT` | 10 tệp | ◐ **Ch 88** | Đặc tả đồ thị kép InfoGraph (ngữ cảnh 1-hop) + PlanDag (thực thi phi chu trình song song theo sóng Kahn, AoT) |
+| **#9** | `datawhalechina/hello-agents` | `CC BY-NC-SA 4.0` | 2.6k tệp | ◐ **Ch 86, 88, 89** | **Tường lửa nghiêm ngặt**: CẤM dịch văn bản/chép hình/chuyển mã; chỉ tiếp thu công thức toán RRF và chuẩn giao thức mở MCP/A2A/ANP |
+| **#10** | `langchain-ai/agents-from-scratch` | `MIT` | 85 tệp | ◐ **Ch 88** | Máy trạng thái nút `StateGraph<S>` có điểm ngắt duyệt HITL (Accept/Edit/Respond/Ignore) chuyển hóa thành trí nhớ thủ tục |
+| **#11** | `pguso/agents-from-scratch` | `MIT` | 44 tệp | ◐ **Ch 88** | Cơ chế Atom of Thought (AoT) kết hợp biểu diễn đồ thị nhận thức và đánh giá cục bộ |
+| **#12** | `decodingai-magazine/building-a-coding-agent-from-scratch-course` | `Apache-2.0` | 700 tệp, 2.6k tests | ◐ **Ch 86, 87, 90, 91** | Vá tệp nguyên tử bằng băm nội dung CAS, trần ngữ cảnh đệ quy, khai thác vết lỗi để đánh giá |
+| **#13** | `rasbt/LLMs-from-scratch` | Modified `Apache-2.0` | 365 tệp, 96 tests | ◐ **Ch 92–95** | **Tường lửa sách Manning**: loại trừ sách in và hình ảnh; 100% văn xuôi, sơ đồ và code viết mới bằng Rust 2024 thuần `std` |
+| **#14** | `FareedKhan-dev/train-llm-from-scratch` | `MIT` | 288 tệp, 118 tests | ◐ **Ch 93–97** | Cài đặt lại toàn diện kiến trúc Transformer hiện đại, bộ tối ưu Muon/AdamW, căn chỉnh DPO và học tăng cường GRPO |
+
+**Tổng kết trung thực.** Toàn bộ 15 nguồn quốc tế đã được chắt lọc nghiêm ngặt theo nguyên tắc phòng sạch: không sao chép nguyên văn, không phụ thuộc framework cồng kềnh, chuyển hóa toàn bộ các cơ chế tinh hoa thành 12 chương và 12 crate Rust 2024 thuần `std` có kiểm thử độc lập.
+
+---
+
+## 7. Cái gì cố tình KHÔNG có trong giáo trình
 
 Ghi rõ để bạn không đi tìm:
 
 - **Mã dùng framework thật trong workspace.** Các chương 61, 62, 63, 66, 68, 72, 79 chỉ giữ **lõi thuần tuý** trong crate, để `cargo test --workspace` chạy được offline, không cần SDK, không cần mạng, không cần bo mạch. Mã dùng Axum, Leptos, Tauri, `cosmwasm-std`, `solana-program`, RHDL nằm trong phần lý thuyết của chương.
 - **Lời khuyên đầu tư.** Sách này dạy cách xây hệ thống, không dạy nên mua gì.
 - **Số liệu lãi lỗ đáng tin.** Mọi phiên giao dịch trong sách đều là **tổng hợp**. Chương 85 giải thích rõ vì sao con số lãi lỗ của nó là một sản phẩm phụ của mô hình, và vì sao thứ đáng tin là các **bất biến**.
-- **Định danh tiếng Việt trong các crate của workspace.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm, biến **và cả tên hàm kiểm thử** trong `code/` đều bằng **tiếng Anh**; (các đoạn mã minh hoạ chỉ nằm trong markdown — không thuộc crate nào — vẫn còn khoảng 420 định danh tiếng Việt, đang chờ chuyển) phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 19 của [`GLOSSARY.md`](./GLOSSARY.md).
+- **Định danh tiếng Việt trong các crate của workspace.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm, biến **và cả tên hàm kiểm thử** trong `code/` đều bằng **tiếng Anh**; (các đoạn mã minh hoạ chỉ nằm trong markdown — không thuộc crate nào — vẫn còn khoảng 420 định danh tiếng Việt, đang chờ chuyển) phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 21 của [`GLOSSARY.md`](./GLOSSARY.md).
+- **Trọng số tỷ tham số, FFI CUDA/BLAS hoặc sinh văn bản tự nhiên mở trong crate LLM.** Các crate Chủ đề 27 (`ch92`–`ch97`) cài đặt chính xác 100% toán học BPE, Autograd, RoPE/GQA/MLA/MoE, Muon, PagedAttention/Speculative/Int8, LoRA/DPO/PPO/GRPO trên kích thước vi mô tất định (`d_model = 16..32`) để chạy kiểm thử offline dưới 150ms không thư viện ngoài; phần liên kết thư viện lớn (`candle`, `burn`, `safetensors`) và triển khai cụm GPU phân tán nằm trong phần lý thuyết mở rộng.
 - **Nội dung bản quyền của các nguồn tham khảo.** Chúng ta dùng phân loại và tên bài để định hướng, rồi tự cài lại từ đầu bằng Rust.
 
 ---
 
-## 7. Cách tự kiểm chứng
+## 8. Cách tự kiểm chứng
 
 ```bash
 cd code
 cargo build --workspace          # phải 0 cảnh báo, 0 lỗi
 cargo test  --workspace          # phải toàn xanh
 cargo run -p ch85                # hệ sinh thái HFT tích hợp, hai sàn
+cargo run -p ch91                # đại dự án tác tử lập trình tự hành an toàn
+cargo run -p ch97                # đại dự án đường ống micro-LLM suy luận end-to-end
 ```
 
 Nếu một con số trong sách không khớp với thứ máy bạn in ra, hãy tin cái máy bạn in ra và mở một issue.

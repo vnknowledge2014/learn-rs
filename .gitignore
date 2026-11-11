@@ -6,3 +6,6 @@ Cargo.lock
 
 # Thư mục build của mdBook
 book/
+
+# Thư mục điều phối tác tử tạm thời
+.agents/teamwork/

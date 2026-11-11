@@ -213,6 +213,24 @@
 - [Chương 83: Quyền chọn & Greeks bằng Rust — Black-Scholes, Biến động ngụ ý (Options & Greeks — OpenAlgo II)](chuong_83.md)
 - [Chương 84: Định lượng & Chênh lệch thống kê — Đồng liên kết, Kalman & Kiểm định tiến (Quant & Statistical Arbitrage — OpenAlgo III)](chuong_84.md)
 
+# Chủ đề 26: Kỹ nghệ Bộ khung, Ngữ cảnh, Kỹ năng & Đồ thị Tác tử Cấp sản xuất (Production Agent Harness, Context, Skills & Graph Engineering) — Chương 86 đến 91
+<!-- 6 chương: Vòng lặp SSE, KV-Cache, SKILL.md, Đồ thị kép, Độ bền WAL/Saga, và Đại dự án Coding-Agent -->
+- [Chương 86: Vòng lặp Tác tử Streaming, Kinh tế học KV-Cache, Nén Hai Tầng & Gương Ngữ cảnh Tự quản (Streaming Agent Loop, KV-Cache Economics & Live Context Mirror)](chuong_86.md)
+- [Chương 87: Hệ thống Công cụ Định kiểu, Chuẩn Kỹ năng SKILL.md, Đường nối Năng lực, Vá Tệp Nguyên tử & Hộp cát (Typed Tool System, SKILL.md Standard, Capability Seam & Atomic Patching)](chuong_87.md)
+- [Chương 88: Suy luận Có Cấu trúc, Kỹ nghệ Đồ thị Kép, Máy Trạng thái HITL & Truy xuất Lai BM25 + RRF (Structured Reasoning, Dual-Graph Engineering, HITL StateGraph & Hybrid RAG)](chuong_88.md)
+- [Chương 89: Độ bền Phục hồi Sự cố — Cổng Mô hình, Nhật ký WAL, Cây Phiên, Outbox, Saga & Giao thức MCP + A2A + ANP (Crash-Resilient Durability, Session Tree, Saga & Agent Protocols)](chuong_89.md)
+- [Chương 90: Điều phối Đa Tác tử, Cổng Kỷ luật Bàn thợ, Hiến pháp, Bánh cóc Tự tiến hóa & Diễn tập LoopDrill (Multi-Agent Orchestration, Workbench Gates, RSI Ratchet & LoopDrill Evals)](chuong_90.md)
+- [Chương 91: Đại dự án Tích hợp I — Bộ khung Tác tử Lập trình Tự hành An toàn End-to-End (Integrated Autonomous Coding Agent Harness)](chuong_91.md) — **đọc sau cùng trong nhóm này**
+
+# Chủ đề 27: Kiến trúc, Suy luận & Hậu huấn luyện Mô hình Ngôn ngữ Lớn Từ số không (LLMs & Reasoning RLVR from Scratch in Pure Rust) — Chương 92 đến 97
+<!-- 6 chương: BPE/Autograd, Transformer hiện đại (MLA/MoE), Huấn luyện & Phục vụ (Muon/Radix), SFT/LoRA/DPO, RLVR (GRPO) và Đại dự án Micro-LLM -->
+- [Chương 92: Bộ tách từ Byte-Level BPE Tăng tốc Heap, Tensor Bước nhảy & Động cơ Vi phân ngược Autograd (Byte-Level Heap BPE, Strided Tensor & Reverse-Mode Autograd)](chuong_92.md)
+- [Chương 93: Từ GPT-2 Cổ điển Đến Bộ giải mã Hiện đại — RMSNorm, RoPE/YaRN, SwiGLU, GQA, DeepSeek MLA, DeltaNet & MoE (Modern Transformer Decoder Architectures)](chuong_93.md)
+- [Chương 94: Tiền huấn luyện (AdamW, Muon, WSD) & Động cơ Phục vụ Suy luận (PagedAttention, RadixAttention, Giải mã Suy đoán & Int8) (Pretraining Optimizers & LLM Serving Engine)](chuong_94.md)
+- [Chương 95: Huấn luyện Hậu kỳ I — Tinh chỉnh Có Mặt nạ SFT, LoRA Trộn Không Chi phí, Mô hình Phần thưởng & Năm Hàm Ưu tiên DPO/IPO/SimPO/ORPO/KTO (Supervised Fine-Tuning, LoRA & Preference Alignment)](chuong_95.md)
+- [Chương 96: Huấn luyện Hậu kỳ II — Học Tăng cường Có Phần thưởng Kiểm chứng RLVR: PPO + GAE So với GRPO / Dr. GRPO / DAPO / GSPO (Reinforcement Learning with Verifiable Rewards)](chuong_96.md)
+- [Chương 97: Đại dự án Tích hợp II — Đường ống Micro-LLM Suy luận End-to-End Từ Byte-BPE Tới GRPO & Tác tử Gọi Công cụ Nội sinh (End-to-End Reasoning Micro-LLM & Native Tool Agent)](chuong_97.md) — **đọc sau cùng trong nhóm này**
+
 ---
 
 [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md)

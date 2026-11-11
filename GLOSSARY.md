@@ -1,6 +1,6 @@
 # Bảng thuật ngữ Việt–Anh (Vietnamese–English Glossary)
 
-Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 85 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
+Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 97 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
 ## Quy ước xử lý thuật ngữ kỹ thuật
 
@@ -10,7 +10,7 @@ Giáo trình dùng **ba tầng**, chọn theo mức độ mà bản dịch tiế
 |---|---|---|---|
 | **1. Dịch, kèm tiếng Anh** | Bản dịch tự nó đã gợi đúng nghĩa | *tiếng Việt (English)* ở **lần đầu mỗi chương**, sau đó chỉ dùng tiếng Việt | quyền sở hữu (ownership) · vị nhóm (Monoid) · nghịch lý Bélády (Bélády's anomaly) |
 | **2. Giữ tiếng Anh, chú nghĩa** | Dịch ra sẽ xa lạ hơn bản gốc, hoặc cộng đồng Việt đã dùng quen từ tiếng Anh | `English` + một câu cắt nghĩa ngay cạnh | `trait` · `closure` · `borrow checker` · `crate` · `panic` |
-| **3. Đưa vào bảng tra** | Thuật ngữ hiếm gặp, hoặc chỉ xuất hiện một lần | chỉ dùng tiếng Việt trong bài, tra nghĩa ở bảng dưới | các mục ở phần 1–18 của tài liệu này |
+| **3. Đưa vào bảng tra** | Thuật ngữ hiếm gặp, hoặc chỉ xuất hiện một lần | chỉ dùng tiếng Việt trong bài, tra nghĩa ở bảng dưới | các mục ở phần 1–20 của tài liệu này |
 
 Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượng (Abstract Syntax Tree — AST)*.
 
@@ -633,7 +633,117 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 
 ---
 
-## 19. Tra cứu định danh mã nguồn (Vietnamese → English)
+## 19. Kỹ nghệ Bộ khung Tác tử, Ngữ cảnh, Kỹ năng & Đồ thị (Chương 86–91)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Danh sách cho phép | Allowlist | Chỉ cho phép các hành động/đường dẫn được phê duyệt trước |
+| Cổng phê duyệt / Con người trong vòng lặp | Approval gate / Human in the loop | Điểm dừng bắt buộc con người xác nhận trước khi thực thi |
+| Giao ít nhất một lần | At-least-once delivery | Thông điệp được bảo đảm chuyển phát không thất lạc |
+| Lùi lũy thừa | Exponential backoff | Tăng dần thời gian chờ giữa các lần thử lại có nhiễu loạn |
+| Tiền tố được lưu đệm | Cached prefix | Phần lời nhắc đóng băng tận dụng bộ nhớ đệm KV-cache |
+| Điểm lưu trạng thái | Checkpoint | Lưu vết trạng thái thực thi để phục hồi sau sự cố |
+| Hành động bù trừ | Compensating action | Hoàn tác từng bước khi một giao dịch phân tán thất bại |
+| Khối nội dung | Content block | Đơn vị cấu trúc phân định văn bản hoặc lời gọi công cụ trong tin nhắn |
+| Mã tương quan | Correlation ID | Định danh duy nhất xâu chuỗi mọi thao tác trong một phiên |
+| Bộ điều phối công cụ | Tool dispatcher | Định tuyến và gọi hàm xử lý công cụ theo đúng tên đăng ký |
+| Che giấu dữ liệu nhạy cảm | DLP / redaction | Lọc bỏ thông tin định danh cá nhân và bí mật trước khi lưu vết |
+| Thẻ phiên bản / So-sánh-và-đặt | ETag / Compare-and-set | Cơ chế khóa lạc quan dựa trên phiên bản và băm nội dung |
+| Bài kiểm định tác tử | Agent eval | Bộ đánh giá đo lường độ chính xác và an toàn của tác tử |
+| Đóng an toàn | Fail closed | Mặc định từ chối thực thi khi xảy ra sự cố không xác định |
+| Thẻ rào chắn đơn điệu | Fencing token | Số nguyên tăng đơn điệu chặn thao tác ghi từ phiên cũ |
+| Hàng rào an toàn | Guardrail | Lớp kiểm tra ràng buộc đầu vào và đầu ra của mô hình |
+| Điểm móc sự kiện | Hook | Hàm can thiệp trước hoặc sau khi thực thi công cụ |
+| Khóa lũy đẳng | Idempotency key | Mã định danh ngăn chặn việc lặp lại tác dụng phụ ngoài ý muốn |
+| Hợp đồng thuê có thời hạn | Lease | Quyền sở hữu tài nguyên có hạn giờ tự giải phóng |
+| Đặc quyền tối thiểu | Least privilege | Tác tử chỉ được cấp đúng những quyền cần thiết cho tác vụ |
+| Cổng mô hình ngôn ngữ | LLM gateway | Tầng trung gian quản lý kết nối, phân tầng lỗi và chuyển dự phòng |
+| Hộp thư đi gắn giao dịch | Transactional outbox | Lưu biến cố cùng giao dịch nghiệp vụ để bảo đảm độ bền |
+| Chủ thể định danh | Principal | Thực thể sở hữu quyền hạn trong hệ thống phân quyền |
+| Lời nhắc / Đầu vào mô hình | Prompt | Văn bản yêu cầu gửi tới mô hình ngôn ngữ lớn |
+| Bộ nhớ đệm lời nhắc | Prompt cache | Bộ đệm lưu trữ trạng thái tiền tố lời nhắc để giảm chi phí |
+| Tiêm lệnh ẩn | Prompt injection | Kỹ thuật tấn công chèn chỉ dẫn độc hại qua dữ liệu không tin cậy |
+| Cổng chặn hồi quy | Regression gate | Bài kiểm tra ngăn chặn việc suy giảm năng lực đã có |
+| Hộp cát cô lập | Sandbox | Môi trường cách ly giới hạn quyền đọc ghi hệ thống tệp và mạng |
+| Nhịp truy vết | Span | Một khoảng thời gian thực thi trong hệ thống giám sát phân tán |
+| Truyền phát theo mảnh | Streaming | Nhận và xử lý phản hồi từ mô hình theo từng phần nhỏ qua SSE |
+| Tác tử con | Subagent | Tác tử được phân công giải quyết một nhiệm vụ con cô lập |
+| Chỉ dẫn hệ thống | System prompt | Lời chỉ dẫn cơ bản định hình vai trò và nguyên tắc của tác tử |
+| Công cụ | Tool | Năng lực hành động có kiểu dữ liệu được mô hình gọi qua hàm |
+| Vết thực thi | Trace | Chuỗi vết ghi lại toàn bộ hành trình đưa ra quyết định của tác tử |
+| Biên bản hội thoại | Transcript | Toàn bộ lịch sử trao đổi giữa người dùng và tác tử |
+| Ranh giới tin cậy | Trust boundary | Vạch phân định giữa dữ liệu nội bộ an toàn và dữ liệu ngoài |
+| Giao thức ngữ cảnh mô hình | MCP — Model Context Protocol | Chuẩn giao tiếp kết nối tác tử với nguồn dữ liệu và công cụ ngoài |
+| Thử lại sau | Retry-After | Tiêu đề HTTP chỉ định khoảng thời gian cần chờ trước khi gửi lại |
+| Lược đồ công cụ | Tool Schema / JSON Schema | Đặc tả cấu trúc và kiểu dữ liệu tham số của công cụ |
+| Lý do dừng | stop_reason | Chỉ báo mô hình kết thúc lượt suy luận hay yêu cầu gọi công cụ |
+| Lời gọi công cụ | Tool call / tool_use | Khối dữ liệu cấu trúc yêu cầu kích hoạt công cụ kèm tham số |
+| Kết quả công cụ | Tool result / tool_result | Phản hồi từ môi trường trả về cho mô hình sau khi chạy công cụ |
+| Tiết lộ lũy tiến | Progressive disclosure | Nạp định nghĩa kỹ năng và tài liệu theo từng tầng nhu cầu |
+| Nén vi mô / Nén bộ khung | Microcompaction / Skeleton compaction | Tinh giản lịch sử công cụ cũ mà vẫn giữ khung đối chiếu |
+| Tóm tắt neo mục | Anchored iterative summarization | Nén hội thoại xoay quanh các quyết định và giả định then chốt |
+| Thoái hóa ngữ cảnh | Context degradation / Context poisoning | Suy giảm độ chính xác do ngữ cảnh quá tải hoặc lẫn dữ liệu độc |
+| Đồ thị thông tin & Đồ thị thực thi | Information graph & Execution DAG | Tách biệt luồng dữ liệu ngữ cảnh khỏi luồng phụ thuộc công việc |
+| Cây suy nghĩ | Tree of Thoughts — ToT | Mở rộng và đánh giá nhiều nhánh suy luận trước khi hành động |
+| Tự phản tư | Reflexion / Atom of Thought | Tác tử tự soi chiếu kết quả thất bại để sinh chiến lược sửa chữa |
+| Đồ thị tri thức lưỡng thời gian | Bi-temporal knowledge graph | Theo dõi đồng thời thời gian sự kiện thực tế và thời gian ghi hệ thống |
+| Dung hợp thứ hạng nghịch đảo | Reciprocal Rank Fusion — RRF | Thuật toán xếp hạng kết hợp kết quả tìm kiếm từ khóa và ngữ nghĩa |
+| Diễn tập sự cố hàng rào | Guardrail fire-drill | Đánh giá độc lập cả độ nhạy lẫn độ đặc hiệu của bộ lọc an toàn |
+| Bánh cóc tự cải tiến hai tập tách | Two-split self-improvement ratchet | Thẩm định năng lực trên tập bài kiểm tra ẩn để chống quá khớp |
+| Chuẩn kỹ năng tác tử | SKILL.md standard | Định dạng đóng gói hướng dẫn thực thi kèm tài nguyên bổ trợ |
+
+---
+
+## 20. Kiến trúc, Suy luận & Hậu huấn luyện LLM/RLVR Từ số không (Chương 92–97)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Mã hóa cặp byte | Byte-Pair Encoding — BPE | Thuật toán nén và tách từ cấp byte không sợ từ vựng ngoài |
+| Giải mã có ràng buộc | Constrained decoding | Ép mô hình sinh văn bản khớp với ngữ pháp hoặc lược đồ JSON |
+| Vi phân tự động chế độ ngược | Reverse-mode Autograd | Tính đạo hàm riêng qua đồ thị tính toán từ ngõ ra ngược về ngõ vào |
+| Sai phân hữu hạn trung tâm | Central finite difference | Phương pháp số xấp xỉ đạo hàm để kiểm chứng tính đúng của autograd |
+| Nhúng vị trí quay | Rotary Position Embedding — RoPE | Mã hóa vị trí tương đối thông qua phép quay vector trong mặt phẳng 2D |
+| Chuẩn hóa căn trung bình bình phương | RMSNorm | Biến thể LayerNorm tối ưu tốc độ bằng cách bỏ phép tính kỳ vọng |
+| Tự chú ý nhân quả có mặt nạ | Masked causal self-attention | Ngăn chặn các token phía trước nhìn thấy token tương lai trong giải mã |
+| Chú ý truy vấn nhóm | Grouped-Query Attention — GQA | Chia sẻ khóa và giá trị theo nhóm để giảm kích thước bộ nhớ KV-cache |
+| Chú ý tiềm ẩn đa đầu | Multi-Head Latent Attention — MLA | Nén khóa-giá trị vào không gian tiềm ẩn thu nhỏ bộ đệm |
+| Chú ý cửa sổ trượt | Sliding Window Attention — SWA | Giới hạn tầm chú ý trong một phạm vi lân cận cố định |
+| Chú ý tuyến tính có cổng | Gated DeltaNet / Linear attention | Mô hình trạng thái lặp tuần tự đạt độ phức tạp thời gian tuyến tính |
+| Hỗn hợp chuyên gia | Mixture of Experts — MoE | Định tuyến mỗi token tới một tập chuyên gia nhỏ để tiết kiệm tính toán |
+| Tổn thất phụ cân bằng tải | Load-balancing auxiliary loss | Hàm phạt ngăn hiện tượng một vài chuyên gia bị quá tải trong MoE |
+| Độ hỗn loạn | Perplexity | Thước đo độ bối rối của mô hình ngôn ngữ khi dự đoán từ tiếp theo |
+| Tổn thất entropy chéo che mặt nạ | Masked cross-entropy loss | Chỉ tính hàm mất mát trên các token do trợ lý sinh ra |
+| Trực giao hóa Newton–Schulz | Newton–Schulz orthogonalization | Thuật toán lặp đưa ma trận cập nhật về dạng trực giao trong Muon |
+| Lịch tốc độ học Khởi động–Ổn định–Suy giảm | Warmup-Stable-Decay — WSD | Lịch học duy trì pha ổn định dài trước khi suy giảm |
+| Bộ nhớ đệm Khóa–Giá trị | KV-Cache | Lưu trữ vector Khóa và Giá trị đã tính để tránh tính lại trong giải mã |
+| Chú ý phân trang | PagedAttention | Quản lý bộ nhớ đệm KV theo các trang không liên tục như hệ điều hành |
+| Chú ý cây tiền tố | RadixAttention | Tái sử dụng KV-cache trên cây tiền tố chia sẻ giữa nhiều yêu cầu |
+| Giải mã suy đoán | Speculative decoding | Dùng mô hình nhỏ sinh nháp rồi mô hình lớn xác thực song song |
+| Lượng tử hóa đối xứng theo kênh | Per-channel symmetric Int8 quantization | Nén trọng số 32-bit xuống số nguyên 8-bit theo từng kênh ma trận |
+| Gắn kết trọng số | Weight tying | Dùng chung ma trận nhúng đầu vào làm ma trận chiếu đầu ra |
+| Tinh chỉnh có giám sát | Supervised Fine-Tuning — SFT | Huấn luyện mô hình cơ sở theo các cặp câu hỏi–trả lời mẫu |
+| Thích nghi hạng thấp | Low-Rank Adaptation — LoRA | Cập nhật ma trận trọng số qua tích hai ma trận có hạng nhỏ |
+| Hợp nhất trọng số không chi phí | Zero-overhead LoRA weight merging | Cộng trực tiếp ma trận LoRA vào trọng số gốc trước khi phục vụ suy luận |
+| Mô hình phần thưởng Bradley–Terry | Bradley–Terry Reward Model | Ước lượng xác suất câu trả lời này được ưa chuộng hơn câu kia |
+| Tối ưu hóa ưu tiên trực tiếp | Direct Preference Optimization — DPO | Căn chỉnh mô hình trực tiếp từ dữ liệu ưu tiên bỏ qua mô hình thưởng |
+| Tối ưu hóa chính sách cận kề | Proximal Policy Optimization — PPO | Giới hạn biên độ thay đổi của chính sách qua hàm cắt |
+| Ước lượng lợi thế tổng quát | Generalized Advantage Estimation — GAE | Cân bằng giữa độ chệch và phương sai trong tính toán lợi thế |
+| Tối ưu hóa chính sách tương đối theo nhóm | Group Relative Policy Optimization — GRPO | Tính lợi thế tương đối từ một nhóm mẫu sinh ra mà không cần critic |
+| Học tăng cường với phần thưởng kiểm chứng được | RLVR | Huấn luyện lập luận toán học hoặc mã lệnh dựa trên kết quả kiểm chứng |
+| Hình phạt phân kỳ KL | KL divergence penalty | Giữ chính sách được tối ưu không trôi quá xa khỏi mô hình tham chiếu |
+| Tấn công phần thưởng | Reward hacking | Mô hình tìm ra cách lách luật sinh phản hồi ăn điểm cao mà vô nghĩa |
+| Hàm kích hoạt có cổng | SwiGLU | Phép nhân cổng giữa hàm kích hoạt SiLU và phép chiếu tuyến tính |
+| Mở rộng ngữ cảnh RoPE | YaRN | Tái phân bổ tỉ lệ tần số để mở rộng cửa sổ ngữ cảnh RoPE hiệu quả |
+| Bộ tối ưu hóa phân rã trọng số | AdamW | Tách riêng bước phân rã trọng số khỏi ước lượng động lượng |
+| Bộ tối ưu hóa trực giao | Muon | Áp dụng trực giao hóa cho các tầng ma trận nơ-ron hai chiều |
+| Lấy mẫu phân phối xác suất | top_k / top_p / min_p | Các chiến lược cắt đuôi phân phối để chọn token đầu ra đa dạng |
+| Tối ưu hóa ưu tiên không mô hình thưởng | SimPO / ORPO / IPO / KTO | Các biến thể hàm mục tiêu căn chỉnh trực tiếp đơn giản hóa |
+| Các biến thể mở rộng RLVR | Dr. GRPO / DAPO / GSPO | Cải tiến GRPO về ổn định độ dài, cắt bất đối xứng và chuẩn hóa nhóm |
+| Thẻ suy luận có cấu trúc | `<think>` / `<answer>` | Định dạng phân định rõ khối lập luận nội tâm và câu trả lời cuối cùng |
+
+---
+
+## 21. Tra cứu định danh mã nguồn (Vietnamese → English)
 
 Từ bản 85 chương, **mọi định danh trong mã nguồn đều bằng tiếng Anh** — kể cả tên
 hàm kiểm thử; phần giảng nghĩa nằm ở comment tiếng Việt ngay trên định danh đó.

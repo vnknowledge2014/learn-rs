@@ -580,3 +580,207 @@ fn dfs_finds_path_and_reports_none() {
 
 **DFS khác BFS ở đâu:** DFS trả lời "có đường không?" và tiết kiệm bộ nhớ hơn (chỉ giữ một nhánh trong ngăn xếp), nhưng đường nó tìm ra **không nhất thiết ngắn nhất**. Cần ngắn nhất thì phải dùng BFS, như `bfs_shortest_distance` ở phần trên chương.
 </details>
+
+---
+
+### Bài tập bổ sung: Thuật toán đồ thị nâng cao
+
+**Bài 1 — Union-Find & Kruskal MST:**
+Cho danh sách `N` thành phố (đánh số `0..N-1`) và `M` con đường nối giữa các cặp thành phố, mỗi đường có chi phí xây dựng. Hãy dùng cấu trúc `UnionFind` và thuật toán Kruskal để tìm tổng chi phí nhỏ nhất cần thiết để nối tất cả các thành phố lại với nhau (Cây khung nhỏ nhất — MST). Nếu không thể nối hết, hãy trả về `None`.
+
+*Gợi ý: Kiểm tra xem MST có đúng `N-1` cạnh không để xác nhận đồ thị liên thông.*
+
+<details>
+<summary>Gợi ý</summary>
+
+1. Biểu diễn mỗi con đường bằng `Edge { u, v, weight }`.
+2. Gọi `kruskal_mst(n, &mut edges)` để lấy MST.
+3. Nếu `mst_edges.len() == n - 1` thì đồ thị liên thông → trả về `Some(total)`.
+4. Ngược lại, trả về `None` — không thể nối hết.
+
+</details>
+
+<details>
+<summary>Lời giải</summary>
+
+```rust
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
+/// Cạnh có trọng số giữa hai đỉnh.
+pub struct Edge {
+    pub u: usize,
+    pub v: usize,
+    pub weight: u64,
+}
+
+/// Union-Find với nén đường và hợp theo hạng.
+pub struct UnionFind {
+    parent: Vec<usize>,
+    rank: Vec<usize>,
+}
+
+impl UnionFind {
+    pub fn new(n: usize) -> Self {
+        UnionFind {
+            parent: (0..n).collect(),
+            rank: vec![0; n],
+        }
+    }
+
+    pub fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    pub fn union(&mut self, x: usize, y: usize) -> bool {
+        let rx = self.find(x);
+        let ry = self.find(y);
+        if rx == ry { return false; }
+        match self.rank[rx].cmp(&self.rank[ry]) {
+            std::cmp::Ordering::Less => self.parent[rx] = ry,
+            std::cmp::Ordering::Greater => self.parent[ry] = rx,
+            std::cmp::Ordering::Equal => {
+                self.parent[ry] = rx;
+                self.rank[rx] += 1;
+            }
+        }
+        true
+    }
+}
+
+/// Tìm chi phí MST. Trả None nếu đồ thị không liên thông.
+pub fn min_cost_connect(n: usize, edges: &mut [Edge]) -> Option<u64> {
+    edges.sort_by_key(|e| e.weight);
+    let mut uf = UnionFind::new(n);
+    let mut total = 0u64;
+    let mut count = 0usize;
+
+    for e in edges.iter() {
+        if uf.union(e.u, e.v) {
+            total += e.weight;
+            count += 1;
+        }
+    }
+
+    if count == n - 1 { Some(total) } else { None }
+}
+
+#[test]
+fn test_min_cost_connect() {
+    let mut roads = vec![
+        Edge { u: 0, v: 1, weight: 10 },
+        Edge { u: 0, v: 2, weight: 6 },
+        Edge { u: 0, v: 3, weight: 5 },
+        Edge { u: 1, v: 3, weight: 15 },
+        Edge { u: 2, v: 3, weight: 4 },
+    ];
+    // MST: 2-3(4) + 0-3(5) + 0-1(10) = 19
+    assert_eq!(min_cost_connect(4, &mut roads), Some(19));
+
+    // Đồ thị không liên thông
+    let mut disconnected = vec![
+        Edge { u: 0, v: 1, weight: 1 },
+    ];
+    assert_eq!(min_cost_connect(3, &mut disconnected), None);
+}
+```
+
+</details>
+
+**Bài 2 — Dijkstra tìm đường ngắn nhất:**
+Cho đồ thị có hướng với `N` đỉnh và các cạnh có trọng số không âm. Viết hàm `fn shortest_path(n: usize, edges: &[(usize, usize, u64)], start: usize, end: usize) -> Option<u64>` trả về khoảng cách ngắn nhất từ `start` đến `end`, hoặc `None` nếu không tới được.
+
+*Gợi ý: Dựng `WeightedGraph`, chạy Dijkstra từ `start`, đọc `dist[end]`.*
+
+<details>
+<summary>Gợi ý</summary>
+
+1. Tạo `WeightedGraph::new(n)`, thêm từng cạnh bằng `add_edge(u, v, w)`.
+2. Gọi `dijkstra(start)` lấy vector khoảng cách.
+3. Trả về `dist[end]` — đã là `Option<u64>` sẵn rồi.
+
+</details>
+
+<details>
+<summary>Lời giải</summary>
+
+```rust
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
+/// Đồ thị có trọng số biểu diễn bằng danh sách kề.
+pub struct WeightedGraph {
+    adj: Vec<Vec<(usize, u64)>>,
+}
+
+impl WeightedGraph {
+    pub fn new(n: usize) -> Self {
+        WeightedGraph { adj: vec![Vec::new(); n] }
+    }
+
+    pub fn add_edge(&mut self, u: usize, v: usize, w: u64) {
+        self.adj[u].push((v, w));
+    }
+
+    pub fn dijkstra(&self, start: usize) -> Vec<Option<u64>> {
+        let n = self.adj.len();
+        let mut dist: Vec<Option<u64>> = vec![None; n];
+        dist[start] = Some(0);
+        let mut heap: BinaryHeap<Reverse<(u64, usize)>> = BinaryHeap::new();
+        heap.push(Reverse((0, start)));
+
+        while let Some(Reverse((cost, u))) = heap.pop() {
+            if let Some(d) = dist[u] {
+                if cost > d { continue; }
+            }
+            for &(v, w) in &self.adj[u] {
+                let nd = cost + w;
+                let better = match dist[v] {
+                    None => true,
+                    Some(old) => nd < old,
+                };
+                if better {
+                    dist[v] = Some(nd);
+                    heap.push(Reverse((nd, v)));
+                }
+            }
+        }
+        dist
+    }
+}
+
+/// Tìm đường ngắn nhất giữa hai đỉnh.
+pub fn shortest_path(
+    n: usize,
+    edges: &[(usize, usize, u64)],
+    start: usize,
+    end: usize,
+) -> Option<u64> {
+    let mut g = WeightedGraph::new(n);
+    for &(u, v, w) in edges {
+        g.add_edge(u, v, w);
+    }
+    g.dijkstra(start)[end]
+}
+
+#[test]
+fn test_shortest_path() {
+    let edges = vec![
+        (0, 1, 4),
+        (0, 2, 1),
+        (2, 1, 2),
+        (1, 3, 1),
+        (2, 3, 5),
+    ];
+    // 0 ->2(1) ->1(2) ->3(1) = 4, ngắn hơn 0->1(4)->3(1) = 5
+    assert_eq!(shortest_path(4, &edges, 0, 3), Some(4));
+    assert_eq!(shortest_path(4, &edges, 0, 0), Some(0));
+    assert_eq!(shortest_path(4, &edges, 3, 0), None); // Không có đường ngược
+}
+```
+
+</details>
+

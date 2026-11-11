@@ -623,3 +623,168 @@ Với mỗi bài toán, chọn mô thức (QHĐ / quay lui / tham lam / lý thuy
 
 Kỹ năng cốt lõi: đọc đề, tìm *dấu hiệu* (chồng lặp? thử mọi khả năng? chọn cục bộ? tính chất số?) rồi mới chọn công cụ.
 </details>
+
+### Bài tập bổ sung: Thuật toán xử lý chuỗi & Truy vấn đoạn
+
+**Bài 1 — KMP so khớp chuỗi:**
+Cho chuỗi `text` và `pattern`, viết hàm `kmp_search(text: &str, pattern: &str) -> Vec<usize>` trả về tất cả vị trí bắt đầu mà `pattern` xuất hiện trong `text`. Yêu cầu phức tạp O(N + M).
+
+Ví dụ: `kmp_search("ababcababd", "ab")` → `[0, 2, 5, 7]`.
+
+<details>
+<summary>Gợi ý</summary>
+
+1. Xây bảng tiền tố (failure function) cho `pattern`: `table[i]` = độ dài tiền tố thực dài nhất cũng là hậu tố của `pattern[0..=i]`.
+2. Duyệt `text` từ trái sang phải, dùng bảng để "nhảy" khi mismatch thay vì quay lại đầu.
+3. Khi tìm thấy match đầy đủ (`j == m`), ghi vị trí và lùi `j` theo bảng để tìm match chồng lặp.
+</details>
+
+<details>
+<summary>Lời giải</summary>
+
+```rust
+/// Xây bảng tiền tố (failure function) cho thuật toán KMP.
+fn build_kmp_table(pattern: &[u8]) -> Vec<usize> {
+    let m = pattern.len();
+    let mut table = vec![0usize; m];
+    let mut len = 0;
+    let mut i = 1;
+    while i < m {
+        if pattern[i] == pattern[len] {
+            len += 1;
+            table[i] = len;
+            i += 1;
+        } else if len != 0 {
+            len = table[len - 1];
+        } else {
+            table[i] = 0;
+            i += 1;
+        }
+    }
+    table
+}
+
+/// Tìm tất cả vị trí xuất hiện của `pattern` trong `text` bằng KMP — O(N + M).
+pub fn kmp_search(text: &str, pattern: &str) -> Vec<usize> {
+    let mut result = Vec::new();
+    let t = text.as_bytes();
+    let p = pattern.as_bytes();
+    let (n, m) = (t.len(), p.len());
+    if m == 0 || m > n {
+        return result;
+    }
+    let table = build_kmp_table(p);
+    let mut j = 0;
+    for i in 0..n {
+        while j > 0 && t[i] != p[j] {
+            j = table[j - 1];
+        }
+        if t[i] == p[j] {
+            j += 1;
+        }
+        if j == m {
+            result.push(i + 1 - m);
+            j = table[j - 1];
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod test_kmp {
+    use super::*;
+    #[test]
+    fn basic() {
+        assert_eq!(kmp_search("ababcababd", "ab"), vec![0, 2, 5, 7]);
+    }
+    #[test]
+    fn overlapping() {
+        assert_eq!(kmp_search("aaaa", "aa"), vec![0, 1, 2]);
+    }
+    #[test]
+    fn no_match() {
+        assert_eq!(kmp_search("hello", "xyz"), vec![]);
+    }
+}
+```
+</details>
+
+**Bài 2 — Fenwick Tree truy vấn đoạn:**
+Xây dựng cấu trúc `FenwickTree` hỗ trợ:
+- `new(n)`: tạo cây kích thước n (chỉ số 1..=n), giá trị ban đầu = 0.
+- `update(i, delta)`: cộng `delta` vào vị trí `i`.
+- `prefix_sum(i)`: tổng `a[1..=i]`.
+- `range_sum(l, r)`: tổng `a[l..=r]`.
+
+Mỗi thao tác O(log N). Ví dụ: sau khi gán `a = [1, 2, 3, 4, 5]` (qua `update`), `range_sum(2, 4)` → `9`.
+
+<details>
+<summary>Gợi ý</summary>
+
+Fenwick Tree dùng biểu diễn nhị phân của chỉ số:
+- **Update**: đi lên bằng `i += i & (-i)` (thêm bit thấp nhất).
+- **Query**: đi xuống bằng `i -= i & (-i)` (tắt bit thấp nhất), tức `i &= i - 1`.
+- `range_sum(l, r) = prefix_sum(r) - prefix_sum(l - 1)`.
+</details>
+
+<details>
+<summary>Lời giải</summary>
+
+```rust
+pub struct FenwickTree {
+    /// Mảng nội bộ lưu giá trị tích lũy — chỉ số bắt đầu từ 1.
+    tree: Vec<i64>,
+}
+
+impl FenwickTree {
+    pub fn new(n: usize) -> Self {
+        Self {
+            tree: vec![0i64; n + 1],
+        }
+    }
+
+    pub fn update(&mut self, mut i: usize, delta: i64) {
+        while i < self.tree.len() {
+            self.tree[i] += delta;
+            i += i & i.wrapping_neg();
+        }
+    }
+
+    pub fn prefix_sum(&self, mut i: usize) -> i64 {
+        let mut s: i64 = 0;
+        while i > 0 {
+            s += self.tree[i];
+            i &= i - 1;
+        }
+        s
+    }
+
+    pub fn range_sum(&self, l: usize, r: usize) -> i64 {
+        if l > r {
+            return 0;
+        }
+        self.prefix_sum(r) - if l > 1 { self.prefix_sum(l - 1) } else { 0 }
+    }
+}
+
+#[cfg(test)]
+mod test_fenwick {
+    use super::*;
+    #[test]
+    fn basic() {
+        let mut ft = FenwickTree::new(5);
+        for i in 1..=5 {
+            ft.update(i, i as i64);
+        }
+        assert_eq!(ft.prefix_sum(5), 15);
+        assert_eq!(ft.range_sum(2, 4), 9);
+    }
+    #[test]
+    fn single() {
+        let mut ft = FenwickTree::new(1);
+        ft.update(1, 42);
+        assert_eq!(ft.range_sum(1, 1), 42);
+    }
+}
+```
+</details>
