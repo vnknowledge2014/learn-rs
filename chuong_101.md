@@ -1009,6 +1009,8 @@ Chú ý `padded[..16].copy_from_slice(&md5(key))`: khi khoá dài hơn khối, t
 ### 4.3. NTLMv2 Response — công thức thành mã
 
 ```rust
+impl NetNtlmV2Responder {
+    // ...
     /// Tính NTProofStr bằng biến thể *viết hoa toàn bộ* tên và miền.
     pub fn compute_response_upper(
         &self,
@@ -1042,6 +1044,7 @@ Chú ý `padded[..16].copy_from_slice(&md5(key))`: khi khoá dài hơn khối, t
         data.extend_from_slice(&blob);
         hmac_md5(ntv2, &data)
     }
+}
 ```
 
 Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upper` (viết hoa toàn bộ) cho thấy một điểm tinh tế của NTLM: **tên người dùng và miền được xử lý khác nhau giữa các phiên bản**, và công cụ phân tích phải thử **cả hai** biến thể.
@@ -1049,6 +1052,8 @@ Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upp
 ### 4.4. RC4 — động cơ dòng khoá
 
 ```rust
+impl Rc4 {
+    // ...
     /// Mã hoá (hoặc giải mã — RC4 là mã hoá dòng tự đồng bộ) một mảng byte.
     pub fn apply(&mut self, data: &[u8]) -> Vec<u8> {
         let mut out = Vec::with_capacity(data.len());
@@ -1062,6 +1067,7 @@ Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upp
         }
         out
     }
+}
 ```
 
 Một điểm thiết kế đáng chú ý: `Rc4` giữ trạng thái `s`, `i`, `j` **bên trong** đối tượng, nên có thể mã hoá nhiều lần bằng cùng một dòng khoá (đúng như Kerberos tái sử dụng keystream giữa các phần của thông điệp).
@@ -1234,6 +1240,8 @@ Ba nguyên tắc an toàn nằm trong `decode_tlv`: **kiểm tra biên trước 
 ### 4.8. Đóng gói AS-REQ
 
 ```rust
+impl AsReq {
+    // ...
     /// Mã hoá AS-REQ thành byte ASN.1 DER.
     pub fn to_asn1(&self) -> Vec<u8> {
         let body = encode_sequence(&[
@@ -1253,6 +1261,7 @@ Ba nguyên tắc an toàn nằm trong `decode_tlv`: **kiểm tra biên trước 
         ]);
         encode_application(10, &[inner])
     }
+}
 ```
 
 Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ), `padata[3]`, `req-body[4]`. Và `req-body` chứa `kdc-options[0]`, `cname[1]`, `realm[2]`, `nonce[7]`.
@@ -1260,6 +1269,8 @@ Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ),
 ### 4.9. Kerberoast — ép khoá dịch vụ
 
 ```rust
+impl KerberoastCracker {
+    // ...
     /// Bẻ khoá vé dịch vụ dùng RC4-HMAC (etype 23).
     pub fn crack_etype23(&self, ticket: &ServiceTicket) -> Option<String> {
         if ticket.etype != Etype::Rc4Hmac {
@@ -1275,6 +1286,7 @@ Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ),
         }
         None
     }
+}
 ```
 
 Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật khẩu → suy ra khoá → giải mã → kiểm tra chữ ký. Không có mạng, không có KDC, không có quyền truy cập nào ngoài dữ liệu tổng hợp.
@@ -1282,6 +1294,8 @@ Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật k
 ### 4.10. Đột biến từ điển
 
 ```rust
+impl WordlistMutator {
+    // ...
     /// Sinh toàn bộ biến thể của một từ (gồm chính từ đó, luôn ở vị trí đầu).
     pub fn generate(&self, word: &str) -> Vec<String> {
         let mut output = vec![word.to_string()];
@@ -1305,6 +1319,7 @@ Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật k
         }
         output
     }
+}
 ```
 
 Chú ý `output.contains(&variant)` — loại trùng bằng `Vec::contains` (O(n)) chấp nhận được ở quy mô từ điển nhỏ; với từ điển hàng triệu dòng, bạn nâng lên `HashSet`.
@@ -1312,12 +1327,15 @@ Chú ý `output.contains(&variant)` — loại trùng bằng `Vec::contains` (O(
 ### 4.11. Kho tín dụng và tra cứu SPN
 
 ```rust
+impl CredentialDb {
+    // ...
     /// Tìm tài khoản theo Service Principal Name.
     pub fn find_by_spn(&self, spn: &str) -> Option<&Account> {
         self.accounts
             .iter()
             .find(|account| account.spns.iter().any(|candidate| candidate == spn))
     }
+}
 ```
 
 Đây chính là truy vấn mà đợt tấn công Kerberoast cần: biết SPN → biết tài khoản dịch vụ → biết salt → bẻ khoá.
@@ -1347,6 +1365,8 @@ pub fn hash_for(algorithm: HashAlgorithm, candidate: &str) -> String {
 Chú ý cách viết này giữ cho **mọi thuật toán** có cùng một giao diện: "cho tôi một chuỗi, trả về 16/32 byte hex". Nhờ vậy `CrackEngine` không cần biết chút gì về MD5 hay SHA-256:
 
 ```rust
+impl CrackEngine {
+    // ...
     /// Quét từ điển và trả về mật khẩu tìm được (nếu có).
     pub fn crack(&self) -> Option<String> {
         let target = self.target_hash.trim().to_ascii_lowercase();
@@ -1355,6 +1375,7 @@ Chú ý cách viết này giữ cho **mọi thuật toán** có cùng một giao
             .find(|candidate| hash_for(self.algorithm, candidate).to_ascii_lowercase() == target)
             .cloned()
     }
+}
 ```
 
 `.trim().to_ascii_lowercase()` ở cả hai vế là chi tiết quan trọng trong đời thực: giá trị băm lấy từ file `hashes.txt` thường kèm khoảng trắng, chữ hoa/thường lẫn lộn, và còn tiền tố kiểu `$NT$` — nếu không chuẩn hoá, bẻ khoá sẽ **không bao giờ** khớp.
@@ -1543,7 +1564,7 @@ Vì `HashAlgorithm` là enum đóng, bạn phải thêm biến thể — đây l
 >
 > Bỏ sót `impl Display` là lỗi kinh điển của người mới: trình biên dịch báo `non-exhaustive patterns` đúng lúc bạn tưởng đã xong.
 
-```rust
+```rust,ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashAlgorithm {
     Md5,

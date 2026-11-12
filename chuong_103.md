@@ -1147,7 +1147,8 @@ Vì sao phải Base64 mới nhét được payload vào URL? Vì **URL chỉ ch�
 
 ### 4.7 Bọc lưu lượng `TrafficObfuscator`
 
-```rust
+```rust,ignore
+impl TrafficObfuscator {
     fn wrap_http_request(&self, payload: &[u8]) -> Vec<u8> {
         let encoded = base64_encode(payload);
         let text = format!(
@@ -1160,6 +1161,8 @@ Vì sao phải Base64 mới nhét được payload vào URL? Vì **URL chỉ ch�
         );
         text.into_bytes()
     }
+}
+// ... (xem đầy đủ impl TrafficObfuscator trong code/ch103/src/main.rs)
 ```
 
 ```rust
@@ -1226,7 +1229,8 @@ pub fn ssh_command_line(tunnel: &SshTunnel) -> String {
 }
 ```
 
-```rust
+```rust,ignore
+impl SocksRelayChain {
     pub fn resolve_path(&self, target: &str, port: u16) -> Vec<String> {
         let mut path = vec!["client".to_string()];
         for hop in &self.hops {
@@ -1235,6 +1239,8 @@ pub fn ssh_command_line(tunnel: &SshTunnel) -> String {
         path.push(format!("{target}:{port}"));
         path
     }
+}
+// ... (xem đầy đủ impl SocksRelayChain trong code/ch103/src/main.rs)
 ```
 
 ### 4.9 Khung C2: máy chủ, tác tử và vỏ lệnh giả lập
@@ -1257,7 +1263,8 @@ pub struct C2Server {
 }
 ```
 
-```rust
+```rust,ignore
+impl C2Server {
     pub fn encode_message(&self, command: &C2Command, payload: &str) -> Vec<u8> {
         let mut raw = Vec::with_capacity(C2_HEADER_LEN + payload.len());
         raw.push(command.tag());
@@ -1268,9 +1275,12 @@ pub struct C2Server {
             None => raw,
         }
     }
+}
+// ... (xem đầy đủ impl C2Server trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Server {
     pub fn decode_message(&self, bytes: &[u8]) -> Result<(C2Command, String), String> {
         let raw = match &self.encryption {
             Some(cipher) => cipher.decrypt(bytes),
@@ -1288,9 +1298,12 @@ pub struct C2Server {
             .map_err(|e| format!("Payload C2 không phải UTF-8 hợp lệ: {e}"))?;
         Ok((command, payload))
     }
+}
+// ... (xem đầy đủ impl C2Server trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl MockShell {
     fn dispatch(&self, cmd: &str) -> String {
         match cmd {
             "whoami" => self.current_user.clone(),
@@ -1327,9 +1340,12 @@ pub struct C2Server {
             }
         }
     }
+}
+// ... (xem đầy đủ impl MockShell trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Agent {
     pub fn next_beacon_delay(&self, rng: &mut SplitMix64) -> u64 {
         if self.jitter_ms == 0 {
             return self.beacon_interval_ms;
@@ -1337,9 +1353,12 @@ pub struct C2Server {
         let jitter = rng.next_u64() % (self.jitter_ms + 1);
         self.beacon_interval_ms.saturating_add(jitter)
     }
+}
+// ... (xem đầy đủ impl C2Agent trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Agent {
     pub fn handle_task(&mut self, task: &Task, shell: &mut MockShell) -> String {
         if self.destroyed {
             let signal = kill_signal();
@@ -1354,6 +1373,8 @@ pub struct C2Server {
         ));
         output
     }
+}
+// ... (xem đầy đủ impl C2Agent trong code/ch103/src/main.rs)
 ```
 
 Hai chi tiết đáng chú ý trong `MockShell`:

@@ -181,7 +181,7 @@ Phần này đi sâu vào từng thành phần, giải thích *tại sao* thuậ
 
 Nhiều bài hướng dẫn mô phỏng SQLi bằng cách kiểm tra chuỗi:
 
-```rust
+```rust,ignore
 // ❌ Mô phỏng "sai": không thực thi SQL, chỉ so khớp chuỗi
 fn query(&self, sql: &str) -> SqlResponse {
     if sql.contains("UNION") { /* trả về dữ liệu bí mật */ }
@@ -1534,10 +1534,12 @@ impl FileUploadBypasser {
         forged.extend_from_slice(content);
         forged
     }
-
+}
+// ... (các kỹ thuật khác của impl — xem code/ch100/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl FileUploadBypasser {
     /// Thử vượt qua bộ lọc với một tệp tải lên.
     pub fn try_bypass(
         &self,
@@ -1814,13 +1816,12 @@ pub fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
     }
     diff == 0
 }
-
-/// Giá trị JSON tối giản đủ dùng cho header/payload của JWT.
 ```
 
 ### 4.10. JWT: phân tích, ký, crack và phát hiện lỗ hổng
 
-```rust
+```rust,ignore
+impl JwtToken {
     /// Chuỗi đầu vào dùng để ký: `base64url(header).base64url(payload)`.
     pub fn signing_input(&self) -> String {
         let parts: Vec<&str> = self.raw.split('.').collect();
@@ -2216,7 +2217,8 @@ impl Default for MockLlm {
 
 Các mẫu jailbreak kinh điển — mỗi mẫu là một "chiến thuật tâm lý" khác nhau để tách mô hình khỏi system prompt của nó:
 
-```rust
+```rust,ignore
+impl SqlParser {
 }
 
 /// Bộ thử jailbreak với các mẫu prompt kinh điển.
@@ -2271,10 +2273,6 @@ impl JailbreakProber {
 ### 4.13. Chấm điểm rủi ro và báo cáo chiến dịch
 
 ```rust
-        results
-    }
-}
-
 /// Bộ chấm điểm rủi ro cho các phép thử bảo mật LLM.
 #[derive(Debug, Clone)]
 pub struct ProbeScorer {
@@ -2534,8 +2532,8 @@ fn main() {
         "   - Giá trị 'products.price' đầu tiên: {}",
         union.extract_value("products", "price").unwrap_or_default()
     );
-
-    // ------------------------------------------------------------------
+    // ... (phần còn lại của main — xem code/ch100/src/main.rs)
+}
 ```
 
 ### 4.15. Một bài kiểm thử đại diện
@@ -2598,7 +2596,7 @@ mod tests {
         assert!(first.table_names().contains(&"users".to_string()));
         assert_eq!(first.find_table("secrets").unwrap().rows.len(), 1);
     }
-
+}
 ```
 ---
 

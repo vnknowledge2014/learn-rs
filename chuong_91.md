@@ -183,7 +183,8 @@ Trong các mô hình Transformer hiện đại (như DeepSeek, Claude, GPT-4), c
 
 Lợi ích kinh tế và hiệu năng của việc trúng đệm tiền tố (Prompt Caching):
 - **Chi phí**: Token đọc từ cache rẻ hơn 90% so với token chưa cache ($0.30/1M so với $3.00/1M).
-- **Độ trễ**: Thời gian TTFT (Time to First Token) giảm từ vài giây xuống vài chục mili-giây.
+- **Độ trễ**: Thời gian TTFT (Time to First Token) giảm đáng kể với các prompt dài, vì máy chủ bỏ qua bước tính lại (prefill) phần tiền tố đã được cache.
+- **Giá minh họa**: các con số $0.30 và $3.00 trên 1M token lấy theo bảng giá niêm yết của một mô hình tầm trung tại thời điểm viết sách; hãy tra lại bảng giá hiện hành của nhà cung cấp trước khi dùng cho dự toán thật.
 
 Tuy nhiên, KV-Cache hoạt động theo nguyên tắc so khớp tiền tố liên tục từ trái qua phải (Longest Common Prefix). Nếu bạn chèn dù chỉ một ký tự thời gian động (ví dụ `"Hôm nay là 10:15:32"`) hoặc đảo thứ tự hai công cụ ở đầu prompt, **toàn bộ phần cache phía sau sẽ bị hủy bỏ (Cache Busting)**.
 
@@ -223,9 +224,9 @@ Sổ cái `CostLedger` áp dụng phép cộng có kiểm tra tràn số `checke
 ### 3.3. Cô lập tam giác độc hại (`Lethal Trifecta Isolation`) & Chuẩn Kỹ năng `SKILL.md`
 
 #### Bất biến 3: Lethal Trifecta Isolation
-Trong an ninh mạng dành cho tác tử AI, **Tam giác chết người (Lethal Trifecta)** được định nghĩa là sự hội tụ đồng thời của ba yếu tố:
+Trong an ninh mạng dành cho tác tử AI, **Tam giác chết người (Lethal Trifecta)** là cách gọi do Simon Willison đặt ra (2025) cho sự hội tụ của ba năng lực: truy cập dữ liệu riêng tư, tiếp xúc nội dung không đáng tin, và khả năng liên lạc ra bên ngoài. Bộ khung của chương này cụ thể hóa ba năng lực đó thành ba nhãn kiểm soát được trong mã, hội tụ đồng thời thì nguy hiểm:
 1. **Dữ liệu ngoại vi chưa tin cậy (`UntrustedExternal`)**: Nội dung trích xuất từ tệp trong repo, trang web cào được, hoặc tin nhắn của người dùng lạ. Kẻ tấn công có thể chèn các chỉ thị độc hại vào đây (Indirect Prompt Injection).
-2. **Quyền hạn công cụ hệ thống (`SystemAuthority`)**: Khả năng chạy lệnh terminal (`execute_shell`), chỉnh sửa tệp hệ thống (`modify_file`), hoặc xóa dữ liệu.
+2. **Quyền hạn công cụ hệ thống (`SystemAuthority`)**: Khả năng chạy lệnh terminal (`execute_shell`), chỉnh sửa tệp hệ thống (`modify_file`), hoặc xóa dữ liệu. Trong khung của Willison, đây là con đường để tác tử chạm tới dữ liệu riêng tư (như tệp `.env`).
 3. **Kênh phát tán ra ngoài (`ExfiltrationSink`)**: Khả năng gửi gói tin mạng (`send_network_packet`), đẩy dữ liệu ra hộp thư công cộng (`publish_outbox`), hoặc tải dữ liệu đo lường lên server lạ.
 
 Nếu một tác tử để dữ liệu bẩn từ yếu tố (1) trực tiếp kích hoạt công cụ ở yếu tố (2) rồi tống dữ liệu nhạy cảm (như file `.env` chứa API key) qua kênh ở yếu tố (3), hệ thống đã bị xâm phạm hoàn toàn.
@@ -287,7 +288,7 @@ Bộ vá tệp `SearchReplacePatcher` thực thi quy trình 4 bước bất kh�
 1. **Xác minh mã băm trước khi ghi (`Pre-read Hash Verification`)**: Tác tử bắt buộc phải cung cấp mã băm `expected_pre_read_hash` đã đọc trước đó. Hàm đọc tệp trên đĩa, tính SHA-256 thực tế; nếu sai lệch dù chỉ 1 bit, lập tức trả về lỗi `XUNG ĐỘT GHI`.
 2. **Kiểm tra khớp duy nhất (`Unique Match Constraint`)**: Tìm kiếm chuỗi `search_block` trong văn bản nguồn. Nếu số lần xuất hiện `!= 1` (không tìm thấy hoặc xuất hiện từ 2 lần trở lên), thao tác bị hủy bỏ ngay lập tức.
 3. **Ghi nguyên tử qua tệp tạm thời (`Atomic Tempfile Write & Sync`)**: Tạo một tệp ẩn `.tmp_patch_<hash>` trong cùng thư mục (cùng filesystem), ghi nội dung mới, gọi `sync_all()` để xả dữ liệu từ bộ đệm hệ điều hành xuống đĩa vật lý.
-4. **Đổi tên nguyên tử (`Atomic Rename`)**: Gọi `fs::rename()` từ tệp tạm đè lên tệp đích. Trên hệ điều hành POSIX, `rename` là một thao tác nguyên tử ở cấp độ inode; hệ thống không bao giờ rơi vào trạng thái tệp bị hỏng dở dang nếu xảy ra mất điện đột ngột.
+4. **Đổi tên nguyên tử (`Atomic Rename`)**: Gọi `fs::rename()` từ tệp tạm đè lên tệp đích. Trên hệ điều hành POSIX, `rename` trong cùng một hệ tệp là nguyên tử đối với mọi tiến trình khác: người đọc luôn thấy hoặc bản cũ nguyên vẹn, hoặc bản mới nguyên vẹn, không bao giờ thấy bản ghi dở. Nhờ `sync_all()` ở bước 3 chạy trước `rename`, sau mất điện ta cũng chỉ gặp bản cũ hoặc bản mới đầy đủ (tùy hệ tệp). Hai giới hạn cần nhớ: (a) `rename` không tự bảo đảm bền vững, muốn chắc rằng lần đổi tên đã nằm trên đĩa còn phải `fsync` thư mục cha (bản minh họa bỏ qua bước này); (b) bước kiểm tra mã băm và bước `rename` không phải một giao dịch, giữa hai bước vẫn còn một khe hở nhỏ cho tiến trình khác chen vào (TOCTOU), nên hệ thống thật dùng thêm khóa tệp hoặc so sánh lại mã băm ngay trước khi đổi tên.
 
 #### Bộ bảo vệ hoàn nguyên tự động `SandboxGuard` (RAII)
 Để bảo đảm tính toàn vẹn khi xảy ra lỗi bất ngờ (hoặc kiểm thử thất bại), mẫu thiết kế RAII (Resource Acquisition Is Initialization) của Rust được tận dụng triệt để:
@@ -316,7 +317,7 @@ impl Drop for SandboxGuard {
     }
 }
 ```
-Khi tác tử bắt đầu sửa đổi một tệp, `SandboxGuard` chụp lại nội dung ban đầu (hoặc ghi nhận tệp chưa tồn tại). Chỉ khi toàn bộ quy trình biên dịch và kiểm thử thành công, hàm `guard.commit()` mới được gọi. Nếu tác tử bị hoãn (abort), gặp lỗi giữa chừng, hoặc panic, biến `guard` sẽ bị hủy (drop) khỏi ngăn xếp, và khối mã `drop` sẽ tự động khôi phục toàn bộ không gian làm việc về trạng thái tinh khôi ban đầu.
+Khi tác tử bắt đầu sửa đổi một tệp, `SandboxGuard` chụp lại nội dung ban đầu (hoặc ghi nhận tệp chưa tồn tại). Chỉ khi toàn bộ quy trình biên dịch và kiểm thử thành công, hàm `guard.commit()` mới được gọi. Nếu tác tử bị hoãn (abort), gặp lỗi giữa chừng, hoặc panic (với `panic = "unwind"` mặc định), biến `guard` sẽ bị hủy (drop) khỏi ngăn xếp, và khối mã `drop` sẽ tự động khôi phục toàn bộ không gian làm việc về trạng thái tinh khôi ban đầu. `Drop` không chạy khi tiến trình bị giết đột ngột (`SIGKILL`, mất điện, `panic = "abort"`); phần việc phục hồi sau những sự cố đó thuộc về nhật ký `TurnWal` ở mục 3.6.
 
 ---
 
@@ -355,12 +356,16 @@ $$\text{Hash}_i = \text{SHA-256}(\text{Hash}_{i-1} \parallel \text{EntryID}_i \p
 
 Hàm `wal.verify_integrity()` kiểm tra tính toàn vẹn của toàn bộ chuỗi lịch sử từ bản ghi đầu tiên đến bản ghi cuối cùng. Nếu một hacker hoặc lỗi ổ cứng làm thay đổi dù chỉ một ký tự trong các lượt trước, mã băm chuỗi sẽ lệch ngay lập tức, ngăn chặn việc thực thi tiếp trên nền dữ liệu bị ô nhiễm.
 
+Hai điểm cần phân biệt khi đọc mã minh họa:
+- **Chuỗi băm chỉ chứng minh toàn vẹn, không tạo ra độ bền.** `TurnWal` trong chương giữ các bản ghi trong bộ nhớ (`Vec<WalEntry>`) để tập trung vào cấu trúc chuỗi băm. Một WAL thật phải ghi từng bản ghi xuống tệp (`write_all`), gọi `sync_all()` (fsync) và chỉ sau khi hàm trả về thành công mới được gửi prompt cho mô hình. Khi khởi động lại, hệ thống đọc tệp, chạy `verify_integrity()` và cắt bỏ phần đuôi bị ghi dở.
+- **Chuỗi băm không có khóa chỉ là bằng chứng phát hiện sửa đổi (tamper-evident).** Kẻ có quyền ghi toàn bộ tệp vẫn có thể tính lại cả chuỗi, và việc cắt bớt các bản ghi ở đuôi không bị phát hiện nếu `latest_hash` không được lưu ở một nơi khác (hoặc ký bằng khóa). Muốn chống giả mạo thật, cần neo mã băm cuối ra ngoài hoặc dùng HMAC/chữ ký số.
+
 #### Mã hiệu sở hữu đơn điệu `FencingToken`
 Trong kiến trúc đa tác tử hoặc tác tử phân tán, khi một tác tử cũ bị đơ mạng (network partition) tưởng rằng mình vẫn đang nắm quyền điều khiển và gửi lệnh ghi đĩa, trong khi bộ điều phối đã bầu ra một tác tử mới thay thế. Hiện tượng này gọi là **sự cố não đôi (Split-Brain / Zombie Writer)**.
 
-Mỗi phiên làm việc được cấp một `FencingToken { term: u64 }`. Mọi thao tác ghi vào WAL hoặc sửa tệp đều kiểm tra:
-$$\text{token.term} \ge \text{current\_fencing\_token.term}$$
-Các yêu cầu mang mã hiệu cũ (`term < current`) bị từ chối thẳng thừng, bảo vệ dữ liệu khỏi các tác tử bóng ma.
+Mỗi phiên làm việc được cấp một `FencingToken { term: u64 }` tăng đơn điệu mỗi khi bộ điều phối bầu tác tử mới (kỹ thuật fencing token, mô tả trong bài viết của Martin Kleppmann về khóa phân tán). Tài nguyên được bảo vệ (ở đây là `TurnWal::append`) nhớ mã hiệu cao nhất đã chấp nhận và kiểm tra mỗi lần ghi:
+$$\text{token.term} \ge \text{highest\_fencing\_token.term}$$
+Các yêu cầu mang mã hiệu cũ (`term < highest`) bị từ chối với lỗi `FENCING`, bảo vệ dữ liệu khỏi các tác tử bóng ma. Điểm mấu chốt là việc kiểm tra phải nằm ở phía tài nguyên: tác tử cũ không biết mình đã bị thay thế nên không thể tự kiểm tra. Trong mã minh họa, hàng rào này mới được cài cho WAL; bộ vá tệp `SearchReplacePatcher` chưa kiểm tra mã hiệu.
 
 ---
 
@@ -379,12 +384,14 @@ $$\text{Author} \ne \text{Verifier} \quad \land \quad \text{Author} \ne \text{At
 
 Nếu có bất kỳ sự trùng lặp danh tính nào giữa 3 vai trò (ví dụ Tác giả tự đóng vai Người kiểm tra), yêu cầu phê chuẩn sẽ bị từ chối với lỗi hiến pháp nghiêm trọng. Khi cả 3 vai trò đều độc lập và hợp lệ, `ConstitutionEngine` phát hành `AttestationCertificate` mang chữ ký băm SHA-256 ràng buộc chặt chẽ mã nhiệm vụ, mã băm bản vá, mã băm báo cáo kiểm thử và danh tính của cả ba bên.
 
+Lưu ý thuật ngữ: một mã băm SHA-256 không có khóa là *dấu niêm phong toàn vẹn*, chưa phải chữ ký số theo nghĩa mật mã. Ai biết dữ liệu cũng tính lại được mã băm, nên nó không chứng minh *ai* đã ký. Chữ ký số thật cần khóa bí mật (ví dụ Ed25519) hoặc ít nhất mã xác thực HMAC với khóa chỉ bên chứng nhận nắm giữ. Ngoài ra bản minh họa nối thẳng các trường vào bộ đệm băm mà không có dấu phân tách hay tiền tố độ dài, nên hai bộ trường khác nhau có thể cho cùng chuỗi byte; hệ thống thật phải mã hóa có độ dài (length-prefix) cho từng trường.
+
 ---
 
 ### 3.8. Bánh cóc hai tập tách chống bẫy Goodhart và diễn tập `LoopDrill` L3
 
 #### Bất biến 8: RSI Non-Regressive Progress
-Khi tác tử bước vào giai đoạn tự tiến hóa mã nguồn (Recursive Self-Improvement - RSI), một hiểm họa lớn xuất hiện: **Định luật Goodhart (Goodhart's Law)** — *"Khi một thước đo trở thành mục tiêu, nó không còn là một thước đo tốt nữa."*
+Khi tác tử bước vào giai đoạn tự tiến hóa mã nguồn (Recursive Self-Improvement - RSI), một hiểm họa lớn xuất hiện: **Định luật Goodhart (Goodhart's Law)** — *"Khi một thước đo trở thành mục tiêu, nó không còn là một thước đo tốt nữa."* (cách diễn đạt phổ biến của Marilyn Strathern, 1997, dựa trên nhận xét của nhà kinh tế Charles Goodhart về chính sách tiền tệ)
 
 Nếu tác tử được giao nhiệm vụ tối ưu hóa bộ mã nguồn để vượt qua một bộ kiểm thử có sẵn, nó có thể tìm ra các thủ thuật gian lận (như hardcode dữ liệu đầu ra, bỏ qua các nhánh xử lý ngoại lệ phức tạp, hoặc ép kiểu mù quáng). Kết quả là điểm số trên bộ kiểm thử mở (`held_in`) tăng vọt lên 100%, nhưng khả năng xử lý bài toán thực tế ngoài đời sụt giảm thảm hại.
 
@@ -1585,6 +1592,8 @@ pub struct TurnWal {
     pub entries: Vec<WalEntry>,
     pub next_entry_id: u64,
     pub latest_hash: Sha256Digest,
+    /// Mã hiệu fencing cao nhất đã được chấp nhận; bản ghi mang `term` thấp hơn bị từ chối.
+    pub highest_fencing_token: FencingToken,
 }
 
 impl TurnWal {
@@ -1592,7 +1601,11 @@ impl TurnWal {
         Self::default()
     }
 
-    /// Ghi bền vững một sự kiện vào WAL.
+    /// Nối một sự kiện vào chuỗi WAL (bản trình diễn giữ trong bộ nhớ).
+    ///
+    /// Hàng rào Fencing: từ chối bản ghi mang mã hiệu cũ hơn mã hiệu cao nhất đã nhận
+    /// (tác tử bóng ma). Một WAL thật phải `write_all` rồi `sync_all` (fsync) bản ghi
+    /// xuống đĩa TRƯỚC khi gọi mô hình.
     pub fn append(
         &mut self,
         turn_index: u64,
@@ -1600,6 +1613,14 @@ impl TurnWal {
         fencing_token: FencingToken,
         payload: WalPayload,
     ) -> Result<u64, String> {
+        if fencing_token < self.highest_fencing_token {
+            return Err(format!(
+                "FENCING: từ chối bản ghi mang term {} cũ hơn term {} đã được chấp nhận",
+                fencing_token.term, self.highest_fencing_token.term
+            ));
+        }
+        self.highest_fencing_token = fencing_token;
+
         let entry_id = self.next_entry_id;
         self.next_entry_id += 1;
 
@@ -2424,6 +2445,12 @@ mod tests {
 
     #[test]
     fn test_02_splitmix64_determinism_and_uniformity() {
+        // Vector kiểm chứng chuẩn của SplitMix64 với seed = 0.
+        let mut reference = SplitMix64::new(0);
+        assert_eq!(reference.next_u64(), 0xe220a8397b1dcdaf);
+        assert_eq!(reference.next_u64(), 0x6e789e6aa1b965f4);
+        assert_eq!(reference.next_u64(), 0x06c45d188009454f);
+
         let mut rng1 = SplitMix64::new(12345);
         let mut rng2 = SplitMix64::new(12345);
         for _ in 0..100 {
@@ -2875,9 +2902,30 @@ mod tests {
 
     #[test]
     fn test_31_fencing_token_rejects_stale_writer() {
-        let current_term = FencingToken::new(5);
-        let stale_token = FencingToken::new(4);
-        assert!(stale_token < current_term);
+        let mut wal = TurnWal::new();
+        let payload = || WalPayload::ModelVisibleMessage {
+            role: "user".to_string(),
+            content: "x".to_string(),
+        };
+        // Tác tử mới (term 5) ghi trước.
+        wal.append(1, 1000, FencingToken::new(5), payload())
+            .unwrap();
+        // Tác tử bóng ma (term 4) bị từ chối và WAL không thay đổi.
+        let hash_before = wal.latest_hash;
+        let err = wal
+            .append(2, 1001, FencingToken::new(4), payload())
+            .unwrap_err();
+        assert!(err.contains("FENCING"));
+        assert_eq!(wal.entries.len(), 1);
+        assert_eq!(wal.next_entry_id, 1);
+        assert_eq!(wal.latest_hash, hash_before);
+        // Cùng term hoặc term mới hơn vẫn được ghi.
+        wal.append(2, 1002, FencingToken::new(5), payload())
+            .unwrap();
+        wal.append(3, 1003, FencingToken::new(6), payload())
+            .unwrap();
+        assert!(wal.verify_integrity());
+        assert_eq!(wal.highest_fencing_token, FencingToken::new(6));
     }
 
     #[test]
@@ -3255,12 +3303,12 @@ Khi xây dựng các hệ thống tác tử tích hợp phức tạp bằng Rust
 
 | Mã lỗi biên dịch / Clippy | Ngữ cảnh phát sinh trong Harness | Nguyên nhân kỹ thuật | Giải pháp khắc phục chuẩn Rust 2024 |
 |---|---|---|---|
-| **`E0277: the trait bound f64: Eq is not satisfied`** | Derive `#[derive(PartialEq, Eq)]` trên struct chứa độ đo xác suất / độ nhạy như `LoopDrillReceipt { sensitivity: f64 }`. | Chuẩn IEEE 754 quy định giá trị `NaN != NaN`, do đó kiểu số thực `f64` chỉ thỏa mãn quan hệ thứ tự riêng phần `PartialEq` chứ không thể thỏa mãn quan hệ tương đương hoàn toàn `Eq`. | Bỏ `Eq`, chỉ giữ lại `#[derive(Debug, Clone, PartialEq)]` trên struct chứa `f64`. |
+| **`E0277: the trait bound f64: Eq is not satisfied`** | Derive `#[derive(PartialEq, Eq)]` trên struct chứa độ đo xác suất / độ nhạy như `LoopDrillReceipt { sensitivity: f64 }`. | Chuẩn IEEE 754 quy định giá trị `NaN != NaN`, do đó kiểu số thực `f64` chỉ thỏa mãn quan hệ bằng nhau riêng phần `PartialEq` (không phản xạ với `NaN`) chứ không thể thỏa mãn quan hệ tương đương đầy đủ `Eq`. | Bỏ `Eq`, chỉ giữ lại `#[derive(Debug, Clone, PartialEq)]` trên struct chứa `f64`. |
 | **`error: cannot explicitly dereference within an implicitly-borrowing pattern`** | Lọc iterator trên bảng băm: `in_degrees.iter().filter(\|(_, &deg)\| deg == 0)`. | Trong Rust 2024 với quy tắc binding modes mới, closure đối sánh trên kiểu tham chiếu `&(&K, &V)` sẽ ngầm mượn giá trị. Việc đặt dấu `&deg` tường minh trong mẫu đối sánh bị cấm. | Đổi thành `filter(\|(_, deg)\| **deg == 0)` để giải tham chiếu biểu thức thay vì đặt trong mẫu đối sánh. |
 | **`E0689: can't call method to_be_bytes on ambiguous numeric type {integer}`** | Tuần tự hóa số đếm để băm: `receipt_data.extend_from_slice(&tp.to_be_bytes())`. | Biến `let mut tp = 0;` chưa được suy luận kiểu cụ thể tại thời điểm gọi phương thức `to_be_bytes()`, trình biên dịch không biết là `i32`, `u32` hay `u64`. | Khai báo kiểu tường minh: `let mut tp: u64 = 0;` hoặc `(tp as u64).to_be_bytes()`. |
-| **`clippy::new_without_default`** | Định nghĩa hàm khởi tạo `pub fn new() -> Self` trên `SandboxGuard` hoặc `StateGraph`. | Clippy yêu cầu mọi kiểu dữ liệu có hàm `new()` không nhận tham số bắt buộc phải hiện thực trait `Default` để tương thích với các generic container trong `std`. | Thêm khối `impl Default for T { fn default() -> Self { Self::new() } }`. |
+| **`clippy::new_without_default`** | Định nghĩa hàm khởi tạo `pub fn new() -> Self` trên `SandboxGuard` hoặc `StateGraph`. | Clippy (nhóm `style`, bật mặc định) cảnh báo khi kiểu công khai có `pub fn new() -> Self` không tham số mà thiếu `Default`: người dùng kỳ vọng gọi được `T::default()`, `#[derive(Default)]` ở struct bao ngoài, `Option::unwrap_or_default` hay `entry().or_default()`. | Thêm khối `impl Default for T { fn default() -> Self { Self::new() } }`. |
 | **`E0502: cannot borrow *self as mutable because it is also borrowed as immutable`** | Vừa duyệt các nút trong `SessionTree.nodes` vừa gọi hàm sửa đổi nút cha. | Vi phạm quy tắc mượn độc quyền (Aliasing XOR Mutability) của Rust khi một tham chiếu bất biến còn tồn tại trong phạm vi của tham chiếu khả biến. | Tách pha: Trích xuất các ID hoặc dữ liệu cần thiết ra một `Vec<String>` tạm thời, kết thúc mượn bất biến, sau đó mới lặp qua danh sách ID để mượn khả biến. |
-| **`E0382: use of moved value` trong RAII Rollback** | Gọi `guard.commit()` sau khi đã mượn `&guard` ở một hàm khác hoặc trong luồng điều khiển. | Phương thức `commit(mut self)` tiêu thụ quyền sở hữu (take ownership) để ngăn chặn việc gọi thêm bất kỳ hành động nào sau khi cam kết. | Bảo đảm `guard.commit()` luôn là câu lệnh cuối cùng trên nhánh thành công của hàm. |
+| **`E0382: borrow of moved value` (hoặc `use of moved value`) trong RAII Rollback** | Dùng lại `guard` (ví dụ gọi `guard.peek()` hay `guard.commit()` lần thứ hai) sau khi đã gọi `guard.commit()`. | Phương thức `commit(mut self)` tiêu thụ quyền sở hữu (take ownership) để ngăn chặn việc gọi thêm bất kỳ hành động nào sau khi cam kết. Nếu một tham chiếu `&guard` vẫn còn được dùng *sau* lệnh `commit()`, lỗi sẽ là `E0505` (move out while borrowed) thay vì `E0382`. | Bảo đảm `guard.commit()` luôn là câu lệnh cuối cùng trên nhánh thành công của hàm, và kết thúc mọi lần mượn `&guard` trước khi gọi nó. |
 | **`Deadlock / PoisonError` khi dùng đồng hồ ảo đa luồng** | Dùng `Arc<Mutex<VirtualClock>>` nhưng một luồng bị panic giữa chừng. | Khi một luồng giữ khóa Mutex bị panic, Mutex sẽ rơi vào trạng thái nhiễm độc (`poisoned`), khiến các luồng sau gọi `lock().unwrap()` đều hoảng loạn theo dây chuyền. | Sử dụng kiến trúc luồng đơn phẳng hóa Trampoline hoặc xử lý `lock().unwrap_or_else(\|e\| e.into_inner())` có kiểm soát. |
 | **`CycleDetected` trong PlanDag** | Hai tác vụ con vô tình khai báo phụ thuộc chéo lẫn nhau (`A -> B` và `B -> A`). | Thuật toán Kahn phát hiện số lượng đỉnh được xử lý trong các sóng song song nhỏ hơn tổng số đỉnh của đồ thị kế hoạch. | Bắt lỗi `DagError::CycleDetected`, trả về kế hoạch bị từ chối và kích hoạt quy trình tái lập kế hoạch (Replanning loop). |
 
@@ -3390,10 +3438,25 @@ impl MultiFileSagaPatcher {
     }
 
     /// Thực thi chuỗi thao tác vá đa tệp theo nguyên lý All-or-Nothing.
+    /// Mọi lỗi (đọc, khớp không duy nhất, ghi) đều kích hoạt hoàn nguyên các tệp đã sửa.
     pub fn execute_transaction(&self, patches: &[FilePatchOp]) -> Result<(), String> {
         let mut backups: HashMap<PathBuf, Option<Vec<u8>>> = HashMap::new();
         let mut applied_paths: Vec<PathBuf> = Vec::new();
 
+        let result = self.apply_all(patches, &mut backups, &mut applied_paths);
+        if result.is_err() {
+            // Bước bù trừ (compensation): hoàn nguyên theo thứ tự ngược lại.
+            Self::rollback_all(&applied_paths, &backups);
+        }
+        result
+    }
+
+    fn apply_all(
+        &self,
+        patches: &[FilePatchOp],
+        backups: &mut HashMap<PathBuf, Option<Vec<u8>>>,
+        applied_paths: &mut Vec<PathBuf>,
+    ) -> Result<(), String> {
         for op in patches {
             let full_path = self.workspace_root.join(&op.relative_path);
 
@@ -3408,24 +3471,25 @@ impl MultiFileSagaPatcher {
             }
 
             // Đọc và kiểm tra điều kiện khớp duy nhất
-            let text = fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
-            let matches: Vec<usize> = text.match_indices(&op.search_content).map(|(i, _)| i).collect();
+            let text = fs::read_to_string(&full_path)
+                .map_err(|e| format!("Không đọc được tệp {:?}: {}", op.relative_path, e))?;
+            let matches: Vec<usize> = text
+                .match_indices(&op.search_content)
+                .map(|(i, _)| i)
+                .collect();
             if matches.len() != 1 {
-                // Xảy ra lỗi: Kích hoạt hoàn nguyên toàn bộ các tệp đã sửa
-                Self::rollback_all(&applied_paths, &backups);
                 return Err(format!(
                     "Giao dịch thất bại tại tệp {:?}: Tìm thấy {} lần xuất hiện",
-                    op.relative_path, matches.len()
+                    op.relative_path,
+                    matches.len()
                 ));
             }
 
             let updated = text.replacen(&op.search_content, &op.replace_content, 1);
-            if let Err(e) = fs::write(&full_path, updated) {
-                Self::rollback_all(&applied_paths, &backups);
-                return Err(format!("Lỗi ghi tệp {:?}: {}", op.relative_path, e));
-            }
-
-            applied_paths.push(full_path);
+            // Ghi nhận TRƯỚC khi ghi: nếu fs::write hỏng giữa chừng, tệp dở dang vẫn được hoàn nguyên.
+            applied_paths.push(full_path.clone());
+            fs::write(&full_path, updated)
+                .map_err(|e| format!("Lỗi ghi tệp {:?}: {}", op.relative_path, e))?;
         }
 
         // Toàn bộ các tệp đã được chỉnh sửa an toàn
@@ -3476,7 +3540,37 @@ fn test_multi_file_saga_rollback() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_multi_file_saga_rollback_on_missing_file() {
+    let temp_dir = std::env::temp_dir().join("ch91_saga_missing_test");
+    let _ = fs::create_dir_all(&temp_dir);
+
+    let file_a = temp_dir.join("a.rs");
+    fs::write(&file_a, "fn a() { 1 }").unwrap();
+
+    let patcher = MultiFileSagaPatcher::new(temp_dir.clone());
+    let ops = vec![
+        FilePatchOp {
+            relative_path: PathBuf::from("a.rs"),
+            search_content: "1".to_string(),
+            replace_content: "2".to_string(),
+        },
+        FilePatchOp {
+            relative_path: PathBuf::from("khong_ton_tai.rs"), // Lỗi đọc, không phải lỗi khớp
+            search_content: "x".to_string(),
+            replace_content: "y".to_string(),
+        },
+    ];
+
+    assert!(patcher.execute_transaction(&ops).is_err());
+    assert_eq!(fs::read_to_string(&file_a).unwrap(), "fn a() { 1 }");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
 ```
+
+**Giới hạn về độ bền**: lời giải này chỉ bù trừ được khi tiến trình còn sống. Nếu tiến trình chết giữa hai tệp (mất điện, `SIGKILL`), không còn ai chạy bước hoàn nguyên và `HashMap` bản sao lưu cũng mất theo. Mẫu Saga trong thực tế (Garcia-Molina và Salem, 1987) ghi từng bước và từng hành động bù trừ vào một nhật ký bền (`write_all` + `sync_all`, như `TurnWal`), và khi khởi động lại sẽ đọc nhật ký để chạy tiếp bước bù trừ; các bước bù trừ cũng phải lũy đẳng (chạy hai lần vẫn cho kết quả đúng).
 </details>
 
 ---

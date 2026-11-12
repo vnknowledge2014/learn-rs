@@ -253,7 +253,7 @@ Khi sử dụng mô hình ngôn ngữ lớn (LLM) để chấm điểm hoặc đ
 Khi nhiều tác tử cùng thao tác trên một kho mã nguồn Git, nguy cơ ghi đè tệp hoặc gây xung đột mã nguồn là rất cao.
 
 #### Quản lý tài nguyên tự động dọn dẹp bằng RAII `Drop`
-Hộp cát `WorktreeSandbox` đại diện cho một không gian làm việc cô lập. Trong Rust, thông qua trait `Drop`, chúng ta đảm bảo rằng bất kể tác tử kết thúc bình thường, gặp lỗi trả về `Err`, hay thậm chí panic, hộp cát sẽ luôn tự động giải phóng toàn bộ các khóa đường dẫn đang nắm giữ:
+Hộp cát `WorktreeSandbox` đại diện cho một không gian làm việc cô lập. Trong Rust, thông qua trait `Drop`, chúng ta đảm bảo rằng bất kể tác tử kết thúc bình thường, gặp lỗi trả về `Err`, hay thậm chí panic (với cấu hình mặc định `panic = "unwind"`, khi ngăn xếp được tháo dần), hộp cát sẽ luôn tự động giải phóng toàn bộ các khóa đường dẫn đang nắm giữ. Nếu tiến trình bị hủy đột ngột (`panic = "abort"`, `SIGKILL`, mất điện) thì `Drop` không chạy, nên khóa thuê cần có hạn dùng để tự hết hiệu lực (trường `lease_expires` trong mã minh họa mới chỉ lưu giá trị, chưa có bước dọn khóa quá hạn):
 ```rust
 impl Drop for WorktreeSandbox {
     fn drop(&mut self) {
@@ -307,7 +307,9 @@ Hệ thống duy trì hai bộ dữ liệu đánh giá riêng biệt:
 - `held_out`: Tập bài kiểm thử ẩn, tuyệt đối không cho tác tử nhìn thấy trước trong quá trình sinh mã.
 
 Khi một ứng viên được đề xuất với điểm số $\text{Score}_{\text{in}}$ và $\text{Score}_{\text{out}}$, bánh cóc áp dụng **Cổng không hồi quy (Non-regression Gate)**:
-$$\text{Chấp thuận} \iff \text{Score}_{\text{out}} \ge \text{Baseline}_{\text{out}} \land (\text{Score}_{\text{in}} - \text{Cost}) \ge \text{Baseline}_{\text{in}}$$
+$$\text{Chấp thuận} \iff \text{Score}_{\text{out}} \ge \text{Baseline}_{\text{out}} \land (\text{Score}_{\text{out}} - \text{Cost}) \ge \text{Baseline}_{\text{out}} \land (\text{Score}_{\text{in}} - \text{Cost}) \ge \text{Baseline}_{\text{in}}$$
+Ở đây $\text{Cost}$ là chiết khấu chi phí tác tử con (`subagent_cost_discount`, không âm) trừ vào cả hai tập. Cổng thứ nhất ($\text{Score}_{\text{out}} \ge \text{Baseline}_{\text{out}}$, tính trên điểm thô) là cổng cứng: vi phạm nó là dấu hiệu quá khớp và làm tăng biến đếm `rejected_overfits`. Hai cổng còn lại (đã trừ chi phí) chỉ làm ứng viên bị từ chối, không tính là quá khớp.
+
 Nếu một ứng viên nâng điểm `held_in` từ 80% lên 95%, nhưng làm điểm `held_out` tụt từ 85% xuống 82%, ứng viên đó bị bác bỏ ngay lập tức và tăng biến đếm `rejected_overfits`.
 
 #### Bộ kiểm tra trôi lệch chính sách (`PolicyDriftChecker`)
@@ -370,7 +372,7 @@ Cấu trúc `CompilerFeedbackLoop`:
 Để đánh giá chất lượng tổng thể của các tác tử lập trình, chúng ta không thể dựa vào một phép đo đơn lẻ. Bộ kiểm định đa tầng cung cấp các công cụ toán học và thuật toán chuẩn mực quốc tế:
 
 #### Chứng minh toán học: $pass@k$ so với $pass^k$
-Giả sử xác suất để một tác tử hoàn thành thành công một bài toán trong một lần chạy độc lập là $p \in (0, 1)$.
+Giả sử xác suất để một tác tử hoàn thành thành công một bài toán trong một lần chạy độc lập là $p \in (0, 1)$. ($pass@k$ xuất phát từ bài báo Codex của Chen và cộng sự, 2021; $pass^k$ được giới thiệu trong $\tau$-bench của Yao và cộng sự, 2024. Hai đại lượng dưới đây là dạng lý tưởng hóa với các lần thử độc lập; thực tế người ta dùng bộ ước lượng không chệch trên $n \ge k$ lần chạy.)
 - Đại lượng $pass@k$ biểu thị xác suất có **ít nhất một** trong số $k$ lần thử độc lập thành công:
   $$pass@k = 1 - (1 - p)^k$$
 - Đại lượng $pass^k$ biểu thị xác suất **tất cả** $k$ lần thử độc lập đều thành công liên tiếp (đo lường độ ổn định tuyệt đối):
@@ -384,16 +386,18 @@ $$pass@5 = 1 - (1 - 0.5)^5 = 1 - 0.03125 = 0.96875 \quad (96.875\%)$$
 Bài kiểm thử trong mã nguồn của chương chứng minh tính đúng đắn của bất đẳng thức này, giúp lập trình viên không bao giờ nhầm lẫn giữa độ tin cậy kiên định ($pass^k$) và khả năng giải quyết bài toán qua nhiều lần thử ($pass@k$).
 
 #### Trình so khớp AST theo chuẩn BFCL (`BfclAstMatcher`)
-Khi đánh giá khả năng gọi công cụ (tool calling), các mô hình thường sinh ra các chuỗi JSON có thứ tự khóa khác nhau hoặc định dạng khoảng trắng khác nhau (ví dụ `{"a": 1, "b": 2}` so với `{"b": 2, "a": 1}`). `BfclAstMatcher` chuẩn hóa các tham số thành cây cú pháp có cấu trúc để so sánh tương đương ngữ nghĩa mà không phụ thuộc vào chuỗi ký tự thô.
+Khi đánh giá khả năng gọi công cụ (tool calling), các mô hình thường sinh ra các chuỗi JSON có thứ tự khóa khác nhau hoặc định dạng khoảng trắng khác nhau (ví dụ `{"a": 1, "b": 2}` so với `{"b": 2, "a": 1}`). BFCL (Berkeley Function-Calling Leaderboard) là bảng xếp hạng đánh giá khả năng gọi hàm của mô hình, trong đó phép đo AST so khớp lời gọi hàm theo cấu trúc thay vì so chuỗi. `BfclAstMatcher` chuẩn hóa các tham số thành cây cú pháp có cấu trúc để so sánh tương đương ngữ nghĩa mà không phụ thuộc vào chuỗi ký tự thô.
 
 #### Khử thiên kiến vị trí (`PositionSwappedJudge`)
 Khi dùng LLM làm giám khảo đánh giá hai câu trả lời A và B, các nghiên cứu chỉ ra rằng mô hình có xu hướng thiên vị ứng viên đứng ở vị trí đầu tiên (Positional Bias). Thuật toán tráo vị trí thực hiện đánh giá hai lượt:
 - Lượt 1: Đưa vào cặp $(A, B) \implies$ Phán quyết $R_1$.
 - Lượt 2: Đưa vào cặp $(B, A) \implies$ Phán quyết $R_2$.
-Nếu giám khảo chọn phương án đầu tiên ở cả 2 lượt ($R_1 = 0 \land R_2 = 0$), thuật toán sẽ phát hiện thiên kiến vị trí và hủy kết quả đánh giá.
+Quy ước $R = 0$ là "chọn phương án đứng trước", $R = 1$ là "chọn phương án đứng sau". Chỉ khi $(R_1, R_2) = (0, 1)$ (A thắng ở cả hai vị trí) hoặc $(1, 0)$ (B thắng ở cả hai vị trí) thì phán quyết mới nhất quán. Nếu giám khảo luôn chọn cùng một vị trí ở cả hai lượt ($R_1 = R_2$, tức luôn chọn phương án đứng trước hoặc luôn chọn phương án đứng sau), thuật toán phát hiện thiên kiến vị trí và hủy kết quả đánh giá.
 
 #### Định luật Goodhart (`GoodhartDivergenceDetector`)
 > *"Khi một chỉ số trở thành mục tiêu, nó không còn là một chỉ số tốt nữa."*
+
+(Đây là cách diễn đạt phổ biến của nhà nhân học Marilyn Strathern, năm 1997, tóm lược nhận xét của nhà kinh tế Charles Goodhart về chính sách tiền tệ; câu gốc của Goodhart dài và hẹp hơn nhiều.)
 
 Trong các hệ thống tự hành, tác tử có thể tìm cách tối ưu hóa chỉ số đo lường trung gian (Proxy Metric - ví dụ số commit, độ dài giải thích) bằng các tiểu xảo mà không cải thiện chất lượng thực tế (Ground-Truth Utility). Bộ phát hiện phân kỳ cảnh báo khi:
 $$\Delta \text{Proxy} > 0 \quad \land \quad \Delta \text{GroundTruth} < 0$$
@@ -2654,13 +2658,13 @@ Khi triển khai các mẫu điều phối đa tác tử, cổng kỷ luật và
 
 | Mã lỗi / Cảnh báo | Nguyên nhân kỹ thuật trong Chương 90 | Cách khắc phục chuẩn mực Rust 2024 |
 |---|---|---|
-| `error[E0594]: cannot assign to captured variable in Fn closure` | Trong `GoalLoopController::evaluate_step`, closure giám khảo cần thay đổi biến cờ bên ngoài (`tier2_called = true`), nhưng hàm chỉ nhận `F: Fn()` vốn là mượn bất biến. | Đổi ràng buộc generic từ `Fn() -> T` sang `FnMut() -> T` và khai báo tham số dạng `mut tier1_judge: F1, mut tier2_judge: F2`. |
-| `clippy::manual_is_multiple_of` | Sử dụng phép toán thủ công `val % step == 0` để kiểm tra bội số trong bộ phân tích Cron. | Trong Rust 2024, số nguyên nguyên thủy (`u8`, `u32`, `usize`) có sẵn phương thức chuẩn `val.is_multiple_of(step)`. |
+| ``error[E0594]: cannot assign to `tier2_called`, as it is a captured variable in a `Fn` closure`` | Trong `GoalLoopController::evaluate_step`, closure giám khảo cần thay đổi biến cờ bên ngoài (`tier2_called = true`), nhưng hàm chỉ nhận `F: Fn()` vốn là mượn bất biến. | Đổi ràng buộc generic từ `Fn() -> T` sang `FnMut() -> T` và khai báo tham số dạng `mut tier1_judge: F1, mut tier2_judge: F2`. |
+| `clippy::manual_is_multiple_of` | Sử dụng phép toán thủ công `val % step == 0` để kiểm tra bội số trong bộ phân tích Cron. | Dùng phương thức `val.is_multiple_of(step)` của thư viện chuẩn. Phương thức này chỉ có trên số nguyên không dấu (`u8`, `u32`, `usize`...), không gắn với edition 2024; gọi trên `i32` sẽ báo `E0599`. Nhớ rào `step > 0` vì `is_multiple_of(0)` chỉ đúng khi `val == 0`. |
 | `clippy::chunks_exact_to_as_chunks` | Trong thuật toán SHA-256, gọi `m.chunks_exact(64)` với kích thước hằng số cố định khi duyệt vector byte. | Thay bằng `let (blocks, _) = m.as_chunks::<64>(); for block in blocks` giúp trình biên dịch tối ưu hóa SIMD và kiểm tra độ dài lúc biên dịch. |
 | `clippy::collapsible_if` | Viết hai khối `if let` lồng nhau: `if let Some(x) = ... { if let Ok(y) = ... { } }`. | Tận dụng tính năng **Let Chains** chính thức của Rust 2024: gộp thành `if let Some(x) = ... && let Ok(y) = ... { }`. |
 | `error: out of range hex escape` | Sử dụng ký tự thoát hex `\x00\xFF\xAA\x55` trong chuỗi ký tự UTF-8 `&str`. Trong Rust, `\x` chỉ áp dụng cho dải 7-bit ASCII (`0x00`–`0x7F`). | Dùng chuỗi byte thô `b"..."` hoặc sử dụng mã thoát Unicode rõ ràng `\u{00}\u{FF}\u{AA}\u{55}`. |
-| `error[E0507]: cannot move out of *self which is behind a mutable reference` | Trong `WorktreeSandbox::acquire_lease`, cố gắng di chuyển giá trị của khóa cũ ra khỏi `Vec` khi thay thế bằng khóa mới. | Thay thế tại chỗ bằng chỉ mục mảng `self.active_leases[pos] = new_lease;` thay vì di chuyển phần tử. |
-| `error[E0382]: use of moved value: msg` | Gửi tin nhắn `msg` vào hàng đợi `TopicEventBus` sau đó lại dùng tiếp trong log hoặc kiểm tra tính hợp lệ. | Cài đặt `#[derive(Clone)]` cho `AgentMessage` hoặc thực hiện tham chiếu mượn `&msg` trước khi đưa vào hàm chuyển tiếp. |
+| ``error[E0507]: cannot move out of index of `Vec<PathLease>` `` | Trong `WorktreeSandbox::acquire_lease`, cố gắng di chuyển giá trị của khóa cũ ra khỏi `Vec` khi thay thế bằng khóa mới. | Thay thế tại chỗ bằng chỉ mục mảng `self.active_leases[pos] = new_lease;` thay vì di chuyển phần tử. |
+| ``error[E0382]: borrow of moved value: `msg` `` | Gửi tin nhắn `msg` vào hàng đợi `TopicEventBus` sau đó lại dùng tiếp trong log hoặc kiểm tra tính hợp lệ. | Cài đặt `#[derive(Clone)]` cho `AgentMessage` hoặc thực hiện tham chiếu mượn `&msg` trước khi đưa vào hàm chuyển tiếp. |
 | `Bẫy Vacuous Truth trong LoopDrill (Lỗi logic lúc chạy)` | Bộ test chỉ có mẫu lành tính nhưng hàm trả về `Sensitivity = 1.0` do `tp + fn_c == 0`. | Cưỡng chế điều kiện `tp + fn_c > 0 && tn + fp > 0`. Nếu vi phạm, trả về `DrillStatus::RejectedVacuousSuite`. |
 
 ---
@@ -2728,6 +2732,7 @@ impl DeadlockDetector {
         let mut rec_stack = BTreeSet::new();
 
         for node in self.wait_graph.keys() {
+            let node = node.as_str();
             if !visited.contains(node)
                 && self.dfs_cycle(node, &mut visited, &mut rec_stack)
             {

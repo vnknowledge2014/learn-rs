@@ -871,7 +871,8 @@ impl ScopeGuard {
 
 Bốn nhánh kiểm tra lần lượt theo mã điều luật tăng dần, trả về **vi phạm đầu tiên** tìm thấy. Chú ý điều 1 dùng `is_internal_ipv4` — một "phạm vi tối thiểu" độc lập với `ScopeGuard`, để hiến pháp vẫn có tác dụng ngay cả khi chưa cấu hình phạm vi chi tiết.
 
-```rust
+```rust,ignore
+impl PentestConstitution {
     pub fn check_action(&self, action: &ProposedAction) -> Option<PentestViolation> {
         // Điều 1: mục tiêu công khai nằm ngoài phạm vi tối thiểu của hiến pháp.
         if let Ok(ip) = action.target.parse::<Ipv4Addr>()
@@ -932,6 +933,8 @@ Bốn nhánh kiểm tra lần lượt theo mã điều luật tăng dần, trả
 
         None
     }
+}
+// ... (xem đầy đủ impl PentestConstitution trong code/ch105/src/main.rs)
 ```
 
 ### 4.4 Chuỗi bằng chứng: `append` và `verify`
@@ -944,7 +947,8 @@ let sha256 = sha256_hex(format!("{prev_hash}{payload}").as_bytes());
 
 Còn `verify()` kiểm tra **ba** điều kiện: mã bản ghi khớp vị trí, `prev_hash` khớp bản ghi trước, và giá trị băm tái tính khớp `sha256` đã lưu.
 
-```rust
+```rust,ignore
+impl EvidenceChain {
     pub fn append(&mut self, kind: &str, payload: &str) -> u64 {
         let prev_hash = self.head_hash();
         let sha256 = sha256_hex(format!("{prev_hash}{payload}").as_bytes());
@@ -985,13 +989,16 @@ Còn `verify()` kiểm tra **ba** điều kiện: mã bản ghi khớp vị trí
         }
         true
     }
+}
+// ... (xem đầy đủ impl EvidenceChain trong code/ch105/src/main.rs)
 ```
 
 ### 4.5 Cổng HITL: `request` / `approve` / `deny`
 
 Chú ý `request()` **không ghi đè** một quyết định đã tồn tại — đây là điểm hay: lời từ chối của con người không bị "xin lại" xoá mất.
 
-```rust
+```rust,ignore
+impl HitlGate {
     pub fn request(&mut self, action_key: &str) -> bool {
         self.clock += 1;
         if let Some(decision) = self.decisions.get(action_key) {
@@ -1048,7 +1055,8 @@ Chú ý `request()` **không ghi đè** một quyết định đã tồn tại �
 
 Ba điều kiện được kiểm tra theo thứ tự: bị gián tiếp, hết bước, và chuyển pha không hợp lệ. Chỉ khi cả ba đều ổn thì pha mới được ghi vào `history` và `steps` tăng.
 
-```rust
+```rust,ignore
+impl PentestStateGraph {
     pub fn transition(&mut self, next: PentestPhase) -> Result<(), String> {
         if self.interrupted {
             return Err("Đồ thị trạng thái đang bị gián tiếp, không thể chuyển pha.".to_string());
@@ -1123,6 +1131,15 @@ pub struct MockService {
 /// Một máy giả lập trong mạng tổng hợp.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MockHost {
+    /// Địa chỉ IPv4 của máy.
+    pub ip: Ipv4Addr,
+    /// Tên máy chủ.
+    pub hostname: String,
+    /// Hệ điều hành giả lập.
+    pub os: String,
+    /// Danh sách dịch vụ đang mở.
+    pub open_ports: Vec<MockService>,
+}
 ```
 
 ### 4.8 Đặc tả chung cho mọi tác tử
@@ -1151,7 +1168,8 @@ pub trait PentestAgent {
 5. Nếu vi phạm hiến pháp có mức `Block` → `blocked_by = Constitution`.
 6. Nếu chỉ là cảnh báo (`Warn`) → vẫn cho phép chạy, nhưng kèm lý do.
 
-```rust
+```rust,ignore
+impl OrchestratorAgent {
     pub fn authorize(&mut self, action: &ProposedAction) -> ActionOutcome {
         let mut scope_ok = true;
         if let Ok(ip) = action.target.parse::<Ipv4Addr>() {
@@ -1262,7 +1280,8 @@ pub trait PentestAgent {
 
 Phần thưởng được **tách thành các thành phần có tên** (`components`), vừa để in ra báo cáo, vừa để kiểm thử được tính đúng tổng.
 
-```rust
+```rust,ignore
+impl AttackRewardFunction {
     pub fn evaluate(&self, action: &AttackAction, state: &NetworkState) -> AttackReward {
         let mut components: Vec<(String, f64)> = Vec::new();
 
@@ -1302,6 +1321,8 @@ Phần thưởng được **tách thành các thành phần có tên** (`compone
             hosts_compromised: state.compromised.len(),
         }
     }
+}
+// ... (xem đầy đủ impl AttackRewardFunction trong code/ch105/src/main.rs)
 ```
 
 ### 4.11 Cập nhật giá trị Q
@@ -1331,7 +1352,8 @@ Phần thưởng được **tách thành các thành phần có tên** (`compone
 
 Điểm rủi ro cộng dồn với "đã bị phát hiện trước đó" biến mọi hành động tiếp theo thành tín hiệu nghiêm trọng — mô phỏng đúng thực tế: một kẻ tấn công đã bị lộ thì mọi bước chân sau đều bị ghi nhận.
 
-```rust
+```rust,ignore
+impl BlueTeamDefender {
     pub fn observe(
         &mut self,
         action: &AttackAction,
@@ -1368,11 +1390,14 @@ Phần thưởng được **tách thành các thành phần có tên** (`compone
         self.signals.push(signal.clone());
         Some(signal)
     }
+}
+// ... (xem đầy đủ impl BlueTeamDefender trong code/ch105/src/main.rs)
 ```
 
 ### 4.13 Quản lý phiên
 
-```rust
+```rust,ignore
+impl SessionManager {
     pub fn save(&mut self, id: &str, snapshot: SessionSnapshot) -> String {
         let mut stored = snapshot;
         stored.id = id.to_string();
@@ -1421,7 +1446,8 @@ Phần thưởng được **tách thành các thành phần có tên** (`compone
 - **Report** → `ValidationAgent` lọc phát hiện giả.
 - **Done** → sinh báo cáo và kiểm tra Clean Exit.
 
-```rust
+```rust,ignore
+impl RedVsBlueSim {
     pub fn run(&mut self, network: &MockNetwork) -> PentestRunReport {
         self.orchestrator.graph = PentestStateGraph::new();
         self.orchestrator.evidence = EvidenceChain::new();
@@ -1708,13 +1734,16 @@ Phần thưởng được **tách thành các thành phần có tên** (`compone
         self.last_report = Some(report.clone());
         report
     }
+}
+// ... (xem đầy đủ impl RedVsBlueSim trong code/ch105/src/main.rs)
 ```
 
 ### 4.15 Sinh báo cáo Markdown
 
 Báo cáo được sinh bằng `push_str` với các mẫu có định dạng — không dùng thư viện template nào.
 
-```rust
+```rust,ignore
+impl AutonomousPentestAgent {
     pub fn generate_report(&self, report: &PentestRunReport) -> String {
         let mut markdown = String::new();
         markdown.push_str("# Báo cáo Kiểm thử Thâm nhập Tự Động (Autonomous Pentest Report)\n\n");
@@ -1826,6 +1855,8 @@ Báo cáo được sinh bằng `push_str` với các mẫu có định dạng �
         ));
         markdown
     }
+}
+// ... (xem đầy đủ impl AutonomousPentestAgent trong code/ch105/src/main.rs)
 ```
 
 ### 4.16 Chương trình minh hoạ
@@ -2028,8 +2059,6 @@ impl PentestAgent for ReconAgent {
         }
     }
 }
-
-/// Tác tử khai thác: dựng PoC
 ```
 
 ### 4.18 Tác tử kiểm chứng: bộ lọc ground-truth
@@ -2080,15 +2109,14 @@ impl PentestAgent for ValidationAgent {
         }
     }
 }
-
-/// Lý do một hành động bị chặn
 ```
 
 ### 4.19 Tác tử đỏ chọn mục tiêu: ưu tiên kinh nghiệm
 
 Đoạn code ngắn này chứa toàn bộ tri thức của đội đỏ: ưu tiên những mục tiêu **đã từng khai thác thành công** (`success_count > 0`), và trong số đó chọn mục tiêu có số lần thành công cao nhất. Mục tiêu làm sập dịch vụ không bao giờ được đưa vào `history`, nên đội đỏ dần bỏ qua nó mà không cần ai dạy.
 
-```rust
+```rust,ignore
+impl RedAgent {
     pub fn select(&mut self, candidates: &[AttackAction], epsilon: f64) -> Option<AttackAction> {
         if candidates.is_empty() {
             return None;
@@ -2132,7 +2160,8 @@ impl PentestAgent for ValidationAgent {
 
 Đây là toàn bộ "vòng lặp tác tử" (agent loop) của thuật toán học tăng cường: chọn hành động → áp dụng vào mô phỏng → chấm điểm → cập nhật Q → sang trạng thái kế tiếp.
 
-```rust
+```rust,ignore
+impl AttackPathOptimizer {
     fn rollout(
         &mut self,
         network: &MockNetwork,
@@ -2194,13 +2223,16 @@ impl PentestAgent for ValidationAgent {
 
         total
     }
+}
+// ... (xem đầy đủ impl AttackPathOptimizer trong code/ch105/src/main.rs)
 ```
 
 ### 4.21 `ScopeGuard::check` — ghi nhận vi phạm
 
 Hàm này là **điểm nối** giữa "kiểm tra" và "trách nhiệm giải trình": mỗi lần chặn đều tạo ra một thông điệp con người đọc được, thông điệp này sẽ được đưa vào bằng chứng và báo cáo cuối cùng.
 
-```rust
+```rust,ignore
+impl ScopeGuard {
     pub fn check(&mut self, ip: Ipv4Addr, port: u16) -> bool {
         if self.allows_action(ip, port) {
             return true;
@@ -2215,6 +2247,8 @@ Hàm này là **điểm nối** giữa "kiểm tra" và "trách nhiệm giải t
         self.violations.push(reason);
         false
     }
+}
+// ... (xem đầy đủ impl ScopeGuard trong code/ch105/src/main.rs)
 ```
 
 ## 5. Bảng tra cứu lỗi biên dịch thường gặp

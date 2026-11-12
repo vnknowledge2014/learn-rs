@@ -479,7 +479,7 @@ $$\text{pointer} = \big((b_0 \mathbin{\&} 0x3F) \ll 8\big) \mathbin{|} b_1$$
 
 Điểm khó nhất khi giải mã: sau khi theo con trỏ, **offset trả về cho caller phải là vị trí ngay sau con trỏ**, chứ không phải vị trí sau tên miền đã giải mã. Vì vậy hàm trả về một cặp:
 
-```rust
+```rust,ignore
 pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), String>
 ```
 
@@ -580,11 +580,13 @@ impl SplitMix64 {
         let u = (self.next_u64() >> 11) as f64;
         u * (1.0 / ((1u64 << 53) as f64))
     }
+}
+// ... (các phương thức khác của impl — xem code/ch99/src/main.rs)
 ```
 
 ### 4.2 Bắt tay SOCKS5 — bước 1: Greeting và lựa chọn phương thức
 
-```rust
+```rust,ignore
     pub fn handle_client_with_target(
         &self,
         stream: &mut TcpStream,
@@ -829,11 +831,13 @@ impl Drop for TcpPortForwarder {
     fn drop(&mut self) {
         self.active = false;
     }
-}```
+}
+```
 
 ### 4.7 Nhận dạng dịch vụ và công thức điểm tin cậy
 
-```rust
+```rust,ignore
+impl ServiceFingerprinter {
     /// Nhận dạng dịch vụ từ banner nhận về trên cổng `port`
     ///
     /// Chiến lược hai tầng: (1) ưu tiên probe có cổng khớp; (2) nếu không khớp, quét toàn bộ
@@ -856,7 +860,8 @@ impl Drop for TcpPortForwarder {
 
         None
     }
-}```
+}
+```
 
 ### 4.8 Trích xuất phiên bản bằng "regex-lite"
 
@@ -911,7 +916,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
 
 ### 4.9 Bản đồ mạng và báo cáo tất định
 
-```rust
+```rust,ignore
+impl NetworkMapper {
     /// Sinh báo cáo bản đồ mạng dạng văn bản (thứ tự máy chủ được sắp xếp theo IP cho tính tất định)
     pub fn to_report(&self) -> String {
         let mut ordered: Vec<(&IpAddr, &HostInfo)> = self.hosts.iter().collect();
@@ -949,6 +955,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
 
         out
     }
+}
+// ... (xem đầy đủ impl NetworkMapper trong code/ch99/src/main.rs)
 ```
 
 ### 4.10 Phân tích gói ARP — tự dò header Ethernet
@@ -1018,11 +1026,13 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
             target_mac,
             target_ip,
         })
-    }```
+    }
+```
 
 ### 4.11 Gói đầu độc ARP và hiển thị MAC
 
-```rust
+```rust,ignore
+impl ArpPacket {
     /// Dựng gói trả lời ARP độc hại nhằm đầu độc bộ nhớ đệm ARP (ARP cache poisoning)
     ///
     /// Gói trả lời này nói với nạn nhân rằng: *"IP của `attacker_ip` nằm ở MAC của kẻ tấn công"*.
@@ -1039,7 +1049,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
             target_ip: request.sender_ip,
         }
     }
-}```
+}
+```
 
 ### 4.12 Mã hoá và giải mã tên miền DNS (có nén)
 
@@ -1125,7 +1136,8 @@ pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), Strin
 
 ### 4.13 Mã hoá và giải mã gói DNS
 
-```rust
+```rust,ignore
+impl ArpPacket {
     /// Mã hoá gói DNS thành mảng byte
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -1158,6 +1170,8 @@ pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), Strin
 
         out
     }
+}
+// ... (xem đầy đủ impl ArpPacket trong code/ch99/src/main.rs)
 ```
 
 ```rust
@@ -1249,11 +1263,13 @@ fn decode_rdata(rtype: DnsRecordType, data: &[u8]) -> Result<DnsRecordData, Stri
             dst,
             total_len,
         })
-    }```
+    }
+```
 
 ### 4.16 Mô phỏng mạng và dựng gói ARP độc hại
 
-```rust
+```rust,ignore
+impl NetworkSimulator {
     /// Sinh gói ARP đầu độc nhắm vào `victim`, khai báo `gateway` nằm ở MAC của kẻ tấn công
     pub fn arp_poison(&self, victim: IpAddr, gateway: IpAddr) -> ArpPacket {
         let attacker_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0xFF];
@@ -1279,6 +1295,8 @@ fn decode_rdata(rtype: DnsRecordType, data: &[u8]) -> Result<DnsRecordData, Stri
             },
         }
     }
+}
+// ... (xem đầy đủ impl NetworkSimulator trong code/ch99/src/main.rs)
 ```
 
 ### 4.17 Máy chủ echo cục bộ — trợ giúp kiểm thử an toàn

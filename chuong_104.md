@@ -807,7 +807,8 @@ pub fn proof_fingerprint(payload_used: &str, response_received: &str) -> String 
 
 ### 4.2. `MockNetwork` — Duyệt theo chiều rộng trên đồ thị định tuyến
 
-```rust
+```rust,ignore
+impl MockNetwork {
     /// Danh sách các IP có thể tiếp cận được từ một máy (bao gồm đường đi gián tiếp).
     pub fn reachable_from(&self, from: Ipv4Addr) -> Vec<Ipv4Addr> {
         let mut seen: Vec<Ipv4Addr> = Vec::new();
@@ -822,13 +823,13 @@ pub fn proof_fingerprint(payload_used: &str, response_received: &str) -> String 
         }
         seen
     }
-
-    /// Số máy chủ đã bị chiếm quyền.
+}
 ```
 
 ### 4.3. `ReconEngine` — Quét cổng và nhận dạng dịch vụ
 
-```rust
+```rust,ignore
+impl ReconEngine {
     /// Quét một máy chủ ảo và trả về thông tin thu thập được.
     pub fn scan_host(&mut self, host: &MockHost) -> HostInfo {
         let mut open_ports = Vec::new();
@@ -875,6 +876,8 @@ pub fn proof_fingerprint(payload_used: &str, response_received: &str) -> String 
             "Unknown".to_string()
         }
     }
+}
+// ... (xem đầy đủ impl ReconEngine trong code/ch104/src/main.rs)
 ```
 
 ### 4.4. `BlindSqliEngine` & đích SQL in-memory
@@ -1785,8 +1788,8 @@ impl VulnerableBuffer {
     pub fn is_canary_intact(&self) -> bool {
         self.canary_value == 0x0000_DEAD_BEEF_CAFE_1234
     }
-
-    /// Địa chỉ trả về đã bị ghi đè hay chưa.
+}
+// ... (các phương thức khác của impl — xem code/ch104/src/main.rs)
 ```
 
 ### 4.13. NT hash và bộ bẻ khoá
@@ -1867,11 +1870,15 @@ impl HashCracker {
     /// Số phép thử đã thực hiện.
     pub fn attempts(&self) -> usize {
         self.wordlist.len()
+    }
+}
+// ... (xem đầy đủ trong code/ch104/src/main.rs)
 ```
 
 ### 4.14. `GroundTruthVerifier` — Bác bỏ lời khai giả
 
-```rust
+```rust,ignore
+impl ProofByExploitation {
     /// Kiểm chứng trạng thái hiện tại của một shell.
     ///
     /// Bất biến cốt lõi: **không** tin lời khai của tác nhân. Hệ thống dùng bằng chứng thực thi
@@ -1915,6 +1922,8 @@ impl HashCracker {
             details,
         }
     }
+}
+// ... (xem đầy đủ impl ProofByExploitation trong code/ch104/src/main.rs)
 ```
 
 ### 4.15. `StaticVulnScanner` — 14 luật heuristic
@@ -1971,6 +1980,7 @@ impl StaticVulnScanner {
         rules.dedup();
         rules.len()
     }
+}
 ```
 
 ### 4.16. `VulnDatabase` — Danh mục CWE chuẩn OSCP
@@ -1999,7 +2009,8 @@ Bảng được khai báo với `#[rustfmt::skip]` để mỗi mục nằm gọn
 
 ### 4.17. `ExploitChainRunner` — Điều phối 6 giai đoạn và cổng `register`
 
-```rust
+```rust,ignore
+impl ExploitChainRunner {
     /// Chạy trọn chuỗi khai thác và trả về kết quả tổng hợp.
     pub fn run(&mut self) -> ExploitChainResult {
         self.findings.clear();
@@ -2050,8 +2061,7 @@ Bảng được khai báo với `#[rustfmt::skip]` để mỗi mục nằm gọn
         self.proofs.push(proof);
         true
     }
-
-    /// Lấy mẫu lỗ hổng đã cài sẵn trong danh mục của máy chủ.
+}
 ```
 
 Cổng kiểm soát nằm ngay trong `register()`: nếu `proof.verify()` trả `false`, phát hiện **bị
@@ -2120,7 +2130,8 @@ loại bỏ hoàn toàn** — kể cả khi nó đã được mô tả rất đ�
 
 ### 4.19. `RedTeamExploitKit::run_full_assessment` — Tính tỉ lệ báo động giả
 
-```rust
+```rust,ignore
+impl RedTeamExploitKit {
     /// Chạy đánh giá toàn diện: chuỗi khai thác + quét tĩnh + sinh báo cáo.
     pub fn run_full_assessment(&mut self) -> RedTeamAssessment {
         let result = self.runner.run();
@@ -2141,6 +2152,8 @@ loại bỏ hoàn toàn** — kể cả khi nó đã được mô tả rất đ�
 
         RedTeamAssessment { result, static_findings, report_markdown, false_positive_rate }
     }
+}
+// ... (xem đầy đủ impl RedTeamExploitKit trong code/ch104/src/main.rs)
 ```
 
 ### 4.20. `main()` — Bản chạy mẫu end-to-end
@@ -2191,8 +2204,8 @@ fn main() {
         println!("       {}", step.evidence);
     }
     println!("   -> Tổng thời gian mô phỏng: {} ms", assessment.result.total_duration_ms);
-
-    // ---- 4. Phát hiện & chứng minh khai thác ----
+    // ... (phần 4 trở đi của main — xem code/ch104/src/main.rs)
+}
 ```
 
 Kết quả thực tế của lần chạy mẫu (rút gọn):
@@ -2542,7 +2555,7 @@ impl ProofByExploitation {
 
 Và trong `PentestReportGenerator::generate`, thay khối thủ công bằng:
 
-```rust
+```rust,ignore
 if let Some(proof) = result.proofs.get(index) {
     out.push_str(&proof.to_markdown());
 } else {

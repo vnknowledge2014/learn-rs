@@ -987,6 +987,16 @@ impl BiTemporalGraph {
 
 /// Niềm tin (Belief) của tác tử trong mô hình BDI.
 #[derive(Debug, Clone, PartialEq)]
+pub struct Belief {
+    /// Thực thể đối tượng.
+    pub entity: String,
+    /// Thuộc tính đánh giá.
+    pub property: String,
+    /// Giá trị tin tưởng.
+    pub value: String,
+    /// Độ chắc chắn của niềm tin.
+    pub confidence: f64,
+}
 ```
 
 ### 4.6. Module Phân Đoạn Markdown An Toàn (Sửa lỗi Edge Cases #1 & #2)
@@ -1043,7 +1053,7 @@ pub fn chunk_markdown_by_headings(md: &str, max_w: usize, overlap_w: usize) -> V
     out
 }
 
-/// Trích xuất danh sách các từ khoá đơn giản phục vụ thuật toán BM25.
+// ... (rút gọn — xem code/ch88/src/main.rs)
 ```
 
 ### 4.7. Module Truy Xuất Lai RRF (Sửa lỗi Edge Case #3) & Kiểm Chứng Trích Dẫn
