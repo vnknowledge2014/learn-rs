@@ -317,7 +317,7 @@ Nếu tác tử chèn đồng hồ thời gian `[2026-11-10 18:45:02]` hoặc ch
 $$\text{Hash}(\text{Lượt 1}) \neq \text{Hash}(\text{Lượt 2}) \implies \text{TOÀN BỘ 10.000 TOKENS BỊ TÍNH LẠI TỪ ĐẦU!}$$
 
 Hậu quả:
-- **Tài chính**: Nhà cung cấp API tính phí đọc cache chỉ bằng 10% đơn giá gốc ($0,30/1M token so với $3,00/1M token). Trượt cache làm phần tiền tố đó đắt gấp 10 lần (12,5 lần nếu phải ghi lại bộ đệm với phụ phí 1,25x).
+- **Tài chính**: Nhà cung cấp API tính phí đọc cache chỉ bằng 10% đơn giá gốc (\$0,30/1M token so với \$3,00/1M token). Trượt cache làm phần tiền tố đó đắt gấp 10 lần (12,5 lần nếu phải ghi lại bộ đệm với phụ phí 1,25x).
 - **Thời gian**: Thời gian sinh token đầu tiên tăng từ khoảng 200ms lên cỡ 15 giây đối với ngữ cảnh dài 100k tokens (con số minh họa, phụ thuộc phần cứng và nhà cung cấp).
 
 #### Thiết kế `PrefixStablePrompt`
@@ -347,7 +347,7 @@ Mọi phép toán đều sử dụng số nguyên `u128` với các hàm an toà
 
 #### Biểu giá 2 tầng TTL của bộ đệm KV-Cache
 Hệ thống hỗ trợ 5 chế độ giá dựa trên chính sách của các nhà cung cấp mô hình tiên tiến:
-1. `UncachedInput`: Đơn giá cơ sở ($3,00 / 1M token = 3.000.000 picos/token).
+1. `UncachedInput`: Đơn giá cơ sở (\$3,00 / 1M token = 3.000.000 picos/token).
 2. `CacheWrite5m`: Ghi bộ đệm ngắn hạn (TTL 5 phút) = 1,25x đơn giá cơ sở.
 3. `CacheWrite1h`: Ghi bộ đệm dài hạn (TTL 1 giờ) = 2,00x đơn giá cơ sở.
 4. `CacheHitRead`: Đọc từ bộ đệm (áp dụng cho cả 5m và 1h) = 0,10x đơn giá cơ sở (tiết kiệm 90%).

@@ -338,7 +338,7 @@ Kết quả kiểm thử thực nghiệm trên CPU xác nhận độ lệch gi�
 Quy tắc thẩm định:
 1. Số lần xuất hiện của `<think>`, `</think>`, `<answer>`, `</answer>` trong toàn bộ chuỗi phải đúng bằng $1$.
 2. Vị trí chỉ mục thỏa mãn bất đẳng thức nghiêm ngặt:
-   $$\text{index}(\texttt{\langle think\rangle}) < \text{index}(\texttt{\langle /think\rangle}) < \text{index}(\texttt{\langle answer\rangle}) < \text{index}(\texttt{\langle /answer\rangle})$$
+   $$\text{index}(\langle\texttt{think}\rangle) < \text{index}(\langle\texttt{/think}\rangle) < \text{index}(\langle\texttt{answer}\rangle) < \text{index}(\langle\texttt{/answer}\rangle)$$
 3. Nội dung giữa `<answer>` và `</answer>` được bóc tách và phân tích thành số thực $v$. So sánh với đáp án chân lý $y$:
    $$|v - y| \le \text{tolerance} \quad (\text{mặc định } 10^{-6})$$
 
@@ -357,14 +357,20 @@ $$\sum_{i=1}^G A_i^{\text{GRPO}} = \sum_{i=1}^G \frac{R_i - \mu_R}{\sigma_R + \e
 
 Điều này đảm bảo gradient của nhóm có tính cân bằng zero-sum tự nhiên.
 
-#### 3.6.2. Dr. GRPO (Direct Reward GRPO)
-Khi sinh câu trả lời, nếu chia cho độ dài câu $L_i$ hay độ lệch chuẩn $\sigma_R$, mô hình có thể bị hội chứng suy giảm gradient. Dr. GRPO sử dụng mẫu số cố định:
+#### 3.6.2. Dr. GRPO (GRPO Done Right)
+GRPO có hai thiên kiến: chia cho độ lệch chuẩn $\sigma_R$ làm lệch trọng số giữa câu hỏi dễ và khó, còn chia cho độ dài $|o_i|$ khiến các câu trả lời **sai mà dài** bị phạt nhẹ hơn (sinh ra hiện tượng câu trả lời phình dài). Dr. GRPO (Liu et al., 2025 — "GRPO Done Right") sửa cả hai bằng cách **bỏ** cả hai số hạng chuẩn hóa này.
 
-$$A_i^{\text{DrGRPO}} = \frac{R_i - \mu_R}{\text{max\_gen\_len}}$$
+Lợi thế chỉ còn là hiệu với đường cơ sở trung bình nhóm (bỏ $\sigma_R$):
 
-Bất kể câu trả lời dài $30$ token hay $250$ token, mỗi bước suy luận đóng góp vào chiến thắng đều nhận được cường độ gradient công bằng như nhau.
+$$\tilde{A}_i = R_i - \mu_R$$
 
-#### 3.6.3. DAPO (Decoupled Advantage Policy Optimization)
+Còn phép chuẩn hóa độ dài $1/|o_i|$ trong tổng hợp loss được thay bằng một **hằng số** (ngân sách sinh tối đa `max_gen_len`):
+
+$$J(\pi_\theta) = \mathbb{E}\!\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{\text{max\_gen\_len}}\sum_{t}\min\!\big(r_{i,t}\,\tilde{A}_i,\ \operatorname{clip}(r_{i,t},1-\varepsilon,1+\varepsilon)\,\tilde{A}_i\big)\right]$$
+
+Bất kể câu trả lời dài $30$ token hay $250$ token, mỗi token đóng góp vào chiến thắng đều nhận được cường độ gradient như nhau — không còn thiên kiến phạt các chuỗi suy luận dài.
+
+#### 3.6.3. DAPO (Decoupled Clip and Dynamic sAmpling Policy Optimization)
 DAPO giải phóng mô hình khỏi các ràng buộc bảo thủ với 3 cơ chế:
 1. Kẹp bất đối xứng: $\text{clip}(r, 1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}})$ với $\epsilon_{\text{low}} = 0.20, \epsilon_{\text{high}} = 0.28$.
 2. Lọc bỏ nhóm phương sai bằng $0$: Nếu $\sigma_R^2 < 10^{-6}$, gán $A_i = 0$ và bỏ qua nhóm để không cập nhật gradient vô ích.
@@ -716,7 +722,8 @@ pub fn compute_rlvr_group_advantages(
     for rollout in group {
         let outcome_adv = match variant {
             RlvrVariant::Grpo | RlvrVariant::Gspo => (rollout.reward - mu_r) / (sd_r + config.eps),
-            RlvrVariant::DrGrpo => (rollout.reward - mu_r) / (config.max_gen_len.max(1) as f64),
+            // Dr. GRPO: bỏ cả std lẫn độ dài; hằng số max_gen_len nằm ở `rlvr_loss_weights`.
+            RlvrVariant::DrGrpo => rollout.reward - mu_r,
             RlvrVariant::Dapo => (rollout.reward - mu_r) / (sd_r + config.eps),
         };
 
@@ -1083,10 +1090,11 @@ Nếu câu trả lời dài $|o_i| = 500$ token, gradient nhận được của 
 **Cách sửa chuẩn mực của Dr. GRPO**:
 Chuẩn hóa bằng mẫu số cố định `max_gen_len` thay cho chiều dài thực tế:
 
-```rust
-// Chuẩn hóa Dr. GRPO bảo toàn cường độ gradient cho chuỗi suy luận dài
-let fixed_den = config.max_gen_len.max(1) as f64;
-let outcome_adv = (rollout.reward - mu_r) / fixed_den;
+```rust,ignore
+// Dr. GRPO: lợi thế bỏ cả std lẫn độ dài — chỉ còn (phần thưởng − trung bình nhóm)
+let outcome_adv = rollout.reward - mu_r;
+// Phần chuẩn hóa độ dài 1/|o_i| được thay bằng hằng số max_gen_len ở bước TỔNG HỢP loss:
+let token_loss_weight = 1.0 / (config.max_gen_len.max(1) as f64);
 ```
 
 ---

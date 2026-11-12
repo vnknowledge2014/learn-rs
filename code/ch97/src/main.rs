@@ -1113,7 +1113,11 @@ pub struct RolloutTrajectory {
     pub token_loss_mask: Vec<bool>,
 }
 
-/// Tính lợi thế theo nhóm cho thuật toán `DrGrpo` (loại bỏ chia độ lệch chuẩn và chuẩn hóa theo `max_gen_len`)
+/// Tính lợi thế theo nhóm cho thuật toán `DrGrpo` ("GRPO Done Right", Liu et al., 2025):
+/// bỏ chia độ lệch chuẩn `std` lẫn chia cho độ dài thực `|o_i|`. Theo bài báo, lợi thế là
+/// `R - mean(R)` còn hằng số `max_gen_len` thay cho `1/|o_i|` ở **phép tổng hợp loss**.
+/// Ở đây ta gộp hằng số `1/max_gen_len` thẳng vào lợi thế cho gọn — vì gradient tuyến tính,
+/// nhân lợi thế với một hằng số là **tương đương** với nhân tổng loss với hằng số đó.
 pub fn compute_dr_grpo_advantages(
     group: &[RolloutTrajectory],
     max_gen_len: usize,
@@ -1148,7 +1152,7 @@ pub fn compute_dr_grpo_advantages(
     let mut all_advantages = Vec::with_capacity(group.len());
 
     for traj in group {
-        // Lợi thế DrGRPO: (R - mean) / max_gen_len
+        // Lợi thế DrGRPO: (R - mean), gộp sẵn hằng số 1/max_gen_len của phép tổng hợp loss
         let base_adv = (traj.reward - mean_reward) / (max_gen_len as f64);
 
         let eff_adv = match (traj.is_winner, efficiency_bonus) {
