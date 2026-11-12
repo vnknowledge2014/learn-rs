@@ -765,8 +765,8 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | SQLi mù dựa trên thời gian | Time-based blind SQLi | Đo độ trễ đáp ứng để suy luận điều kiện |
 | SQLi dựa trên UNION | UNION-based SQLi | Ghép kết quả truy vấn thứ hai vào kết quả truy vấn thứ nhất |
 | Bảng thông tin | `information_schema` | Lược đồ siêu dữ liệu chuẩn SQL liệt kê bảng và cột |
-| Sơ chồ bị từ chối | Denial of Service — DoS | Làm dịch vụ không phục vụ được |
-| Tài liệu hợp đồng | Contract | Thỏa thuận phạm vi và điều kiện của một cuộc kiểm thử |
+| Từ chối dịch vụ | Denial of Service — DoS | Làm dịch vụ không phục vụ được |
+| Hợp đồng kiểm thử | Engagement contract | Thỏa thuận phạm vi và điều kiện của một cuộc kiểm thử |
 | Phạm vi được phép | Scope | Tập mục tiêu và cổng được phép chạm tới |
 | Lỗ hổng | Vulnerability / finding | Điểm yếu có thể bị khai thác |
 | Khai thác | Exploit / payload | Mã hoặc chuỗi dữ liệu khai thác lỗ hổng |
@@ -784,17 +784,17 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Đột biến từ điển | Wordlist mutation | Sinh biến thể của từ điển (hoa/thường, leet, thêm số) để mở rộng phạm vi thử |
 | Băm NTLM | NT hash | MD4 của mật khẩu UTF-16LE — dạng băm mật khẩu Windows |
 | Đáp ứng NTLMv2 | NTLMv2 response | Đáp ứng xác thực dùng HMAC-MD5 hai tầng với thử thách máy chủ |
-| Yêu cầu dịch vụ Kerberos | Service ticket — TGS | Vé do bộ phận xác thực cấp, chứa khóa phiên của dịch vụ |
+| Vé dịch vụ Kerberos | Service ticket — TGS | Vé do bộ phận xác thực cấp, chứa khóa phiên của dịch vụ |
 | Nướng vé | Kerberoasting | Bẻ khoá dịch vụ offline bằng cách dò mật khẩu trên vé đã mã hoá |
 | Nướng AS-REP | AS-REP roasting | Bẻ khoá tài khoản không đòi xác thực trước (`DONT_REQ_PREAUTH`) |
 | Loại mã hoá Kerberos | Encryption type — etype | Thuật toán mã hoá phiên Kerberos (RC4-HMAC, AES-CTS) |
 | Sudo cấu hình sai | Sudo misconfiguration | Quyền `sudo` cho phép chạy lệnh nguy hiểm hoặc shell |
 | Tệp SUID/SGID | SUID/SGID binary | Tệp thực thi chạy với quyền của chủ sở hữu/nhóm thay vì người gọi |
-| Nhân bản quyền | Privilege escalation — PrivEsc | Chiếm được quyền cao hơn quyền ban đầu |
-| Nhân bản token | Token impersonation | Lợi dụng quyền `SeImpersonatePrivilege` để mạo danh token hệ thống |
+| Leo thang đặc quyền | Privilege escalation — PrivEsc | Chiếm được quyền cao hơn quyền ban đầu |
+| Mạo danh token | Token impersonation | Lợi dụng quyền `SeImpersonatePrivilege` để mạo danh token hệ thống |
 | Đường dẫn dịch vụ không trích dẫn | Unquoted service path | Đường dẫn dịch vụ Windows thiếu dấu nháy khiến Windows chèn `C:\Program.exe` |
 | Chiếm quyền DLL | DLL hijacking | Thay thế DLL mà dịch vụ Windows nạp từ thư mục ghi được |
-| Lập lịch tự động | Cron job | Tác vụ chạy định kỳ — mục tiêu để chèn lệnh khai thác |
+| Tác vụ định kỳ | Cron job | Tác vụ chạy định kỳ — mục tiêu để chèn lệnh khai thác |
 | Năng lực đặc biệt | Linux capabilities | Quyền hạn tinh vi (`CAP_SYS_ADMIN`…) gán cho một tiến trình |
 | Kiểm chứng sự thật nền | Ground-truth verification | Kiểm tra kết quả bằng hành động thật thay vì tin lời khai của tác tử |
 | Bộ chấm sự thật | Verifier / oracle | Thành phần quyết định một phát hiện là đúng hay sai |
@@ -802,7 +802,7 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Đường hầm SSH | SSH tunnel | Đường hầm `-L` (cục bộ), `-R` (từ xa) và `-D` (SOCKS động) |
 | Chuỗi SOCKS | SOCKS chain | Nhiều bậc proxy SOCKS nối tiếp để che giấu đường đi |
 | Chỉ huy-Kiểm soát | Command and Control — C2 | Máy chủ điều khiển và kênh liên lạc với implant |
-| Mầu | Beacon | Lần nhịp báo hiệu định kỳ của implant |
+| Nhịp báo hiệu | Beacon | Lần nhịp báo hiệu định kỳ của implant |
 | Lệch ngẫu nhiên | Jitter | Nhiễu ngẫu nhiên thêm vào khoảng thời gian giữa các lần báo hiệu |
 | Kênh mã hoá | Encrypted channel | Kênh liên lạc được mã hoá để chống nghe lén |
 | Trao đổi khoá ECDH | Elliptic-curve Diffie-Hellman — ECDH | Thỏa thuận khoá bí mật trên đường cong elip |
@@ -819,10 +819,14 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 | Phát hiện lệch lạ | Anomaly detection | Ghi nhận hành vi bất thường (quét cổng hàng loạt, dò mật khẩu) |
 | Bền vững phiên | Session persistence | Lưu và phục hồi ngữ cảnh pentest qua nhiều phiên làm việc |
 | Tiêm prompt | Prompt injection | Chèn chỉ dẫn độc hại vào prompt để điều khiển hành vi mô hình |
-| Vượt ngăn cảm | Jailbreak | Kỹ thuật lách bỏ rào an toàn của mô hình ngôn ngữ |
+| Vượt rào an toàn | Jailbreak | Kỹ thuật lách bỏ rào an toàn của mô hình ngôn ngữ |
 | Rò rỉ dữ liệu huấn luyện | Training-data extraction | Thử lấy dữ liệu huấn luyện hoặc system prompt ra khỏi mô hình |
 | Phân tích tĩnh | Static analysis | Quét mã nguồn không chạy, tìm dấu hiệu lỗ hổng |
 | Phát hiện 0day không mô hình | Zero-shot vulnerability discovery | Dò lỗ hổng bằng heuristic tĩnh, không cần mô hình huấn luyện |
+| Proxy SOCKS5 | SOCKS5 proxy | Proxy tầng phiên theo RFC 1928: máy khách thương lượng phương thức xác thực rồi gửi lệnh `CONNECT` tới đích |
+| Chuyển tiếp cổng | Port forwarding | Nhận kết nối ở một cổng rồi chuyển tiếp nguyên vẹn dữ liệu tới địa chỉ khác |
+| Biểu ngữ dịch vụ | Banner / service banner | Dòng chữ dịch vụ tự gửi khi vừa kết nối, dùng để nhận dạng phần mềm và phiên bản |
+| JSON Web Token | JSON Web Token — JWT | Token ký số dạng `header.payload.signature` (RFC 7519); máy chủ phải kiểm chữ ký và tự chọn thuật toán, không tin trường `alg` do khách gửi |
 
 ---
 

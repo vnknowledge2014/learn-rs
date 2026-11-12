@@ -393,7 +393,7 @@ VÍ DỤ MẪU (few-shot):
 | **4. Input/Output Spec** | mơ hồ | định dạng tệp vào, kiểu trả về, khối mã + 3 test |
 | **5. Few-shot Examples** | không | một cặp tệp mẫu -> kết quả mong đợi |
 
-Bài học: chất lượng đầu ra của AI **tỉ lệ thuận với độ rõ của ràng buộc bạn đặt ra**. Câu mơ hồ "đọc file trả về cổng" để AI tự đoán kiểu trả về (Vec<String>? Vec<i32>?), tự đoán cách xử lý lỗi (thường là rải `.unwrap()` — đúng thứ ta muốn cấm). Một System Prompt chặt biến AI từ "đoán ý" thành "thực thi đặc tả".
+Bài học: chất lượng đầu ra của AI **tỉ lệ thuận với độ rõ của ràng buộc bạn đặt ra**. Câu mơ hồ "đọc file trả về cổng" để AI tự đoán kiểu trả về (`Vec<String>`? `Vec<i32>`?), tự đoán cách xử lý lỗi (thường là rải `.unwrap()` — đúng thứ ta muốn cấm). Một System Prompt chặt biến AI từ "đoán ý" thành "thực thi đặc tả".
 </details>
 
 <details>
