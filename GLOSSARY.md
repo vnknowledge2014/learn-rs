@@ -1,6 +1,6 @@
 # Bảng thuật ngữ Việt–Anh (Vietnamese–English Glossary)
 
-Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 97 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
+Tài liệu này chốt cách dịch thuật ngữ được dùng **nhất quán trong toàn bộ 105 chương**. Mục đích không chỉ là tra cứu: nó còn là **chiếc cầu bắc sang tài liệu tiếng Anh**. Khi bạn đọc xong giáo trình này và mở tài liệu chính thức của Rust hay một cuốn sách quốc tế, những từ bên cột phải sẽ không còn xa lạ.
 
 ## Quy ước xử lý thuật ngữ kỹ thuật
 
@@ -743,7 +743,90 @@ Có viết tắt thông dụng thì ghi cả hai: *cây cú pháp trừu tượn
 
 ---
 
-## 21. Tra cứu định danh mã nguồn (Vietnamese → English)
+## 21. Bảo mật Tấn công, Tác tử Pentest & Offensive Security (Chương 98–105)
+
+| Tiếng Việt | English | Ghi chú |
+|---|---|---|
+| Lỗ hổng tràn bộ đệm | Buffer overflow | Ghi vượt biên vùng đệm, đè dữ liệu lên khung ngăn xếp |
+| Tràn bộ đệm có canary | Stack canary / stack cookie | Giá trị bảo vệ đặt giữa bộ đệm và địa chỉ trả về |
+| Địa chỉ trả về | Return address — RIP/EIP | Địa chỉ mà `ret` sẽ nhảy tới khi hàm kết thúc |
+| Mẫu tuần hoàn | Cyclic pattern | Chuỗi lặp có chu kỳ để dò vị trí ghi đè trong bộ nhớ |
+| Chuỗi De Bruijn | De Bruijn sequence | Chuỗi chứa mọi đoạn con độ dài $k$ đúng một lần — nền tảng dò offset |
+| Ký tự bị lọc | Bad character | Byte không đi qua được tới đích vì bộ lọc hoặc giao thức loại bỏ |
+| Mã hoá shellcode | Shellcode encoding | Mã hoá payload để né ký tự bị lọc, kèm stub giải mã |
+| Xe trượt NOP | NOP sled | Dải lệnh vô hại đặt trước shellcode để chịu sai lệch địa chỉ |
+| Gadget ROP | ROP gadget | Đoạn mã kết thúc bằng `ret`, dùng để xây chuỗi lệnh thay vì shellcode |
+| Chuỗi ROP | ROP chain | Nối nhiều gadget để gọi hàm với đối số do mình chọn |
+| Quay lại libc | ret2libc | Khai thác chuyển sang hàm thư viện C (`system`) thay vì shellcode |
+| Địa chỉ cơ sở | Base address | Địa chỉ gốc của một vùng nhớ dùng để tính địa chỉ runtime |
+| Không gian có thể thực thi | Executable stack | Vùng nhớ được phép chạy mã máy (NX/DEP đã tắt) |
+| Tiêm lệnh hệ điều hành | OS command injection | Chèn lệnh hệ điều hành vào tham số truyền cho shell |
+| SQLi mù dựa trên boolean | Boolean-based blind SQLi | Suy luận dữ liệu từ sự khác biệt đáp ứng đúng/sai |
+| SQLi mù dựa trên thời gian | Time-based blind SQLi | Đo độ trễ đáp ứng để suy luận điều kiện |
+| SQLi dựa trên UNION | UNION-based SQLi | Ghép kết quả truy vấn thứ hai vào kết quả truy vấn thứ nhất |
+| Bảng thông tin | `information_schema` | Lược đồ siêu dữ liệu chuẩn SQL liệt kê bảng và cột |
+| Sơ chồ bị từ chối | Denial of Service — DoS | Làm dịch vụ không phục vụ được |
+| Tài liệu hợp đồng | Contract | Thỏa thuận phạm vi và điều kiện của một cuộc kiểm thử |
+| Phạm vi được phép | Scope | Tập mục tiêu và cổng được phép chạm tới |
+| Lỗ hổng | Vulnerability / finding | Điểm yếu có thể bị khai thác |
+| Khai thác | Exploit / payload | Mã hoặc chuỗi dữ liệu khai thác lỗ hổng |
+| Chứng minh bằng khai thác | Proof-by-Exploitation — PoE | Chỉ báo cáo lỗ hổng kèm PoC chạy được, tỷ lệ báo động giả bằng 0 |
+| Tỷ lệ báo động giả | False-positive rate — FPR | Tỷ lệ phát hiện sai trên tổng số phát hiện |
+| Tái hiện lỗi | Reproduce / reproduce steps | Quy trình tái tạo lỗ hổng từ đầu |
+| Bằng chứng | Evidence / proof of concept | Artifact chứng minh tác động thật của lỗ hổng |
+| Chuỗi bằng chứng | Evidence chain | Chuỗi băm nối tiếp, sửa một mắt xích làm cả chuỗi bị phát hiện |
+| Nhận dạng dịch vụ | Service fingerprinting | Gửi probe đặc trưng rồi suy ra dịch vụ và phiên bản từ đáp ứng |
+| Nhận dạng hệ điều hành | OS fingerprinting | Suy ra hệ điều hành từ TTL, kích thước cửa sổ TCP hoặc banner |
+| Cửa sổ TCP | TCP window size | Kích thước bộ đệm nhận, là dấu hiệu phân biệt hệ điều hành |
+| Đầu độc ARP | ARP spoofing / ARP cache poisoning | Giả mạo gói ARP để chèn địa chỉ MAC giả vào bảng ARP của nạn nhân |
+| Đầu độc DNS | DNS spoofing | Trả lời giả truy vấn DNS để chuyển hướng nạn nhân |
+| Bẻ khoá băm | Hash cracking | Dò mật khẩu từ băm bằng từ điển hoặc brute-force |
+| Đột biến từ điển | Wordlist mutation | Sinh biến thể của từ điển (hoa/thường, leet, thêm số) để mở rộng phạm vi thử |
+| Băm NTLM | NT hash | MD4 của mật khẩu UTF-16LE — dạng băm mật khẩu Windows |
+| Đáp ứng NTLMv2 | NTLMv2 response | Đáp ứng xác thực dùng HMAC-MD5 hai tầng với thử thách máy chủ |
+| Yêu cầu dịch vụ Kerberos | Service ticket — TGS | Vé do bộ phận xác thực cấp, chứa khóa phiên của dịch vụ |
+| Nướng vé | Kerberoasting | Bẻ khoá dịch vụ offline bằng cách dò mật khẩu trên vé đã mã hoá |
+| Nướng AS-REP | AS-REP roasting | Bẻ khoá tài khoản không đòi xác thực trước (`DONT_REQ_PREAUTH`) |
+| Loại mã hoá Kerberos | Encryption type — etype | Thuật toán mã hoá phiên Kerberos (RC4-HMAC, AES-CTS) |
+| Sudo cấu hình sai | Sudo misconfiguration | Quyền `sudo` cho phép chạy lệnh nguy hiểm hoặc shell |
+| Tệp SUID/SGID | SUID/SGID binary | Tệp thực thi chạy với quyền của chủ sở hữu/nhóm thay vì người gọi |
+| Nhân bản quyền | Privilege escalation — PrivEsc | Chiếm được quyền cao hơn quyền ban đầu |
+| Nhân bản token | Token impersonation | Lợi dụng quyền `SeImpersonatePrivilege` để mạo danh token hệ thống |
+| Đường dẫn dịch vụ không trích dẫn | Unquoted service path | Đường dẫn dịch vụ Windows thiếu dấu nháy khiến Windows chèn `C:\Program.exe` |
+| Chiếm quyền DLL | DLL hijacking | Thay thế DLL mà dịch vụ Windows nạp từ thư mục ghi được |
+| Lập lịch tự động | Cron job | Tác vụ chạy định kỳ — mục tiêu để chèn lệnh khai thác |
+| Năng lực đặc biệt | Linux capabilities | Quyền hạn tinh vi (`CAP_SYS_ADMIN`…) gán cho một tiến trình |
+| Kiểm chứng sự thật nền | Ground-truth verification | Kiểm tra kết quả bằng hành động thật thay vì tin lời khai của tác tử |
+| Bộ chấm sự thật | Verifier / oracle | Thành phần quyết định một phát hiện là đúng hay sai |
+| Xoay chiều | Pivoting | Dùng máy đã chiếm làm bước để tiếp cận máy khác trong mạng nội bộ |
+| Đường hầm SSH | SSH tunnel | Đường hầm `-L` (cục bộ), `-R` (từ xa) và `-D` (SOCKS động) |
+| Chuỗi SOCKS | SOCKS chain | Nhiều bậc proxy SOCKS nối tiếp để che giấu đường đi |
+| Chỉ huy-Kiểm soát | Command and Control — C2 | Máy chủ điều khiển và kênh liên lạc với implant |
+| Mầu | Beacon | Lần nhịp báo hiệu định kỳ của implant |
+| Lệch ngẫu nhiên | Jitter | Nhiễu ngẫu nhiên thêm vào khoảng thời gian giữa các lần báo hiệu |
+| Kênh mã hoá | Encrypted channel | Kênh liên lạc được mã hoá để chống nghe lén |
+| Trao đổi khoá ECDH | Elliptic-curve Diffie-Hellman — ECDH | Thỏa thuận khoá bí mật trên đường cong elip |
+| Làm rối lưu lượng | Traffic obfuscation | Ngụy trang lưu lượng C2 thành HTTP/DNS để vượt DPI |
+| Tác tử trinh sát | Recon agent | Tác tử chuyên thu thập thông tin mục tiêu |
+| Tác tử xác thực | Validation agent | Tác tử kiểm chứng phát hiện, loại bỏ kết quả giả |
+| Hiến pháp | Constitution | Tập luật bắt buộc mà tác tử phải tuân thủ |
+| Cổng người duyệt | Human-in-the-loop — HITL | Điểm dừng bắt buộc để con người phê duyệt hành động |
+| Học tăng cường | Reinforcement Learning — RL | Học chính sách hành động tối ưu theo phần thưởng |
+| Học Q bảng | Tabular Q-learning | Học giá trị từng cặp (trạng thái, hành động) trong bảng tra cứu |
+| Phần thưởng tấn công | Attack reward | Điểm thưởng khi chiếm được host, trừ điểm khi bị phát hiện |
+| Đối kháng Red-vs-Blue | Adversarial red-vs-blue | Luyện đội đỏ tấn công và đội xanh phòng thủ đối kháng lẫn nhau |
+| Tác tử phòng thủ | Blue-team defender | Tác tử phát hiện bất thường, cách ly host và đặt lại mật khẩu |
+| Phát hiện lệch lạ | Anomaly detection | Ghi nhận hành vi bất thường (quét cổng hàng loạt, dò mật khẩu) |
+| Bền vững phiên | Session persistence | Lưu và phục hồi ngữ cảnh pentest qua nhiều phiên làm việc |
+| Tiêm prompt | Prompt injection | Chèn chỉ dẫn độc hại vào prompt để điều khiển hành vi mô hình |
+| Vượt ngăn cảm | Jailbreak | Kỹ thuật lách bỏ rào an toàn của mô hình ngôn ngữ |
+| Rò rỉ dữ liệu huấn luyện | Training-data extraction | Thử lấy dữ liệu huấn luyện hoặc system prompt ra khỏi mô hình |
+| Phân tích tĩnh | Static analysis | Quét mã nguồn không chạy, tìm dấu hiệu lỗ hổng |
+| Phát hiện 0day không mô hình | Zero-shot vulnerability discovery | Dò lỗ hổng bằng heuristic tĩnh, không cần mô hình huấn luyện |
+
+---
+
+## 22. Tra cứu định danh mã nguồn (Vietnamese → English)
 
 Từ bản 85 chương, **mọi định danh trong mã nguồn đều bằng tiếng Anh** — kể cả tên
 hàm kiểm thử; phần giảng nghĩa nằm ở comment tiếng Việt ngay trên định danh đó.

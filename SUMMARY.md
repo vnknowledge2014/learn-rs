@@ -231,6 +231,17 @@
 - [Chương 96: Huấn luyện Hậu kỳ II — Học Tăng cường Có Phần thưởng Kiểm chứng RLVR: PPO + GAE So với GRPO / Dr. GRPO / DAPO / GSPO (Reinforcement Learning with Verifiable Rewards)](chuong_96.md)
 - [Chương 97: Đại dự án Tích hợp II — Đường ống Micro-LLM Suy luận End-to-End Từ Byte-BPE Tới GRPO & Tác tử Gọi Công cụ Nội sinh (End-to-End Reasoning Micro-LLM & Native Tool Agent)](chuong_97.md) — **đọc sau cùng trong nhóm này**
 
+# Chủ đề 28: OSCP Thế Hệ Mới — Bộ Công Cụ Khai Thác Bảo Mật & Tác Tử Pentest Tự Hành Bằng Rust 2024 Thuần std (Offensive Security Engineering & Autonomous Pentest Agent) — Chương 98 đến 105
+<!-- 8 chương: Phòng thí nghiệm binary exploit, Bộ công cụ mạng, Động cơ khai thác web & LLM, Kerberos & tấn công thông tin xác thực, Động cơ leo thang đặc quyền, Xoay chiều & C2, và hai đại dự án Red Team + Tác tử Pentest Tự hành -->
+- [Chương 98: Phòng thí nghiệm Khai thác Nhị phân — Mã Dính Lỗi, Mẫu Tuần hoàn, Mã hoá Shellcode & Chuỗi ROP (Binary Exploit Lab: Vulnerable Binaries, Cyclic Patterns, Shellcode Encoding & ROP Chains)](chuong_98.md)
+- [Chương 99: Bộ Công cụ Thâm nhập Mạng — Proxy SOCKS5, Chuyển tiếp Cổng, Nhận dạng Dịch vụ & Đầu độc ARP/DNS (Network Pentest Toolkit: SOCKS5 Proxy, Port Forwarding, Service Fingerprinting & ARP/DNS Spoofing)](chuong_99.md)
+- [Chương 100: Động cơ Khai thác Web & Kiểm thử Bảo mật LLM — SQLi Mù, LFI/RFI, JWT, Tiêm Lệnh & Tấn công Prompt AI (Web Exploit Engine & LLM Security: Blind SQLi, LFI, JWT, Command Injection & AI Prompt Attacks)](chuong_100.md)
+- [Chương 101: Tấn công Thông tin xác thực & Kerberos — Bẻ khoá Băm, Giao thức Kerberos, RC4-HMAC/AES & Đột biến Từ điển (Credential Attacks: Hash Cracking, Kerberos Protocol, RC4-HMAC/AES & Wordlist Mutation)](chuong_101.md)
+- [Chương 102: Động cơ Leo thang Đặc quyền — SUID/Sudo/Cron/Capabilities Linux, Token/Service/DLL Windows & Kiểm chứng Sự thật Nền (Privilege Escalation Engine: Linux & Windows PrivEsc with Ground-truth Verification)](chuong_102.md)
+- [Chương 103: Xoay chiều Mạng & Khung Chỉ huy-Kiểm soát — Đường hầm SSH, Chuỗi SOCKS, C2 Mini & Kênh Mã hoá (Pivoting & C2: SSH Tunnels, SOCKS Relay, Mini C2 & Encrypted Channels)](chuong_103.md)
+- [Chương 104: Đại dự án Tích hợp I — Bộ Công cụ Red Team Khai Thác Toàn Diện End-to-End kèm Chứng minh Khai thác (Red Team Exploit Kit with Proof-by-Exploitation)](chuong_104.md) — **đọc sau cùng trong nhóm này**
+- [Chương 105: Đại dự án Tích hợp II — Tác tử Pentest Tự hành Đa Tác tử, Phần thưởng RL, Đối kháng Red-vs-Blue & Hiến pháp An toàn (Autonomous Multi-Agent Pentest: RL Reward, Red-vs-Blue Adversarial & Constitutional Safety)](chuong_105.md) — **đọc sau cùng trong nhóm này**
+
 ---
 
 [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md)
