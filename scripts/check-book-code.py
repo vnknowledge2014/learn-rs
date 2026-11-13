@@ -3,7 +3,7 @@
 
 Chạy từ gốc repo:
 
-    python3 scripts/check-book-code.py                  # toàn bộ 105 chương
+    python3 scripts/check-book-code.py                  # toàn bộ các chương hiện có
     python3 scripts/check-book-code.py --chapters 86-91 # một dải chương
     python3 scripts/check-book-code.py --chapters 96,97 --verbose
 
@@ -27,6 +27,7 @@ hợp lệ và không bị báo.
 import argparse
 import collections
 import concurrent.futures
+import glob
 import os
 import re
 import subprocess
@@ -67,6 +68,15 @@ def chapter_path(n):
     return os.path.join(ROOT, f"chuong_{n:02d}.md" if n < 100 else f"chuong_{n}.md")
 
 
+def chapter_numbers():
+    numbers = []
+    for path in glob.glob(os.path.join(ROOT, "chuong_*.md")):
+        match = re.fullmatch(r"chuong_(\d+)\.md", os.path.basename(path))
+        if match:
+            numbers.append(int(match.group(1)))
+    return sorted(numbers)
+
+
 def crate_source(n):
     d = os.path.join(ROOT, "code", f"ch{n:02d}" if n < 100 else f"ch{n}", "src")
     for name in ("main.rs", "lib.rs"):
@@ -78,7 +88,7 @@ def crate_source(n):
 
 def parse_selection(spec):
     if not spec:
-        return list(range(1, 106))
+        return chapter_numbers()
     out = []
     for part in spec.split(","):
         if "-" in part:

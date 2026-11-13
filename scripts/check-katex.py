@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dò các dấu `$` làm hỏng render KaTeX trong chương Markdown.
 
-    python3 scripts/check-katex.py                  # toàn bộ 105 chương
+    python3 scripts/check-katex.py                  # toàn bộ các chương hiện có
     python3 scripts/check-katex.py --chapters 98-105
 
 KaTeX (qua mdbook-katex) coi `$...$` là công thức nội dòng và `$$...$$` là công thức khối.
@@ -20,6 +20,7 @@ Thoát mã 1 nếu còn span nghi vấn.
 """
 import argparse
 import bisect
+import glob
 import os
 import re
 import sys
@@ -27,9 +28,18 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def chapter_numbers():
+    numbers = []
+    for path in glob.glob(os.path.join(ROOT, "chuong_*.md")):
+        match = re.fullmatch(r"chuong_(\d+)\.md", os.path.basename(path))
+        if match:
+            numbers.append(int(match.group(1)))
+    return sorted(numbers)
+
+
 def parse_selection(spec):
     if not spec:
-        return list(range(1, 106))
+        return chapter_numbers()
     out = []
     for part in spec.split(","):
         if "-" in part:
