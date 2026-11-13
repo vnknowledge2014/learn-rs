@@ -1731,7 +1731,7 @@ fn test_bt6_markdown_report_from_priv_esc_report() {
 
 ---
 
-**Kết thúc Chương 102.** Chương tiếp theo (Ch 104) sẽ ghép động cơ leo thang quyền này vào một bộ công cụ Red Team hoàn chỉnh, nơi `GroundTruthVerifier` được dùng lại như một "cổng kiểm định" bắt buộc trước khi bất kỳ phát hiện nào được ghi vào báo cáo chính thức.
+**Kết thúc Chương 102.** Chương tiếp theo (Ch 103) sẽ xây hạ tầng di chuyển trong mạng (SSH tunnel, SOCKS relay, C2); sau đó Ch 104 sẽ ghép động cơ leo thang quyền này vào một bộ công cụ Red Team hoàn chỉnh, nơi `GroundTruthVerifier` được dùng lại như một "cổng kiểm định" bắt buộc trước khi bất kỳ phát hiện nào được ghi vào báo cáo chính thức.
 
 
 

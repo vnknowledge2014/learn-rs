@@ -223,14 +223,14 @@ ssh -D 1080 user@jump                  # proxy SOCKS động
 
 | Mã thông điệp | Ý nghĩa | Trường dữ liệu đi kèm | Tác động lên hình học mạng |
 |---|---|---|---|
-| `0x01` | SSH_MSG_CHANNEL_OPEN | Kiểu kênh (direct-tcpip, forwarded-tcpip, direct-streamlocal) + địa chỉ đích + cổng đích | **Mở** một kênh con tới đích, đây là lúc "đường hầm" được tạo |
-| `0x02` | SSH_MSG_CHANNEL_OPEN_CONFIRMATION | Mã kênh của bên nhận | Xác nhận kênh con đã sẵn sàng nhận byte |
-| `0x5A` | SSH_MSG_CHANNEL_DATA | Mã kênh + độ dài + byte thô | **Chuyển tiếp** dữ liệu người dùng xuyên qua kênh con |
-| `0x5B` | SSH_MSG_CHANNEL_EOF | Mã kênh | Báo kết thúc luồng theo một chiều |
-| `0x5C` | SSH_MSG_CHANNEL_CLOSE | Mã kênh | Đóng kênh con, đường hầm kết thúc |
-| `0x80` | SSH_MSG_GLOBAL_REQUEST | Cờ `want_reply` + tên yêu cầu | Chính là nơi phát sinh yêu cầu `tcpip-forward` cho chế độ `-R` |
+| `0x5A` (90) | SSH_MSG_CHANNEL_OPEN | Kiểu kênh (direct-tcpip, forwarded-tcpip, direct-streamlocal) + địa chỉ đích + cổng đích | **Mở** một kênh con tới đích, đây là lúc "đường hầm" được tạo |
+| `0x5B` (91) | SSH_MSG_CHANNEL_OPEN_CONFIRMATION | Mã kênh của bên nhận | Xác nhận kênh con đã sẵn sàng nhận byte |
+| `0x5E` (94) | SSH_MSG_CHANNEL_DATA | Mã kênh + độ dài + byte thô | **Chuyển tiếp** dữ liệu người dùng xuyên qua kênh con |
+| `0x60` (96) | SSH_MSG_CHANNEL_EOF | Mã kênh | Báo kết thúc luồng theo một chiều |
+| `0x61` (97) | SSH_MSG_CHANNEL_CLOSE | Mã kênh | Đóng kênh con, đường hầm kết thúc |
+| `0x50` (80) | SSH_MSG_GLOBAL_REQUEST | Cờ `want_reply` + tên yêu cầu | Chính là nơi phát sinh yêu cầu `tcpip-forward` cho chế độ `-R` |
 
-Điểm mấu chốt nằm ở dòng `0x5A`: **byte truyền qua đường hầm không bao giờ chạm vào mạng vật lý**. Nó đi qua bộ đệm của kênh SSH, rồi bị mã hoá cùng với phần còn lại của phiên SSH. Do đó, đối với một bộ phân tích mạng chỉ nhìn ở tầng TCP, toàn bộ lưu lượng pivoting **trông y hệt** lưu lượng SSH thông thường.
+Điểm mấu chốt nằm ở dòng `0x5E` (SSH_MSG_CHANNEL_DATA): **byte truyền qua đường hầm không bao giờ chạm vào mạng vật lý**. Nó đi qua bộ đệm của kênh SSH, rồi bị mã hoá cùng với phần còn lại của phiên SSH. Do đó, đối với một bộ phân tích mạng chỉ nhìn ở tầng TCP, toàn bộ lưu lượng pivoting **trông y hệt** lưu lượng SSH thông thường.
 
 Trong mã nguồn, `ssh_command_line` là nơi quyết định "hình dạng" này, còn `SshTunnelSimulator` quản lý **vòng đời phiên** (cấp mã phiên tăng dần, đóng phiên, đếm số đường hầm hoạt động).
 
@@ -277,7 +277,7 @@ Nhìn bảng trên, ta thấy ngay: **mỗi bước trong chuỗi là một lầ
 
 | Trường | Kích thước | Nội dung trong chế độ `-R` |
 |---|---|---|
-| Mã thông điệp | 1 byte | `0x80` (`SSH_MSG_GLOBAL_REQUEST`) |
+| Mã thông điệp | 1 byte | `0x50` (`SSH_MSG_GLOBAL_REQUEST`) |
 | Cờ | 1 byte | `0x01` nếu muốn nhận phản hồi |
 | Tên yêu cầu | 4 byte + nội dung | Chuỗi `tcpip-forward` |
 | Số cổng đề nghị | 4 byte | Cổng phía đích mà máy chủ sẽ lắng nghe |
@@ -403,7 +403,7 @@ $$
 \text{nonce 24 byte} = \underbrace{n_{16}}_{\text{16 byte}} \Vert \underbrace{c_{8}}_{\text{8 byte bộ đếm}},\qquad \text{subkey} = \text{HChaCha20}(k, n_{16}),\quad \text{nonce}_{\text{ChaCha}} = 0^{32} \Vert c_{8}
 $$
 
-HChaCha20 chạy **20 vòng ChaCha20** trên trạng thái $c \Vert k \Vert n_{16}$ (không có bộ đếm, không cộng lại trạng thái ban đầu) rồi lấy 16 từ đầu và 4 từ cuối làm khoá phụ.
+HChaCha20 chạy **20 vòng ChaCha20** trên trạng thái $c \Vert k \Vert n_{16}$ (không có bộ đếm, không cộng lại trạng thái ban đầu) rồi lấy **4 từ đầu** (state[0..4]) và **4 từ cuối** (state[12..16]) — tổng cộng 8 từ = 32 byte — làm khoá phụ.
 
 Trong crate này, `XChaCha20Channel` vận hành theo định dạng đường truyền:
 
