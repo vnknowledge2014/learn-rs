@@ -262,8 +262,7 @@ pub fn inner_join(left: &Table, right: &Table, key: &str) -> Table {
 
     // Chỉ mục bảng phải theo khóa (băm) -> tra cứu O(1)
     let mut index: HashMap<String, Vec<usize>> = HashMap::new();
-    for h in 0..right.num_rows() {
-        let cell = &right.columns[right_key][h];
+    for (h, cell) in right.columns[right_key].iter().enumerate() {
         if *cell != Value::Null {
             index.entry(format!("{:?}", cell)).or_default().push(h);
         }
@@ -288,9 +287,9 @@ pub fn inner_join(left: &Table, right: &Table, key: &str) -> Table {
                 let mut row: Vec<Value> = (0..left.column_names.len())
                     .map(|i| left.columns[i][h].clone())
                     .collect();
-                for i in 0..right.column_names.len() {
+                for (i, col) in right.columns.iter().enumerate() {
                     if i != right_key {
-                        row.push(right.columns[i][rr].clone());
+                        row.push(col[rr].clone());
                     }
                 }
                 result.add_row(row);

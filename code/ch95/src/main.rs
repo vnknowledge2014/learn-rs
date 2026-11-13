@@ -1333,8 +1333,8 @@ mod tests {
         assert_eq!(res.valid_token_count, 1.0);
 
         // Đạo hàm của token 0 phải bằng đúng 0.0
-        for v in 0..vocab_size {
-            assert_eq!(res.grad_logits[v], 0.0);
+        for &g in &res.grad_logits[..vocab_size] {
+            assert_eq!(g, 0.0);
         }
         // Đạo hàm của token 1 phải khác 0
         let has_grad_token1 = (0..vocab_size).any(|v| res.grad_logits[vocab_size + v] != 0.0);
