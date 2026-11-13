@@ -11,7 +11,7 @@
 
 [book]
 title = "Rust Masterclass: Hành Trình Từ Con Số 0 Đến System Design"
-description = "Giáo trình Rust toàn diện bằng tiếng Việt, 105 chương, dành cho người chưa từng lập trình."
+description = "Giáo trình Rust toàn diện bằng tiếng Việt, từ nhập môn đến system design và an ninh mạng."
 authors = ["Rust Masterclass"]
 language = "vi"
 src = "."
