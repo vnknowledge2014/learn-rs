@@ -20,7 +20,14 @@ LOG="$STAGE/build.log"
 
 mdbook build "$STAGE" -d "$ROOT/book" 2>&1 | tee "$LOG"
 
-if grep -E '\bWARN\b' "$LOG" | grep -v -i 'search index is very large' | grep -q .; then
+# Bỏ qua cảnh báo lành tính: cỡ chỉ mục tìm kiếm, và nhiễu từ mdbook-katex
+# (lệch phiên bản + thẻ <span> do cmark tái phân tích HTML katex chèn vào — công thức
+# vẫn render đúng). Vẫn fail với cảnh báo thẻ HTML hỏng thật (ví dụ <i32> trong văn xuôi).
+if grep -E '\bWARN\b' "$LOG" \
+   | grep -v -i 'search index is very large' \
+   | grep -v -i 'built against mdbook' \
+   | grep -viE 'HTML (end )?tag `</?span>`' \
+   | grep -q .; then
   echo "mdBook có cảnh báo (xem ở trên)." >&2
   exit 1
 fi

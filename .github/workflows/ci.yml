@@ -84,9 +84,9 @@ jobs:
           curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.52/mdbook-v0.4.52-x86_64-unknown-linux-gnu.tar.gz | tar xz
           echo "$PWD" >> "$GITHUB_PATH"
       # Preprocessor render LaTeX ($...$, $$...$$); book.toml khai báo [preprocessor.katex].
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: mdbook-katex@0.9.4
+      # 0.9.x khớp mdbook 0.4.x của CI (0.10+ cần mdbook 0.5.x). Cài từ nguồn cho chắc.
+      - name: Cài mdbook-katex
+        run: cargo install mdbook-katex --version 0.9.4 --locked
       # Dựng từ thư mục tạm để không chép code/, .git, .claude... vào sách; cảnh báo là lỗi.
       - name: Build
         run: ./scripts/build-book.sh
