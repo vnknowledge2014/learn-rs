@@ -71,7 +71,7 @@ Nhưng nếu bạn **nhét 88 lá**, 24 lá cuối sẽ tràn ra ngoài khoang t
 
 ```mermaid
 flowchart TD
-    A["Hộp thư 64 lá<br/>(buffer)"] -->|"ghi đúng 64 lá"| B["Chốt nguyên vẹn<br/>(canary 0x00DEADBEEFCAFE1234)"]
+    A["Hộp thư 64 lá<br/>(buffer)"] -->|"ghi đúng 64 lá"| B["Chốt nguyên vẹn<br/>(canary 0x00DEBEEFCAFE1234)"]
     A -->|"nhét 88 lá: 24 lá tràn"| C["Chốt GÃY<br/>→ huỷ giao dịch"]
     C --> D["Bản lề bị đẩy<br/>(saved RBP)"]
     D --> E["Địa chỉ kho xe bị đổi<br/>(return_address)"]
@@ -208,7 +208,7 @@ Mẫu tuần hoàn kinh điển (kiểu `cyclic` của pwntools) lặp lại m�
 
 Mẫu mà crate này dùng là **bộ đếm 4 ký tự theo kiểu De Bruijn**: mỗi nhãn 4 byte mã hoá một chỉ số duy nhất trong hệ cơ sở hỗn, với **thứ tự chữ số chạy nhanh nhất đi ngược với thứ tự byte**:
 
-$$\text{label}(n) = \Big( E[n \bmod 36],\; O[\lfloor n/36 \rfloor \bmod 26],\; E[\lfloor n/936 \rfloor \bmod 36],\; O[\lfloor n/24336 \rfloor \bmod 26] \Big)$$
+$$\text{label}(n) = \Big( E[n \bmod 36],\; O[\lfloor n/36 \rfloor \bmod 26],\; E[\lfloor n/936 \rfloor \bmod 36],\; O[\lfloor n/33696 \rfloor \bmod 26] \Big)$$
 
 trong đó:
 

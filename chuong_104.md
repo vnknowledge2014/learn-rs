@@ -296,8 +296,8 @@ Mọi khai thác trong chương này diễn ra trên một mạng nội bộ **t
      db01 ──► dc01       (db → dc)
 ```
 
-Phép tính “máy chủ nào có thể tiếp cận được từ đâu” là một **duyệt theo chiều rộng (BFS)** trên
-đồ thị hướng, và được hiện thực bằng một hàng đợi (stack) đơn giản:
+Phép tính “máy chủ nào có thể tiếp cận được từ đâu” là một **duyệt đồ thị theo chiều sâu (DFS)** trên
+đồ thị có hướng, được hiện thực bằng một **ngăn xếp (stack)** đơn giản (dùng `Vec::pop`):
 
 $$
 \text{reachable}(s) = \bigcup_{u \in \text{reachable}(s)} \{ v \mid (u,v) \in E \} \setminus \{s\}

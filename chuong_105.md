@@ -6,17 +6,17 @@
 
 Chào mừng bạn đến với **chương kết thúc** của Chủ đề 28 (Tác tử & Kiểm thử Thâm nhập Tự động) — một chương không giới thiệu thêm một thuật toán mới, mà **lắp ráp tất cả những gì đã học** thành một cỗ máy duy nhất có khả năng tự điều hành một chiến dịch kiểm thử thâm nhập (penetration test) từ đầu đến cuối.
 
-Hãy nhìn lại những gì chúng ta đã dựng trong 8 chương trước (98 → 104):
+Hãy nhìn lại những gì chúng ta đã dựng trong 7 chương trước (98 → 104):
 
 | Chương | Thành phần đã xây | Vai trò trong Chương 105 |
 |---|---|---|
-| 98 | Bộ đệm vòng an toàn, trình phân tích nhị phân tĩnh | Nền tảng kỹ thuật phân tích an toàn |
-| 99 | Mô phỏng tấn công mạng, `MockNetwork` | Thế giới giả lập để tác tử hành động |
-| 100 | Trinh sát dịch vụ, nhận dạng phiên bản | Nguồn phát hiện ứng viên |
-| 101 | Khai thác và leo thang đặc quyền | Nguồn bằng chứng khai thác (PoE) |
-| 102 | Truy cập dữ liệu và đối kháng Red-vs-Blue | Khuôn khổ mô phỏng đối kháng |
-| 103 | Phần thưởng RL, tabular Q-learning | Bộ tối ưu đường tấn công |
-| 104 | Quản lý phiên, hiến pháp, báo cáo | Bộ khung điều phối và kỷ luật |
+| 98 | Phòng lab khai thác nhị phân: mẫu De Bruijn, mã hoá shellcode, chuỗi ROP | Nền tảng kỹ thuật khai thác an toàn |
+| 99 | Bộ công cụ thâm nhập mạng: SOCKS5, chuyển tiếp cổng, nhận dạng dịch vụ, `MockNetwork` | Thế giới giả lập để tác tử hành động |
+| 100 | Động cơ khai thác web & bảo mật LLM: SQLi mù, LFI, JWT, tiêm lệnh | Nguồn phát hiện ứng viên |
+| 101 | Tấn công thông tin xác thực & Kerberos: bẻ khoá băm, RC4-HMAC/AES | Nguồn bằng chứng khai thác (PoE) |
+| 102 | Động cơ leo thang đặc quyền (Linux/Windows) + `GroundTruthVerifier` | Khuôn khổ kiểm chứng sự thật nền |
+| 103 | Xoay chiều mạng & C2: đường hầm SSH, chuỗi SOCKS, kênh mã hoá | Hạ tầng di chuyển trong mạng |
+| 104 | Bộ công cụ Red Team end-to-end + Proof-by-Exploitation, báo cáo OSCP | Bộ khung chuỗi khai thác & báo cáo |
 
 Chương 105 ghép tất cả những mảnh đó lại thành **một tác tử pentest tự hành đa tác tử** (`AutonomousPentestAgent`) có đủ tám lớp bảo vệ:
 
@@ -515,10 +515,10 @@ Bộ trọng số mặc định trong crate:
 | Thành phần | Ký hiệu | Giá trị | Ý nghĩa chiến thuật |
 |---|---|---|---|
 | Xâm nhập máy | $w_c$ | `+10.0` | Mục tiêu lớn nhất của đội đỏ |
-| Bị phát hiện | $w_d$ | `-3.0` | Phạt "để lộ" — nhưng chỉ tính **một lần** mỗi tập |
-| Làm sập dịch vụ | $w_s$ | `-12.0` | Phạt nặng: làm sập dịch vụ làm lộ mình |
+| Bị phát hiện | $w_d$ | `3.0` | Phạt "để lộ" — nhưng chỉ tính **một lần** mỗi tập |
+| Làm sập dịch vụ | $w_s$ | `12.0` | Phạt nặng: làm sập dịch vụ làm lộ mình |
 | Đọc dữ liệu | $w_a$ | `+5.0` | Mục tiêu thứ hai sau khi đã xâm nhập |
-| Chi phí mỗi bước | $w_{\text{step}}$ | `-0.5` | Chống hành vi lãng phí bước |
+| Chi phí mỗi bước | $w_{\text{step}}$ | `0.5` | Chống hành vi lãng phí bước |
 
 Vì sao phạt "làm sập dịch vụ" lại lớn hơn phần thưởng xâm nhập ($12 > 10$)? Vì khi dịch vụ sập, nó **bị phát hiện chắc chắn**, kéo theo chuỗi phạt tiếp. Tác tử học được rằng "phá thì không được 10 điểm, mà còn bị phạt 12 và mất quyền bất ngờ". Đây chính là chỗ RL tốt hơn người: người phải *được dạy*, còn thuật toán chỉ cần *được thưởng/phạt đúng*.
 
@@ -1438,7 +1438,7 @@ impl SessionManager {
 Đây là hàm dài nhất của chương — và là nơi **11 bất biến** được thực thi đồng thời. Hãy đọc theo tám pha:
 
 - **Recon** → gọi `ReconAgent`, lưu kết quả vào bằng chứng.
-- **Enumerate** → ghi danh sách mục tiêu; đồng thời thực hiện ba "phép thử" (probe) để chứng minh cơ chế bảo vệ hoạt động: dò ngoài phạm vi, phá hủy dữ liệu, chuyển ngang, leo thang quá quyền.
+- **Enumerate** → ghi danh sách mục tiêu; đồng thời thực hiện **bốn** "phép thử" (probe) để chứng minh cơ chế bảo vệ hoạt động: dò ngoài phạm vi, phá hủy dữ liệu, chuyển ngang, leo thang quá quyền.
 - **Exploit** → với mỗi phát hiện ứng viên: `authorize()` trước, `ExploitAgent::step()` sau.
 - **PrivEsc** → chỉ leo thang trên máy **đã** bị xâm nhập.
 - **Pivot** → bị cổng HITL chặn, chiến dịch tiếp tục trong phạm vi.
@@ -1447,7 +1447,7 @@ impl SessionManager {
 - **Done** → sinh báo cáo và kiểm tra Clean Exit.
 
 ```rust,ignore
-impl RedVsBlueSim {
+impl AutonomousPentestAgent {
     pub fn run(&mut self, network: &MockNetwork) -> PentestRunReport {
         self.orchestrator.graph = PentestStateGraph::new();
         self.orchestrator.evidence = EvidenceChain::new();
@@ -1735,7 +1735,7 @@ impl RedVsBlueSim {
         report
     }
 }
-// ... (xem đầy đủ impl RedVsBlueSim trong code/ch105/src/main.rs)
+// ... (xem đầy đủ impl AutonomousPentestAgent trong code/ch105/src/main.rs)
 ```
 
 ### 4.15 Sinh báo cáo Markdown
