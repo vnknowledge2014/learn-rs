@@ -4,11 +4,11 @@
     python3 scripts/check-docs.py
 
 Kiểm:
-  1. Có đủ chương 1..105 liên tục; mỗi chương có crate `chNN` trong workspace và ngược lại.
+  1. Các chương 1..N liên tục; mỗi chương có crate `chNN` trong workspace và ngược lại.
   2. Mọi khối code fence (``` / ~~~) đều đóng.
   3. Mọi liên kết tương đối trỏ tới tệp tồn tại.
   4. SUMMARY.md liên kết đủ mọi chương và tiêu đề H1 của chương khớp tiêu đề trong SUMMARY.
-  5. Mọi tham chiếu "Chương N" nằm trong khoảng 1..105.
+  5. Mọi tham chiếu "Chương N" trỏ tới một chương hiện có.
   6. Dòng số liệu của README ("N chương · M chủ đề · K crate") khớp số chương và số crate thực.
 
 Thoát mã 1 nếu có lỗi.
@@ -56,8 +56,13 @@ def prose_and_fences(name, text):
 
 chapter_files = sorted(glob.glob(os.path.join(ROOT, "chuong_*.md")), key=chapter_number)
 numbers = [chapter_number(p) for p in chapter_files]
-if numbers != list(range(1, 106)):
-    err(f"danh sách chương không liên tục 1..105: thiếu {sorted(set(range(1, 106)) - set(numbers))}")
+max_chapter = max(numbers, default=0)
+expected_numbers = list(range(1, max_chapter + 1))
+if not numbers:
+    err("không tìm thấy tệp chuong_*.md")
+elif numbers != expected_numbers:
+    err(f"danh sách chương không liên tục 1..{max_chapter}: "
+        f"thiếu {sorted(set(expected_numbers) - set(numbers))}")
 
 # 1. chương <-> crate
 members = re.findall(r'"([^"]+)"', read("code/Cargo.toml").split("members")[1].split("]")[0])
@@ -86,8 +91,8 @@ for name in docs:
             err(f"{name}: liên kết hỏng -> {target}")
     # 5. tham chiếu chéo
     for ref in xref.findall(prose):
-        if not 1 <= int(ref) <= 105:
-            err(f"{name}: tham chiếu 'Chương {ref}' nằm ngoài 1..105")
+        if not 1 <= int(ref) <= max_chapter:
+            err(f"{name}: tham chiếu 'Chương {ref}' nằm ngoài 1..{max_chapter}")
 
 # 4. SUMMARY
 summary = read("SUMMARY.md")

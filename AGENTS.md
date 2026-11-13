@@ -1,6 +1,6 @@
 # AGENTS.md — Hướng dẫn cho AI agents làm việc trên repo này
 
-Giáo trình Rust tiếng Việt, 105 chương, mdBook + Rust 2024 edition.
+Giáo trình Rust tiếng Việt, mdBook + Rust 2024 edition; số chương được suy ra từ các file `chuong_*.md`.
 Đọc file này **trước mọi thao tác** để tránh phá vỡ CI hoặc giới thiệu lại lỗi đã sửa.
 
 ---
@@ -58,9 +58,9 @@ Ví dụ: "Importers: SUMMARY.md, scripts/check-docs.py. Affected: prose only. D
 
 ---
 
-## 4. Nội dung bảo mật ch98–105 — framing bắt buộc
+## 4. Nội dung bảo mật ch98–105 và Phần II — framing bắt buộc
 
-Các chương 98–105 (OSCP/pentest) **là tài liệu học tập hợp pháp**. Mọi mã nguồn:
+Các chương 98–105 hiện có và ch106–112 khi được thêm (OSCP/OSWP/pentest) **là tài liệu học tập hợp pháp**. Mọi mã nguồn:
 - Chạy trên `MockShell` / dữ liệu tổng hợp — **không có socket thật, không có lệnh thật**
 - Không sao chép từ Metasploit, Impacket hay framework tấn công nào
 - Không có cơ chế tự lan truyền, không có payload thật
@@ -102,7 +102,7 @@ Những mục dưới đây đã được kiểm chứng và sửa. Agent sau **
 
 ```
 learn-rs/
-├── chuong_01.md … chuong_105.md   # 105 chương (nguồn mdBook)
+├── chuong_01.md … chuong_N.md     # số chương lấy từ các file hiện có (nguồn mdBook)
 ├── SUMMARY.md                      # mục lục mdBook — cập nhật khi thêm chương
 ├── code/
 │   ├── Cargo.toml                  # workspace
@@ -114,6 +114,10 @@ learn-rs/
 ```
 
 Các chương bảo mật: ch98 (binary exploit), ch99 (network pentest), ch100 (web+LLM), ch101 (credential/Kerberos), ch102 (privesc engine), ch103 (pivoting+C2), ch104 (red team capstone I), ch105 (autonomous pentest agent).
+
+Phần II đi sau ch105, không chèn hay đánh số lại chương cũ. Outline cứng nằm ở [docs/PHAN_II_OUTLINE.md](docs/PHAN_II_OUTLINE.md): ch106 OSWP → ch107 AD Fundamentals & Enumeration → ch108 AD Attacks → ch109 Agentic OSINT → ch110 Post-Exploitation & Persistence Audit → ch111 Methodology, Reporting & Legal → ch112 Red Team Capstone II. Cloud pentest nằm ngoài phạm vi Phần II.
+
+Mỗi chương mới phải được đăng ký **trong cùng một PR hoàn chỉnh**: file chương, crate, `code/Cargo.toml`, `code/Cargo.lock`, entry `SUMMARY.md` và số liệu README/ROADMAP. Không thêm link tới chương chưa tồn tại hoặc workspace member thiếu thư mục.
 
 ---
 
