@@ -332,7 +332,7 @@ $$
 \texttt{ORDER BY } n \text{ hợp lệ} \iff 1 \le n \le \text{số cột của kết quả}
 $$
 
-Với `n = 0` hoặc `n > \text{số cột}$, executor trả về `Err`, và `SqlResponse.error` được đặt thành `true`. Đó chính là tín hiệu mà `determine_column_count` săn tìm.
+Với `n = 0` hoặc `n > số cột`, executor trả về `Err`, và `SqlResponse.error` được đặt thành `true`. Đó chính là tín hiệu mà `determine_column_count` săn tìm.
 
 Sau khi biết số cột, hai lệnh tiếp theo là "truy vấn thẳng" (không cần mù):
 
