@@ -33,7 +33,7 @@ Chương 92 này là nền móng đầu tiên của toàn bộ Chủ đề 27. �
 |---|---|---|
 | **Byte-Level BPE với Heap** | Tránh hoàn toàn lỗi mất từ vựng (`<unk>`), xử lý trơn tru tiếng Việt và mã nguồn; đống cực đại bảo đảm phá hòa tất định giữa các nền tảng | Khứ hồi 100% không mất mát byte nào; token đặc biệt không bao giờ bị xé lẻ |
 | **Mặt nạ giải mã có ràng buộc (`ConstrainedDecoderMask`)** | Ép mô hình suy luận tuân thủ nghiêm ngặt ngữ pháp `<think>...</think><answer>...</answer>` của các mô hình RLVR hiện đại | Logit của các token vi phạm cú pháp bị gán $-\infty$, điều khiển chính xác FSM |
-| **Tensor vùng nhớ phẳng có bước nhảy (`Strided Tensor`)** | Hiểu bản chất vật lý của bộ nhớ liên tục; cho phép chuyển vị ma trận $O(1)$ mà không tốn chi phí sao chép dữ liệu | `transpose` chỉ hoán đổi `shape` và `strides`, dữ liệu 1D giữ nguyên vẹn |
+| **Tensor vùng nhớ phẳng có bước nhảy (`Strided Tensor`)** | Hiểu bản chất vật lý của bộ nhớ liên tục; cho phép chuyển vị ma trận có chi phí logic $O(1)$ (chỉ đổi `shape`/`strides`, không xáo trộn dữ liệu) | `transpose` chỉ hoán đổi `shape` và `strides`, dữ liệu 1D giữ nguyên vẹn |
 | **Hàm `log_softmax` & `cross_entropy_masked`** | Tránh lỗi tràn số dấu phẩy động ($e^{1000} \to \infty$) và hỗ trợ bỏ qua nhãn đệm (`ignore_index = -100`) trong huấn luyện SFT | Logit lớn $\pm 1000.0$ vẫn cho xác suất hợp lệ; vị trí đệm có gradient bằng đúng $0.0$ |
 | **Động cơ vi phân ngược (`AutogradTape`)** | Nền tảng của thuật toán lan truyền ngược (Backpropagation); hiểu chính xác dòng chảy gradient trong mạng nơ-ron | Mọi đạo hàm giải tích khớp với sai phân hữu hạn trung tâm với sai số tuyệt đối $< 10^{-8}$ |
 
@@ -168,7 +168,7 @@ pub struct TokenPair {
 ```
 
 #### Bảo vệ token đặc biệt (Special Tokens)
-Mô hình lý luận (Reasoning Model) như DeepSeek-R1 hay OpenAI o1/o3 yêu cầu các thẻ cấu trúc đặc biệt để phân tách luồng tư duy nội tâm và kết quả cuối cùng:
+Mô hình lý luận (Reasoning Model) như DeepSeek-R1 (xuất chuỗi suy luận giữa cặp thẻ `<think>` … `</think>`) cần các thẻ cấu trúc đặc biệt để phân tách luồng tư duy nội tâm và kết quả cuối cùng:
 - `<|bos|>`: Bắt đầu chuỗi (Beginning of Sequence).
 - `<|eos|>`: Kết thúc chuỗi (End of Sequence).
 - `<think>` và `</think>`: Ranh giới khối suy luận nội tâm (Chain of Thought).
@@ -253,7 +253,9 @@ Khi gọi `tensor.transpose(dim0, dim1)`:
 
 Ví dụ, ma trận $[2, 3]$ với strides $[3, 1]$ sau khi chuyển vị thành ma trận $[3, 2]$ sẽ có strides $[1, 3]$. Khi truy cập phần tử $(i, j)$ của ma trận mới:
 $$\text{idx} = i \times 1 + j \times 3$$
-Phần tử $(0, 1)$ sẽ nằm ở vị trí $0 \times 1 + 1 \times 3 = 3$, hoàn toàn khớp với phần tử $(1, 0)$ của ma trận ban đầu ($1 \times 3 + 0 \times 1 = 3$). Phép toán này tốn thời gian $O(1)$ và cấp phát $0$ byte dữ liệu mới.
+Phần tử $(0, 1)$ sẽ nằm ở vị trí $0 \times 1 + 1 \times 3 = 3$, hoàn toàn khớp với phần tử $(1, 0)$ của ma trận ban đầu ($1 \times 3 + 0 \times 1 = 3$). Về mặt thuật toán, phép chuyển vị chỉ đổi chỗ hai mảng nhỏ `shape` và `strides` nên tốn thời gian $O(1)$ và không di chuyển phần tử nào trong `data`.
+
+> **Ghi chú trung thực về mã minh họa**: để giữ kiểu sở hữu đơn giản `Vec<f64>`, hàm `transpose` (và `slice_2d` ở Bài tập 2) trong mã bên dưới vẫn gọi `self.data.clone()` khi dựng tensor mới, tức là sao chép bộ đệm một lần với chi phí $O(n)$ bộ nhớ. Phần "không xáo trộn dữ liệu" vẫn đúng, nhưng muốn *chia sẻ* bộ đệm thật sự (cấp phát $0$ byte) thì phải đổi `data` sang kiểu dùng chung như `Rc<[f64]>`/`Arc<[f64]>` hoặc dùng view mượn `&[f64]`, đúng như các thư viện tensor thực tế (PyTorch, NumPy) làm.
 
 #### Ổn định số học trong `log_softmax`
 Hàm softmax thông thường:
@@ -279,7 +281,7 @@ Nếu mọi token trong chuỗi đều bị mask ($N_{\text{valid}} = 0$), hàm 
 
 Động cơ vi phân tự động là trái tim của mọi khuôn khổ học sâu như PyTorch hay JAX. Có hai chế độ vi phân tự động:
 1. **Forward-Mode (Vi phân xuôi)**: Tính đạo hàm của tất cả các biến trung gian theo một biến đầu vào $x_j$. Nếu mạng có $M$ đầu vào/trọng số và 1 đầu ra tổn thất $\mathcal{L}$, Forward-Mode đòi hỏi $M$ lượt duyệt đồ thị ($O(M)$).
-2. **Reverse-Mode (Vi phân ngược)**: Tính đạo hàm của hàm mục tiêu vô hướng $\mathcal{L}$ theo **tất cả** các biến trung gian và trọng số cùng lúc trong một lượt duyệt duy nhất từ ngọn về gốc ($O(1)$). Vì các mô hình LLM có từ hàng triệu đến hàng trăm tỷ tham số nhưng chỉ có 1 giá trị tổn thất $\mathcal{L}$, Reverse-Mode là lựa chọn tối ưu duy nhất khả dĩ.
+2. **Reverse-Mode (Vi phân ngược)**: Tính đạo hàm của hàm mục tiêu vô hướng $\mathcal{L}$ theo **tất cả** các biến trung gian và trọng số cùng lúc trong một lượt duyệt duy nhất từ ngọn về gốc ($O(1)$ lượt duyệt, chi phí cùng bậc với một lượt duyệt xuôi). Vì các mô hình LLM có từ hàng triệu đến hàng trăm tỷ tham số nhưng chỉ có 1 giá trị tổn thất $\mathcal{L}$, Reverse-Mode là lựa chọn tối ưu duy nhất khả dĩ.
 
 #### Đồ thị tính toán DAG và Băng ghi (Tape)
 Băng ghi `AutogradTape` lưu trữ các nút tính toán theo đúng thứ tự thực thi của pha xuôi:
@@ -315,8 +317,10 @@ Dưới đây là công thức giải tích toán học chính xác được cà
 | **MatMul** | $C = A \times B$ | $g \times B^T$ | $A^T \times g$ |
 | **Sum** | $s = \sum_k A_k$ | $[g, g, \dots, g]$ | *(không có)* |
 | **LogSoftmax** | $P = \text{log\_softmax}(Z)$ | $g_i - e^{P_i} \sum_j g_j$ | *(không có)* |
-| **CrossEntropy** | $\mathcal{L} = -\frac{1}{N} \sum \ln P_y$ | $\frac{g}{N_{\text{valid}}} (e^{Z_{i, v}} - \delta_{v, y_i})$ (với vị trí hợp lệ) | *(không có)* |
+| **CrossEntropy** | $\mathcal{L} = -\frac{1}{N_{\text{valid}}} \sum_i P_{i, y_i}$ (với $P$ là log-xác suất) | $-\frac{g}{N_{\text{valid}}} \delta_{v, y_i}$ (với vị trí hợp lệ; vị trí bị mask cho $0$) | *(không có)* |
 | **RmsNorm** | $Y = \frac{X}{\text{RMS}(X)} \odot W$ | $\frac{1}{\text{RMS}} \left(g \odot W - \hat{X} \cdot \frac{1}{d} \sum (g \odot W \odot \hat{X})\right)$ | $g \odot \hat{X}$ |
+
+Lưu ý về nút `CrossEntropy`: đầu vào của nó là **log-xác suất** $P = \text{log\_softmax}(Z)$, nên đạo hàm theo đầu vào chỉ có một phần tử khác $0$ mỗi hàng, đó là $-g / N_{\text{valid}}$ tại cột đúng nhãn. Khi nối tiếp với nút `LogSoftmax`, quy tắc dây chuyền cho ra gradient theo logit $\frac{g}{N_{\text{valid}}}\left(\text{softmax}(Z)_v - \delta_{v, y_i}\right)$, tức công thức "xác suất trừ one-hot" quen thuộc. Vì $\sum_v (\text{softmax}(Z)_v - \delta_{v, y_i}) = 0$, nên có thể nhập nhằng hai công thức này mà vẫn nhận kết quả cuối cùng đúng. Tuy vậy nút `CrossEntropy` đứng riêng phải trả đúng đạo hàm theo log-xác suất, và bài kiểm tra bên dưới kiểm chứng điều đó.
 
 #### Kiểm chứng sai phân hữu hạn trung tâm (Central Finite Difference)
 Làm sao để chắc chắn 100% rằng các công thức đạo hàm giải tích phức tạp ở trên không bị sai một dấu trừ hay một hệ số chia?
@@ -936,7 +940,7 @@ impl Tensor {
         self.data[idx] = val;
     }
 
-    /// Hoán đổi hai chiều O(1) mà không sao chép dữ liệu (Zero-Copy Transpose)
+    /// Hoán đổi hai chiều: chỉ đổi chỗ `shape`/`strides` (logic O(1), không xáo trộn dữ liệu)
     pub fn transpose(&self, dim0: usize, dim1: usize) -> Self {
         assert!(dim0 < self.shape.len() && dim1 < self.shape.len());
         let mut new_shape = self.shape.clone();
@@ -1457,6 +1461,10 @@ impl AutogradTape {
                     targets,
                     ignore_index,
                 } => {
+                    // Đầu vào của nút này là LOG-XÁC SUẤT (đầu ra của log_softmax), nên
+                    // dL/dlogP[r, c] = -1_{c == target} / valid_count * upstream_grad.
+                    // Khi nối tiếp với nút LogSoftmax ở dưới, gradient hợp thành theo logit
+                    // chính là (softmax - one_hot) / valid_count.
                     let vin = &self.nodes[parents[0].id].value;
                     let (rows, cols) = (vin.shape[0], vin.shape[1]);
                     let upstream = node_grad.data[0];
@@ -1480,11 +1488,7 @@ impl AutogradTape {
                         if t == ignore_index {
                             continue;
                         }
-                        for c in 0..cols {
-                            let p = vin.get(&[r, c]).exp();
-                            let indicator = if c == (t as usize) { 1.0 } else { 0.0 };
-                            grad_in[r * cols + c] = (p - indicator) * scale;
-                        }
+                        grad_in[r * cols + (t as usize)] = -scale;
                     }
                     self.accumulate_grad(parents[0], Tensor::new(grad_in, vec![rows, cols]));
                 }
@@ -1614,7 +1618,8 @@ fn main() {
     let mut tape = AutogradTape::new();
     let mut rng = SplitMix64::new(42);
 
-    let x_val = Tensor::new(vec![0.5, -0.2, 0.8, -0.5], vec![2, 2]);
+    // Đầu vào dương để ReLU có cả đơn vị bật lẫn tắt, tránh kiểm chứng "0 so với 0" vô nghĩa
+    let x_val = Tensor::new(vec![0.5, 0.2, 0.8, 0.5], vec![2, 2]);
     let w1_data: Vec<f64> = (0..4).map(|_| rng.next_gaussian(0.0, 0.1)).collect();
     let w1_val = Tensor::new(w1_data, vec![2, 2]);
 
@@ -1633,6 +1638,12 @@ fn main() {
 
     tape.backward(loss_id);
     let grad_w1 = tape.grad(w1_id).expect("Phải có gradient cho w1").clone();
+    let grad_l1: f64 = grad_w1.data.iter().map(|g| g.abs()).sum();
+    println!("Chuẩn L1 của gradient w1: {:.6}", grad_l1);
+    assert!(
+        grad_l1 > 1e-3,
+        "Gradient bằng 0 làm kiểm chứng sai phân trở nên vô nghĩa"
+    );
 
     // 4. Kiểm chứng sai phân hữu hạn trung tâm < 1e-8
     let f_loss = |w_test: &Tensor| -> f64 {
@@ -1670,11 +1681,11 @@ Khi triển khai các thuật toán đồ thị tính toán và cấu trúc đ�
 | Lỗi biên dịch / Hành vi sai lệch | Nguyên nhân gốc rễ | Giải pháp kỹ thuật chuẩn xác |
 |---|---|---|
 | `E0502: cannot borrow *self as mutable because it is also borrowed as immutable` | Trong `AutogradTape::backward()`, khi đọc giá trị của nút `self.nodes[i]` đồng thời gọi `self.accumulate_grad()` sửa đổi nút cha. | Tách pha đọc và ghi: nhân bản dữ liệu đầu vào cần thiết (`let va = self.nodes[parents[0].id].value.clone();`) trước khi gọi phương thức biến đổi `accumulate_grad`. |
-| `E0382: use of moved value: b` sau khi gọi `b.transpose(0, 1)` | Phương thức `transpose(&self)` nhận tham chiếu mượn, nhưng người dùng vô tình tiêu thụ giá trị hoặc gọi `b` sau khi chuyển quyền sở hữu. | Thiết kế `transpose(&self) -> Self` trả về bản sao nhẹ (shallow copy) của tensor: dữ liệu `Vec<f64>` được nhân bản nhanh chóng hoặc dùng cấu trúc chia sẻ con trỏ. |
+| `E0382: borrow of moved value: b` sau khi gọi `b.transpose(0, 1)` | Nếu khai báo nhầm `transpose(self)` (nhận quyền sở hữu thay vì mượn), lời gọi di chuyển `b` vào hàm và mọi lần dùng `b` sau đó đều bị từ chối. | Khai báo `transpose(&self) -> Self`: chỉ mượn tensor gốc rồi trả về tensor mới có `shape`/`strides` đã hoán đổi. Mã minh họa còn `clone()` bộ đệm `data` để tensor mới sở hữu bản sao riêng; muốn chia sẻ bộ đệm thật sự thì dùng `Rc<[f64]>`/`Arc<[f64]>`. |
 | `Panic: byte index is not a char boundary` khi tiền tách từ tiếng Việt | Cắt lát chuỗi `&text[..i]` tại vị trí byte nằm giữa ký tự Unicode đa byte UTF-8 (ví dụ chữ `ệ` tốn 3 byte: `0xE1, 0xBB, 0x87`). | Tuyệt đối không dùng chỉ số số nguyên để cắt chuỗi. Sử dụng iterator ký tự an toàn: `text.chars()`, hoặc duyệt cửa sổ trên mảng byte thuần túy `&[u8]`. |
 | `Numerical NaN: 0.0 / 0.0` trong hàm mất mát Cross Entropy | Toàn bộ các phần tử trong batch đều mang nhãn bỏ qua `targets = [-100, -100]`, khiến $N_{\text{valid}} = 0$. | Thêm chốt chặn an toàn: `if valid_count > 0 { total / valid_count } else { 0.0 }`. |
 | Lệch sai phân hữu hạn $> 10^{-6}$ trong phép nhân ma trận | Chọn bước sai phân $\epsilon$ quá nhỏ ($10^{-10}$), dẫn đến lỗi triệt tiêu số có nghĩa (Catastrophic Cancellation) do giới hạn độ chính xác của `f64` ($\approx 2.2 \times 10^{-16}$). | Với hàm tuyến tính như nhân ma trận, chọn $\epsilon \in [10^{-5}, 10^{-6}]$ để cân bằng tối ưu giữa sai số cắt cụt chuỗi Taylor và sai số làm tròn số học thực nghiệm. |
-| `Overflow / Panic: attempt to multiply with overflow` trong `SplitMix64` | Phép tính `state += 0x9E37...` gây tràn số nguyên 64-bit ở chế độ debug nếu không bật cờ wrapping. | Sử dụng tường minh các phương thức tràn số nguyên của Rust: `wrapping_add()` và `wrapping_mul()`. |
+| `Panic: attempt to add with overflow` / `attempt to multiply with overflow` trong `SplitMix64` | Phép cộng `state + 0x9E37...` và các phép nhân với hằng số 64-bit gây tràn số nguyên ở chế độ debug (SplitMix64 vốn dựa trên số học modulo $2^{64}$). | Sử dụng tường minh các phương thức tràn số nguyên của Rust: `wrapping_add()` và `wrapping_mul()`. |
 
 ---
 
@@ -1684,7 +1695,7 @@ Khi triển khai các thuật toán đồ thị tính toán và cấu trúc đ�
 
 1. **Khứ hồi không mất mát (Lossless Roundtrip)**: Bộ tách từ Byte-Level BPE với 256 byte cơ sở UTF-8 bảo đảm mọi chuỗi dữ liệu (văn bản có dấu, mã nguồn, nhị phân) đều được mã hóa và giải mã chính xác 100%, vĩnh viễn loại bỏ khái niệm lỗi từ lạ `<unk>`.
 2. **Tính tất định tuyệt đối (Deterministic Tie-Breaking)**: Hàng đợi `BinaryHeap` kết hợp `Reverse(TokenPair)` bảo đảm thứ tự gộp token giống hệt nhau trên mọi nền tảng phần cứng và hệ điều hành.
-3. **Chuyển vị $O(1)$ không sao chép**: Tensor bước nhảy (`Strided Tensor`) phân tách khái niệm hình dạng tọa độ logic (`shape`) khỏi vị trí lưu trữ vật lý (`strides`), cho phép các phép toán đại số vận hành với hiệu năng bộ nhớ tối đa.
+3. **Chuyển vị $O(1)$ ở mức logic**: Tensor bước nhảy (`Strided Tensor`) phân tách khái niệm hình dạng tọa độ logic (`shape`) khỏi vị trí lưu trữ vật lý (`strides`), cho phép các phép toán đại số vận hành với hiệu năng bộ nhớ tối đa.
 4. **Ổn định số học bắt buộc**: Hàm `log_softmax` phải luôn sử dụng kỹ thuật trừ giá trị cực đại để miễn nhiễm hoàn toàn với nguy cơ tràn số học `+inf` hay `NaN`.
 5. **Đạo hàm giải tích trung thực**: Mọi nhánh tính toán trong đồ thị vi phân ngược `AutogradTape` phải được kiểm chứng tự động với sai phân hữu hạn trung tâm đạt độ lệch $< 10^{-8}$.
 
@@ -1770,7 +1781,7 @@ Trong các kiến trúc Transformer hiện đại, việc cắt lát ma trận �
 
 **Yêu cầu**:
 Viết phương thức `slice_2d(&self, row_range: (usize, usize), col_range: (usize, usize)) -> Tensor` trên `Tensor`.
-Phương thức này không được cấp phát mảng dữ liệu mới (`data` được chia sẻ hoặc sao chép con trỏ nhẹ), mà chỉ tính toán lại `offset`, `shape` và bảo lưu `strides` hiện tại. Viết bài test chứng minh tính đúng đắn khi đọc và sửa dữ liệu qua lát cắt.
+Phương thức này không được xáo trộn dữ liệu, mà chỉ tính toán lại `offset`, `shape` và bảo lưu `strides` hiện tại (nếu muốn chia sẻ bộ đệm thật sự mà không cấp phát, hãy đổi `data` sang `Rc<[f64]>`; lời giải mẫu dưới đây dùng `clone()` cho đơn giản). Viết bài test chứng minh tính đúng đắn khi đọc và sửa dữ liệu qua lát cắt.
 
 <details>
 <summary>Gợi ý & Lời giải mẫu</summary>
@@ -1923,6 +1934,17 @@ fn test_layernorm_analytic_grad_matches_finite_diff() {
     let num_dgamma0 = (sum_gplus - sum_gminus) / (2.0 * h);
     let diff_gamma = (dgamma[0] - num_dgamma0).abs();
     assert!(diff_gamma < 1e-8, "Sai số giải tích LayerNorm cho gamma[0] ({}) phải < 1e-8", diff_gamma);
+
+    // Kiểm chứng sai phân hữu hạn trung tâm cho beta[0]
+    let (_, _, _, dbeta) = layernorm_forward_backward(&x, &gamma, &beta, eps, &upstream);
+    let mut beta_plus = beta.clone();
+    beta_plus[0] += h;
+    let (y_bplus, _, _, _) = layernorm_forward_backward(&x, &gamma, &beta_plus, eps, &upstream);
+    let mut beta_minus = beta.clone();
+    beta_minus[0] -= h;
+    let (y_bminus, _, _, _) = layernorm_forward_backward(&x, &gamma, &beta_minus, eps, &upstream);
+    let num_dbeta0 = (y_bplus.iter().sum::<f64>() - y_bminus.iter().sum::<f64>()) / (2.0 * h);
+    assert!((dbeta[0] - num_dbeta0).abs() < 1e-8);
 }
 ```
 </details>

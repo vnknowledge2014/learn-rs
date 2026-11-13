@@ -16,6 +16,9 @@ authors = ["Rust Masterclass"]
 language = "vi"
 src = "."
 
+# Render công thức LaTeX ($...$, $$...$$). Cài: cargo install mdbook-katex --locked
+[preprocessor.katex]
+
 [output.html]
 default-theme = "rust"
 preferred-dark-theme = "ayu"

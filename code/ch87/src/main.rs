@@ -222,7 +222,8 @@ impl<I> ToolEnvelope<I> {
 // 3. CHUẨN KỸ NĂNG SKILL.MD 3 TẦNG (SKILL CATALOG PROGRESSIVE DISCLOSURE)
 // ============================================================================
 
-/// Giới hạn số dòng tối đa cho thân tệp SKILL.md (< 500 dòng).
+/// Giới hạn số dòng tối đa cho thân tệp SKILL.md (< 500 dòng; đặc tả Agent Skills chỉ khuyến nghị,
+/// ở đây ta nâng thành bất biến cứng).
 pub const MAX_SKILL_BODY_LINES: usize = 500;
 
 /// Lỗi phát sinh trong quá trình đăng ký hoặc truy xuất kỹ năng.
@@ -302,7 +303,7 @@ pub struct ActiveSkill {
 }
 
 /// Danh mục kỹ năng hỗ trợ tiết lộ lũy tiến 3 tầng (Progressive Disclosure):
-/// - Tầng 0: Mục lục tóm tắt nhẹ (~2% dung lượng token).
+/// - Tầng 0: Mục lục tóm tắt nhẹ (`name` + `description`, cỡ 100 token mỗi kỹ năng).
 /// - Tầng 1: Thân chỉ dẫn SKILL.md khi phát sinh nhu cầu.
 /// - Tầng 2: Tài nguyên phụ trợ (mẫu code, tài liệu tham khảo, kịch bản).
 #[derive(Debug, Clone, Default)]
@@ -317,7 +318,9 @@ impl SkillCatalog {
         }
     }
 
-    /// Đăng ký một kỹ năng từ chuỗi Markdown chuẩn SKILL.md.
+    /// Đăng ký một kỹ năng từ chuỗi Markdown theo định dạng SKILL.md (frontmatter YAML `name`,
+    /// `description` + thân Markdown). Trường `exclude` là phần mở rộng của chương này,
+    /// không thuộc đặc tả Agent Skills.
     pub fn register_markdown(
         &mut self,
         raw_markdown: &str,
@@ -1160,7 +1163,8 @@ pub struct PermissionDecision {
     pub reason: String,
 }
 
-/// Cổng quyền hạn 4 tầng (Deny -> Allow -> Mode -> Ask) kết hợp Kill-Switch sống.
+/// Cổng quyền hạn theo từng công cụ (Deny / Allow / AskHuman, kèm mức mặc định) đặt dưới
+/// quyền phủ quyết của Kill-Switch sống.
 #[derive(Debug)]
 pub struct PermissionGate {
     pub rules: BTreeMap<String, PermissionLevel>,
@@ -1952,7 +1956,7 @@ fn main() {
 
     // 2. Đăng ký kỹ năng SKILL.md
     let mut catalog = SkillCatalog::new();
-    let skill_md = "---\nname: safe_patcher\ndescription: Vá mã nguồn nguyên tử bảo toàn định dạng\nexclude: legacy_svn\n---\nThân chỉ dẫn kỹ thuật vá tệp an toàn.";
+    let skill_md = "---\nname: safe-patcher\ndescription: Vá mã nguồn nguyên tử bảo toàn định dạng\nexclude: legacy_svn\n---\nThân chỉ dẫn kỹ thuật vá tệp an toàn.";
     catalog
         .register_markdown(skill_md, BTreeMap::new())
         .expect("Đăng ký SKILL.md thành công");
@@ -2097,27 +2101,27 @@ mod tests {
     #[test]
     fn test_skill_catalog_tier0_index() {
         let mut cat = SkillCatalog::new();
-        let doc = "---\nname: git_helper\ndescription: Hỗ trợ thao tác nhánh git\n---\nNội dung.";
+        let doc = "---\nname: git-helper\ndescription: Hỗ trợ thao tác nhánh git\n---\nNội dung.";
         cat.register_markdown(doc, BTreeMap::new()).unwrap();
         let idx = cat.render_tier0_index();
-        assert!(idx.contains("- git_helper: Hỗ trợ thao tác nhánh git"));
+        assert!(idx.contains("- git-helper: Hỗ trợ thao tác nhánh git"));
     }
 
     #[test]
     fn test_skill_catalog_tier1_activation_keyword() {
         let mut cat = SkillCatalog::new();
-        let doc = "---\nname: rust_tester\ndescription: Chạy bài kiểm thử cargo test\n---\nCargo test runner.";
+        let doc = "---\nname: rust-tester\ndescription: Chạy bài kiểm thử cargo test\n---\nCargo test runner.";
         cat.register_markdown(doc, BTreeMap::new()).unwrap();
 
         let active = cat.activate_tier1("Hãy chạy cargo test kiểm tra");
         assert_eq!(active.len(), 1);
-        assert_eq!(active[0].name, "rust_tester");
+        assert_eq!(active[0].name, "rust-tester");
     }
 
     #[test]
     fn test_skill_catalog_tier1_negative_exclude_filter() {
         let mut cat = SkillCatalog::new();
-        let doc = "---\nname: db_migration\ndescription: Chạy migration csdl\nexclude: sqlite, nosql\n---\nThân kỹ năng.";
+        let doc = "---\nname: db-migration\ndescription: Chạy migration csdl\nexclude: sqlite, nosql\n---\nThân kỹ năng.";
         cat.register_markdown(doc, BTreeMap::new()).unwrap();
 
         // Kích hoạt hợp lệ

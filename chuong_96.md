@@ -16,7 +16,7 @@ Tuy nhiên, khi cộng đồng nghiên cứu AI bước sang giai đoạn phát 
    - *Mạng Critic ($V_\phi$)*: Mô hình ước lượng giá trị kỳ vọng của từng trạng thái $V(s)$.
    - *Mạng Reference ($\pi_{\text{ref}}$)*: Bản sao đóng băng của mô hình gốc để phạt phân kỳ KL, ngăn trôi dạt chính sách.
    - *Mạng Reward ($R_\psi$)*: Mô hình chấm điểm ưu tiên của con người.
-   Việc duy trì mạng Critic khổng lồ ngốn tới hơn 50% tổng dung lượng VRAM của toàn bộ cụm huấn luyện, biến quá trình hậu huấn luyện các mô hình từ 70B tham số trở lên thành một bài toán kinh tế xa xỉ.
+   Mạng Critic thường có kích thước cỡ mạng Actor và cũng phải mang theo trạng thái bộ tối ưu hóa, nên riêng nó đã chiếm một phần rất lớn VRAM của cụm huấn luyện, biến quá trình hậu huấn luyện các mô hình từ 70B tham số trở lên thành một bài toán kinh tế xa xỉ.
 
 2. **Hiện tượng "Gian lận Phần thưởng" (Reward Hacking & Goodhart's Law)**:
    Định luật Goodhart chỉ ra rằng: *"Khi một thước đo trở thành mục tiêu, nó không còn là một thước đo tốt nữa"*. Vì Reward Model chỉ là một mạng nơ-ron xấp xỉ sở thích con người, mạng Actor rất nhanh chóng học được các "lỗ hổng" của Reward Model: viết câu trả lời thật dài, dùng nhiều từ ngữ hoa mỹ, nịnh hót người dùng (Sycophancy) để giành điểm thưởng cao, trong khi kết quả toán học hoặc đoạn mã nguồn thực chất hoàn toàn sai!
@@ -49,14 +49,14 @@ Tuy nhiên, khi cộng đồng nghiên cứu AI bước sang giai đoạn phát 
 │         │                     │                               │ Điểm R_1, ..., R_G     │
 │         └──────────┬──────────┘                               ▼                        │
 │                    ▼                           ┌──────────────────────────────┐        │
-│          Cập nhật PPO + GAE                    │ Chuẩn hóa Nhóm GRPO/Dr/DAPO  │        │
-│          (Chi phí VRAM: 4x)                    │ A_i = (R_i - mean(R)) / std  │        │
+│          Cập nhật PPO + GAE                    │ Lợi thế tương đối theo nhóm  │        │
+│          (Chi phí VRAM: 4x)                    │ A_i = R_i - mean(R) [/ std]  │        │
 │                                                │ (LOẠI BỎ HOÀN TOÀN CRITIC!)  │        │
 │                                                └──────────────┬───────────────┘        │
 │                                                               │ Lợi thế nhóm A_i       │
 │                                                               ▼                        │
 │                                                Cập nhật Chính sách Kẹp RLVR            │
-│                                                (Chi phí VRAM: Tiết kiệm > 50%)         │
+│                                                (Chi phí VRAM: Tiết kiệm ≈ 50%)         │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -65,12 +65,12 @@ Tuy nhiên, khi cộng đồng nghiên cứu AI bước sang giai đoạn phát 
 Để giải quyết triệt để những bế tắc trên, ngành công nghiệp AI đã tạo nên bước ngoặt mang tên **RLVR (Reinforcement Learning with Verifiable Rewards — Học Tăng cường Có Phần thưởng Kiểm chứng)**:
 
 - **Bộ thẩm định Chân lý Tất định (Deterministic Verifier)**: Thay vì dùng một mạng Reward Model cảm tính, RLVR sử dụng các chương trình thẩm định khách quan 100%: trình biên dịch mã nguồn (Compiler), bộ kiểm thử đơn vị (Unit Tests), bộ giải toán hình thức (Formal Theorem Provers) hoặc bộ bóc tách cú pháp thẻ suy nghĩ `<think>...</think><answer>...</answer>`. Phần thưởng được trao dựa trên chân lý toán học và logic thực thi, triệt tiêu hoàn toàn hiện tượng Reward Hacking.
-- **Loại bỏ Mạng Critic với GRPO (Group Relative Policy Optimization)**: Được đề xuất bởi nhóm nghiên cứu DeepSeek (DeepSeekMath & DeepSeek-R1), GRPO loại bỏ hoàn toàn mạng Critic $V_\phi$. Đối với mỗi câu hỏi, mô hình sinh ra một nhóm $G$ câu trả lời khác nhau $\{o_1, o_2, \dots, o_G\}$. Điểm phần thưởng của từng câu trả lời được so sánh trực tiếp với điểm trung bình của cả nhóm để tính toán lợi thế tương đối (Relative Advantage). Kỹ thuật này cắt giảm hơn 50% bộ nhớ VRAM, cho phép dồn toàn bộ năng lực phần cứng để mở rộng kích thước mô hình và độ dài ngữ cảnh suy luận.
+- **Loại bỏ Mạng Critic với GRPO (Group Relative Policy Optimization)**: Được đề xuất bởi nhóm nghiên cứu DeepSeek (DeepSeekMath & DeepSeek-R1), GRPO loại bỏ hoàn toàn mạng Critic $V_\phi$. Đối với mỗi câu hỏi, mô hình sinh ra một nhóm $G$ câu trả lời khác nhau $\{o_1, o_2, \dots, o_G\}$. Điểm phần thưởng của từng câu trả lời được so sánh trực tiếp với điểm trung bình của cả nhóm để tính toán lợi thế tương đối (Relative Advantage). Kỹ thuật này bỏ hẳn một mô hình cỡ Actor (cùng trạng thái bộ tối ưu hóa của nó) khỏi bộ nhớ, cho phép dồn năng lực phần cứng để mở rộng kích thước mô hình và độ dài ngữ cảnh suy luận.
 - **Sự Tiến hóa của 4 Biến thể RLVR Tiên phong**:
-  1. **`Grpo`**: Chuẩn hóa lợi thế bằng kỳ vọng $\mu_R$ và độ lệch chuẩn $\sigma_R$ của nhóm.
-  2. **`DrGrpo` (Direct Reward GRPO)**: Khắc phục hiện tượng suy giảm gradient trên các chuỗi sinh dài bằng cách cố định mẫu số độ dài `max_gen_len`, ngăn chặn mô hình gian lận kéo dài câu trả lời.
-  3. **`Dapo` (Decoupled Advantage Policy Optimization)**: Áp dụng cơ chế kẹp bất đối xứng $[1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}}]$ để khuyến khích khám phá tích cực, lọc bỏ các nhóm có phương sai bằng 0 ($\sigma_R^2 = 0$) để chống nhiễu số học, và đặt hệ số $\beta_{\text{KL}} = 0$.
-  4. **`Gspo` (Group Sequence-level Policy Optimization)**: Sử dụng tỷ số quan trọng mức chuỗi trung bình hình học $r_{\text{seq}} = \exp\left(\frac{1}{T}\sum_t \Delta \log \pi_t\right)$ thay cho tích lũy tỷ số token rời rạc, khống chế hiện tượng bùng nổ phương sai trên các chuỗi suy luận hàng nghìn token.
+  1. **`Grpo`** (Group Relative Policy Optimization): Chuẩn hóa lợi thế bằng kỳ vọng $\mu_R$ và độ lệch chuẩn $\sigma_R$ của nhóm; loss mỗi chuỗi được chia cho độ dài $|o_i|$.
+  2. **`DrGrpo`** (**GRPO Done Right**, Liu et al., 2025): Sửa hai thiên kiến của GRPO bằng cách **bỏ** cả phép chia cho $\sigma_R$ lẫn phép chia cho $|o_i|$. Lợi thế chỉ còn là $R_i - \mu_R$; loss tổng token được chuẩn hóa bằng một **hằng số** (ngân sách sinh tối đa `max_gen_len`) thay cho độ dài thực của từng chuỗi.
+  3. **`Dapo`** (Decoupled Clip and Dynamic sAmpling Policy Optimization, Yu et al., 2025): Kẹp bất đối xứng **Clip-Higher** $[1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}}]$ lên tỷ số quan trọng để chống sụp entropy, lọc bỏ các nhóm có phương sai bằng 0 (dynamic sampling), tính loss cấp token và bỏ phạt KL ($\beta_{\text{KL}} = 0$).
+  4. **`Gspo`** (Group Sequence Policy Optimization, Zheng et al., 2025): Dùng tỷ số quan trọng mức chuỗi, chuẩn hóa độ dài (trung bình hình học) $s_i = \exp\left(\frac{1}{|y_i|}\sum_t \Delta \log \pi_t\right)$ thay cho tỷ số token rời rạc, vì phần thưởng được trao cho cả chuỗi chứ không cho từng token.
 - **Phạt Phân kỳ KL Không Âm $k_3$ của John Schulman**: Sử dụng bộ ước lượng $D_{k3}(\pi, \pi_{\text{ref}}) = \exp(d) - d - 1$ với $d = \log \pi_{\text{ref}} - \log \pi$. Công thức này đảm bảo phân kỳ KL luôn không âm tại mọi điểm mẫu cục bộ, triệt tiêu hiện tượng gradient dao động bất ổn của các bộ ước lượng truyền thống.
 - **Tín dụng Hiệu suất Gọt tỉa Ngữ cảnh Có Điều kiện (Conditional Context Pruning Efficiency Credit)**: Cơ chế thưởng hiệu suất cho các chuỗi suy luận ngắn gọn, xúc tích, nhưng được khóa chặt bởi điều kiện tiên quyết: **nhóm phải có tối thiểu $\ge 2$ quỹ đạo giải đúng bài toán**. Điều này ngăn chặn triệt để hành vi mô hình "gian lận" cắt cụt câu trả lời khi giải sai để trục lợi điểm ngắn gọn.
 
@@ -104,7 +104,7 @@ Hãy tưởng tượng bạn đang huấn luyện một học viên chơi cờ v
   Không quan tâm bạn ngồi cong hay thẳng, không quan tâm bạn thở dài hay mỉm cười: nếu nước cờ dẫn đến **Chiếu Bí (Checkmate)**, máy chấm **1 Điểm**. Nếu phạm luật hoặc bị chiếu bí, máy chấm **0 Điểm**.
   
   Để huấn luyện kỳ thủ, bạn cho một nhóm 8 kỳ thủ (Group of 8 Rollouts) cùng chơi một thế cờ:
-  - Nếu điểm trung bình của nhóm là $0.25$, kỳ thủ nào tìm được nước chiếu bí ($R = 1.0$) sẽ có lợi thế vượt trội so với trung bình nhóm ($A = +0.75$). Nước đi đó được khen thưởng và nhân rộng!
+  - Nếu điểm trung bình của nhóm là $0.25$, kỳ thủ nào tìm được nước chiếu bí ($R = 1.0$) sẽ có lợi thế vượt trội so với trung bình nhóm ($A = +0.75$, tính theo $R_i - \mu_R$ trước khi chia cho độ lệch chuẩn nếu dùng GRPO). Nước đi đó được khen thưởng và nhân rộng!
   - Kỳ thủ nào đi nước sai ($R = 0.0$) sẽ có lợi thế âm ($A = -0.25$). Nước đi đó bị triệt tiêu!
   - **Không cần trợ lý Critic**: Chính sự chênh lệch thành tích giữa các thành viên trong nhóm đóng vai trò là thước đo giá trị!
 
@@ -171,7 +171,7 @@ Một kết quả toán học then chốt chứng minh rằng: **Ta có thể tr
 
 $$\mathbb{E}_{a_t \sim \pi_\theta} \left[ \nabla_\theta \log \pi_\theta(a_t | s_t) b(s_t) \right] = b(s_t) \sum_{a} \pi_\theta(a|s_t) \frac{\nabla_\theta \pi_\theta(a|s_t)}{\pi_\theta(a|s_t)} = b(s_t) \nabla_\theta \left( \sum_a \pi_\theta(a|s_t) \right) = b(s_t) \nabla_\theta (1) = 0$$
 
-Lựa chọn tối ưu nhất cho $b(s_t)$ nhằm giảm thiểu phương sai chính là **Hàm Giá Trị Trạng Thái** $V(s_t) = \mathbb{E}[G_t | s_t]$.
+Lựa chọn tự nhiên và gần tối ưu nhất cho $b(s_t)$ nhằm giảm phương sai chính là **Hàm Giá Trị Trạng Thái** $V(s_t) = \mathbb{E}[G_t | s_t]$ (GRPO thay nó bằng trung bình phần thưởng của nhóm).
 Khi đó, phần chênh lệch trở thành **Hàm Lợi Thế (Advantage Function)**:
 
 $$A(s_t, a_t) = Q(s_t, a_t) - V(s_t)$$
@@ -228,7 +228,7 @@ $$\hat{A}_0 = -V_0 + \left[ r_0 + (\gamma \lambda) r_1 + (\gamma \lambda)^2 r_2 
 Quan sát điều gì xảy ra ở hai điểm cực trị:
 1. **Khi $\lambda = 0$**:
    $$\hat{A}_0 = -V_0 + r_0 + \gamma(1 - 0) V_1 = r_0 + \gamma V_1 - V_0 = \delta_0$$
-   Toàn bộ các bước thời gian $t \ge 2$ biến mất. Lợi thế phụ thuộc hoàn toàn vào giá trị kế tiếp do mạng Critic ước lượng.
+   Toàn bộ các số hạng $\delta_t$ với $t \ge 1$ biến mất. Lợi thế phụ thuộc hoàn toàn vào giá trị kế tiếp do mạng Critic ước lượng.
 2. **Khi $\lambda = 1$**:
    Thành phần $(1 - \lambda) = 0$, triệt tiêu toàn bộ các giá trị trung gian $V_1, V_2, V_3$ nhờ hiện tượng triệt tiêu kính viễn vọng (Telescoping sum):
    $$\hat{A}_0 = -V_0 + \left[ r_0 + \gamma r_1 + \gamma^2 r_2 + \gamma^3 r_3 \right] + \gamma^4 V_4 = \left( \sum_{k=0}^3 \gamma^k r_k + \gamma^4 V_4 \right) - V_0 = R_0 - V_0$$
@@ -242,10 +242,12 @@ Quan sát điều gì xảy ra ở hai điểm cực trị:
 | **PPO + GAE** | **Bắt buộc** | Reward Model | Token | Trung bình | KL Penalty ($k_1$) | **Rất cao ($4\times$)** |
 | **DPO** | Không | Gián tiếp (Offline) | Cặp chuỗi | Kém | Ranh giới ngầm | Thấp ($2\times$) |
 | **KTO** | Không | Gián tiếp (Unpaired) | Chuỗi đơn | Kém | Baseline ngầm | Thấp ($2\times$) |
-| **GRPO** | **Không** | Verifier Chân lý | Token | Trung bình | KL $k_3$ của Schulman | **Tiết kiệm 50% ($2\times$)** |
-| **Dr. GRPO** | **Không** | Verifier Chân lý | Token | **Xuất sắc (Fixed Denom)** | KL $k_3$ | **Tiết kiệm 50% ($2\times$)** |
-| **DAPO** | **Không** | Verifier Chân lý | Token | **Xuất sắc (Lọc Nhóm 0)** | Kẹp bất đối xứng | **Tiết kiệm 50% ($2\times$)** |
-| **GSPO** | **Không** | Verifier Chân lý | **Chuỗi (Geom Mean)** | **Xuất sắc (Không nổ var)** | KL $k_3$ | **Tiết kiệm 50% ($2\times$)** |
+| **GRPO** | **Không** | Verifier Chân lý | Token (loss chia $\lvert o_i \rvert$) | Trung bình (thiên kiến $1/\lvert o_i \rvert$) | KL $k_3$ của Schulman | **Tiết kiệm ≈ 50% ($2\times$)** |
+| **Dr. GRPO** | **Không** | Verifier Chân lý | Token (loss chia hằng số) | **Tốt (bỏ $1/\lvert o_i \rvert$ và $\sigma_R$)** | KL $k_3$ (tùy chọn) | **Tiết kiệm ≈ 50% ($2\times$)** |
+| **DAPO** | **Không** | Verifier Chân lý | Token (loss chia $\sum_i \lvert o_i \rvert$) | **Tốt (loss cấp token + phạt chuỗi quá dài)** | Không KL (chỉ kẹp Clip-Higher) | **Tiết kiệm ≈ 50% ($2\times$)** |
+| **GSPO** | **Không** | Verifier Chân lý | **Chuỗi (Geom Mean)** | **Tốt (chuẩn hóa độ dài trong tỷ số chuỗi)** | Kẹp mức chuỗi (KL $k_3$ tùy chọn) | **Tiết kiệm ≈ 50% ($2\times$)** |
+
+*Ghi chú về cột VRAM*: con số chỉ **đếm số mô hình cỡ lớn phải nạp** (PPO: Actor, Critic, Reference, Reward $= 4$; DPO/KTO: chính sách và tham chiếu $= 2$; GRPO và các biến thể RLVR: Actor và Reference $= 2$, vì bộ chấm là chương trình chứ không phải mạng nơ-ron; DAPO thực tế còn bỏ cả Reference vì $\beta = 0$). Đây là số liệu minh họa theo số mô hình, không phải phép đo bộ nhớ thực tế.
 
 ---
 
@@ -276,7 +278,7 @@ Trong quá trình huấn luyện RLVR chỉ với phần thưởng kiểm chứn
 #### Tại Sao RLVR Tinh Khiết Lại Kích Hoạt Được Năng Lực Này?
 1. **Không bị ép khuôn theo phong cách tư duy con người**: Khi huấn luyện bằng SFT, dữ liệu con người viết thường thẳng đuột từ đầu đến cuối vì con người hiếm khi viết lại toàn bộ quá trình nháp sai, xóa đi viết lại. Học SFT khiến mô hình sợ thừa nhận sai lầm.
 2. **Áp lực phần thưởng chân lý (Truth Reward Pressure)**: Trong RLVR, nếu mô hình đoán bừa đáp án, nó nhận $R = 0.0$. Nhưng nếu nó kéo dài chuỗi suy nghĩ, tự đặt câu hỏi nghi vấn, tự thế số thử lại để đạt kết quả đúng, nó nhận $R = 1.2$.
-3. **Sự nở rộ của độ dài ngữ cảnh tự phát (Spontaneous Length Expansion)**: Số lượng token trong khối `<think>` tăng theo cấp số nhân trong giai đoạn đầu của RLVR, tỷ lệ thuận với độ phức tạp của bài toán. Mô hình tự học cách phân bổ "ngân sách tính toán" (Inference-time Compute) cho các bước khó!
+3. **Sự nở rộ của độ dài ngữ cảnh tự phát (Spontaneous Length Expansion)**: Số lượng token trong khối `<think>` tăng dần trong quá trình RLVR (trong báo cáo DeepSeek-R1-Zero độ dài trung bình tăng đều theo số bước), gắn với độ phức tạp của bài toán. Mô hình tự học cách phân bổ "ngân sách tính toán" (Inference-time Compute) cho các bước khó!
 
 ---
 
@@ -307,7 +309,7 @@ Trong bộ kiểm thử `code/ch96`, ta kiểm chứng tính đúng đắn của
 
 $$f'(x) \approx \frac{f(x + h) - f(x - h)}{2h} \quad \text{với } h = 10^{-6}$$
 
-Kết quả kiểm thử thực nghiệm trên CPU xác nhận độ lệch giữa đạo hàm giải tích và sai phân hữu hạn luôn nhỏ hơn $10^{-9}$, minh chứng cho độ tin cậy tuyệt đối của toán học vi mô.
+Kết quả kiểm thử thực nghiệm trên CPU xác nhận độ lệch giữa đạo hàm giải tích và sai phân hữu hạn luôn nhỏ hơn $10^{-8}$, minh chứng cho độ tin cậy tuyệt đối của toán học vi mô.
 
 ---
 
@@ -336,7 +338,7 @@ Kết quả kiểm thử thực nghiệm trên CPU xác nhận độ lệch gi�
 Quy tắc thẩm định:
 1. Số lần xuất hiện của `<think>`, `</think>`, `<answer>`, `</answer>` trong toàn bộ chuỗi phải đúng bằng $1$.
 2. Vị trí chỉ mục thỏa mãn bất đẳng thức nghiêm ngặt:
-   $$\text{index}(\text{<think>}) < \text{index}(\text{</think>}) < \text{index}(\text{<answer>}) < \text{index}(\text{</answer>})$$
+   $$\text{index}(\langle\texttt{think}\rangle) < \text{index}(\langle\texttt{/think}\rangle) < \text{index}(\langle\texttt{answer}\rangle) < \text{index}(\langle\texttt{/answer}\rangle)$$
 3. Nội dung giữa `<answer>` và `</answer>` được bóc tách và phân tích thành số thực $v$. So sánh với đáp án chân lý $y$:
    $$|v - y| \le \text{tolerance} \quad (\text{mặc định } 10^{-6})$$
 
@@ -355,14 +357,20 @@ $$\sum_{i=1}^G A_i^{\text{GRPO}} = \sum_{i=1}^G \frac{R_i - \mu_R}{\sigma_R + \e
 
 Điều này đảm bảo gradient của nhóm có tính cân bằng zero-sum tự nhiên.
 
-#### 3.6.2. Dr. GRPO (Direct Reward GRPO)
-Khi sinh câu trả lời, nếu chia cho độ dài câu $L_i$ hay độ lệch chuẩn $\sigma_R$, mô hình có thể bị hội chứng suy giảm gradient. Dr. GRPO sử dụng mẫu số cố định:
+#### 3.6.2. Dr. GRPO (GRPO Done Right)
+GRPO có hai thiên kiến: chia cho độ lệch chuẩn $\sigma_R$ làm lệch trọng số giữa câu hỏi dễ và khó, còn chia cho độ dài $|o_i|$ khiến các câu trả lời **sai mà dài** bị phạt nhẹ hơn (sinh ra hiện tượng câu trả lời phình dài). Dr. GRPO (Liu et al., 2025 — "GRPO Done Right") sửa cả hai bằng cách **bỏ** cả hai số hạng chuẩn hóa này.
 
-$$A_i^{\text{DrGRPO}} = \frac{R_i - \mu_R}{\text{max\_gen\_len}}$$
+Lợi thế chỉ còn là hiệu với đường cơ sở trung bình nhóm (bỏ $\sigma_R$):
 
-Bất kể câu trả lời dài $30$ token hay $250$ token, mỗi bước suy luận đóng góp vào chiến thắng đều nhận được cường độ gradient công bằng như nhau.
+$$\tilde{A}_i = R_i - \mu_R$$
 
-#### 3.6.3. DAPO (Decoupled Advantage Policy Optimization)
+Còn phép chuẩn hóa độ dài $1/|o_i|$ trong tổng hợp loss được thay bằng một **hằng số** (ngân sách sinh tối đa `max_gen_len`):
+
+$$J(\pi_\theta) = \mathbb{E}\!\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{\text{max\_gen\_len}}\sum_{t}\min\!\big(r_{i,t}\,\tilde{A}_i,\ \operatorname{clip}(r_{i,t},1-\varepsilon,1+\varepsilon)\,\tilde{A}_i\big)\right]$$
+
+Bất kể câu trả lời dài $30$ token hay $250$ token, mỗi token đóng góp vào chiến thắng đều nhận được cường độ gradient như nhau — không còn thiên kiến phạt các chuỗi suy luận dài.
+
+#### 3.6.3. DAPO (Decoupled Clip and Dynamic sAmpling Policy Optimization)
 DAPO giải phóng mô hình khỏi các ràng buộc bảo thủ với 3 cơ chế:
 1. Kẹp bất đối xứng: $\text{clip}(r, 1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}})$ với $\epsilon_{\text{low}} = 0.20, \epsilon_{\text{high}} = 0.28$.
 2. Lọc bỏ nhóm phương sai bằng $0$: Nếu $\sigma_R^2 < 10^{-6}$, gán $A_i = 0$ và bỏ qua nhóm để không cập nhật gradient vô ích.
@@ -714,7 +722,8 @@ pub fn compute_rlvr_group_advantages(
     for rollout in group {
         let outcome_adv = match variant {
             RlvrVariant::Grpo | RlvrVariant::Gspo => (rollout.reward - mu_r) / (sd_r + config.eps),
-            RlvrVariant::DrGrpo => (rollout.reward - mu_r) / (config.max_gen_len.max(1) as f64),
+            // Dr. GRPO: bỏ cả std lẫn độ dài; hằng số max_gen_len nằm ở `rlvr_loss_weights`.
+            RlvrVariant::DrGrpo => rollout.reward - mu_r,
             RlvrVariant::Dapo => (rollout.reward - mu_r) / (sd_r + config.eps),
         };
 
@@ -1081,10 +1090,11 @@ Nếu câu trả lời dài $|o_i| = 500$ token, gradient nhận được của 
 **Cách sửa chuẩn mực của Dr. GRPO**:
 Chuẩn hóa bằng mẫu số cố định `max_gen_len` thay cho chiều dài thực tế:
 
-```rust
-// Chuẩn hóa Dr. GRPO bảo toàn cường độ gradient cho chuỗi suy luận dài
-let fixed_den = config.max_gen_len.max(1) as f64;
-let outcome_adv = (rollout.reward - mu_r) / fixed_den;
+```rust,ignore
+// Dr. GRPO: lợi thế bỏ cả std lẫn độ dài — chỉ còn (phần thưởng − trung bình nhóm)
+let outcome_adv = rollout.reward - mu_r;
+// Phần chuẩn hóa độ dài 1/|o_i| được thay bằng hằng số max_gen_len ở bước TỔNG HỢP loss:
+let token_loss_weight = 1.0 / (config.max_gen_len.max(1) as f64);
 ```
 
 ---

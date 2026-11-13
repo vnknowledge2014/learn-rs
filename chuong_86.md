@@ -20,11 +20,11 @@ while not done:
 Đoạn mã trên hoạt động tốt trên các kịch bản trình diễn từ 3 đến 5 lượt tương tác ngắn. Tuy nhiên, khi đưa vào **môi trường sản xuất cấp công nghiệp** (production-grade harness) — nơi một tác tử lập trình tự hành (Autonomous Coding Agent) phải chạy liên tục từ hàng chục đến hàng nghìn bước, xử lý hàng triệu token, tương tác với hệ thống tệp thật, và quản lý ngân sách tài chính nghiêm ngặt — đoạn mã ngây thơ này sẽ **lập tức sụp đổ** vì hàng loạt nguyên nhân mang tính sống còn:
 
 1. **Hiểm họa vỡ byte UTF-8 trong luồng Server-Sent Events (SSE)**: Các nhà cung cấp mô hình ngôn ngữ lớn (LLM) trả về dữ liệu qua giao thức streaming HTTP/SSE theo các gói TCP/chunk có kích thước tùy ý. Một ký tự tiếng Việt đa byte (ví dụ chữ `ế` chiếm 3 byte `[0xe1, 0xba, 0xbf]`) có thể bị cắt ngang: 1 byte nằm ở cuối chunk trước, 2 byte nằm ở đầu chunk sau. Nếu bộ phân tích cú pháp ép kiểu chuỗi `&str` ngay lập tức, chương trình sẽ hoảng loạn (`panic!`) làm sập toàn bộ phiên làm việc của tác tử.
-2. **Tràn ngăn xếp cuộc gọi (Stack Overflow) do đệ quy sâu**: Việc tổ chức vòng lặp tác tử dưới dạng hàm đệ quy (`fn step(ctx) -> fn step(...)`) mà không có cơ chế đảm bảo TCO (*Tail Call Optimization*) trong Rust sẽ khiến ngăn xếp (call stack) phình to theo thời gian thực thi. Ở bước thứ 5.000 hoặc 10.000, tiến trình sẽ cạn bộ nhớ ngăn xếp và bị hệ điều hành tiêu diệt bằng tín hiệu `SIGSEGV`.
+2. **Tràn ngăn xếp cuộc gọi (Stack Overflow) do đệ quy sâu**: Việc tổ chức vòng lặp tác tử dưới dạng hàm đệ quy (`fn step(ctx) -> fn step(...)`) mà không có cơ chế đảm bảo TCO (*Tail Call Optimization*) trong Rust sẽ khiến ngăn xếp (call stack) phình to theo thời gian thực thi. Ở bước thứ 5.000 hoặc 10.000, tiến trình sẽ cạn bộ nhớ ngăn xếp: runtime của Rust in thông báo `thread 'main' has overflowed its stack` rồi chấm dứt tiến trình bằng `abort` (tín hiệu `SIGABRT` trên Unix), làm mất toàn bộ phiên làm việc.
 3. **Thảm họa thực thi lệnh cụt đuôi khi chạm trần `max_tokens`**: Khi phản hồi của mô hình chạm giới hạn độ dài token tối đa, chuỗi JSON tham số công cụ bị cắt ngang ở vị trí bất kỳ (ví dụ: `{"command": "rm -rf /tmp/build_dir"` bị mất đoạn đuôi và trở thành `rm -rf /`). Nếu bộ khung không phát hiện lý do dừng `max_tokens` và chặn đứng việc thực thi, tác tử sẽ chạy một lệnh cụt đuôi tàn phá hệ thống máy chủ.
-4. **Trôi mã băm và sụp đổ kinh tế học KV-Cache**: Các hệ thống phục vụ mô hình hiện đại (như vLLM, SGLang, Anthropic Prompt Caching, OpenAI Prefix Caching) dựa hoàn toàn vào việc so khớp tiền tố tĩnh (*prefix matching*) để tái sử dụng bảng bộ nhớ đệm Khóa-Giá trị (*KV-Cache*). Nếu tác tử chèn các nội dung biến động (như đồng hồ thời gian thực, số dư tài khoản, hoặc xáo trộn thứ tự RAG theo kiểu `lost_in_middle_order`) vào phần đầu prompt, **100% bộ đệm KV-Cache bị trượt (cache miss)**. Hóa đơn API sẽ đội giá gấp từ 1,25x đến 10x, đồng thời độ trễ tạo token đầu tiên (*Time To First Token - TTFT*) tăng vọt từ 200ms lên 15 giây.
+4. **Trôi mã băm và sụp đổ kinh tế học KV-Cache**: Các hệ thống phục vụ mô hình hiện đại (như vLLM, SGLang, Anthropic Prompt Caching, OpenAI Prefix Caching) dựa hoàn toàn vào việc so khớp tiền tố tĩnh (*prefix matching*) để tái sử dụng bảng bộ nhớ đệm Khóa-Giá trị (*KV-Cache*). Nếu tác tử chèn các nội dung biến động (như đồng hồ thời gian thực, số dư tài khoản, hoặc xáo trộn thứ tự RAG theo kiểu `lost_in_middle_order`) vào phần đầu prompt, **100% bộ đệm KV-Cache bị trượt (cache miss)**. Phần tiền tố bị trượt phải trả giá đầu vào gốc (hoặc 1,25x nếu ghi lại bộ đệm) thay vì chỉ 0,1x của lần đọc cache, tức đắt gấp 10 đến 12,5 lần, đồng thời độ trễ tạo token đầu tiên (*Time To First Token - TTFT*) tăng vọt từ khoảng 200ms lên 15 giây (con số minh họa, gấp khoảng 75 lần).
 5. **Làm mồ côi cặp `(tool_use, tool_result)`**: Các giao thức mô hình hiện đại (như Anthropic Claude Messages API hay OpenAI Tools) bắt buộc mọi khối `tool_use(id)` phải có chính xác một khối `tool_result(id)` tương ứng đi liền sau. Khi ngữ cảnh phình to và tác tử cắt gọt lịch sử, việc vô tình cắt mất kết quả hoặc yêu cầu gọi công cụ sẽ khiến toàn bộ phiên làm việc bị máy chủ API từ chối vĩnh viễn với mã lỗi `400 Bad Request`.
-6. **Tích lũy sai số dấu phẩy động trong FinOps**: Đơn giá token thường ở mức phần triệu USD (ví dụ $3,00 cho 1 triệu token đầu vào = $0,000003/token). Việc cộng dồn hàng triệu lần bằng kiểu `f32` hoặc `f64` sẽ sinh ra sai số làm tròn số học, dẫn đến việc kiểm toán chi phí lệch hàng chục phần trăm và làm gãy các rào chắn ngân sách cứng (*Hard Budget Gates*).
+6. **Tích lũy sai số dấu phẩy động trong FinOps**: Đơn giá token thường ở mức phần triệu USD (ví dụ $3,00 cho 1 triệu token đầu vào = $0,000003/token). Việc cộng dồn hàng triệu lần bằng kiểu `f32` hoặc `f64` sẽ sinh ra sai số làm tròn: cộng $10^6$ lần giá trị `0.000003` bằng `f32` cho ra khoảng 3,0236 thay vì 3,0 (lệch gần 0,8%), còn `f64` cho ra 2,99999999997752 (lệch cỡ $10^{-11}$ USD). Sai số `f64` tuy nhỏ nhưng phụ thuộc thứ tự cộng, không bao giờ khớp tuyệt đối từng đơn vị với hóa đơn nhà cung cấp và làm các phép so sánh với rào chắn ngân sách cứng (*Hard Budget Gates*) thiếu tất định.
 7. **Lỗ hổng leo thang đặc quyền qua gương ngữ cảnh (Edge Case #4)**: Khi cho phép tác tử tự chỉnh sửa lịch sử hội thoại của chính mình thông qua giao thức gương ngữ cảnh (`LiveContextMirror`), kẻ tấn công hoặc chính mô hình bị ảo tưởng có thể lén đổi vai trò `role=system` để cướp quyền điều khiển, bịa đặt các ID công cụ giả mạo, hoặc đảo ngược thứ tự thực thi công cụ trong quá khứ nhằm che giấu hành vi phá hoại.
 
 ```
@@ -34,7 +34,7 @@ while not done:
 │  [ Luồng SSE Byte ] ──► [ Cắt ngang byte UTF-8 ] ──► Panic sập tiến trình     │
 │  [ Vòng lặp đệ quy] ──► [ Đệ quy 10.000 bước   ] ──► Stack Overflow          │
 │  [ Chạm Max Tokens] ──► [ Lệnh JSON cụt đuôi   ] ──► Thực thi nhầm rm -rf /   │
-│  [ Xáo trộn Prompt] ──► [ Trượt KV-Cache 100%  ] ──► Chi phí x10, trễ x50    │
+│  [ Xáo trộn Prompt] ──► [ Trượt KV-Cache 100%  ] ──► Chi phí x10, trễ x75    │
 │  [ Cắt gọt thô bạo] ──► [ Mồ côi Tool ID       ] ──► Lỗi 400 Bad Request     │
 │  [ Kế toán f64    ] ──► [ Sai số tích lũy      ] ──► Vỡ rào chắn ngân sách   │
 │  [ Gương ngữ cảnh ] ──► [ Đảo thứ tự / Giả ID  ] ──► Phá vỡ an ninh hệ thống │
@@ -122,9 +122,9 @@ Tại quầy thủ tục quốc tế, cước phí vượt cân hành lý không
 
 ## 3. Khái niệm & Cơ chế kỹ thuật chuyên sâu
 
-### 3.1. Phân tích luồng Server-Sent Events (SSE) theo chuẩn RFC 8895 & An toàn UTF-8
+### 3.1. Phân tích luồng Server-Sent Events (SSE) theo đặc tả WHATWG HTML & An toàn UTF-8
 
-Giao thức SSE là một cơ chế truyền thông một chiều từ máy chủ về máy khách trên nền tảng HTTP/1.1 hoặc HTTP/2. Mỗi thông điệp được biểu diễn bằng một khối văn bản bao gồm các trường có tiền tố:
+Giao thức SSE (đặc tả trong mục 9.2 *Server-sent events* của HTML Living Standard do WHATWG duy trì, định dạng `text/event-stream`; lưu ý RFC 8895 *không* phải đặc tả SSE tổng quát mà là đặc tả ALTO dùng SSE làm phương tiện vận chuyển) là một cơ chế truyền thông một chiều từ máy chủ về máy khách trên nền tảng HTTP/1.1 hoặc HTTP/2. Mỗi thông điệp được biểu diễn bằng một khối văn bản bao gồm các trường có tiền tố:
 
 ```text
 event: text_delta\r\n
@@ -134,7 +134,7 @@ retry: 5000\r\n
 \r\n
 ```
 
-Khung sự kiện kết thúc khi xuất hiện hai ký tự xuống dòng liên tiếp (`\n\n` hoặc `\r\n\r\n`).
+Khung sự kiện được phát đi khi gặp một dòng trống, tức hai ký tự xuống dòng liên tiếp (`\n\n` hoặc `\r\n\r\n`). Đặc tả cho phép cả `\r` đơn lẻ làm dấu xuống dòng; bộ phân tích minh họa trong chương chỉ xử lý hai dạng `\n\n` và `\r\n\r\n`.
 
 #### Vấn đề chia cắt byte UTF-8 đa byte
 Trong bảng mã UTF-8, các ký tự tiếng Anh (ASCII) chỉ chiếm 1 byte (`0x00`..`0x7F`). Tuy nhiên, tiếng Việt và các ngôn ngữ có dấu sử dụng từ 2 đến 3 byte. Ví dụ:
@@ -147,7 +147,7 @@ TCP Chunk 1: [..., 'V', 'i', 0xE1]               <-- Chỉ chứa byte đầu ti
 TCP Chunk 2: [0xBB, 0x87, 't', '\n', '\n']        <-- Chứa 2 byte còn lại và kết thúc khung
 ```
 
-Nếu một bộ phân tích SSE ngây thơ gọi trực tiếp `std::str::from_utf8(chunk1)`, Rust sẽ lập tức trả về lỗi `Utf8Error { valid_up_to: ..., error_len: Some(2) }`. Nếu dùng `.unwrap()`, tiến trình tác tử sẽ sụp đổ.
+Nếu một bộ phân tích SSE ngây thơ gọi trực tiếp `std::str::from_utf8(chunk1)`, Rust sẽ lập tức trả về lỗi `Utf8Error { valid_up_to: 2, error_len: None }` (`None` nghĩa là dữ liệu kết thúc đột ngột giữa một chuỗi byte chưa đủ, chứ không phải gặp byte sai). Nếu dùng `.unwrap()`, tiến trình tác tử sẽ sụp đổ.
 
 #### Cơ chế giải quyết bằng vùng đệm byte liên tục (`SseFrameParser`)
 Trong cài đặt của chúng ta, `SseFrameParser` duy trì một `buffer: Vec<u8>`. Khi một chunk byte mới được đẩy vào qua `push_chunk(&[u8])`:
@@ -280,7 +280,7 @@ Biến môi trường trong hệ thống lập trình (như `PATH`, `CARGO_HOME`
 
 ### 3.6. Đường ống chấm điểm ngữ cảnh GSSC ($C = \mathcal{A}(c_1 \dots c_6)$)
 
-Để quyết định một mẩu ngữ cảnh (Context Item) có xứng đáng được giữ lại trong bộ nhớ làm việc hay không, chúng ta sử dụng công thức kết hợp đa tiêu chí Goal-State-Step Context (GSSC):
+Để quyết định một mẩu ngữ cảnh (Context Item) có xứng đáng được giữ lại trong bộ nhớ làm việc hay không, chúng ta sử dụng công thức kết hợp đa tiêu chí mà chương này gọi tắt là GSSC (tên gọi riêng của chương, không phải thuật ngữ chuẩn hóa: trong các tài liệu về kỹ nghệ ngữ cảnh, GSSC thường chỉ đường ống Gather–Select–Structure/Summarize–Compress/Construct):
 
 $$C = \mathcal{A}(c_1 \dots c_6) = \sum_{i=1}^{6} w_i \cdot c_i$$
 
@@ -317,8 +317,8 @@ Nếu tác tử chèn đồng hồ thời gian `[2026-11-10 18:45:02]` hoặc ch
 $$\text{Hash}(\text{Lượt 1}) \neq \text{Hash}(\text{Lượt 2}) \implies \text{TOÀN BỘ 10.000 TOKENS BỊ TÍNH LẠI TỪ ĐẦU!}$$
 
 Hậu quả:
-- **Tài chính**: Nhà cung cấp API tính phí đọc cache chỉ bằng 10% đơn giá gốc ($0,30/1M token so với $3,00/1M token). Trượt cache làm hóa đơn tăng gấp 10 lần.
-- **Thời gian**: Thời gian sinh token đầu tiên tăng từ 150ms lên hơn 10 giây đối với ngữ cảnh dài 100k tokens.
+- **Tài chính**: Nhà cung cấp API tính phí đọc cache chỉ bằng 10% đơn giá gốc (\$0,30/1M token so với \$3,00/1M token). Trượt cache làm phần tiền tố đó đắt gấp 10 lần (12,5 lần nếu phải ghi lại bộ đệm với phụ phí 1,25x).
+- **Thời gian**: Thời gian sinh token đầu tiên tăng từ khoảng 200ms lên cỡ 15 giây đối với ngữ cảnh dài 100k tokens (con số minh họa, phụ thuộc phần cứng và nhà cung cấp).
 
 #### Thiết kế `PrefixStablePrompt`
 Cấu trúc `PrefixStablePrompt` phân tách ranh giới rõ ràng:
@@ -334,7 +334,7 @@ Cấu trúc `PrefixStablePrompt` phân tách ranh giới rõ ràng:
 Tại sao không dùng kiểu dữ liệu `f64` trong FinOps?
 Hãy xem xét phép cộng số thực kinh điển trong tiêu chuẩn IEEE 754:
 $$0.1 + 0.2 = 0.300000000000000044408920985...$$
-Trong một hệ thống đa tác tử chạy 50.000 bước, việc cộng dồn các khoản chi phí siêu nhỏ (micro-costs) như `$0.000003` bằng `f64` sẽ tích lũy sai số trôi dạt. Đến cuối tháng, con số đối soát giữa hệ thống nội bộ và hóa đơn nhà cung cấp đám mây sẽ bị lệch hàng nghìn USD.
+Trong một hệ thống đa tác tử chạy 50.000 bước, việc cộng dồn các khoản chi phí siêu nhỏ (micro-costs) như `$0.000003` bằng `f64` sẽ tích lũy sai số trôi dạt. Sai số này nhỏ nhưng có thật: cộng 1.000.000 lần `0.000003` bằng `f32` ra 3,0236 thay vì 3,0, bằng `f64` ra 2,99999999997752 thay vì 3,0. Điều đáng ngại hơn là kết quả phụ thuộc thứ tự cộng nên không tái lập được, và con số đối soát giữa hệ thống nội bộ với hóa đơn nhà cung cấp không bao giờ khớp tuyệt đối từng đơn vị nhỏ nhất.
 
 Chúng ta định nghĩa đơn vị số nguyên tuyệt đối **PicoDollars**:
 $$1\text{ USD} = 10^{12}\text{ PicoDollars}$$
@@ -347,7 +347,7 @@ Mọi phép toán đều sử dụng số nguyên `u128` với các hàm an toà
 
 #### Biểu giá 2 tầng TTL của bộ đệm KV-Cache
 Hệ thống hỗ trợ 5 chế độ giá dựa trên chính sách của các nhà cung cấp mô hình tiên tiến:
-1. `UncachedInput`: Đơn giá cơ sở ($3,00 / 1M token = 3.000.000 picos/token).
+1. `UncachedInput`: Đơn giá cơ sở (\$3,00 / 1M token = 3.000.000 picos/token).
 2. `CacheWrite5m`: Ghi bộ đệm ngắn hạn (TTL 5 phút) = 1,25x đơn giá cơ sở.
 3. `CacheWrite1h`: Ghi bộ đệm dài hạn (TTL 1 giờ) = 2,00x đơn giá cơ sở.
 4. `CacheHitRead`: Đọc từ bộ đệm (áp dụng cho cả 5m và 1h) = 0,10x đơn giá cơ sở (tiết kiệm 90%).
@@ -364,7 +364,7 @@ Trong tài liệu kiến trúc quyết định ADR-0018 của các hệ thống 
 Nếu lập trình viên thiếu cẩn trọng và liên tục cộng dồn các ảnh chụp tích lũy này:
 - Lượt 1: API báo 100 token $\to$ Tổng ghi nhận: 100 token.
 - Lượt 2: API báo 250 token (gồm 100 token cũ + 150 token mới) $\to$ Nếu cộng dồn: $100 + 250 = 350$ token (bị đếm dư 100 token cũ)!
-- Lượt 10: Chi phí bị nhân lên gấp hàng chục lần so với thực tế.
+- Lượt 10: Nếu mỗi lượt thêm lượng token như nhau, tổng cộng dồn là $1+2+\dots+10 = 55$ đơn vị so với 10 đơn vị thực tế, tức bị đếm gấp 5,5 lần (sau 100 lượt là gấp khoảng 50 lần).
 
 `LastLegUsageMeter` giải quyết triệt để vấn đề này bằng cách theo dõi trạng thái hai lớp:
 - `current_leg`: Lưu trữ chính xác số lượng token phát sinh của riêng bước hiện hành:
@@ -382,7 +382,7 @@ Khi lịch sử hội thoại vượt quá ngưỡng ngân sách ngữ cảnh (v
 [ Ngữ cảnh ban đầu: 150k tokens ]
                │
                ▼  TẦNG 1: Vi nén RAM (Microcompact)
-[ Cắt gọt nội dung công cụ cũ > 50 tokens: giữ lại 10 từ đầu + dấu vân tay SHA-256 ]
+[ Cắt gọt nội dung công cụ cũ vượt ngưỡng: giữ lại 10 từ đầu + thông báo số từ bị cắt ]
                │
                ▼  (Nếu vẫn vượt ngưỡng ngân sách)
                ▼  TẦNG 2: Tóm tắt điểm neo (AnchoredSummary)
@@ -393,7 +393,7 @@ Khi lịch sử hội thoại vượt quá ngưỡng ngân sách ngữ cảnh (v
 ```
 
 #### Tầng 1: Vi nén RAM (`microcompact`)
-Các lệnh như `cat large_file.rs` hay `cargo build` có thể tạo ra hàng nghìn dòng kết quả. Sau khi tác tử đã đọc và chuyển sang bước tiếp theo, toàn bộ văn bản thô này không còn cần thiết cho việc suy luận ngữ nghĩa tức thời. Hàm `microcompact_turn` cắt gọt văn bản, chỉ giữ lại 10 từ đầu tiên kèm thông báo thu gọn và dấu vân tay băm. Thao tác này giảm ngay 80% dung lượng mà không làm mất thông tin về việc công cụ đã được gọi.
+Các lệnh như `cat large_file.rs` hay `cargo build` có thể tạo ra hàng nghìn dòng kết quả. Sau khi tác tử đã đọc và chuyển sang bước tiếp theo, toàn bộ văn bản thô này không còn cần thiết cho việc suy luận ngữ nghĩa tức thời. Hàm `microcompact_turn` cắt gọt văn bản, chỉ giữ lại 10 từ đầu tiên kèm thông báo thu gọn ghi số từ đã bị cắt (cài đặt trong crate không băm nội dung). Một kết quả dài hàng nghìn từ chỉ còn lại khoảng 10 từ, nhờ đó giảm phần lớn dung lượng mà không làm mất dấu vết rằng công cụ đã được gọi.
 
 #### Tầng 2: Tóm tắt điểm neo 6 thành phần (`AnchoredSummary`)
 Khác với các bản tóm tắt tự do của LLM (thường bỏ quên các quy tắc quan trọng), `AnchoredSummary` ép khuôn thành 6 mục cấu trúc bắt buộc:
@@ -491,7 +491,7 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet};
 // 1. PHÂN TÍCH KHUNG SSE & LẮP RÁP LƯỢT STREAMING
 // ============================================================================
 
-/// Khung sự kiện Server-Sent Events (SSE) theo chuẩn RFC 8895.
+/// Khung sự kiện Server-Sent Events (SSE) theo đặc tả WHATWG HTML (mục 9.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SseFrame {
     pub event: Option<String>,
@@ -1639,9 +1639,25 @@ impl ContextDegradationDetector {
         let mut warnings = Vec::new();
         let mut prev_content: Option<&str> = None;
         let mut empty_count = 0;
+        // Tổng số từ (xấp xỉ token) của các lượt đã duyệt, dùng cho Chế độ 3.
+        let mut seen_tokens = 0usize;
 
         for (idx, msg) in messages.iter().enumerate() {
             let trimmed = msg.content.trim();
+            let turn_tokens = trimmed.split_whitespace().count();
+
+            // Chế độ 3: Bùng nổ token (lượt hiện tại > 300% trung bình các lượt trước)
+            if idx > 0 && turn_tokens * idx > 3 * seen_tokens && seen_tokens > 0 {
+                warnings.push(DegradationWarning {
+                    kind: DegradationType::ContextLengthSpike,
+                    turn_index: idx,
+                    message: format!(
+                        "Lượt {idx} dài {turn_tokens} token, vượt 300% mức trung bình {:.1} của các lượt trước",
+                        seen_tokens as f64 / idx as f64
+                    ),
+                });
+            }
+            seen_tokens += turn_tokens;
 
             if trimmed.is_empty() && msg.tool_use_id.is_none() && msg.tool_result_id.is_none() {
                 empty_count += 1;
@@ -1824,10 +1840,10 @@ Dưới đây là 8 lỗi biên dịch Rust phổ biến nhất khi phát triể
 | `E0382: use of moved value` | Di chuyển biến trạng thái `state` vào closure trong vòng lặp Trampoline mà không tạo giá trị kế tiếp. | Sử dụng mẫu `Bounce::Continue { state: next_val }` với kiểu dữ liệu có thể di chuyển quyền sở hữu hoặc cài đặt trait `Clone` nếu cần thiết. |
 | `E0716: temporary value dropped while borrowed` | Tạo chuỗi tạm khi phân tích cú pháp SSE (ví dụ `line.strip_prefix().unwrap()`) rồi gán trực tiếp tham chiếu vào struct. | Chuyển đổi dữ liệu tạm thời thành `String` sở hữu độc lập bằng `.to_string()` hoặc `into()` trước khi lưu vào `SseFrame`. |
 | `clippy::collapsible_match` | Viết các khối `match` lồng nhau với `if` kiểm tra điều kiện bên trong thân nhánh. | Sử dụng bảo vệ mẫu (*Match Guards*), ví dụ: `'}' if stack.pop() != Some('{') => return false`. |
-| `cannot explicitly dereference within an implicitly-borrowing pattern` (Rust 2024) | Dùng cú pháp `filter(|(_, &s)| ...)` khi duyệt qua iterator trả về tham chiếu lồng trong Rust 2024. | Sửa thành `filter(|(_, s)| **s >= threshold)` hoặc `filter(|&(_, s)| s >= threshold)` để phù hợp với quy tắc ràng buộc mẫu mới của Rust 2024. |
+| `cannot explicitly dereference within an implicitly-borrowing pattern` (Rust 2024) | Dùng cú pháp `filter(|(_, &s)| ...)` khi duyệt qua iterator trả về tham chiếu lồng trong Rust 2024. | Sửa thành `filter(|(_, s)| **s >= threshold)` hoặc `filter(|&(_, &s)| s >= threshold)` để phù hợp với quy tắc ràng buộc mẫu mới của Rust 2024. |
 | `attempt to multiply with overflow` | Tính toán chi phí token bằng phép nhân `tokens * unit_price` bằng kiểu số nguyên cơ bản gây tràn số. | Bắt buộc sử dụng phương thức toán học có kiểm tra an toàn `checked_mul` và trả về `Result` hoặc bọc trong kiểu `PicoDollars`. |
 | `clippy::needless_range_loop` | Dùng vòng lặp `for i in 0..6` để lập chỉ mục mảng `components[i]`. | Chuyển đổi sang phong cách hàm chuẩn của Rust bằng `.iter().zip().map().sum()`. |
-| `clippy::manual_is_multiple_of` (Rust 2024) | Dùng phép chia lấy dư truyền thống `len % 2 == 0` khi tính trung vị. | Thay thế bằng phương thức chuẩn của Rust 2024: `len.is_multiple_of(2)`. |
+| `clippy::manual_is_multiple_of` (Rust 1.90 trở lên) | Dùng phép chia lấy dư truyền thống `len % 2 == 0` khi tính trung vị. | Thay thế bằng phương thức chuẩn `len.is_multiple_of(2)` (`is_multiple_of` cho số nguyên không dấu được ổn định từ Rust 1.90, không phụ thuộc edition). |
 | `clippy::collapsible_if` | Lồng các câu lệnh `if let` hoặc `if condition` liên tiếp trong kiểm tra gộp tin nhắn hoặc ranh giới SSE. | Sử dụng cú pháp chuỗi điều kiện let-chains: `if condition && let Some(val) = opt { ... }`. |
 
 ### Phân tích chi tiết lỗi mẫu liên kết ngầm trong Rust 2024
@@ -2054,7 +2070,7 @@ impl MultiHeadLatentPruner {
         token_votes
             .iter()
             .enumerate()
-            .filter(|(_, &votes)| votes >= min_head_votes)
+            .filter(|(_, votes)| **votes >= min_head_votes)
             .map(|(idx, _)| idx)
             .collect()
     }

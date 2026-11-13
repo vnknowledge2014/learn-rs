@@ -4,9 +4,9 @@
 
 ## 1. Giới thiệu & Mục tiêu
 
-Chào mừng bạn đến với **Chương 99** — chương thứ hai của **Chủ đề 28** (Bộ công cụ thâm nhập mạng) trong giáo trình `learn-rs`. Sau Chương 98 (Khung bảo mật ứng dụng web: SQL Injection, XSS, CSRF & phòng thủ theo lớp), chương này đưa bạn ra khỏi tầng ứng dụng để chạm vào **tầng giao thức mạng** — nơi mà mọi lời nói giữa hai máy đều được mã hoá thành những chuỗi byte có thời gian sống rất ngắn.
+Chào mừng bạn đến với **Chương 99** — chương thứ hai của **Chủ đề 28** (Bộ công cụ thâm nhập mạng) trong giáo trình `learn-rs`. Sau Chương 98 (Phòng thí nghiệm Khai thác Nhị phân: mẫu tuần hoàn, mã hoá shellcode & chuỗi ROP), chương này đưa bạn ra khỏi tầng ứng dụng để chạm vào **tầng giao thức mạng** — nơi mà mọi lời nói giữa hai máy đều được mã hoá thành những chuỗi byte có thời gian sống rất ngắn.
 
-Bốn mươi tám chương trước đã dạy bạn làm chủ Rust ở mức hệ thống: quyền sở hữu bộ nhớ, hệ thống phân loại kiểu tĩnh, lập trình đồng thời, bộ nhớ Disruptor không khóa, kiến trúc LLM/RLVR... Bây giờ, để khép kín chủ đề, chúng ta sẽ viết một bộ công cụ "đỏ" (red-team) hoàn chỉnh: **một proxy SOCKS5**, **một bộ chuyển tiếp cổng TCP**, **một máy nhận dạng dịch vụ**, **một trình lập bản đồ mạng**, và **hai bộ phân tích/ghi gói ARP & DNS kèm khả năng giả mạo**.
+Chín mươi tám chương trước đã dạy bạn làm chủ Rust ở mức hệ thống: quyền sở hữu bộ nhớ, hệ thống phân loại kiểu tĩnh, lập trình đồng thời, bộ nhớ Disruptor không khóa, kiến trúc LLM/RLVR... Bây giờ, để khép kín chủ đề, chúng ta sẽ viết một bộ công cụ "đỏ" (red-team) hoàn chỉnh: **một proxy SOCKS5**, **một bộ chuyển tiếp cổng TCP**, **một máy nhận dạng dịch vụ**, **một trình lập bản đồ mạng**, và **hai bộ phân tích/ghi gói ARP & DNS kèm khả năng giả mạo**.
 
 > ⚠️ **Nguyên tắc đạo đức — đọc trước khi chạy mã**
 >
@@ -158,7 +158,7 @@ Cả hai đều là hành vi **tấn công giả mạo (spoofing)**, và cả ha
 
 ### 3.1 Proxy SOCKS5 — Giao thức đàm phán 3 bước (RFC 1928)
 
-SOCKS5 là giao thức định tuyến ở tầng 5 (tầng ứng dụng), được thiết kế bởi Leech Heiman vào năm 1996 và chuẩn hoá trong RFC 1928. Điểm đặc biệt: SOCKS5 **không phụ thuộc vào giao thức bên trong** nó mang — nó có thể chuyển tiếp HTTP, SMTP, hay bất kỳ byte nào.
+SOCKS5 là giao thức proxy hoạt động ở tầng phiên (tầng 5 OSI), do Marcus Leech và cộng sự biên soạn, chuẩn hoá trong RFC 1928 năm 1996. Điểm đặc biệt: SOCKS5 **không phụ thuộc vào giao thức bên trong** nó mang — nó có thể chuyển tiếp HTTP, SMTP, hay bất kỳ byte nào.
 
 #### 3.1.1 Cấu trúc ba bản tin
 
@@ -328,7 +328,7 @@ Bảng tra điểm tin cậy:
 | Tình huống | $C_{port}$ | Có phiên bản | Mẫu đầu tiên | Tổng |
 |---|---|---|---|---|
 | HTTP trên cổng 80, có `Server:` | 0.60 | +0.25 | +0.15 | **1.00** |
-| HTTP trên cổng 8080 (khớp cổng, mẫu thứ 2) | 0.60 | +0.25 | +0 | **0.85** |
+| HTTP trên cổng 80 (khớp cổng, khớp ở mẫu thứ 2) | 0.60 | +0.25 | +0 | **0.85** |
 | SSH trên cổng lạ (chỉ khớp nội dung) | 0.40 | +0.25 | +0.15 | **0.80** |
 | LDAP không có phiên bản | 0.60 | +0 | +0.15 | **0.75** |
 
@@ -360,7 +360,7 @@ Mỗi gói IP có một trường **TTL** (Time To Live). Mỗi bước định 
 
 | TTL khởi đầu | Hệ điều hành điển hình | Giải thích |
 |---|---|---|
-| 64 | Linux / Unix / BSD | Quy ước phổ biến nhất (64 = 1 phút) |
+| 64 | Linux / Unix / BSD | Quy ước phổ biến nhất (giá trị hop-limit khởi đầu mặc định; TTL là số bước nhảy, không phải thời gian) |
 | 128 | Windows | Quy ước của Microsoft |
 | 255 | Router, switch, firewall, thiết bị mạng | Quy ước của hầu hết phần cứng nhúng |
 | Khác | *Không xác định* | Có thể đã bị giả mạo hoặc tuỳ biến |
@@ -444,9 +444,9 @@ thì A sẽ ghi bản ghi sai vào bộ nhớ đệm và gửi mọi gói "đi r
 
 Hàm `spoof_reply_for` mô phỏng đúng gói đó:
 
-$$p_{poison} = \big(\text{Reply},\ M_{attacker},\ IP_{attacker},\ MAC_{victim},\ IP_{victim}\big)$$
+$$p_{poison} = \big(\text{Reply},\ M_{attacker},\ G,\ MAC_{victim},\ IP_{victim}\big)$$
 
-trong đó `MAC_victim` và `IP_victim` được lấy từ chính yêu cầu ARP mà nạn nhân gửi ra — đó là thông tin kẻ tấn công *đã tiếp cận được* một cách hợp lệ.
+trong đó $G$ là **IP của gateway mà kẻ tấn công mạo nhận** (không phải IP thật của kẻ tấn công), còn `MAC_victim` và `IP_victim` được lấy từ chính yêu cầu ARP mà nạn nhân gửi ra — đó là thông tin kẻ tấn công *đã tiếp cận được* một cách hợp lệ.
 
 ### 3.7 Gói DNS và giả mạo phản hồi (RFC 1035)
 
@@ -479,7 +479,7 @@ $$\text{pointer} = \big((b_0 \mathbin{\&} 0x3F) \ll 8\big) \mathbin{|} b_1$$
 
 Điểm khó nhất khi giải mã: sau khi theo con trỏ, **offset trả về cho caller phải là vị trí ngay sau con trỏ**, chứ không phải vị trí sau tên miền đã giải mã. Vì vậy hàm trả về một cặp:
 
-```rust
+```rust,ignore
 pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), String>
 ```
 
@@ -580,11 +580,13 @@ impl SplitMix64 {
         let u = (self.next_u64() >> 11) as f64;
         u * (1.0 / ((1u64 << 53) as f64))
     }
+}
+// ... (các phương thức khác của impl — xem code/ch99/src/main.rs)
 ```
 
 ### 4.2 Bắt tay SOCKS5 — bước 1: Greeting và lựa chọn phương thức
 
-```rust
+```rust,ignore
     pub fn handle_client_with_target(
         &self,
         stream: &mut TcpStream,
@@ -829,11 +831,13 @@ impl Drop for TcpPortForwarder {
     fn drop(&mut self) {
         self.active = false;
     }
-}```
+}
+```
 
 ### 4.7 Nhận dạng dịch vụ và công thức điểm tin cậy
 
-```rust
+```rust,ignore
+impl ServiceFingerprinter {
     /// Nhận dạng dịch vụ từ banner nhận về trên cổng `port`
     ///
     /// Chiến lược hai tầng: (1) ưu tiên probe có cổng khớp; (2) nếu không khớp, quét toàn bộ
@@ -856,7 +860,8 @@ impl Drop for TcpPortForwarder {
 
         None
     }
-}```
+}
+```
 
 ### 4.8 Trích xuất phiên bản bằng "regex-lite"
 
@@ -911,7 +916,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
 
 ### 4.9 Bản đồ mạng và báo cáo tất định
 
-```rust
+```rust,ignore
+impl NetworkMapper {
     /// Sinh báo cáo bản đồ mạng dạng văn bản (thứ tự máy chủ được sắp xếp theo IP cho tính tất định)
     pub fn to_report(&self) -> String {
         let mut ordered: Vec<(&IpAddr, &HostInfo)> = self.hosts.iter().collect();
@@ -949,6 +955,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
 
         out
     }
+}
+// ... (xem đầy đủ impl NetworkMapper trong code/ch99/src/main.rs)
 ```
 
 ### 4.10 Phân tích gói ARP — tự dò header Ethernet
@@ -1018,11 +1026,13 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
             target_mac,
             target_ip,
         })
-    }```
+    }
+```
 
 ### 4.11 Gói đầu độc ARP và hiển thị MAC
 
-```rust
+```rust,ignore
+impl ArpPacket {
     /// Dựng gói trả lời ARP độc hại nhằm đầu độc bộ nhớ đệm ARP (ARP cache poisoning)
     ///
     /// Gói trả lời này nói với nạn nhân rằng: *"IP của `attacker_ip` nằm ở MAC của kẻ tấn công"*.
@@ -1039,7 +1049,8 @@ pub fn extract_version(service: &str, response: &[u8]) -> String {
             target_ip: request.sender_ip,
         }
     }
-}```
+}
+```
 
 ### 4.12 Mã hoá và giải mã tên miền DNS (có nén)
 
@@ -1125,7 +1136,8 @@ pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), Strin
 
 ### 4.13 Mã hoá và giải mã gói DNS
 
-```rust
+```rust,ignore
+impl ArpPacket {
     /// Mã hoá gói DNS thành mảng byte
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -1158,6 +1170,8 @@ pub fn decode_name(bytes: &[u8], offset: usize) -> Result<(String, usize), Strin
 
         out
     }
+}
+// ... (xem đầy đủ impl ArpPacket trong code/ch99/src/main.rs)
 ```
 
 ```rust
@@ -1249,11 +1263,13 @@ fn decode_rdata(rtype: DnsRecordType, data: &[u8]) -> Result<DnsRecordData, Stri
             dst,
             total_len,
         })
-    }```
+    }
+```
 
 ### 4.16 Mô phỏng mạng và dựng gói ARP độc hại
 
-```rust
+```rust,ignore
+impl NetworkSimulator {
     /// Sinh gói ARP đầu độc nhắm vào `victim`, khai báo `gateway` nằm ở MAC của kẻ tấn công
     pub fn arp_poison(&self, victim: IpAddr, gateway: IpAddr) -> ArpPacket {
         let attacker_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0xFF];
@@ -1279,6 +1295,8 @@ fn decode_rdata(rtype: DnsRecordType, data: &[u8]) -> Result<DnsRecordData, Stri
             },
         }
     }
+}
+// ... (xem đầy đủ impl NetworkSimulator trong code/ch99/src/main.rs)
 ```
 
 ### 4.17 Máy chủ echo cục bộ — trợ giúp kiểm thử an toàn

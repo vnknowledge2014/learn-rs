@@ -71,7 +71,7 @@ Nhưng nếu bạn **nhét 88 lá**, 24 lá cuối sẽ tràn ra ngoài khoang t
 
 ```mermaid
 flowchart TD
-    A["Hộp thư 64 lá<br/>(buffer)"] -->|"ghi đúng 64 lá"| B["Chốt nguyên vẹn<br/>(canary 0x00DEADBEEFCAFE1234)"]
+    A["Hộp thư 64 lá<br/>(buffer)"] -->|"ghi đúng 64 lá"| B["Chốt nguyên vẹn<br/>(canary 0x00DEBEEFCAFE1234)"]
     A -->|"nhét 88 lá: 24 lá tràn"| C["Chốt GÃY<br/>→ huỷ giao dịch"]
     C --> D["Bản lề bị đẩy<br/>(saved RBP)"]
     D --> E["Địa chỉ kho xe bị đổi<br/>(return_address)"]
@@ -185,10 +185,12 @@ tail[16..24].copy_from_slice(&self.return_address.to_le_bytes());
 #### 3.1.3 Vì sao `trigger()` không nhảy thật
 
 ```rust
-pub fn trigger(&self) -> u64 {
-    // SAFETY: `trigger` KHÔNG thực hiện `ret` thật và không dereference bất kỳ con trỏ nào —
-    // nó chỉ đọc một giá trị `u64` đã lưu trong struct rồi trả về.
-    self.return_address
+impl VulnerableBuffer {
+    pub fn trigger(&self) -> u64 {
+        // SAFETY: `trigger` KHÔNG thực hiện `ret` thật và không dereference bất kỳ con trỏ nào —
+        // nó chỉ đọc một giá trị `u64` đã lưu trong struct rồi trả về.
+        self.return_address
+    }
 }
 ```
 
@@ -206,7 +208,7 @@ Mẫu tuần hoàn kinh điển (kiểu `cyclic` của pwntools) lặp lại m�
 
 Mẫu mà crate này dùng là **bộ đếm 4 ký tự theo kiểu De Bruijn**: mỗi nhãn 4 byte mã hoá một chỉ số duy nhất trong hệ cơ sở hỗn, với **thứ tự chữ số chạy nhanh nhất đi ngược với thứ tự byte**:
 
-$$\text{label}(n) = \Big( E[n \bmod 36],\; O[\lfloor n/36 \rfloor \bmod 26],\; E[\lfloor n/936 \rfloor \bmod 36],\; O[\lfloor n/24336 \rfloor \bmod 26] \Big)$$
+$$\text{label}(n) = \Big( E[n \bmod 36],\; O[\lfloor n/36 \rfloor \bmod 26],\; E[\lfloor n/936 \rfloor \bmod 36],\; O[\lfloor n/33696 \rfloor \bmod 26] \Big)$$
 
 trong đó:
 
@@ -555,18 +557,20 @@ pub const FRAME_SIZE: usize = BUFFER_SIZE + 8 + 8 + 8;
 ```
 
 ```rust
-/// Khởi tạo một khung ngăn xếp "sạch".
-///
-/// * `buffer` toàn bộ 0 byte;
-/// * `canary_value` = [`CANARY_MAGIC`];
-/// * `saved_rbp` = [`DEFAULT_SAVED_RBP`];
-/// * `return_address` = [`DEFAULT_RETURN_ADDRESS`].
-pub fn new() -> Self {
-    Self {
-        buffer: [0u8; BUFFER_SIZE],
-        canary_value: CANARY_MAGIC,
-        saved_rbp: DEFAULT_SAVED_RBP,
-        return_address: DEFAULT_RETURN_ADDRESS,
+impl VulnerableBuffer {
+    /// Khởi tạo một khung ngăn xếp "sạch".
+    ///
+    /// * `buffer` toàn bộ 0 byte;
+    /// * `canary_value` = [`CANARY_MAGIC`];
+    /// * `saved_rbp` = [`DEFAULT_SAVED_RBP`];
+    /// * `return_address` = [`DEFAULT_RETURN_ADDRESS`].
+    pub fn new() -> Self {
+        Self {
+            buffer: [0u8; BUFFER_SIZE],
+            canary_value: CANARY_MAGIC,
+            saved_rbp: DEFAULT_SAVED_RBP,
+            return_address: DEFAULT_RETURN_ADDRESS,
+        }
     }
 }
 ```
@@ -574,76 +578,82 @@ pub fn new() -> Self {
 Điểm mấu chốt của cả chương nằm gọn trong hàm `write_input`: phần tràn **không bao giờ** chạm vào vùng nhớ thật của Rust, mà được mô phỏng trên một bản sao 24 byte.
 
 ```rust
-/// Ghi dữ liệu người dùng vào bộ đệm, **mô phỏng** hành vi của một `strcpy`/`read` không kiểm tra biên.
-///
-/// Hàm trả về `true` khi dữ liệu **vừa khít** trong bộ đệm (`data.len() <= BUFFER_SIZE`) và
-/// `false` khi dữ liệu tràn ra ngoài. Khi tràn, phần dữ liệu vượt quá `BUFFER_SIZE` sẽ ghi đè
-/// lần lượt lên canary, `saved_rbp` và `return_address` — đúng như một lỗi tràn bộ đệm thật.
-///
-/// Để giữ tính an toàn của Rust, phần tràn **không** ghi vào vùng nhớ Rust thật; thay vào đó
-/// ta dựng một bản sao byte của 24 byte đuôi khung ngăn xếp rồi ghi đè lên đó.
-pub fn write_input(&mut self, data: &[u8]) -> bool {
-    let in_len = data.len().min(BUFFER_SIZE);
-    if in_len > 0 {
-        // SAFETY: `in_len <= BUFFER_SIZE == self.buffer.len()` nên vùng đích nằm trọn trong
-        // `self.buffer`; `data` là một lát byte hợp lệ có ít nhất `in_len` byte nên vùng nguồn
-        // cũng hợp lệ. `data` được mượn bất biến từ bên ngoài còn `self.buffer` thuộc sở hữu
-        // của `self`, do đó hai vùng không thể chồng lấn — điều kiện của `copy_nonoverlapping`
-        // được thoả mãn hoàn toàn.
-        unsafe {
-            ptr::copy_nonoverlapping(data.as_ptr(), self.buffer.as_mut_ptr(), in_len);
-        }
-    }
-
-    let spill_len = data.len().saturating_sub(BUFFER_SIZE);
-    if spill_len > 0 {
-        // Mô phỏng phần tràn xuống 24 byte đuôi khung ngăn xếp (canary + rbp + return address).
-        let mut tail = [0u8; 24];
-        tail[0..8].copy_from_slice(&self.canary_value.to_le_bytes());
-        tail[8..16].copy_from_slice(&self.saved_rbp.to_le_bytes());
-        tail[16..24].copy_from_slice(&self.return_address.to_le_bytes());
-
-        let copy_len = spill_len.min(tail.len());
-        // SAFETY: `copy_len <= tail.len()` nên vùng đích hợp lệ; `data.len() >= BUFFER_SIZE +
-        // copy_len` nên vùng nguồn (`data.as_ptr().add(BUFFER_SIZE)`) cũng hợp lệ. `tail` là mảng
-        // cục bộ nằm trên ngăn xếp của lời gọi này, không thể chồng lấn với lát `data` đang mượn.
-        unsafe {
-            ptr::copy_nonoverlapping(
-                data.as_ptr().add(BUFFER_SIZE),
-                tail.as_mut_ptr(),
-                copy_len,
-            );
+impl VulnerableBuffer {
+    /// Ghi dữ liệu người dùng vào bộ đệm, **mô phỏng** hành vi của một `strcpy`/`read` không kiểm tra biên.
+    ///
+    /// Hàm trả về `true` khi dữ liệu **vừa khít** trong bộ đệm (`data.len() <= BUFFER_SIZE`) và
+    /// `false` khi dữ liệu tràn ra ngoài. Khi tràn, phần dữ liệu vượt quá `BUFFER_SIZE` sẽ ghi đè
+    /// lần lượt lên canary, `saved_rbp` và `return_address` — đúng như một lỗi tràn bộ đệm thật.
+    ///
+    /// Để giữ tính an toàn của Rust, phần tràn **không** ghi vào vùng nhớ Rust thật; thay vào đó
+    /// ta dựng một bản sao byte của 24 byte đuôi khung ngăn xếp rồi ghi đè lên đó.
+    pub fn write_input(&mut self, data: &[u8]) -> bool {
+        let in_len = data.len().min(BUFFER_SIZE);
+        if in_len > 0 {
+            // SAFETY: `in_len <= BUFFER_SIZE == self.buffer.len()` nên vùng đích nằm trọn trong
+            // `self.buffer`; `data` là một lát byte hợp lệ có ít nhất `in_len` byte nên vùng nguồn
+            // cũng hợp lệ. `data` được mượn bất biến từ bên ngoài còn `self.buffer` thuộc sở hữu
+            // của `self`, do đó hai vùng không thể chồng lấn — điều kiện của `copy_nonoverlapping`
+            // được thoả mãn hoàn toàn.
+            unsafe {
+                ptr::copy_nonoverlapping(data.as_ptr(), self.buffer.as_mut_ptr(), in_len);
+            }
         }
 
-        self.canary_value = u64::from_le_bytes(tail[0..8].try_into().expect("8 byte canary"));
-        self.saved_rbp = u64::from_le_bytes(tail[8..16].try_into().expect("8 byte rbp"));
-        self.return_address = u64::from_le_bytes(tail[16..24].try_into().expect("8 byte ret"));
-    }
+        let spill_len = data.len().saturating_sub(BUFFER_SIZE);
+        if spill_len > 0 {
+            // Mô phỏng phần tràn xuống 24 byte đuôi khung ngăn xếp (canary + rbp + return address).
+            let mut tail = [0u8; 24];
+            tail[0..8].copy_from_slice(&self.canary_value.to_le_bytes());
+            tail[8..16].copy_from_slice(&self.saved_rbp.to_le_bytes());
+            tail[16..24].copy_from_slice(&self.return_address.to_le_bytes());
 
-    data.len() <= BUFFER_SIZE
+            let copy_len = spill_len.min(tail.len());
+            // SAFETY: `copy_len <= tail.len()` nên vùng đích hợp lệ; `data.len() >= BUFFER_SIZE +
+            // copy_len` nên vùng nguồn (`data.as_ptr().add(BUFFER_SIZE)`) cũng hợp lệ. `tail` là mảng
+            // cục bộ nằm trên ngăn xếp của lời gọi này, không thể chồng lấn với lát `data` đang mượn.
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    data.as_ptr().add(BUFFER_SIZE),
+                    tail.as_mut_ptr(),
+                    copy_len,
+                );
+            }
+
+            self.canary_value = u64::from_le_bytes(tail[0..8].try_into().expect("8 byte canary"));
+            self.saved_rbp = u64::from_le_bytes(tail[8..16].try_into().expect("8 byte rbp"));
+            self.return_address = u64::from_le_bytes(tail[16..24].try_into().expect("8 byte ret"));
+        }
+
+        data.len() <= BUFFER_SIZE
+    }
 }
 ```
 
 ```rust
-/// Kiểm tra canary còn nguyên vẹn hay không.
-///
-/// Nếu `false`, chương trình đã bị phát hiện tràn bộ đệm — đây chính là cơ chế bảo vệ của
-/// stack protector.
-pub fn is_canary_intact(&self) -> bool {
-    self.canary_value == CANARY_MAGIC
+impl VulnerableBuffer {
+    /// Kiểm tra canary còn nguyên vẹn hay không.
+    ///
+    /// Nếu `false`, chương trình đã bị phát hiện tràn bộ đệm — đây chính là cơ chế bảo vệ của
+    /// stack protector.
+    pub fn is_canary_intact(&self) -> bool {
+        self.canary_value == CANARY_MAGIC
+    }
 }
 ```
 
 ```rust
-/// Mô phỏng lệnh `ret`: trả về địa chỉ mà chương trình **sẽ** nhảy tới.
-///
-/// Hàm này chỉ *trả về giá trị*, tuyệt đối không thực hiện nhảy nhánh thật.
-pub fn trigger(&self) -> u64 {
-    // SAFETY: `trigger` KHÔNG thực hiện `ret` thật và không dereference bất kỳ con trỏ nào —
-    // nó chỉ đọc một giá trị `u64` đã lưu trong struct rồi trả về. Vì vậy dù giá trị trả về
-    // là địa chỉ do kẻ tấn công kiểm soát, hành vi của hàm vẫn là hành vi *đã định nghĩa*
-    // (well-defined) và không thể gây ra undefined behaviour.
-    self.return_address
+impl VulnerableBuffer {
+    /// Mô phỏng lệnh `ret`: trả về địa chỉ mà chương trình **sẽ** nhảy tới.
+    ///
+    /// Hàm này chỉ *trả về giá trị*, tuyệt đối không thực hiện nhảy nhánh thật.
+    pub fn trigger(&self) -> u64 {
+        // SAFETY: `trigger` KHÔNG thực hiện `ret` thật và không dereference bất kỳ con trỏ nào —
+        // nó chỉ đọc một giá trị `u64` đã lưu trong struct rồi trả về. Vì vậy dù giá trị trả về
+        // là địa chỉ do kẻ tấn công kiểm soát, hành vi của hàm vẫn là hành vi *đã định nghĩa*
+        // (well-defined) và không thể gây ra undefined behaviour.
+        self.return_address
+    }
 }
 ```
 
@@ -681,32 +691,36 @@ pub const MIN_SEARCH_WINDOW: usize = 2048;
 ```
 
 ```rust
-/// Khởi tạo bộ sinh mẫu với bảng chữ cái `A-Za-z0-9` và `cycle_len = 62 × 3 = 186`.
-pub fn new() -> Self {
-    let mut alphabet = Vec::with_capacity(ALPHABET_LEN);
-    alphabet.extend_from_slice(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    alphabet.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
-    alphabet.extend_from_slice(b"0123456789");
-    Self {
-        alphabet,
-        cycle_len: ALPHABET_LEN * 3,
+impl CyclicPatternGenerator {
+    /// Khởi tạo bộ sinh mẫu với bảng chữ cái `A-Za-z0-9` và `cycle_len = 62 × 3 = 186`.
+    pub fn new() -> Self {
+        let mut alphabet = Vec::with_capacity(ALPHABET_LEN);
+        alphabet.extend_from_slice(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        alphabet.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
+        alphabet.extend_from_slice(b"0123456789");
+        Self {
+            alphabet,
+            cycle_len: ALPHABET_LEN * 3,
+        }
     }
 }
 ```
 
 ```rust
-/// Sinh `length` byte mẫu.
-///
-/// Mẫu được chia thành các nhãn 4 byte liên tiếp; nhãn thứ `n` (đánh số từ 0) được mã hoá
-/// bằng hệ cơ sở hỗn nên **mọi nhãn đều khác nhau**.
-pub fn generate(&self, length: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity(length);
-    for index in 0..length {
-        let chunk = (index / CHUNK_LABEL_LEN) as u64;
-        let position = index % CHUNK_LABEL_LEN;
-        out.push(Self::chunk_bytes(chunk)[position]);
+impl CyclicPatternGenerator {
+    /// Sinh `length` byte mẫu.
+    ///
+    /// Mẫu được chia thành các nhãn 4 byte liên tiếp; nhãn thứ `n` (đánh số từ 0) được mã hoá
+    /// bằng hệ cơ sở hỗn nên **mọi nhãn đều khác nhau**.
+    pub fn generate(&self, length: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(length);
+        for index in 0..length {
+            let chunk = (index / CHUNK_LABEL_LEN) as u64;
+            let position = index % CHUNK_LABEL_LEN;
+            out.push(Self::chunk_bytes(chunk)[position]);
+        }
+        out
     }
-    out
 }
 ```
 
@@ -731,94 +745,104 @@ fn chunk_bytes(chunk_index: u64) -> [u8; CHUNK_LABEL_LEN] {
 ```
 
 ```rust
-/// Tìm vị trí bắt đầu của chuỗi `sequence` trong mẫu tuần hoàn.
-///
-/// Hàm dựng một "chuỗi hay" (haystack) rộng ít nhất [`MIN_SEARCH_WINDOW`] byte rồi quét
-/// tìm cửa sổ khớp đầu tiên. Với nhãn 4 byte sinh từ [`CyclicPatternGenerator::generate`],
-/// kết quả là **duy nhất** và chính xác bằng offset gốc.
-pub fn find_offset(&self, sequence: &[u8]) -> Option<usize> {
-    if sequence.is_empty() {
-        return None;
+impl CyclicPatternGenerator {
+    /// Tìm vị trí bắt đầu của chuỗi `sequence` trong mẫu tuần hoàn.
+    ///
+    /// Hàm dựng một "chuỗi hay" (haystack) rộng ít nhất [`MIN_SEARCH_WINDOW`] byte rồi quét
+    /// tìm cửa sổ khớp đầu tiên. Với nhãn 4 byte sinh từ [`CyclicPatternGenerator::generate`],
+    /// kết quả là **duy nhất** và chính xác bằng offset gốc.
+    pub fn find_offset(&self, sequence: &[u8]) -> Option<usize> {
+        if sequence.is_empty() {
+            return None;
+        }
+        let window = (sequence.len() + self.cycle_len + CHUNK_LABEL_LEN).max(MIN_SEARCH_WINDOW);
+        let haystack = self.generate(window);
+        haystack
+            .windows(sequence.len())
+            .position(|window| window == sequence)
     }
-    let window = (sequence.len() + self.cycle_len + CHUNK_LABEL_LEN).max(MIN_SEARCH_WINDOW);
-    let haystack = self.generate(window);
-    haystack
-        .windows(sequence.len())
-        .position(|window| window == sequence)
 }
 ```
 
 ```rust
-/// Trả về nhãn 4 ký tự tại `offset` (dạng chuỗi ASCII in được).
-///
-/// Nhãn là **định danh duy nhất** của offset khi offset nằm ở ranh giới nhãn (chia hết cho 4).
-pub fn chunk_label(&self, offset: usize) -> String {
-    self.generate(offset + CHUNK_LABEL_LEN)[offset..]
-        .iter()
-        .map(|&byte| char::from(byte))
-        .collect()
+impl CyclicPatternGenerator {
+    /// Trả về nhãn 4 ký tự tại `offset` (dạng chuỗi ASCII in được).
+    ///
+    /// Nhãn là **định danh duy nhất** của offset khi offset nằm ở ranh giới nhãn (chia hết cho 4).
+    pub fn chunk_label(&self, offset: usize) -> String {
+        self.generate(offset + CHUNK_LABEL_LEN)[offset..]
+            .iter()
+            .map(|&byte| char::from(byte))
+            .collect()
+    }
 }
 ```
 
 ### 4.3 Dò byte xấu: `BadCharDetector`
 
 ```rust
-/// Phát hiện các byte bị loại bỏ hoặc bị thay thế.
-///
-/// Quy tắc: byte gửi `sent` bị coi là **xấu** nếu
-///
-/// * kênh không trả về byte nào (`received` rỗng) — byte bị lọc mất; hoặc
-/// * byte đầu tiên nhận về khác `sent` — byte bị thay thế hoặc biến đổi.
-pub fn detect(&self) -> Vec<u8> {
-    let mut bad = self.bad_chars.clone();
-    for (sent, received) in &self.responses {
-        let corrupted = match received.first() {
-            None => true,
-            Some(&first) => first != *sent,
-        };
-        if corrupted && !bad.contains(sent) {
-            bad.push(*sent);
+impl BadCharDetector {
+    /// Phát hiện các byte bị loại bỏ hoặc bị thay thế.
+    ///
+    /// Quy tắc: byte gửi `sent` bị coi là **xấu** nếu
+    ///
+    /// * kênh không trả về byte nào (`received` rỗng) — byte bị lọc mất; hoặc
+    /// * byte đầu tiên nhận về khác `sent` — byte bị thay thế hoặc biến đổi.
+    pub fn detect(&self) -> Vec<u8> {
+        let mut bad = self.bad_chars.clone();
+        for (sent, received) in &self.responses {
+            let corrupted = match received.first() {
+                None => true,
+                Some(&first) => first != *sent,
+            };
+            if corrupted && !bad.contains(sent) {
+                bad.push(*sent);
+            }
+        }
+        bad.sort_unstable();
+        bad.dedup();
+        bad
+    }
+}
+```
+
+```rust
+impl BadCharDetector {
+    /// Ghi nhận một phép biến đổi (XOR/ADD) mà kênh truyền áp dụng lên byte.
+    ///
+    /// Hàm so `received[0] ^ sent` (độ lệch XOR) và `received[0] - sent` (độ lệch cộng).
+    /// Nếu cả hai đều bằng `0` thì byte được giữ nguyên; ngược lại byte bị biến đổi và bị
+    /// ghi vào danh sách byte xấu.
+    pub fn detect_from_transformation(&mut self, sent: u8, received: Vec<u8>) {
+        let xor_delta = received.first().map(|&first| first ^ sent).unwrap_or(0);
+        let add_delta = received
+            .first()
+            .map(|&first| first.wrapping_sub(sent))
+            .unwrap_or(0);
+        let transformed = received.is_empty() || xor_delta != 0 || add_delta != 0;
+
+        self.responses.push((sent, received));
+        if transformed && !self.bad_chars.contains(&sent) {
+            self.bad_chars.push(sent);
+            self.bad_chars.sort_unstable();
         }
     }
-    bad.sort_unstable();
-    bad.dedup();
-    bad
 }
 ```
 
 ```rust
-/// Ghi nhận một phép biến đổi (XOR/ADD) mà kênh truyền áp dụng lên byte.
-///
-/// Hàm so `received[0] ^ sent` (độ lệch XOR) và `received[0] - sent` (độ lệch cộng).
-/// Nếu cả hai đều bằng `0` thì byte được giữ nguyên; ngược lại byte bị biến đổi và bị
-/// ghi vào danh sách byte xấu.
-pub fn detect_from_transformation(&mut self, sent: u8, received: Vec<u8>) {
-    let xor_delta = received.first().map(|&first| first ^ sent).unwrap_or(0);
-    let add_delta = received
-        .first()
-        .map(|&first| first.wrapping_sub(sent))
-        .unwrap_or(0);
-    let transformed = received.is_empty() || xor_delta != 0 || add_delta != 0;
-
-    self.responses.push((sent, received));
-    if transformed && !self.bad_chars.contains(&sent) {
-        self.bad_chars.push(sent);
-        self.bad_chars.sort_unstable();
+impl BadCharDetector {
+    /// Dò toàn bộ 256 byte qua kênh `channel` và ghi nhận kết quả.
+    ///
+    /// Hàm trả về danh sách byte xấu tìm được.
+    pub fn probe_all_bytes(&mut self, channel: &mut MockChannel) -> Vec<u8> {
+        for byte in 0u16..=255 {
+            let sent = byte as u8;
+            let received = channel.transmit(sent).unwrap_or_default();
+            self.record(sent, received);
+        }
+        self.detect()
     }
-}
-```
-
-```rust
-/// Dò toàn bộ 256 byte qua kênh `channel` và ghi nhận kết quả.
-///
-/// Hàm trả về danh sách byte xấu tìm được.
-pub fn probe_all_bytes(&mut self, channel: &mut MockChannel) -> Vec<u8> {
-    for byte in 0u16..=255 {
-        let sent = byte as u8;
-        let received = channel.transmit(sent).unwrap_or_default();
-        self.record(sent, received);
-    }
-    self.detect()
 }
 ```
 
@@ -855,45 +879,49 @@ impl MockChannel {
 ### 4.4 Mã hoá shellcode: `ShellcodeEncoder`
 
 ```rust
-/// Mã hoá shellcode bằng XOR xoay vòng với khoá.
-///
-/// Công thức: $\;e_i = s_i \oplus k_{i \bmod |k|}\;$.
-pub fn xor_encode(&self, shellcode: &[u8]) -> Vec<u8> {
-    if self.key.is_empty() {
-        return shellcode.to_vec();
+impl ShellcodeEncoder {
+    /// Mã hoá shellcode bằng XOR xoay vòng với khoá.
+    ///
+    /// Công thức: $\;e_i = s_i \oplus k_{i \bmod |k|}\;$.
+    pub fn xor_encode(&self, shellcode: &[u8]) -> Vec<u8> {
+        if self.key.is_empty() {
+            return shellcode.to_vec();
+        }
+        shellcode
+            .iter()
+            .enumerate()
+            .map(|(index, &byte)| byte ^ self.key[index % self.key.len()])
+            .collect()
     }
-    shellcode
-        .iter()
-        .enumerate()
-        .map(|(index, &byte)| byte ^ self.key[index % self.key.len()])
-        .collect()
 }
 ```
 
 ```rust
-/// Dựng **stub giải mã mô phỏng** cho `encoded_len` byte payload đã mã hoá.
-///
-/// ⚠️ **Không phải shellcode thật** — đây là một *mô tả* (descriptor) có cấu trúc để ta có thể
-/// kiểm chứng việc giải mã bằng [`ShellcodeEncoder::simulate_decode`]:
-///
-/// ```text
-///  offset 0 : 0xEB              — marker "JMP short", dấu hiệu stub mô phỏng
-///  offset 1 : 0x00              — byte dự phòng
-///  offset 2 : key_len    (u32 LE)
-///  offset 6 : encoded_len(u32 LE)
-///  offset 10: key bytes (key_len byte)
-///  offset 10+key_len: vùng payload giả lấp bằng 0x90 (encoded_len byte)
-/// ```
-pub fn build_decoder_stub(&self, encoded_len: usize) -> Vec<u8> {
-    let key_len = self.key.len().max(1);
-    let mut stub = Vec::with_capacity(STUB_HEADER_LEN + key_len + encoded_len);
-    stub.push(STUB_MAGIC);
-    stub.push(0x00);
-    stub.extend_from_slice(&(key_len as u32).to_le_bytes());
-    stub.extend_from_slice(&(encoded_len as u32).to_le_bytes());
-    stub.extend_from_slice(&self.key);
-    stub.extend(std::iter::repeat_n(0x90u8, encoded_len));
-    stub
+impl ShellcodeEncoder {
+    /// Dựng **stub giải mã mô phỏng** cho `encoded_len` byte payload đã mã hoá.
+    ///
+    /// ⚠️ **Không phải shellcode thật** — đây là một *mô tả* (descriptor) có cấu trúc để ta có thể
+    /// kiểm chứng việc giải mã bằng [`ShellcodeEncoder::simulate_decode`]:
+    ///
+    /// ```text
+    ///  offset 0 : 0xEB              — marker "JMP short", dấu hiệu stub mô phỏng
+    ///  offset 1 : 0x00              — byte dự phòng
+    ///  offset 2 : key_len    (u32 LE)
+    ///  offset 6 : encoded_len(u32 LE)
+    ///  offset 10: key bytes (key_len byte)
+    ///  offset 10+key_len: vùng payload giả lấp bằng 0x90 (encoded_len byte)
+    /// ```
+    pub fn build_decoder_stub(&self, encoded_len: usize) -> Vec<u8> {
+        let key_len = self.key.len().max(1);
+        let mut stub = Vec::with_capacity(STUB_HEADER_LEN + key_len + encoded_len);
+        stub.push(STUB_MAGIC);
+        stub.push(0x00);
+        stub.extend_from_slice(&(key_len as u32).to_le_bytes());
+        stub.extend_from_slice(&(encoded_len as u32).to_le_bytes());
+        stub.extend_from_slice(&self.key);
+        stub.extend(std::iter::repeat_n(0x90u8, encoded_len));
+        stub
+    }
 }
 ```
 
@@ -934,44 +962,48 @@ pub fn simulate_decode(stub: &[u8], encoded: &[u8], key: &[u8]) -> Vec<u8> {
 ```
 
 ```rust
-/// Tìm một khoá XOR **1 byte** sao cho payload mã hoá không chứa byte xấu nào.
-///
-/// Thử lần lượt 256 khoá; trả về `None` nếu không tồn tại khoá phù hợp (ví dụ khi tập byte
-/// xấu bao phủ toàn bộ 256 giá trị).
-pub fn find_single_byte_key(&self, shellcode: &[u8], bad_chars: &[u8]) -> Option<u8> {
-    for candidate in 0u16..=255 {
-        let key = candidate as u8;
-        let encoded: Vec<u8> = shellcode.iter().map(|&byte| byte ^ key).collect();
-        if !encoded.iter().any(|byte| bad_chars.contains(byte)) {
-            return Some(key);
+impl ShellcodeEncoder {
+    /// Tìm một khoá XOR **1 byte** sao cho payload mã hoá không chứa byte xấu nào.
+    ///
+    /// Thử lần lượt 256 khoá; trả về `None` nếu không tồn tại khoá phù hợp (ví dụ khi tập byte
+    /// xấu bao phủ toàn bộ 256 giá trị).
+    pub fn find_single_byte_key(&self, shellcode: &[u8], bad_chars: &[u8]) -> Option<u8> {
+        for candidate in 0u16..=255 {
+            let key = candidate as u8;
+            let encoded: Vec<u8> = shellcode.iter().map(|&byte| byte ^ key).collect();
+            if !encoded.iter().any(|byte| bad_chars.contains(byte)) {
+                return Some(key);
+            }
         }
+        None
     }
-    None
 }
 ```
 
 ```rust
-/// Mã hoá "tối ưu": trả về `(payload đã mã hoá, khoá đã dùng)`.
-///
-/// Thứ tự ưu tiên:
-///
-/// 1. khoá 1 byte (nhỏ gọn nhất, dễ đoán);
-/// 2. khoá nhiều byte đảo bit (`NOT`) — vẫn giải mã được bằng cùng thuật toán;
-/// 3. khoá nhiều byte gốc — phương án cuối cùng.
-pub fn encode_best(&self, shellcode: &[u8], bad_chars: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    if let Some(key) = self.find_single_byte_key(shellcode, bad_chars) {
-        let encoded: Vec<u8> = shellcode.iter().map(|&byte| byte ^ key).collect();
-        return (encoded, vec![key]);
-    }
+impl ShellcodeEncoder {
+    /// Mã hoá "tối ưu": trả về `(payload đã mã hoá, khoá đã dùng)`.
+    ///
+    /// Thứ tự ưu tiên:
+    ///
+    /// 1. khoá 1 byte (nhỏ gọn nhất, dễ đoán);
+    /// 2. khoá nhiều byte đảo bit (`NOT`) — vẫn giải mã được bằng cùng thuật toán;
+    /// 3. khoá nhiều byte gốc — phương án cuối cùng.
+    pub fn encode_best(&self, shellcode: &[u8], bad_chars: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        if let Some(key) = self.find_single_byte_key(shellcode, bad_chars) {
+            let encoded: Vec<u8> = shellcode.iter().map(|&byte| byte ^ key).collect();
+            return (encoded, vec![key]);
+        }
 
-    let inverted_key: Vec<u8> = self.key.iter().map(|byte| !byte).collect();
-    let inverted = ShellcodeEncoder::new(inverted_key.clone());
-    let encoded = inverted.xor_encode(shellcode);
-    if !encoded.iter().any(|byte| bad_chars.contains(byte)) {
-        return (encoded, inverted_key);
-    }
+        let inverted_key: Vec<u8> = self.key.iter().map(|byte| !byte).collect();
+        let inverted = ShellcodeEncoder::new(inverted_key.clone());
+        let encoded = inverted.xor_encode(shellcode);
+        if !encoded.iter().any(|byte| bad_chars.contains(byte)) {
+            return (encoded, inverted_key);
+        }
 
-    (self.xor_encode(shellcode), self.key.clone())
+        (self.xor_encode(shellcode), self.key.clone())
+    }
 }
 ```
 
@@ -1004,102 +1036,112 @@ impl BitwiseTransform {
 ### 4.5 Đường trượt NOP: `NopSledBuilder`
 
 ```rust
-/// Dựng sled.
-///
-/// Sled được ghép từ các mẫu NOP 7 byte và 2 byte theo thứ tự do PRNG tất định quyết định.
-/// Bộ dựng **không bao giờ cắt ngang** một lệnh NOP: nếu phần chừa không đủ cho mẫu được
-/// chọn, ta dùng mẫu nhỏ hơn vừa khít — nhờ đó sled luôn phân rã được trọn vẹn thành các
-/// lệnh NOP hợp lệ.
-pub fn build(&self) -> Vec<u8> {
-    if !self.use_multibyte {
-        return vec![NOP_BYTE; self.length];
-    }
+impl NopSledBuilder {
+    /// Dựng sled.
+    ///
+    /// Sled được ghép từ các mẫu NOP 7 byte và 2 byte theo thứ tự do PRNG tất định quyết định.
+    /// Bộ dựng **không bao giờ cắt ngang** một lệnh NOP: nếu phần chừa không đủ cho mẫu được
+    /// chọn, ta dùng mẫu nhỏ hơn vừa khít — nhờ đó sled luôn phân rã được trọn vẹn thành các
+    /// lệnh NOP hợp lệ.
+    pub fn build(&self) -> Vec<u8> {
+        if !self.use_multibyte {
+            return vec![NOP_BYTE; self.length];
+        }
 
-    let mut out = Vec::with_capacity(self.length);
-    let mut state = self.seed | 1;
-    while out.len() < self.length {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
+        let mut out = Vec::with_capacity(self.length);
+        let mut state = self.seed | 1;
+        while out.len() < self.length {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
 
-        let remaining = self.length - out.len();
-        let pattern: &[u8] = if z.is_multiple_of(2) {
-            Self::fit_pattern(&MULTIBYTE_NOP_7, &MULTIBYTE_NOP_2, remaining)
-        } else {
-            Self::fit_pattern(&MULTIBYTE_NOP_2, &MULTIBYTE_NOP_7, remaining)
-        };
-        out.extend_from_slice(pattern);
+            let remaining = self.length - out.len();
+            let pattern: &[u8] = if z.is_multiple_of(2) {
+                Self::fit_pattern(&MULTIBYTE_NOP_7, &MULTIBYTE_NOP_2, remaining)
+            } else {
+                Self::fit_pattern(&MULTIBYTE_NOP_2, &MULTIBYTE_NOP_7, remaining)
+            };
+            out.extend_from_slice(pattern);
+        }
+        out
     }
-    out
 }
 ```
 
 ```rust
-/// Đo phần đầu sled được phủ bởi các lệnh NOP liên tiếp (tính bằng **byte**).
-///
-/// Hàm dừng lại ngay trước byte đầu tiên không thuộc lệnh NOP nào, nên nếu sled bị cắt
-/// giữa chừng một lệnh NOP dài thì phần đuôi bị cắt **không** được tính.
-pub fn coverage(&self, sled: &[u8]) -> usize {
-    let mut covered = 0usize;
-    let mut offset = 0usize;
-    while offset < sled.len() {
-        match Self::nop_instruction_len(&sled[offset..]) {
-            Some(length) if offset + length <= sled.len() => {
-                covered += length;
-                offset += length;
+impl NopSledBuilder {
+    /// Đo phần đầu sled được phủ bởi các lệnh NOP liên tiếp (tính bằng **byte**).
+    ///
+    /// Hàm dừng lại ngay trước byte đầu tiên không thuộc lệnh NOP nào, nên nếu sled bị cắt
+    /// giữa chừng một lệnh NOP dài thì phần đuôi bị cắt **không** được tính.
+    pub fn coverage(&self, sled: &[u8]) -> usize {
+        let mut covered = 0usize;
+        let mut offset = 0usize;
+        while offset < sled.len() {
+            match Self::nop_instruction_len(&sled[offset..]) {
+                Some(length) if offset + length <= sled.len() => {
+                    covered += length;
+                    offset += length;
+                }
+                _ => break,
             }
-            _ => break,
         }
+        covered
     }
-    covered
 }
 ```
 
 ```rust
-/// Kiểm tra toàn bộ sled có **phân rã trọn vẹn** thành các lệnh NOP hợp lệ hay không.
-///
-/// Đây là bất biến quan trọng: nếu sled chứa một byte không thuộc lệnh NOP nào, CPU sẽ thực
-/// thi nhầm dữ liệu và chương trình sẽ sập trước khi tới shellcode.
-pub fn is_valid_nop_sled(&self, sled: &[u8]) -> bool {
-    let mut offset = 0usize;
-    while offset < sled.len() {
-        match Self::nop_instruction_len(&sled[offset..]) {
-            Some(length) => offset += length,
-            None => return false,
+impl NopSledBuilder {
+    /// Kiểm tra toàn bộ sled có **phân rã trọn vẹn** thành các lệnh NOP hợp lệ hay không.
+    ///
+    /// Đây là bất biến quan trọng: nếu sled chứa một byte không thuộc lệnh NOP nào, CPU sẽ thực
+    /// thi nhầm dữ liệu và chương trình sẽ sập trước khi tới shellcode.
+    pub fn is_valid_nop_sled(&self, sled: &[u8]) -> bool {
+        let mut offset = 0usize;
+        while offset < sled.len() {
+            match Self::nop_instruction_len(&sled[offset..]) {
+                Some(length) => offset += length,
+                None => return false,
+            }
         }
+        true
     }
-    true
 }
 ```
 
 ### 4.6 Lắp ráp payload: `ExploitAssembler`
 
 ```rust
-/// Lắp ráp payload cuối cùng.
-pub fn assemble(&self) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(self.total_len());
-    payload.extend_from_slice(&self.padding);
-    payload.extend_from_slice(&self.return_address.to_le_bytes());
-    payload.extend_from_slice(&self.nop_sled);
-    payload.extend_from_slice(&self.encoded_shellcode);
-    payload
+impl ExploitAssembler {
+    /// Lắp ráp payload cuối cùng.
+    pub fn assemble(&self) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(self.total_len());
+        payload.extend_from_slice(&self.padding);
+        payload.extend_from_slice(&self.return_address.to_le_bytes());
+        payload.extend_from_slice(&self.nop_sled);
+        payload.extend_from_slice(&self.encoded_shellcode);
+        payload
+    }
 }
 ```
 
 ```rust
-/// Mô tả các đoạn của payload dưới dạng `(tên, offset, độ dài)`.
-pub fn segment_offsets(&self) -> Vec<(&'static str, usize, usize)> {
-    let padding_end = self.padding.len();
-    let address_end = padding_end + 8;
-    let sled_end = address_end + self.nop_sled.len();
-    vec![
-        ("padding", 0, self.padding.len()),
-        ("return_address", padding_end, 8),
-        ("nop_sled", address_end, self.nop_sled.len()),
-        ("encoded_shellcode", sled_end, self.encoded_shellcode.len()),
-    ]
+impl ExploitAssembler {
+    /// Mô tả các đoạn của payload dưới dạng `(tên, offset, độ dài)`.
+    pub fn segment_offsets(&self) -> Vec<(&'static str, usize, usize)> {
+        let padding_end = self.padding.len();
+        let address_end = padding_end + 8;
+        let sled_end = address_end + self.nop_sled.len();
+        vec![
+            ("padding", 0, self.padding.len()),
+            ("return_address", padding_end, 8),
+            ("nop_sled", address_end, self.nop_sled.len()),
+            ("encoded_shellcode", sled_end, self.encoded_shellcode.len()),
+        ]
+    }
 }
 ```
 
@@ -1124,223 +1166,235 @@ Bảng chữ ký byte của từng loại gadget:
 ```
 
 ```rust
-/// Quét toàn bộ binary và trả về mọi gadget tìm được, sắp xếp theo offset tăng dần.
-pub fn find_all(&self) -> Vec<RopGadget> {
-    let mut gadgets: Vec<RopGadget> = Vec::new();
-    for offset in 0..self.binary.len() {
-        for (kind, signature) in Self::signatures() {
-            if self.binary[offset..].starts_with(signature) {
-                gadgets.push(RopGadget {
-                    offset,
-                    kind,
-                    bytes: signature.to_vec(),
-                });
+impl RopGadgetFinder {
+    /// Quét toàn bộ binary và trả về mọi gadget tìm được, sắp xếp theo offset tăng dần.
+    pub fn find_all(&self) -> Vec<RopGadget> {
+        let mut gadgets: Vec<RopGadget> = Vec::new();
+        for offset in 0..self.binary.len() {
+            for (kind, signature) in Self::signatures() {
+                if self.binary[offset..].starts_with(signature) {
+                    gadgets.push(RopGadget {
+                        offset,
+                        kind,
+                        bytes: signature.to_vec(),
+                    });
+                }
             }
         }
+        gadgets
     }
-    gadgets
 }
 ```
 
 ### 4.8 Chuỗi ROP `ret2libc`: `RopChainBuilder`
 
 ```rust
-/// Lắp ráp chuỗi thành byte.
-///
-/// Bố cục: `địa chỉ_1 ‖ tham số_1 ‖ địa chỉ_2 ‖ tham số_2 ‖ …`, mỗi số là 8 byte LE.
-pub fn build(&self) -> Vec<u8> {
-    let mut out = Vec::with_capacity(self.byte_len());
-    for (address, argument) in &self.gadgets {
-        out.extend_from_slice(&address.to_le_bytes());
-        if let Some(value) = argument {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-    }
-    out
-}
-```
-
-```rust
-/// Mô phỏng việc thực thi chuỗi ROP.
-///
-/// `registry` là bảng ánh xạ **tên → địa chỉ** của các gadget/hàm trong binary giả
-/// (ví dụ `{"pop_rdi": 0x401234, "/bin/sh": 0x402000, "system": 0x401500}`).
-///
-/// Hàm trả về một bảng trạng thái gồm:
-///
-/// * `rdi`, `rsi`, `rdx`, `rax` — giá trị cuối cùng của các thanh ghi;
-/// * `called` — **địa chỉ** của hàm được gọi (tên hàm tra lại được từ `registry`);
-/// * `ret_addr` — địa chỉ gadget `ret` kết thúc chuỗi;
-/// * `stack_pointer` — con trỏ ngăn xếp sau khi chuỗi chạy hết;
-/// * `chain_base` — địa chỉ nền của chuỗi.
-pub fn simulate_execution(&self, registry: &HashMap<String, u64>) -> HashMap<String, u64> {
-    let mut state: HashMap<String, u64> = HashMap::new();
-    let mut registers: HashMap<&str, u64> = HashMap::new();
-    registers.insert("rdi", 0);
-    registers.insert("rsi", 0);
-    registers.insert("rdx", 0);
-    registers.insert("rax", 0);
-
-    let mut called: Option<(String, u64)> = None;
-    let mut ret_addr: Option<u64> = None;
-    let mut consumed = 0u64;
-
-    for (address, argument) in &self.gadgets {
-        consumed += 8;
-        if argument.is_some() {
-            consumed += 8;
-        }
-
-        let Some(name) = Self::lookup_name(registry, *address) else {
-            break;
-        };
-
-        if let Some(register) = Self::register_of(&name) {
+impl RopChainBuilder {
+    /// Lắp ráp chuỗi thành byte.
+    ///
+    /// Bố cục: `địa chỉ_1 ‖ tham số_1 ‖ địa chỉ_2 ‖ tham số_2 ‖ …`, mỗi số là 8 byte LE.
+    pub fn build(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.byte_len());
+        for (address, argument) in &self.gadgets {
+            out.extend_from_slice(&address.to_le_bytes());
             if let Some(value) = argument {
-                registers.insert(register, *value);
+                out.extend_from_slice(&value.to_le_bytes());
             }
-            continue;
         }
-
-        if name == "ret" {
-            ret_addr = Some(*address);
-            break;
-        }
-
-        called = Some((name, *address));
+        out
     }
-
-    for (register, value) in registers {
-        state.insert(register.to_string(), value);
-    }
-    if let Some((name, address)) = called {
-        state.insert("called".to_string(), address);
-        state.insert("called_name".to_string(), Self::name_hash(&name));
-    }
-    if let Some(address) = ret_addr {
-        state.insert("ret_addr".to_string(), address);
-    }
-    state.insert("chain_base".to_string(), self.base_address);
-    state.insert("stack_pointer".to_string(), self.base_address + consumed);
-    state.insert("consumed".to_string(), consumed);
-    state
 }
 ```
 
 ```rust
-/// Mô phỏng thực thi và trả về bản ghi **dạng văn bản** (dễ đọc khi in minh hoạ).
-///
-/// Trong bản ghi này, `called` mang **tên** hàm được gọi (ví dụ `"system"`).
-pub fn simulate_execution_named(&self, registry: &HashMap<String, u64>) -> Vec<String> {
-    let mut trace = Vec::new();
-    for (address, argument) in &self.gadgets {
-        let Some(name) = Self::lookup_name(registry, *address) else {
-            trace.push(format!(
-                "0x{address:016X}: gadget không xác định → dừng chuỗi"
-            ));
-            break;
-        };
-        match Self::register_of(&name) {
-            Some(register) => {
-                let value = argument.unwrap_or(0);
-                trace.push(format!("{register} ← 0x{value:016X}"));
+impl RopChainBuilder {
+    /// Mô phỏng việc thực thi chuỗi ROP.
+    ///
+    /// `registry` là bảng ánh xạ **tên → địa chỉ** của các gadget/hàm trong binary giả
+    /// (ví dụ `{"pop_rdi": 0x401234, "/bin/sh": 0x402000, "system": 0x401500}`).
+    ///
+    /// Hàm trả về một bảng trạng thái gồm:
+    ///
+    /// * `rdi`, `rsi`, `rdx`, `rax` — giá trị cuối cùng của các thanh ghi;
+    /// * `called` — **địa chỉ** của hàm được gọi (tên hàm tra lại được từ `registry`);
+    /// * `ret_addr` — địa chỉ gadget `ret` kết thúc chuỗi;
+    /// * `stack_pointer` — con trỏ ngăn xếp sau khi chuỗi chạy hết;
+    /// * `chain_base` — địa chỉ nền của chuỗi.
+    pub fn simulate_execution(&self, registry: &HashMap<String, u64>) -> HashMap<String, u64> {
+        let mut state: HashMap<String, u64> = HashMap::new();
+        let mut registers: HashMap<&str, u64> = HashMap::new();
+        registers.insert("rdi", 0);
+        registers.insert("rsi", 0);
+        registers.insert("rdx", 0);
+        registers.insert("rax", 0);
+
+        let mut called: Option<(String, u64)> = None;
+        let mut ret_addr: Option<u64> = None;
+        let mut consumed = 0u64;
+
+        for (address, argument) in &self.gadgets {
+            consumed += 8;
+            if argument.is_some() {
+                consumed += 8;
             }
-            None if name == "ret" => {
-                trace.push("ret → kết thúc chuỗi".to_string());
+
+            let Some(name) = Self::lookup_name(registry, *address) else {
+                break;
+            };
+
+            if let Some(register) = Self::register_of(&name) {
+                if let Some(value) = argument {
+                    registers.insert(register, *value);
+                }
+                continue;
+            }
+
+            if name == "ret" {
+                ret_addr = Some(*address);
                 break;
             }
-            None => {
-                trace.push(format!("gọi hàm `{name}` (0x{address:016X})"));
+
+            called = Some((name, *address));
+        }
+
+        for (register, value) in registers {
+            state.insert(register.to_string(), value);
+        }
+        if let Some((name, address)) = called {
+            state.insert("called".to_string(), address);
+            state.insert("called_name".to_string(), Self::name_hash(&name));
+        }
+        if let Some(address) = ret_addr {
+            state.insert("ret_addr".to_string(), address);
+        }
+        state.insert("chain_base".to_string(), self.base_address);
+        state.insert("stack_pointer".to_string(), self.base_address + consumed);
+        state.insert("consumed".to_string(), consumed);
+        state
+    }
+}
+```
+
+```rust
+impl RopChainBuilder {
+    /// Mô phỏng thực thi và trả về bản ghi **dạng văn bản** (dễ đọc khi in minh hoạ).
+    ///
+    /// Trong bản ghi này, `called` mang **tên** hàm được gọi (ví dụ `"system"`).
+    pub fn simulate_execution_named(&self, registry: &HashMap<String, u64>) -> Vec<String> {
+        let mut trace = Vec::new();
+        for (address, argument) in &self.gadgets {
+            let Some(name) = Self::lookup_name(registry, *address) else {
+                trace.push(format!(
+                    "0x{address:016X}: gadget không xác định → dừng chuỗi"
+                ));
+                break;
+            };
+            match Self::register_of(&name) {
+                Some(register) => {
+                    let value = argument.unwrap_or(0);
+                    trace.push(format!("{register} ← 0x{value:016X}"));
+                }
+                None if name == "ret" => {
+                    trace.push("ret → kết thúc chuỗi".to_string());
+                    break;
+                }
+                None => {
+                    trace.push(format!("gọi hàm `{name}` (0x{address:016X})"));
+                }
             }
         }
+        trace
     }
-    trace
 }
 ```
 
 ### 4.9 Vỏ hệ điều hành giả: `MockShell`
 
 ```rust
-/// Thực thi một lệnh và trả về kết quả.
-///
-/// Lệnh được hiểu: `whoami`, `id`, `cat /etc/shadow`, `uname -a`. Mọi lệnh khác trả về
-/// thông báo "command not found" giống `sh` của POSIX.
-pub fn execute(&mut self, command: &str) -> String {
-    let trimmed = command.trim();
-    let output = match trimmed {
-        "whoami" => "root".to_string(),
-        "id" => "uid=0(root) gid=0(root) groups=0(root)".to_string(),
-        "cat /etc/shadow" => MOCK_SHADOW.to_string(),
-        "uname -a" => "Linux mock 6.1.0 #1 SMP x86_64".to_string(),
-        other => format!("sh: {other}: command not found"),
-    };
-    self.commands.push((command.to_string(), output.clone()));
-    output
+impl MockShell {
+    /// Thực thi một lệnh và trả về kết quả.
+    ///
+    /// Lệnh được hiểu: `whoami`, `id`, `cat /etc/shadow`, `uname -a`. Mọi lệnh khác trả về
+    /// thông báo "command not found" giống `sh` của POSIX.
+    pub fn execute(&mut self, command: &str) -> String {
+        let trimmed = command.trim();
+        let output = match trimmed {
+            "whoami" => "root".to_string(),
+            "id" => "uid=0(root) gid=0(root) groups=0(root)".to_string(),
+            "cat /etc/shadow" => MOCK_SHADOW.to_string(),
+            "uname -a" => "Linux mock 6.1.0 #1 SMP x86_64".to_string(),
+            other => format!("sh: {other}: command not found"),
+        };
+        self.commands.push((command.to_string(), output.clone()));
+        output
+    }
 }
 ```
 
 ### 4.10 Kịch bản tổng thể: `BinaryExploitLab::run`
 
 ```rust
-/// Chạy trọn kịch bản và trả về báo cáo.
-pub fn run(&mut self) -> ExploitRunReport {
-    // (1) Dò byte xấu qua kênh truyền giả lập.
-    let mut channel = MockChannel::new();
-    let bad_chars = self.detector.probe_all_bytes(&mut channel);
+impl BinaryExploitLab {
+    /// Chạy trọn kịch bản và trả về báo cáo.
+    pub fn run(&mut self) -> ExploitRunReport {
+        // (1) Dò byte xấu qua kênh truyền giả lập.
+        let mut channel = MockChannel::new();
+        let bad_chars = self.detector.probe_all_bytes(&mut channel);
 
-    // (2) Sinh mẫu tuần hoàn đủ dài để ghi đè tới địa chỉ trả về.
-    let pattern_len = FRAME_SIZE;
-    let pattern = self.pattern.generate(pattern_len);
-    self.target.write_input(&pattern);
-    let observed = self.target.return_address_bytes();
-    let crash_offset = self.pattern.find_offset(&observed);
+        // (2) Sinh mẫu tuần hoàn đủ dài để ghi đè tới địa chỉ trả về.
+        let pattern_len = FRAME_SIZE;
+        let pattern = self.pattern.generate(pattern_len);
+        self.target.write_input(&pattern);
+        let observed = self.target.return_address_bytes();
+        let crash_offset = self.pattern.find_offset(&observed);
 
-    // (3) Mã hoá shellcode sao cho không chứa byte xấu.
-    let shellcode = Self::demo_shellcode();
-    let (encoded, key) = self.encoder.encode_best(&shellcode, &bad_chars);
+        // (3) Mã hoá shellcode sao cho không chứa byte xấu.
+        let shellcode = Self::demo_shellcode();
+        let (encoded, key) = self.encoder.encode_best(&shellcode, &bad_chars);
 
-    // (4) Lắp ráp payload hoàn chỉnh.
-    let sled = self.sled_builder.build();
-    let assembler = ExploitAssembler::new(BUFFER_SIZE, self.base_address + 0x1000)
-        .with_nop_sled(sled.clone())
-        .with_shellcode(encoded.clone());
-    let payload = assembler.assemble();
+        // (4) Lắp ráp payload hoàn chỉnh.
+        let sled = self.sled_builder.build();
+        let assembler = ExploitAssembler::new(BUFFER_SIZE, self.base_address + 0x1000)
+            .with_nop_sled(sled.clone())
+            .with_shellcode(encoded.clone());
+        let payload = assembler.assemble();
 
-    // (5) Dựng chuỗi ROP kiểu ret2libc trên binary giả.
-    let pop_rdi = self
-        .finder
-        .address_of(self.base_address, GadgetType::PopRdi)
-        .unwrap_or(self.base_address);
-    let system_addr = self.base_address + 0x1500;
-    let binsh_addr = self.base_address + 0x2000;
-    let registry: HashMap<String, u64> = HashMap::from([
-        ("pop_rdi".to_string(), pop_rdi),
-        ("/bin/sh".to_string(), binsh_addr),
-        ("system".to_string(), system_addr),
-    ]);
-    let mut chain = RopChainBuilder::new(self.base_address);
-    chain.add_gadget(pop_rdi, Some(binsh_addr));
-    chain.add_gadget(system_addr, None);
-    let simulation = chain.simulate_execution(&registry);
-    let called_system = simulation.get("called") == Some(&system_addr);
+        // (5) Dựng chuỗi ROP kiểu ret2libc trên binary giả.
+        let pop_rdi = self
+            .finder
+            .address_of(self.base_address, GadgetType::PopRdi)
+            .unwrap_or(self.base_address);
+        let system_addr = self.base_address + 0x1500;
+        let binsh_addr = self.base_address + 0x2000;
+        let registry: HashMap<String, u64> = HashMap::from([
+            ("pop_rdi".to_string(), pop_rdi),
+            ("/bin/sh".to_string(), binsh_addr),
+            ("system".to_string(), system_addr),
+        ]);
+        let mut chain = RopChainBuilder::new(self.base_address);
+        chain.add_gadget(pop_rdi, Some(binsh_addr));
+        chain.add_gadget(system_addr, None);
+        let simulation = chain.simulate_execution(&registry);
+        let called_system = simulation.get("called") == Some(&system_addr);
 
-    // (6) Kiểm tra hậu quả trên vỏ giả.
-    let whoami = self.shell.execute("whoami");
-    let shell_is_root = whoami == "root" && self.shell.is_root();
+        // (6) Kiểm tra hậu quả trên vỏ giả.
+        let whoami = self.shell.execute("whoami");
+        let shell_is_root = whoami == "root" && self.shell.is_root();
 
-    ExploitRunReport {
-        canary_intact: self.target.is_canary_intact(),
-        return_address_controlled: self.target.did_overwrite_return_address(),
-        crash_offset,
-        overflow_bytes: self.target.overflow_amount(pattern_len),
-        payload_len: payload.len(),
-        bad_chars,
-        encoded_len: encoded.len(),
-        key_len: key.len(),
-        gadget_count: self.finder.gadget_count(),
-        chain_length: chain.chain_length(),
-        called_system,
-        shell_is_root,
+        ExploitRunReport {
+            canary_intact: self.target.is_canary_intact(),
+            return_address_controlled: self.target.did_overwrite_return_address(),
+            crash_offset,
+            overflow_bytes: self.target.overflow_amount(pattern_len),
+            payload_len: payload.len(),
+            bad_chars,
+            encoded_len: encoded.len(),
+            key_len: key.len(),
+            gadget_count: self.finder.gadget_count(),
+            chain_length: chain.chain_length(),
+            called_system,
+            shell_is_root,
+        }
     }
 }
 ```

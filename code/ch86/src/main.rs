@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet};
 // 1. PHÂN TÍCH KHUNG SSE & LẮP RÁP LƯỢT STREAMING (SSE & TURN ASSEMBLER)
 // ============================================================================
 
-/// Khung sự kiện Server-Sent Events (SSE) theo chuẩn RFC 8895.
+/// Khung sự kiện Server-Sent Events (SSE) theo đặc tả WHATWG HTML (mục 9.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SseFrame {
     /// Tên loại sự kiện (nếu có, e.g. `content_block_delta`).
@@ -1367,9 +1367,25 @@ impl ContextDegradationDetector {
         let mut warnings = Vec::new();
         let mut prev_content: Option<&str> = None;
         let mut empty_count = 0;
+        // Tổng số từ (xấp xỉ token) của các lượt đã duyệt, dùng cho Chế độ 3.
+        let mut seen_tokens = 0usize;
 
         for (idx, msg) in messages.iter().enumerate() {
             let trimmed = msg.content.trim();
+            let turn_tokens = trimmed.split_whitespace().count();
+
+            // Chế độ 3: Bùng nổ token (lượt hiện tại > 300% trung bình các lượt trước)
+            if idx > 0 && turn_tokens * idx > 3 * seen_tokens && seen_tokens > 0 {
+                warnings.push(DegradationWarning {
+                    kind: DegradationType::ContextLengthSpike,
+                    turn_index: idx,
+                    message: format!(
+                        "Lượt {idx} dài {turn_tokens} token, vượt 300% mức trung bình {:.1} của các lượt trước",
+                        seen_tokens as f64 / idx as f64
+                    ),
+                });
+            }
+            seen_tokens += turn_tokens;
 
             // Chế độ 5: Lượt rỗng
             if trimmed.is_empty() && msg.tool_use_id.is_none() && msg.tool_result_id.is_none() {
@@ -2183,6 +2199,25 @@ mod tests {
                 .iter()
                 .any(|w| w.kind == DegradationType::ConstraintViolation)
         );
+    }
+
+    #[test]
+    fn test_30b_context_degradation_detector_length_spike() {
+        let detector = ContextDegradationDetector::new(HashSet::new(), Vec::new());
+        let long_text = vec!["từ"; 40].join(" ");
+        let msgs = vec![
+            CtxMessage::plain(CtxRole::User, "một hai ba bốn năm"),
+            CtxMessage::plain(CtxRole::Assistant, "sáu bảy tám chín mười"),
+            CtxMessage::plain(CtxRole::User, long_text), // 40 từ > 3 x trung bình 5 từ
+            CtxMessage::plain(CtxRole::Assistant, "mười một mười hai mười ba"),
+        ];
+        let warnings = detector.audit_history(&msgs);
+        let spikes: Vec<usize> = warnings
+            .iter()
+            .filter(|w| w.kind == DegradationType::ContextLengthSpike)
+            .map(|w| w.turn_index)
+            .collect();
+        assert_eq!(spikes, vec![2]);
     }
 
     #[test]

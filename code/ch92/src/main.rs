@@ -3,7 +3,7 @@
 //! Crate này cài đặt hoàn chỉnh từ đầu (100% thuần `std`, không dùng thư viện ngoài)
 //! ba trụ cột toán học và cấu trúc dữ liệu cốt lõi của một hệ thống LLM:
 //! 1. `BpeTokenizer`: Bộ tách từ mức byte UTF-8 với hàng đợi ưu tiên `BinaryHeap` phá hòa tất định.
-//! 2. `Tensor`: Tensor vùng nhớ phẳng với `shape` và `strides`, hỗ trợ `transpose` O(1) không sao chép dữ liệu.
+//! 2. `Tensor`: Tensor vùng nhớ phẳng với `shape` và `strides`, hỗ trợ `transpose` chỉ hoán đổi `shape`/`strides` (logic O(1)).
 //! 3. `AutogradTape`: Động cơ tính vi phân ngược tự động (Reverse-Mode Autograd) duyệt thứ tự tô-pô,
 //!    kiểm chứng độ chính xác giải tích so với sai phân hữu hạn trung tâm đạt sai số < 1e-8.
 
@@ -163,8 +163,8 @@ pub struct MergeRule {
 ///   đều mã hóa và giải mã được mà không bao giờ phát sinh lỗi `<unk>`.
 /// - Hàng đợi ưu tiên `BinaryHeap` phá hòa tất định theo cặp `TokenPair` nhỏ nhất khi hai cặp
 ///   có tần số xuất hiện bằng nhau.
-/// - Các token đặc biệt (`<|bos|>`, `<|eos|>`, `<think>`, `<answer>`) được bảo vệ nguyên khối,
-///   không bao giờ bị tách vụn thành các byte UTF-8 rời rạc.
+/// - Các token đặc biệt (`<|bos|>`, `<|eos|>`, `<think>`, `</think>`, `<answer>`, `</answer>`)
+///   được bảo vệ nguyên khối, không bao giờ bị tách vụn thành các byte UTF-8 rời rạc.
 #[derive(Debug, Clone)]
 pub struct BpeTokenizer {
     /// Từ điển ánh xạ từ `u16` sang chuỗi byte
@@ -274,7 +274,7 @@ impl BpeTokenizer {
             special_token_ids: HashMap::new(),
         };
 
-        // Đăng ký mặc định 4 token đặc biệt phục vụ suy luận có cấu trúc
+        // Đăng ký mặc định 6 token đặc biệt phục vụ suy luận có cấu trúc
         tokenizer.register_special_token("<|bos|>");
         tokenizer.register_special_token("<|eos|>");
         tokenizer.register_special_token("<think>");
@@ -580,8 +580,10 @@ impl ConstrainedDecoderMask {
 /// Tensor n chiều lưu trữ trên vùng nhớ liên tục `Vec<f64>`.
 ///
 /// Bất biến kiến trúc:
-/// Phép chuyển vị `transpose` chỉ hoán đổi `shape` và `strides` với chi phí $O(1)$,
-/// hoàn toàn không cấp phát lại hoặc sao chép bất kỳ phần tử nào của `data`.
+/// Phép chuyển vị `transpose` chỉ hoán đổi `shape` và `strides` (thao tác logic tốn $O(1)$),
+/// không hề xáo trộn thứ tự phần tử trong `data`. Lưu ý: để giữ kiểu sở hữu `Vec<f64>` đơn giản,
+/// bản minh họa này vẫn `clone()` bộ đệm khi dựng tensor mới; thư viện thực tế dùng
+/// `Rc<[f64]>`/`Arc<[f64]>` hoặc view mượn để chia sẻ bộ đệm mà không sao chép.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
     /// Mảng dữ liệu số thực phẳng
@@ -674,7 +676,7 @@ impl Tensor {
         self.data[idx] = val;
     }
 
-    /// Hoán đổi hai chiều $O(1)$ mà không sao chép dữ liệu (Zero-Copy Transpose)
+    /// Hoán đổi hai chiều: chỉ đổi chỗ `shape`/`strides` (logic $O(1)$, không xáo trộn dữ liệu)
     pub fn transpose(&self, dim0: usize, dim1: usize) -> Self {
         assert!(dim0 < self.shape.len() && dim1 < self.shape.len());
         let mut new_shape = self.shape.clone();
@@ -1289,7 +1291,10 @@ impl AutogradTape {
                     targets,
                     ignore_index,
                 } => {
-                    // Đạo hàm dLoss/dz: (p_v - 1_{v == target}) / valid_count * upstream_grad
+                    // Đầu vào của nút này là LOG-XÁC SUẤT (đầu ra của log_softmax), nên
+                    // dL/dlogP[r, c] = -1_{c == target} / valid_count * upstream_grad.
+                    // Khi nối tiếp với nút LogSoftmax ở dưới, gradient hợp thành theo logit
+                    // chính là (softmax - one_hot) / valid_count.
                     let vin = &self.nodes[parents[0].id].value;
                     let (rows, cols) = (vin.shape[0], vin.shape[1]);
                     let upstream = node_grad.data[0];
@@ -1313,12 +1318,7 @@ impl AutogradTape {
                         if t == ignore_index {
                             continue;
                         }
-                        // vin đã là log_softmax
-                        for c in 0..cols {
-                            let p = vin.get(&[r, c]).exp();
-                            let indicator = if c == (t as usize) { 1.0 } else { 0.0 };
-                            grad_in[r * cols + c] = (p - indicator) * scale;
-                        }
+                        grad_in[r * cols + (t as usize)] = -scale;
                     }
                     self.accumulate_grad(parents[0], Tensor::new(grad_in, vec![rows, cols]));
                 }
@@ -1503,7 +1503,8 @@ fn main() {
     let mut tape = AutogradTape::new();
     let mut rng = SplitMix64::new(42);
 
-    let x_val = Tensor::new(vec![0.5, -0.2, 0.8, -0.5], vec![2, 2]);
+    // Đầu vào dương để ReLU có cả đơn vị bật lẫn tắt, tránh kiểm chứng "0 so với 0" vô nghĩa
+    let x_val = Tensor::new(vec![0.5, 0.2, 0.8, 0.5], vec![2, 2]);
     let w1_data: Vec<f64> = (0..4).map(|_| rng.next_gaussian(0.0, 0.1)).collect();
     let w1_val = Tensor::new(w1_data, vec![2, 2]);
 
@@ -1522,6 +1523,12 @@ fn main() {
 
     tape.backward(loss_id);
     let grad_w1 = tape.grad(w1_id).expect("Phải có gradient cho w1").clone();
+    let grad_l1: f64 = grad_w1.data.iter().map(|g| g.abs()).sum();
+    println!("Chuẩn L1 của gradient w1: {:.6}", grad_l1);
+    assert!(
+        grad_l1 > 1e-3,
+        "Gradient bằng 0 làm kiểm chứng sai phân trở nên vô nghĩa"
+    );
 
     // 4. Kiểm chứng sai phân hữu hạn trung tâm < 1e-8
     let f_loss = |w_test: &Tensor| -> f64 {
@@ -1967,6 +1974,23 @@ mod tests {
     }
 
     #[test]
+    fn test_autograd_cross_entropy_grad_wrt_log_probs_central_diff() {
+        // Nút CrossEntropy nhận LOG-XÁC SUẤT: dL/dlogP[r, c] = -1_{c == target} / valid_count.
+        let log_p_val = Tensor::new(vec![-0.4, -1.1, -2.3, -0.9, -0.6, -1.7], vec![2, 3]);
+        let targets = vec![2i64, -100i64];
+
+        let mut tape = AutogradTape::new();
+        let lp = tape.leaf(log_p_val.clone());
+        let loss = tape.cross_entropy(lp, targets.clone(), -100);
+        tape.backward(loss);
+        let grad = tape.grad(lp).unwrap().clone();
+        assert_eq!(grad.data, vec![0.0, 0.0, -1.0, 0.0, 0.0, 0.0]);
+
+        let f = |t: &Tensor| -> f64 { t.cross_entropy_masked(&targets, -100).0 };
+        assert!(check_grad_central_diff(f, &log_p_val, &grad, 1e-6, 1e-8).is_ok());
+    }
+
+    #[test]
     fn test_autograd_diamond_dag_accumulation() {
         // Đồ thị kim cương: s = (a * 2) + (a * 3) = a * 5 => ds/da = 5.0
         let a_val = Tensor::new(vec![3.0], vec![1]);
@@ -2063,5 +2087,16 @@ mod tests {
             "Sai số giải tích LayerNorm cho gamma[0] ({}) phải < 1e-8",
             diff_gamma
         );
+
+        let (_, _, _, dbeta) = layernorm_forward_backward(&x, &gamma, &beta, eps, &upstream);
+        let mut beta_plus = beta.clone();
+        beta_plus[0] += h;
+        let (y_bplus, _, _, _) = layernorm_forward_backward(&x, &gamma, &beta_plus, eps, &upstream);
+        let mut beta_minus = beta.clone();
+        beta_minus[0] -= h;
+        let (y_bminus, _, _, _) =
+            layernorm_forward_backward(&x, &gamma, &beta_minus, eps, &upstream);
+        let num_dbeta0 = (y_bplus.iter().sum::<f64>() - y_bminus.iter().sum::<f64>()) / (2.0 * h);
+        assert!((dbeta[0] - num_dbeta0).abs() < 1e-8);
     }
 }

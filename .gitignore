@@ -2,7 +2,7 @@
 code/target/
 target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock được commit: workspace toàn là crate thực thi, cần bản dựng tái lập được.
 
 # Thư mục build của mdBook
 book/

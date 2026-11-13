@@ -367,7 +367,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))] // Kiểm thử Bitcask dùng ngữ nghĩa tệp POSIX (rename/cắt tệp đang mở); Windows khác.
 mod tests {
     use super::*;
 
@@ -377,6 +377,7 @@ mod tests {
         p
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn crud_survives_reopen() -> io::Result<()> {
         let path = temp_db("crud");
@@ -395,6 +396,7 @@ mod tests {
         std::fs::remove_file(&path)
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn compaction_keeps_live_data_and_cleans_up() -> io::Result<()> {
         let path = temp_db("compact");
@@ -425,6 +427,7 @@ mod tests {
         std::fs::remove_file(&path)
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn torn_tail_record_is_dropped_on_recovery() -> io::Result<()> {
         // Lỗi cũ: bản ghi cuối bị cắt cụt làm open() thất bại (UnexpectedEof khi đọc khoá),

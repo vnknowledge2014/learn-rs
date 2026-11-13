@@ -1322,7 +1322,7 @@ Trong Rust, nếu phương thức nhận tham số theo kiểu chuyển giá tr�
 
 #### Cách sửa chuẩn mực trong Rust 2024:
 Luôn thiết kế các phương thức tính toán nhận lát cắt tham chiếu mượn `&[f64]` thay vì sở hữu `Vec<f64>`. Điều này vừa giữ nguyên quyền sở hữu cho hàm gọi, vừa tránh cấp phát bộ nhớ thừa:
-```rust
+```rust,ignore
 // SAI:
 pub fn forward(&self, x: Vec<f64>) -> Vec<f64> { ... }
 
@@ -1437,7 +1437,7 @@ Tạo ra một `Vec` hoặc mảng tạm thời bên trong thân hàm, sau đó 
 
 #### Cách sửa chuẩn mực:
 Thực hiện thao tác trực tiếp trên bộ nhớ đích (in-place mutation) thông qua lát cắt khả biến `&mut [f64]`:
-```rust
+```rust,ignore
 pub fn rotate(&self, vec: &mut [f64], pos: usize) {
     let half = self.head_dim / 2;
     for i in 0..half {

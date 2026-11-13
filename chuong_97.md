@@ -427,8 +427,8 @@ Thuật toán GRPO (Group Relative Policy Optimization) lấy mẫu một nhóm 
 $$A_i = \frac{R_i - \text{mean}(R)}{\text{std}(R) + \epsilon}$$
 
 Tuy nhiên, GRPO truyền thống mắc phải **thiên kiến độ dài**: các câu trả lời dài thường nhận được tổng lợi thế lớn hơn, khiến mô hình có xu hướng kéo dài câu trả lời lê thê (length bias).
-- **`DrGRPO`**: Khử thiên kiến bằng cách **không chia cho độ lệch chuẩn**, và chia trực tiếp cho độ dài sinh tối đa cố định $L_{\max}$:
-  $$A_i^{\text{DrGRPO}} = \frac{R_i - \text{mean}(R)}{L_{\max}}$$
+- **`DrGRPO`** ("GRPO Done Right", Liu et al., 2025): khử thiên kiến bằng cách **bỏ cả hai** số hạng chuẩn hóa — không chia cho độ lệch chuẩn (ở lợi thế) và không chia cho độ dài thực $|o_i|$ (ở tổng hợp loss). Lợi thế chỉ còn hiệu với trung bình nhóm, còn chuẩn hóa độ dài được thay bằng hằng số $L_{\max}$ trong phép tổng token:
+  $$\tilde{A}_i = R_i - \text{mean}(R), \qquad \text{trọng số loss mỗi chuỗi} = \frac{1}{L_{\max}}\ \text{(thay cho } 1/|o_i|)$$
 - **`DAPO`**: Áp dụng kẹp lợi thế bất đối xứng $[-\epsilon_{\text{low}}, \epsilon_{\text{high}}]$ và **lọc bỏ hoàn toàn các nhóm có phương sai bằng 0** ($\text{std}(R) < 10^{-12}$, ví dụ toàn bộ nhóm cùng đúng hoặc cùng sai). Điều này triệt tiêu hoàn toàn lỗi chia cho 0 (`0/0 = NaN`).
 
 #### Bất biến An toàn Gọt Ngữ cảnh (Conditional Context Trimming Credit)

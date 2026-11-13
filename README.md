@@ -25,6 +25,7 @@ Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình 
 # 1. Cài Rust (nếu chưa có)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh     # macOS / Linux
 # Windows: tải rustup-init.exe từ https://rustup.rs/
+# Yêu cầu Rust 1.95 trở lên (edition 2024). Đã kiểm tra với 1.95 và 1.98; bản cũ hơn chưa được thử.
 
 # 2. Chạy thử chương trình minh họa của một chương bất kỳ
 cd code
@@ -164,7 +165,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 
 1. **Bắt đầu từ đâu?** Mở **[ROADMAP.md](./ROADMAP.md)** để chọn nhánh phù hợp, rồi dùng **[SUMMARY.md](./SUMMARY.md)** làm mục lục. Bấm vào `chuong_01.md` và bắt đầu.
 2. **Đừng nhảy cóc**, đặc biệt là 12 chương đầu. Rust có triết lý quản lý bộ nhớ rất độc đáo (Ownership); bỏ qua nền tảng sẽ khiến bạn khổ sở về sau.
-3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án. Chương nào chưa có lời giải thì đề bài vẫn tự giải được — đáp án nằm trong chính mã nguồn của chương.
+3. **Luôn tự làm bài tập trước khi mở Lời giải.** Phần lời giải nằm trong thẻ gập chính là để bạn không vô tình liếc thấy đáp án. Mọi chương đều có lời giải; mã nguồn đầy đủ của chương nằm trong crate tương ứng để bạn đối chiếu.
 4. **Gõ lại mã, đừng chỉ đọc.** Cách nhanh nhất để hiểu Borrow Checker là để nó từ chối bạn vài chục lần.
 5. **Gặp thuật ngữ lạ?** Tra ngay ở **[GLOSSARY.md](./GLOSSARY.md)** — bảng đối chiếu Việt–Anh cho toàn bộ giáo trình.
 

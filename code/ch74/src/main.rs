@@ -911,8 +911,8 @@ mod tests {
     #[test]
     fn soa_computes_the_correct_sum() {
         let mut t = QuoteTableSoA::new(5);
-        for i in 0..5 {
-            t.bid_price[i] = (i as i64 + 1) * 100;
+        for (i, slot) in t.bid_price.iter_mut().enumerate() {
+            *slot = (i as i64 + 1) * 100;
         }
         assert_eq!(t.total_bid_price(), 100 + 200 + 300 + 400 + 500);
     }

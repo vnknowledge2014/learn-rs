@@ -21,12 +21,15 @@
 //!    - Bảng điểm 4 tầng minh bạch: `1.2` (đúng toán + chuẩn thẻ), `1.0` (đúng toán + thiếu thẻ),
 //!      `0.2` (sai toán + chuẩn thẻ), `0.0` (sai toán + hỏng thẻ).
 //! 6. **Bốn Biến Thể RLVR Hiện Đại (Frontier Reasoning Post-Training)**:
-//!    - **`Grpo`**: Group Relative Policy Optimization — Chuẩn hóa lợi thế trong nhóm bằng $\mu_R$ và $\sigma_R$.
-//!    - **`DrGrpo`**: Direct Reward GRPO — Mẫu số độ dài cố định `max_gen_len` triệt tiêu suy giảm gradient ở chuỗi dài.
-//!    - **`Dapo`**: Decoupled Advantage Policy Optimization — Kẹp bất đối xứng $[1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}}]$,
-//!      lọc bỏ nhóm phương sai bằng 0 ($\sigma_R = 0$), loại bỏ phạt KL ($\beta = 0$).
-//!    - **`Gspo`**: Group Sequence-level Policy Optimization — Tỷ số quan trọng mức chuỗi trung bình hình học
-//!      $r_{\text{seq}} = \exp\left(\frac{1}{T}\sum_t \Delta \log \pi_t\right)$ khống chế bùng nổ phương sai.
+//!    - **`Grpo`**: Group Relative Policy Optimization (DeepSeekMath) — lợi thế $A_i = (R_i - \mu_R)/(\sigma_R + \epsilon)$,
+//!      loss trung bình theo từng chuỗi (chia cho $|o_i|$).
+//!    - **`DrGrpo`**: *GRPO Done Right* (Liu et al., 2025, arXiv 2503.20783) — bỏ chuẩn hóa $\sigma_R$ lẫn $1/|o_i|$:
+//!      lợi thế chỉ là $R_i - \mu_R$, còn loss tổng token được chia cho một **hằng số** (ngân sách sinh `max_gen_len`).
+//!    - **`Dapo`**: Decoupled Clip and Dynamic sAmpling Policy Optimization (Yu et al., 2025, arXiv 2503.14476) —
+//!      Clip-Higher $[1 - \epsilon_{\text{low}}, 1 + \epsilon_{\text{high}}]$, lọc nhóm phương sai 0 (dynamic sampling),
+//!      loss cấp token ($1/\sum_i |o_i|$), bỏ phạt KL ($\beta = 0$).
+//!    - **`Gspo`**: Group Sequence Policy Optimization (Zheng et al., 2025, arXiv 2507.18071) — tỷ số quan trọng mức chuỗi
+//!      $s_i = \exp\left(\frac{1}{|y_i|}\sum_t \Delta \log \pi_t\right)$ (chuẩn hóa độ dài), kẹp ở mức chuỗi.
 //! 7. **Tín Dụng Hiệu Suất Gọt Tỉa Ngữ Cảnh Có Điều Kiện (Conditional Context Pruning Efficiency Credit)**:
 //!    - Chỉ kích hoạt khi nhóm có tối thiểu $\ge 2$ quỹ đạo thành công (`wins.len() >= 2`).
 //!    - Chặn đứng hành vi gian lận mô hình xóa sạch câu trả lời ngắn để trục lợi điểm hiệu suất khi giải sai.
@@ -643,13 +646,15 @@ impl MathAnswerVerifier {
 /// Liệt kê 4 biến thể thuật toán RLVR tiên tiến:
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RlvrVariant {
-    /// Group Relative Policy Optimization (chuẩn hóa độ lệch chuẩn nhóm $\sigma_R$).
+    /// Group Relative Policy Optimization: lợi thế chuẩn hóa bằng $\mu_R$, $\sigma_R$; loss chia cho $|o_i|$.
     Grpo,
-    /// Direct Reward GRPO (chuẩn hóa mẫu số cố định `max_gen_len` chống suy giảm gradient theo độ dài).
+    /// GRPO Done Right (Dr. GRPO): lợi thế $R_i - \mu_R$ (không chia $\sigma_R$), loss tổng token chia cho
+    /// hằng số `max_gen_len` thay vì độ dài thực $|o_i|$ (xem [`rlvr_loss_weights`]).
     DrGrpo,
-    /// Decoupled Advantage Policy Optimization (kẹp bất đối xứng, lọc nhóm phương sai 0, $\beta_{\text{KL}} = 0$).
+    /// Decoupled Clip and Dynamic sAmpling Policy Optimization: Clip-Higher, lọc nhóm phương sai 0, loss cấp token,
+    /// $\beta_{\text{KL}} = 0$.
     Dapo,
-    /// Group Sequence-level Policy Optimization (tỷ số quan trọng mức chuỗi chuẩn hóa độ dài).
+    /// Group Sequence Policy Optimization: tỷ số quan trọng mức chuỗi chuẩn hóa độ dài.
     Gspo,
 }
 
@@ -673,7 +678,7 @@ pub struct RlvrConfig {
     pub w_eff: f64,
     /// Hệ số làm mịn mẫu số tránh chia cho 0 ($\epsilon$).
     pub eps: f64,
-    /// Độ dài tối đa của chuỗi sinh (`max_gen_len`) dùng làm mẫu số cố định trong Dr. GRPO.
+    /// Ngân sách sinh tối đa (`max_gen_len`) dùng làm mẫu số **hằng số** để chuẩn hóa loss trong Dr. GRPO.
     pub max_gen_len: usize,
     /// Hệ số kẹp biên dưới của DAPO ($\epsilon_{\text{low}}$).
     pub eps_low: f64,
@@ -771,13 +776,13 @@ pub fn compute_rlvr_group_advantages(
         let outcome_adv = match variant {
             RlvrVariant::Grpo | RlvrVariant::Gspo => (rollout.reward - mu_r) / (sd_r + config.eps),
             RlvrVariant::DrGrpo => {
-                // Dr. GRPO: Chia cho mẫu số cố định max_gen_len thay vì chia cho độ lệch chuẩn
-                // mẫu biến thiên hoặc độ dài câu, triệt tiêu suy giảm gradient ở câu dài
-                let fixed_den = config.max_gen_len.max(1) as f64;
-                (rollout.reward - mu_r) / fixed_den
+                // Dr. GRPO: chỉ trừ đường cơ sở (trung bình nhóm), KHÔNG chia cho độ lệch chuẩn.
+                // Phần chuẩn hóa độ dài bằng hằng số nằm ở phép tổng hợp loss (`rlvr_loss_weights`).
+                rollout.reward - mu_r
             }
             RlvrVariant::Dapo => {
-                // DAPO: Chuẩn hóa bằng độ lệch chuẩn nhưng chuẩn bị cho kẹp bất đối xứng
+                // DAPO: lợi thế nhóm chuẩn hóa như GRPO; điểm khác biệt nằm ở kẹp Clip-Higher,
+                // loss cấp token và lọc nhóm (xem `dapo_token_loss_and_grad`)
                 (rollout.reward - mu_r) / (sd_r + config.eps)
             }
         };
@@ -813,6 +818,71 @@ pub fn compute_rlvr_group_advantages(
         sequence_advantages,
         is_active_group: true,
         efficiency_credit_activated: efficiency_params.is_some(),
+    }
+}
+
+/// Trọng số chuẩn hóa loss của từng quỹ đạo trong nhóm, tùy biến thể RLVR.
+///
+/// Trả về vector `w` (một phần tử cho mỗi rollout). Với GRPO / Dr. GRPO / DAPO, `w[i]` là hệ số nhân
+/// lên **tổng** các loss token của quỹ đạo `i`; với GSPO, `w[i]` nhân lên loss mức chuỗi (mỗi chuỗi chỉ có
+/// một số hạng, phần chuẩn hóa độ dài đã nằm trong tỷ số quan trọng $s_i$).
+///
+/// | Biến thể | Hệ số $w_i$ | Nguồn |
+/// |---|---|---|
+/// | `Grpo` | $\frac{1}{G \cdot \lvert o_i \rvert}$ | trung bình theo chuỗi rồi trung bình nhóm (thiên kiến độ dài) |
+/// | `DrGrpo` | $\frac{1}{G \cdot L_{\max}}$ | hằng số = ngân sách sinh (Liu et al., 2025, Mục 3.2) |
+/// | `Dapo` | $\frac{1}{\sum_j \lvert o_j \rvert}$ | loss cấp token trên toàn nhóm (Yu et al., 2025, Eq. 8) |
+/// | `Gspo` | $\frac{1}{G}$ | loss mức chuỗi (Zheng et al., 2025, Eq. 5) |
+///
+/// Độ dài `token_len = 0` được coi là 1 để tránh chia cho 0; `max_gen_len = 0` cũng được coi là 1.
+pub fn rlvr_loss_weights(
+    group: &[GrpoRollout],
+    variant: RlvrVariant,
+    config: &RlvrConfig,
+) -> Vec<f64> {
+    let g = group.len() as f64;
+    match variant {
+        RlvrVariant::Grpo => group
+            .iter()
+            .map(|r| 1.0 / (g * r.token_len.max(1) as f64))
+            .collect(),
+        RlvrVariant::DrGrpo => {
+            let constant = config.max_gen_len.max(1) as f64;
+            vec![1.0 / (g * constant); group.len()]
+        }
+        RlvrVariant::Dapo => {
+            let total_tokens: f64 = group.iter().map(|r| r.token_len.max(1) as f64).sum();
+            vec![1.0 / total_tokens; group.len()]
+        }
+        RlvrVariant::Gspo => vec![1.0 / g; group.len()],
+    }
+}
+
+/// Tổn thất token của DAPO với **Clip-Higher** (không có phạt KL, $\beta = 0$) kèm đạo hàm theo $\log \pi$.
+///
+/// $$L = -\min\left(r A,\ \text{clip}(r,\ 1 - \epsilon_{\text{low}},\ 1 + \epsilon_{\text{high}})\, A\right),
+/// \qquad r = \exp(\log \pi - \log \pi_{\text{old}})$$
+///
+/// Khác GRPO ở chỗ hai biên kẹp được tách rời (mặc định $\epsilon_{\text{low}} = 0.20$, $\epsilon_{\text{high}} = 0.28$):
+/// biên trên rộng hơn để token xác suất thấp ("khám phá") còn chỗ tăng, chống sụp entropy.
+///
+/// Trả về `(tổn thất, đạo hàm)`. Khi bị kẹp, gradient của surrogate bằng 0.
+pub fn dapo_token_loss_and_grad(
+    log_pi: f64,
+    log_old: f64,
+    advantage: f64,
+    eps_low: f64,
+    eps_high: f64,
+) -> (f64, f64) {
+    let ratio = (log_pi - log_old).exp();
+    let clipped_ratio = ratio.clamp(1.0 - eps_low, 1.0 + eps_high);
+    let surr_unclipped = ratio * advantage;
+    let surr_clipped = clipped_ratio * advantage;
+    if surr_unclipped <= surr_clipped {
+        // Nhánh min là số hạng chưa kẹp: d(r A)/d(log pi) = r A
+        (-surr_unclipped, -surr_unclipped)
+    } else {
+        (-surr_clipped, 0.0)
     }
 }
 
@@ -955,6 +1025,12 @@ pub fn format_model_response(
 // 9. HÀM MAIN MINH HỌA THỰC THI (CLI DEMONSTRATION)
 // ============================================================================
 
+/// Định dạng một lát cắt số thực thành chuỗi `[a, b, c]` với số chữ số thập phân cố định.
+fn format_vec(values: &[f64], decimals: usize) -> String {
+    let items: Vec<String> = values.iter().map(|v| format!("{v:.decimals$}")).collect();
+    format!("[{}]", items.join(", "))
+}
+
 fn main() {
     println!("=== CHƯƠNG 96: HUẤN LUYỆN HẬU KỲ II (RLVR & PPO/GRPO/DAPO/GSPO) ===");
 
@@ -963,7 +1039,7 @@ fn main() {
     let dummy_state = vec![0.1, -0.2, 0.5, 0.8, -0.4, 0.3, 0.9, -0.1];
     let (probs, val) = ac.forward(&dummy_state);
     println!("\n[1] Mạng Actor-Critic vi mô (std 100%):");
-    println!("  - Xác suất hành động Softmax: {:?}", probs);
+    println!("  - Xác suất hành động Softmax: {}", format_vec(&probs, 4));
     println!("  - Giá trị Critic ban đầu V(s): {:.4}", val);
 
     // 2. Tính toán GAE
@@ -971,8 +1047,14 @@ fn main() {
     let values = vec![0.5, 0.8, 1.2, 0.9];
     let gae_out = compute_gae(&rewards, &values, 0.0, 0.99, 0.95);
     println!("\n[2] Ước lượng lợi thế tổng quát GAE:");
-    println!("  - Lợi thế Advantages: {:?}", gae_out.advantages);
-    println!("  - Mục tiêu Returns:    {:?}", gae_out.returns);
+    println!(
+        "  - Lợi thế Advantages: {}",
+        format_vec(&gae_out.advantages, 4)
+    );
+    println!(
+        "  - Mục tiêu Returns:    {}",
+        format_vec(&gae_out.returns, 4)
+    );
 
     // 3. Kiểm chứng phạt phân kỳ KL k3 của Schulman
     let lp = -1.1;
@@ -1040,10 +1122,37 @@ fn main() {
     ] {
         let adv_res = compute_rlvr_group_advantages(&rollouts, variant, &cfg);
         println!(
-            "  - Biến thể {:?}: Lợi thế chuỗi = {:?}, Hiệu suất bật = {}",
-            variant, adv_res.sequence_advantages, adv_res.efficiency_credit_activated
+            "  - Biến thể {:?}: Lợi thế chuỗi = {}, Hiệu suất bật = {}",
+            variant,
+            format_vec(&adv_res.sequence_advantages, 4),
+            adv_res.efficiency_credit_activated
         );
     }
+
+    // 6. Trọng số chuẩn hóa loss: nơi Dr. GRPO khác GRPO về độ dài
+    println!("\n[6] Trọng số chuẩn hóa loss theo từng token (độ dài rollout = 45, 85, 60, 20):");
+    for &variant in &[
+        RlvrVariant::Grpo,
+        RlvrVariant::DrGrpo,
+        RlvrVariant::Dapo,
+        RlvrVariant::Gspo,
+    ] {
+        let weights = rlvr_loss_weights(&rollouts, variant, &cfg);
+        println!(
+            "  - Biến thể {:?}: w = {}",
+            variant,
+            format_vec(&weights, 6)
+        );
+    }
+
+    // 7. Clip-Higher của DAPO: ratio = 1.25 nằm giữa biên 1.20 và 1.28
+    let log_old = 0.0;
+    let log_pi = 1.25f64.ln();
+    let (_, grad_sym) = dapo_token_loss_and_grad(log_pi, log_old, 1.0, 0.20, 0.20);
+    let (_, grad_high) = dapo_token_loss_and_grad(log_pi, log_old, 1.0, 0.20, 0.28);
+    println!("\n[7] Clip-Higher của DAPO tại tỷ số r = 1.25, lợi thế A = +1:");
+    println!("  - Kẹp đối xứng [0.80, 1.20]: đạo hàm = {grad_sym:.4}");
+    println!("  - Kẹp Clip-Higher [0.80, 1.28]: đạo hàm = {grad_high:.4}");
 
     println!("\nToàn bộ 4 cổng kiểm tra toán học và kỹ nghệ của Chương 96 đã sẵn sàng.");
 }
@@ -1410,37 +1519,144 @@ mod tests {
         assert!(sum_adv.abs() < 1e-8, "Tổng lợi thế GRPO phải xấp xỉ 0");
     }
 
-    #[test]
-    fn test_dr_grpo_fixed_denominator_invariance_against_length_inflation() {
-        // Hai quỹ đạo có cùng hiệu số phần thưởng nhưng độ dài sinh rất khác nhau
-        let r1 = GrpoRollout {
-            reward: 1.2,
-            is_success: true,
-            token_len: 50,
+    /// Tạo rollout thử nghiệm với phần thưởng, độ dài và cờ thắng cho trước.
+    fn make_rollout(reward: f64, is_success: bool, token_len: usize) -> GrpoRollout {
+        GrpoRollout {
+            reward,
+            is_success,
+            token_len,
             context_pruned_mask: vec![false],
-        };
-        let r2 = GrpoRollout {
-            reward: 1.2,
-            is_success: true,
-            token_len: 200, // Cố tình kéo dài câu
-            context_pruned_mask: vec![false],
-        };
-        let r3 = GrpoRollout {
-            reward: 0.0,
-            is_success: false,
-            token_len: 20,
-            context_pruned_mask: vec![false],
-        };
+        }
+    }
 
-        let group = [r1, r2, r3];
-        let cfg = RlvrConfig {
-            max_gen_len: 256,
+    #[test]
+    fn test_dr_grpo_advantage_is_centered_reward_without_std_or_length() {
+        // Dr. GRPO (Liu et al., 2025): A_i = R_i - mean(R), không chia std, không chia độ dài
+        let group = [
+            make_rollout(1.2, true, 50),
+            make_rollout(1.2, true, 200), // cố tình kéo dài câu
+            make_rollout(0.0, false, 20),
+        ];
+        // Thay đổi max_gen_len không được làm đổi lợi thế
+        let cfg_small = RlvrConfig {
+            max_gen_len: 64,
             ..Default::default()
         };
-        let res = compute_rlvr_group_advantages(&group, RlvrVariant::DrGrpo, &cfg);
+        let cfg_large = RlvrConfig {
+            max_gen_len: 4096,
+            ..Default::default()
+        };
+        let res_small = compute_rlvr_group_advantages(&group, RlvrVariant::DrGrpo, &cfg_small);
+        let res_large = compute_rlvr_group_advantages(&group, RlvrVariant::DrGrpo, &cfg_large);
+        assert_eq!(res_small.sequence_advantages, res_large.sequence_advantages);
 
-        // Với Dr. GRPO, lợi thế kết quả chỉ phụ thuộc vào reward - mu, chia cho max_gen_len cố định
-        assert_eq!(res.sequence_advantages[0], res.sequence_advantages[1]);
+        let mu = (1.2 + 1.2 + 0.0) / 3.0;
+        for (adv, rollout) in res_small.sequence_advantages.iter().zip(group.iter()) {
+            assert!((adv - (rollout.reward - mu)).abs() < 1e-12);
+        }
+        // Hai chuỗi cùng phần thưởng, độ dài khác nhau -> cùng lợi thế
+        assert_eq!(
+            res_small.sequence_advantages[0],
+            res_small.sequence_advantages[1]
+        );
+        // Tổng lợi thế trong nhóm bằng 0 (đường cơ sở trung bình nhóm)
+        let sum_adv: f64 = res_small.sequence_advantages.iter().sum();
+        assert!(sum_adv.abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_dr_grpo_scales_with_reward_while_grpo_is_scale_invariant() {
+        let base = [
+            make_rollout(1.0, true, 30),
+            make_rollout(0.0, false, 30),
+            make_rollout(0.0, false, 30),
+            make_rollout(0.0, false, 30),
+        ];
+        let scaled: Vec<GrpoRollout> = base
+            .iter()
+            .map(|r| make_rollout(r.reward * 3.0, r.is_success, r.token_len))
+            .collect();
+        let cfg = RlvrConfig::default();
+
+        let dr_base = compute_rlvr_group_advantages(&base, RlvrVariant::DrGrpo, &cfg);
+        let dr_scaled = compute_rlvr_group_advantages(&scaled, RlvrVariant::DrGrpo, &cfg);
+        // Dr. GRPO không chuẩn hóa std nên lợi thế tăng đúng 3 lần
+        for (a, b) in dr_base
+            .sequence_advantages
+            .iter()
+            .zip(dr_scaled.sequence_advantages.iter())
+        {
+            assert!((3.0 * a - b).abs() < 1e-12);
+        }
+
+        // GRPO chuẩn hóa std nên (gần như) bất biến với thang phần thưởng
+        let g_base = compute_rlvr_group_advantages(&base, RlvrVariant::Grpo, &cfg);
+        let g_scaled = compute_rlvr_group_advantages(&scaled, RlvrVariant::Grpo, &cfg);
+        for (a, b) in g_base
+            .sequence_advantages
+            .iter()
+            .zip(g_scaled.sequence_advantages.iter())
+        {
+            assert!((a - b).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_rlvr_loss_weights_grpo_has_length_bias_dr_grpo_does_not() {
+        let group = [make_rollout(1.0, true, 25), make_rollout(1.0, true, 500)];
+        let cfg = RlvrConfig {
+            max_gen_len: 1000,
+            ..Default::default()
+        };
+        // GRPO: trọng số mỗi token tỷ lệ nghịch với độ dài -> chuỗi ngắn nặng gấp 20 lần
+        let w_grpo = rlvr_loss_weights(&group, RlvrVariant::Grpo, &cfg);
+        assert!((w_grpo[0] / w_grpo[1] - 20.0).abs() < 1e-9);
+        // Dr. GRPO: mẫu số là hằng số G * max_gen_len, không phụ thuộc độ dài thực
+        let w_dr = rlvr_loss_weights(&group, RlvrVariant::DrGrpo, &cfg);
+        assert_eq!(w_dr[0], w_dr[1]);
+        assert!((w_dr[0] - 1.0 / (2.0 * 1000.0)).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_rlvr_loss_weights_dapo_token_level_and_gspo_sequence_level() {
+        let group = [
+            make_rollout(1.0, true, 10),
+            make_rollout(0.0, false, 30),
+            make_rollout(0.0, false, 60),
+        ];
+        let cfg = RlvrConfig::default();
+        // DAPO: 1 / tổng số token toàn nhóm => tổng w_i * |o_i| = 1 (mỗi token đóng góp ngang nhau)
+        let w_dapo = rlvr_loss_weights(&group, RlvrVariant::Dapo, &cfg);
+        let total: f64 = group
+            .iter()
+            .zip(w_dapo.iter())
+            .map(|(r, w)| w * r.token_len as f64)
+            .sum();
+        assert!((total - 1.0).abs() < 1e-12);
+        // GSPO: mỗi chuỗi một số hạng, trọng số 1/G
+        let w_gspo = rlvr_loss_weights(&group, RlvrVariant::Gspo, &cfg);
+        for w in &w_gspo {
+            assert!((w - 1.0 / 3.0).abs() < 1e-15);
+        }
+    }
+
+    #[test]
+    fn test_rlvr_loss_weights_handles_zero_lengths_and_empty_group() {
+        let cfg = RlvrConfig {
+            max_gen_len: 0,
+            ..Default::default()
+        };
+        let group = [make_rollout(1.0, true, 0), make_rollout(0.0, false, 0)];
+        for variant in [
+            RlvrVariant::Grpo,
+            RlvrVariant::DrGrpo,
+            RlvrVariant::Dapo,
+            RlvrVariant::Gspo,
+        ] {
+            let w = rlvr_loss_weights(&group, variant, &cfg);
+            assert!(w.iter().all(|x| x.is_finite() && *x > 0.0));
+        }
+        assert!(rlvr_loss_weights(&[], RlvrVariant::DrGrpo, &cfg).is_empty());
     }
 
     #[test]
@@ -1493,6 +1709,43 @@ mod tests {
         assert!(res.is_active_group);
         assert!(res.sequence_advantages[0] > 0.0);
         assert!(res.sequence_advantages[1] < 0.0);
+    }
+
+    #[test]
+    fn test_dapo_clip_higher_keeps_gradient_where_symmetric_clip_cuts_it() {
+        // r = 1.25 nằm giữa biên trên đối xứng (1.20) và Clip-Higher (1.28), A > 0
+        let log_pi = 1.25f64.ln();
+        let (_, grad_symmetric) = dapo_token_loss_and_grad(log_pi, 0.0, 1.0, 0.20, 0.20);
+        assert_eq!(grad_symmetric, 0.0);
+        let (loss, grad_high) = dapo_token_loss_and_grad(log_pi, 0.0, 1.0, 0.20, 0.28);
+        assert!((grad_high - (-1.25)).abs() < 1e-12);
+        assert!((loss - (-1.25)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_dapo_token_loss_clips_on_both_sides() {
+        // Biên trên: r = 1.5 > 1.28, A > 0 -> loss = -(1.28) * A, gradient 0
+        let (loss_hi, grad_hi) = dapo_token_loss_and_grad(1.5f64.ln(), 0.0, 2.0, 0.20, 0.28);
+        assert!((loss_hi - (-1.28 * 2.0)).abs() < 1e-12);
+        assert_eq!(grad_hi, 0.0);
+        // Biên dưới: r = 0.5 < 0.8, A < 0 -> loss = -(0.8) * A, gradient 0
+        let (loss_lo, grad_lo) = dapo_token_loss_and_grad(0.5f64.ln(), 0.0, -1.0, 0.20, 0.28);
+        assert!((loss_lo - 0.8).abs() < 1e-12);
+        assert_eq!(grad_lo, 0.0);
+        // A > 0 nhưng r thấp hơn biên dưới: min chọn số hạng chưa kẹp -> gradient còn nguyên
+        let (_, grad_keep) = dapo_token_loss_and_grad(0.5f64.ln(), 0.0, 1.0, 0.20, 0.28);
+        assert!((grad_keep - (-0.5)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_dapo_token_loss_gradient_matches_finite_difference() {
+        let lo = -1.2;
+        let adv = 0.9;
+        let (_, ag) = dapo_token_loss_and_grad(-1.1, lo, adv, 0.20, 0.28);
+        let ng = central_difference(&[-1.1], 0, 1e-6, |p| {
+            dapo_token_loss_and_grad(p[0], lo, adv, 0.20, 0.28).0
+        });
+        assert!((ag - ng).abs() < 1e-8, "ag={ag}, ng={ng}");
     }
 
     #[test]

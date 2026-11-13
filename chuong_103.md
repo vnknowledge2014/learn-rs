@@ -223,14 +223,14 @@ ssh -D 1080 user@jump                  # proxy SOCKS động
 
 | Mã thông điệp | Ý nghĩa | Trường dữ liệu đi kèm | Tác động lên hình học mạng |
 |---|---|---|---|
-| `0x01` | SSH_MSG_CHANNEL_OPEN | Kiểu kênh (direct-tcpip, forwarded-tcpip, direct-streamlocal) + địa chỉ đích + cổng đích | **Mở** một kênh con tới đích, đây là lúc "đường hầm" được tạo |
-| `0x02` | SSH_MSG_CHANNEL_OPEN_CONFIRMATION | Mã kênh của bên nhận | Xác nhận kênh con đã sẵn sàng nhận byte |
-| `0x5A` | SSH_MSG_CHANNEL_DATA | Mã kênh + độ dài + byte thô | **Chuyển tiếp** dữ liệu người dùng xuyên qua kênh con |
-| `0x5B` | SSH_MSG_CHANNEL_EOF | Mã kênh | Báo kết thúc luồng theo một chiều |
-| `0x5C` | SSH_MSG_CHANNEL_CLOSE | Mã kênh | Đóng kênh con, đường hầm kết thúc |
-| `0x80` | SSH_MSG_GLOBAL_REQUEST | Cờ `want_reply` + tên yêu cầu | Chính là nơi phát sinh yêu cầu `tcpip-forward` cho chế độ `-R` |
+| `0x5A` (90) | SSH_MSG_CHANNEL_OPEN | Kiểu kênh (direct-tcpip, forwarded-tcpip, direct-streamlocal) + địa chỉ đích + cổng đích | **Mở** một kênh con tới đích, đây là lúc "đường hầm" được tạo |
+| `0x5B` (91) | SSH_MSG_CHANNEL_OPEN_CONFIRMATION | Mã kênh của bên nhận | Xác nhận kênh con đã sẵn sàng nhận byte |
+| `0x5E` (94) | SSH_MSG_CHANNEL_DATA | Mã kênh + độ dài + byte thô | **Chuyển tiếp** dữ liệu người dùng xuyên qua kênh con |
+| `0x60` (96) | SSH_MSG_CHANNEL_EOF | Mã kênh | Báo kết thúc luồng theo một chiều |
+| `0x61` (97) | SSH_MSG_CHANNEL_CLOSE | Mã kênh | Đóng kênh con, đường hầm kết thúc |
+| `0x50` (80) | SSH_MSG_GLOBAL_REQUEST | Cờ `want_reply` + tên yêu cầu | Chính là nơi phát sinh yêu cầu `tcpip-forward` cho chế độ `-R` |
 
-Điểm mấu chốt nằm ở dòng `0x5A`: **byte truyền qua đường hầm không bao giờ chạm vào mạng vật lý**. Nó đi qua bộ đệm của kênh SSH, rồi bị mã hoá cùng với phần còn lại của phiên SSH. Do đó, đối với một bộ phân tích mạng chỉ nhìn ở tầng TCP, toàn bộ lưu lượng pivoting **trông y hệt** lưu lượng SSH thông thường.
+Điểm mấu chốt nằm ở dòng `0x5E` (SSH_MSG_CHANNEL_DATA): **byte truyền qua đường hầm không bao giờ chạm vào mạng vật lý**. Nó đi qua bộ đệm của kênh SSH, rồi bị mã hoá cùng với phần còn lại của phiên SSH. Do đó, đối với một bộ phân tích mạng chỉ nhìn ở tầng TCP, toàn bộ lưu lượng pivoting **trông y hệt** lưu lượng SSH thông thường.
 
 Trong mã nguồn, `ssh_command_line` là nơi quyết định "hình dạng" này, còn `SshTunnelSimulator` quản lý **vòng đời phiên** (cấp mã phiên tăng dần, đóng phiên, đếm số đường hầm hoạt động).
 
@@ -277,7 +277,7 @@ Nhìn bảng trên, ta thấy ngay: **mỗi bước trong chuỗi là một lầ
 
 | Trường | Kích thước | Nội dung trong chế độ `-R` |
 |---|---|---|
-| Mã thông điệp | 1 byte | `0x80` (`SSH_MSG_GLOBAL_REQUEST`) |
+| Mã thông điệp | 1 byte | `0x50` (`SSH_MSG_GLOBAL_REQUEST`) |
 | Cờ | 1 byte | `0x01` nếu muốn nhận phản hồi |
 | Tên yêu cầu | 4 byte + nội dung | Chuỗi `tcpip-forward` |
 | Số cổng đề nghị | 4 byte | Cổng phía đích mà máy chủ sẽ lắng nghe |
@@ -403,7 +403,7 @@ $$
 \text{nonce 24 byte} = \underbrace{n_{16}}_{\text{16 byte}} \Vert \underbrace{c_{8}}_{\text{8 byte bộ đếm}},\qquad \text{subkey} = \text{HChaCha20}(k, n_{16}),\quad \text{nonce}_{\text{ChaCha}} = 0^{32} \Vert c_{8}
 $$
 
-HChaCha20 chạy **20 vòng ChaCha20** trên trạng thái $c \Vert k \Vert n_{16}$ (không có bộ đếm, không cộng lại trạng thái ban đầu) rồi lấy 16 từ đầu và 4 từ cuối làm khoá phụ.
+HChaCha20 chạy **20 vòng ChaCha20** trên trạng thái $c \Vert k \Vert n_{16}$ (không có bộ đếm, không cộng lại trạng thái ban đầu) rồi lấy **4 từ đầu** (state[0..4]) và **4 từ cuối** (state[12..16]) — tổng cộng 8 từ = 32 byte — làm khoá phụ.
 
 Trong crate này, `XChaCha20Channel` vận hành theo định dạng đường truyền:
 
@@ -1147,7 +1147,8 @@ Vì sao phải Base64 mới nhét được payload vào URL? Vì **URL chỉ ch�
 
 ### 4.7 Bọc lưu lượng `TrafficObfuscator`
 
-```rust
+```rust,ignore
+impl TrafficObfuscator {
     fn wrap_http_request(&self, payload: &[u8]) -> Vec<u8> {
         let encoded = base64_encode(payload);
         let text = format!(
@@ -1160,6 +1161,8 @@ Vì sao phải Base64 mới nhét được payload vào URL? Vì **URL chỉ ch�
         );
         text.into_bytes()
     }
+}
+// ... (xem đầy đủ impl TrafficObfuscator trong code/ch103/src/main.rs)
 ```
 
 ```rust
@@ -1226,7 +1229,8 @@ pub fn ssh_command_line(tunnel: &SshTunnel) -> String {
 }
 ```
 
-```rust
+```rust,ignore
+impl SocksRelayChain {
     pub fn resolve_path(&self, target: &str, port: u16) -> Vec<String> {
         let mut path = vec!["client".to_string()];
         for hop in &self.hops {
@@ -1235,6 +1239,8 @@ pub fn ssh_command_line(tunnel: &SshTunnel) -> String {
         path.push(format!("{target}:{port}"));
         path
     }
+}
+// ... (xem đầy đủ impl SocksRelayChain trong code/ch103/src/main.rs)
 ```
 
 ### 4.9 Khung C2: máy chủ, tác tử và vỏ lệnh giả lập
@@ -1257,7 +1263,8 @@ pub struct C2Server {
 }
 ```
 
-```rust
+```rust,ignore
+impl C2Server {
     pub fn encode_message(&self, command: &C2Command, payload: &str) -> Vec<u8> {
         let mut raw = Vec::with_capacity(C2_HEADER_LEN + payload.len());
         raw.push(command.tag());
@@ -1268,9 +1275,12 @@ pub struct C2Server {
             None => raw,
         }
     }
+}
+// ... (xem đầy đủ impl C2Server trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Server {
     pub fn decode_message(&self, bytes: &[u8]) -> Result<(C2Command, String), String> {
         let raw = match &self.encryption {
             Some(cipher) => cipher.decrypt(bytes),
@@ -1288,9 +1298,12 @@ pub struct C2Server {
             .map_err(|e| format!("Payload C2 không phải UTF-8 hợp lệ: {e}"))?;
         Ok((command, payload))
     }
+}
+// ... (xem đầy đủ impl C2Server trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl MockShell {
     fn dispatch(&self, cmd: &str) -> String {
         match cmd {
             "whoami" => self.current_user.clone(),
@@ -1327,9 +1340,12 @@ pub struct C2Server {
             }
         }
     }
+}
+// ... (xem đầy đủ impl MockShell trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Agent {
     pub fn next_beacon_delay(&self, rng: &mut SplitMix64) -> u64 {
         if self.jitter_ms == 0 {
             return self.beacon_interval_ms;
@@ -1337,9 +1353,12 @@ pub struct C2Server {
         let jitter = rng.next_u64() % (self.jitter_ms + 1);
         self.beacon_interval_ms.saturating_add(jitter)
     }
+}
+// ... (xem đầy đủ impl C2Agent trong code/ch103/src/main.rs)
 ```
 
-```rust
+```rust,ignore
+impl C2Agent {
     pub fn handle_task(&mut self, task: &Task, shell: &mut MockShell) -> String {
         if self.destroyed {
             let signal = kill_signal();
@@ -1354,6 +1373,8 @@ pub struct C2Server {
         ));
         output
     }
+}
+// ... (xem đầy đủ impl C2Agent trong code/ch103/src/main.rs)
 ```
 
 Hai chi tiết đáng chú ý trong `MockShell`:

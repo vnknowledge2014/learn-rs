@@ -187,7 +187,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))] // Kiểm thử WAL dùng ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác.
 mod tests {
     use super::*;
 
@@ -197,6 +197,7 @@ mod tests {
         p.to_str().unwrap().to_string()
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn recovery_replays_sets_and_tombstones() -> io::Result<()> {
         let path = temp_wal("replay");
@@ -216,6 +217,7 @@ mod tests {
         std::fs::remove_file(&path)
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn torn_last_line_is_ignored_and_truncated() -> io::Result<()> {
         let path = temp_wal("torn");
@@ -237,6 +239,7 @@ mod tests {
         std::fs::remove_file(&path)
     }
 
+    #[cfg(unix)] // Ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác, chỉ chạy trên unix.
     #[test]
     fn deleting_missing_key_writes_nothing() -> io::Result<()> {
         let path = temp_wal("missing");

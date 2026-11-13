@@ -1162,6 +1162,8 @@ pub struct TurnWal {
     pub entries: Vec<WalEntry>,
     pub next_entry_id: u64,
     pub latest_hash: Sha256Digest,
+    /// Mã hiệu fencing cao nhất đã được chấp nhận; bản ghi mang `term` thấp hơn bị từ chối.
+    pub highest_fencing_token: FencingToken,
 }
 
 impl TurnWal {
@@ -1169,7 +1171,11 @@ impl TurnWal {
         Self::default()
     }
 
-    /// Ghi bền vững một sự kiện vào WAL.
+    /// Nối một sự kiện vào chuỗi WAL (bản trình diễn giữ trong bộ nhớ).
+    ///
+    /// Hàng rào Fencing: từ chối bản ghi mang mã hiệu cũ hơn mã hiệu cao nhất đã nhận
+    /// (tác tử bóng ma). Một WAL thật phải `write_all` rồi `sync_all` (fsync) bản ghi
+    /// xuống đĩa TRƯỚC khi gọi mô hình.
     pub fn append(
         &mut self,
         turn_index: u64,
@@ -1177,6 +1183,14 @@ impl TurnWal {
         fencing_token: FencingToken,
         payload: WalPayload,
     ) -> Result<u64, String> {
+        if fencing_token < self.highest_fencing_token {
+            return Err(format!(
+                "FENCING: từ chối bản ghi mang term {} cũ hơn term {} đã được chấp nhận",
+                fencing_token.term, self.highest_fencing_token.term
+            ));
+        }
+        self.highest_fencing_token = fencing_token;
+
         let entry_id = self.next_entry_id;
         self.next_entry_id += 1;
 
@@ -2001,6 +2015,12 @@ mod tests {
 
     #[test]
     fn test_02_splitmix64_determinism_and_uniformity() {
+        // Vector kiểm chứng chuẩn của SplitMix64 với seed = 0.
+        let mut reference = SplitMix64::new(0);
+        assert_eq!(reference.next_u64(), 0xe220a8397b1dcdaf);
+        assert_eq!(reference.next_u64(), 0x6e789e6aa1b965f4);
+        assert_eq!(reference.next_u64(), 0x06c45d188009454f);
+
         let mut rng1 = SplitMix64::new(12345);
         let mut rng2 = SplitMix64::new(12345);
         for _ in 0..100 {
@@ -2452,9 +2472,30 @@ mod tests {
 
     #[test]
     fn test_31_fencing_token_rejects_stale_writer() {
-        let current_term = FencingToken::new(5);
-        let stale_token = FencingToken::new(4);
-        assert!(stale_token < current_term);
+        let mut wal = TurnWal::new();
+        let payload = || WalPayload::ModelVisibleMessage {
+            role: "user".to_string(),
+            content: "x".to_string(),
+        };
+        // Tác tử mới (term 5) ghi trước.
+        wal.append(1, 1000, FencingToken::new(5), payload())
+            .unwrap();
+        // Tác tử bóng ma (term 4) bị từ chối và WAL không thay đổi.
+        let hash_before = wal.latest_hash;
+        let err = wal
+            .append(2, 1001, FencingToken::new(4), payload())
+            .unwrap_err();
+        assert!(err.contains("FENCING"));
+        assert_eq!(wal.entries.len(), 1);
+        assert_eq!(wal.next_entry_id, 1);
+        assert_eq!(wal.latest_hash, hash_before);
+        // Cùng term hoặc term mới hơn vẫn được ghi.
+        wal.append(2, 1002, FencingToken::new(5), payload())
+            .unwrap();
+        wal.append(3, 1003, FencingToken::new(6), payload())
+            .unwrap();
+        assert!(wal.verify_integrity());
+        assert_eq!(wal.highest_fencing_token, FencingToken::new(6));
     }
 
     #[test]

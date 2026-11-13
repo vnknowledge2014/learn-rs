@@ -5,7 +5,7 @@
 //! cho toàn bộ chuỗi tiến hóa của kiến trúc bộ giải mã Transformer:
 //! - Khối GPT-2 cổ điển: `LayerNorm` + `Gelu` + `MultiHeadAttention` + `Gpt2Block`
 //! - Chuẩn hóa hiện đại: `RmsNorm` (kèm độ lệch đơn vị kiểu Gemma và đạo hàm giải tích xuôi + ngược)
-//! - Mã hóa vị trí quay: `RopeCache` + mở rộng độ dài ngữ cảnh `YarnScaling`
+//! - Mã hóa vị trí quay: `RopeCache` + mở rộng độ dài ngữ cảnh YaRN (`YarnConfig`)
 //! - Tầng FFN cổng tích cực: `SwiGluMlp` (tỷ lệ ẩn 8/3 d)
 //! - Chú ý nhóm truy vấn: `GroupedQueryAttention` (GQA + QK-RmsNorm + cửa sổ trượt sliding window)
 //! - Nén tiềm ẩn DeepSeek: `MultiHeadLatentAttention` (MLA nén KV hạng thấp + tách nhánh RoPE)
@@ -371,7 +371,8 @@ impl Gpt2Block {
 
 /// Chuẩn hóa căn bậc hai trung bình bình phương `RmsNorm` (Root Mean Square Normalization).
 ///
-/// Bỏ qua bước trừ kỳ vọng $\mu$ của LayerNorm, giảm 30% thao tác bộ nhớ:
+/// Bỏ qua bước trừ kỳ vọng $\mu$ của LayerNorm nên rẻ hơn (Zhang & Sennrich 2019 báo cáo giảm
+/// 7%–64% thời gian chạy tùy mô hình):
 /// $y_i = \frac{x_i}{\text{RMS}(x)} \cdot w_i, \quad \text{trong đó } \text{RMS}(x) = \sqrt{\frac{1}{d} \sum_{j=1}^d x_j^2 + \epsilon}$
 ///
 /// Khi `unit_offset = true` (kiểu Gemma), công thức chuyển thành:
@@ -481,10 +482,13 @@ impl RmsNorm {
 
 /// Cấu hình ngoại suy độ dài ngữ cảnh YaRN (Yet another RoPE extensioN).
 ///
-/// YaRN áp dụng nội suy tần số thích ứng giữa 3 phân vùng bước sóng:
-/// - Bước sóng ngắn $\lambda < \beta_{\text{slow}} L_0$: giữ nguyên tần số gốc
-/// - Bước sóng dài $\lambda > \beta_{\text{fast}} L_0$: nội suy tuyến tính hoàn toàn
-/// - Phân vùng trung gian: dốc chuyển mượt mà (smooth ramp)
+/// YaRN (Peng et al., 2023) áp dụng nội suy tần số thích ứng theo SỐ VÒNG QUAY
+/// $r_i = L_0 / \lambda_i$ mà chiều thứ $i$ thực hiện trên độ dài ngữ cảnh gốc $L_0$
+/// (với $\lambda_i = 2\pi / \theta_i$):
+/// - $r_i > \beta_{\text{fast}}$ (bước sóng ngắn, mặc định $\beta_{\text{fast}} = 32$): giữ nguyên tần số gốc
+/// - $r_i < \beta_{\text{slow}}$ (bước sóng dài hơn ngữ cảnh gốc, mặc định $\beta_{\text{slow}} = 1$):
+///   nội suy tuyến tính hoàn toàn, $\theta_i / s$
+/// - Phân vùng trung gian: dốc chuyển tuyến tính theo $r_i$ (smooth ramp)
 #[derive(Debug, Clone, PartialEq)]
 pub struct YarnConfig {
     pub original_max_seq: usize,
@@ -492,6 +496,16 @@ pub struct YarnConfig {
     pub beta_fast: f64,
     pub beta_slow: f64,
     pub mscale: f64,
+}
+
+impl YarnConfig {
+    /// Hệ số co giãn độ lớn chú ý đề xuất của YaRN: $\text{mscale} = 0.1 \ln s + 1$.
+    ///
+    /// `mscale` được nhân vào cả `cos` lẫn `sin` nên tác động lên cả $q$ lẫn $k$,
+    /// tức logit chú ý được nhân với $\text{mscale}^2$.
+    pub fn recommended_mscale(scale: f64) -> f64 {
+        0.1 * scale.ln() + 1.0
+    }
 }
 
 impl Default for YarnConfig {
@@ -539,15 +553,16 @@ impl RopeCache {
             {
                 let wavelength = 2.0 * PI / freq;
                 let l0 = cfg.original_max_seq as f64;
-                let low = cfg.beta_slow * l0;
-                let high = cfg.beta_fast * l0;
+                // Số vòng quay của chiều này trên độ dài ngữ cảnh gốc: r = L0 / lambda
+                let rotations = l0 / wavelength;
 
-                let gamma = if wavelength < low {
+                // gamma = trọng số nội suy: 0 -> giữ tần số gốc, 1 -> nội suy hoàn toàn (theta / s)
+                let gamma = if rotations > cfg.beta_fast {
                     0.0
-                } else if wavelength > high {
+                } else if rotations < cfg.beta_slow {
                     1.0
                 } else {
-                    (wavelength - low) / (high - low)
+                    (cfg.beta_fast - rotations) / (cfg.beta_fast - cfg.beta_slow)
                 };
 
                 let interpolated_freq = freq / scale;
@@ -1099,10 +1114,35 @@ pub struct GatedDeltaNetConfig {
     pub eps: f64,
 }
 
+/// Một bước cập nhật trạng thái Gated DeltaNet cho khóa đã chuẩn hóa `k` (`||k|| = 1`):
+/// $S_t = \alpha S_{t-1} + \beta (v - \alpha S_{t-1} k) k^\top$.
+///
+/// `s` là ma trận `ds x ds` theo thứ tự hàng; trả về ma trận trạng thái mới cùng kích thước.
+/// Hệ quả: $S_t k = \alpha (1 - \beta) S_{t-1} k + \beta v$, nên khi $\beta = 1$ thì $S_t k = v$
+/// (ô nhớ của khóa $k$ bị ghi đè hoàn toàn) bất kể $\alpha$.
+pub fn gated_delta_step(s: &[f64], k: &[f64], v: &[f64], alpha: f64, beta: f64) -> Vec<f64> {
+    let ds = k.len();
+    assert_eq!(s.len(), ds * ds);
+    assert_eq!(v.len(), ds);
+    // S_{t-1} * k_t (dự báo của trạng thái cũ đối với k_t)
+    let s_k = matmul(s, k, ds, ds, 1);
+    let mut new_s = vec![0.0; ds * ds];
+    for r in 0..ds {
+        // Sai số Delta tính trên trạng thái đã suy giảm: v_t - alpha * S_{t-1} * k_t
+        let delta = v[r] - alpha * s_k[r];
+        for c in 0..ds {
+            new_s[r * ds + c] = alpha * s[r * ds + c] + beta * delta * k[c];
+        }
+    }
+    new_s
+}
+
 /// Tầng Gated DeltaNet kết hợp luật Delta (Delta Rule) với cơ chế cổng quên (Gating):
 ///
-/// Trạng thái ma trận liên tục $S_t \in \mathbb{R}^{d \times d}$ được cập nhật tuyến tính:
-/// $S_t = \alpha_t S_{t-1} + \beta_t (v_t - S_{t-1} k_t) k_t^\top$
+/// Trạng thái ma trận liên tục $S_t \in \mathbb{R}^{d \times d}$ được cập nhật tuyến tính
+/// (Yang et al., 2024): suy giảm trạng thái trước, rồi áp luật Delta lên trạng thái đã suy giảm:
+/// $S_t = \alpha_t S_{t-1} (I - \beta_t k_t k_t^\top) + \beta_t v_t k_t^\top
+///      = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1} k_t) k_t^\top$
 ///
 /// Đầu ra tại mỗi token:
 /// $y_t = S_t q_t \odot \text{SiLU}(x_t W_{\text{out\_gate}})$
@@ -1179,23 +1219,8 @@ impl GatedDeltaNet {
             let alpha = sigmoid(alpha_logits.iter().sum::<f64>() / (ds as f64));
             let beta = sigmoid(beta_logits.iter().sum::<f64>() / (ds as f64));
 
-            // S_{t-1} * k_t (dự báo của trạng thái cũ đối với k_t)
-            let s_k = matmul(&s, &k, ds, ds, 1);
-
-            // Delta error = v_t - S_{t-1} * k_t
-            let mut delta = vec![0.0; ds];
-            for i in 0..ds {
-                delta[i] = v[i] - s_k[i];
-            }
-
-            // Cập nhật trạng thái: S_t = alpha * S_{t-1} + beta * (delta * k^T)
-            let mut new_s = vec![0.0; ds * ds];
-            for r in 0..ds {
-                for c in 0..ds {
-                    new_s[r * ds + c] = alpha * s[r * ds + c] + beta * delta[r] * k[c];
-                }
-            }
-            s = new_s;
+            // Cập nhật trạng thái: S_t = alpha * S_{t-1} + beta * (v - alpha * S_{t-1} k) k^T
+            s = gated_delta_step(&s, &k, &v, alpha, beta);
 
             // Truy xuất: y_raw = S_t * q_t
             let y_raw = matmul(&s, &q, ds, ds, 1);
@@ -1731,6 +1756,113 @@ mod tests {
         let rope = RopeCache::new(4, 16, 10000.0, Some(&yarn));
         // Tại pos = 0, cos(0) = 1.0 * mscale = 1.25
         assert!((rope.cos_cache[0] - 1.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_yarn_frequency_regions_follow_paper() {
+        let yarn = YarnConfig {
+            original_max_seq: 2048,
+            target_max_seq: 8192,
+            beta_fast: 32.0,
+            beta_slow: 1.0,
+            mscale: 1.0,
+        };
+        let head_dim = 16;
+        let half = head_dim / 2;
+        let plain = RopeCache::new(head_dim, 4, 10000.0, None);
+        let scaled = RopeCache::new(head_dim, 4, 10000.0, Some(&yarn));
+        // Tần số hiệu dụng của chiều i = góc quay tại vị trí 1
+        let freq = |c: &RopeCache, i: usize| c.sin_cache[half + i].atan2(c.cos_cache[half + i]);
+
+        // r = 2048 / lambda_i với lambda_i = 2*pi*10000^(i/8): r > 32 ở i = 0, 1, 2 -> giữ nguyên
+        for i in 0..3 {
+            assert!((freq(&scaled, i) - freq(&plain, i)).abs() < 1e-12);
+        }
+        // r < 1 ở i = 6, 7 -> chia đúng cho s = 4
+        for i in 6..8 {
+            assert!((freq(&scaled, i) - freq(&plain, i) / 4.0).abs() < 1e-12);
+        }
+        // Vùng trung gian: tỉ số tần số nằm giữa 1/s và 1, giảm dần theo i
+        let mut prev = 1.0;
+        for i in 3..6 {
+            let ratio = freq(&scaled, i) / freq(&plain, i);
+            assert!(ratio > 0.25 && ratio < prev, "i={i}, ratio={ratio}");
+            prev = ratio;
+        }
+    }
+
+    #[test]
+    fn test_yarn_recommended_mscale() {
+        assert!((YarnConfig::recommended_mscale(1.0) - 1.0).abs() < 1e-15);
+        let m = YarnConfig::recommended_mscale(4.0);
+        assert!((m - (0.1 * 4.0_f64.ln() + 1.0)).abs() < 1e-15);
+        assert!((m - 1.138_629_436).abs() < 1e-8);
+    }
+
+    #[test]
+    fn test_gated_delta_step_matches_paper_recurrence() {
+        let ds = 3;
+        let s: Vec<f64> = (0..ds * ds).map(|i| (i as f64 * 0.37).sin()).collect();
+        let raw_k = [0.3, -0.5, 0.8];
+        let norm = raw_k.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let k: Vec<f64> = raw_k.iter().map(|x| x / norm).collect();
+        let v = [1.0, -2.0, 0.5];
+        let s_k = matmul(&s, &k, ds, ds, 1);
+
+        for &(alpha, beta) in &[(0.2, 1.0), (0.7, 1.0), (1.0, 1.0), (0.6, 0.3), (0.9, 0.5)] {
+            let s_new = gated_delta_step(&s, &k, &v, alpha, beta);
+            let s_new_k = matmul(&s_new, &k, ds, ds, 1);
+            for i in 0..ds {
+                // S_t k = alpha (1 - beta) S_{t-1} k + beta v
+                let expected = alpha * (1.0 - beta) * s_k[i] + beta * v[i];
+                assert!((s_new_k[i] - expected).abs() < 1e-12);
+                if beta == 1.0 {
+                    // Ghi đè hoàn toàn ô nhớ của khóa k, bất kể alpha
+                    assert!((s_new_k[i] - v[i]).abs() < 1e-12);
+                }
+            }
+            // Đối chiếu với dạng ma trận S_t = alpha S_{t-1} (I - beta k k^T) + beta v k^T
+            for r in 0..ds {
+                for c in 0..ds {
+                    let mut sik = 0.0;
+                    for j in 0..ds {
+                        let ident = if j == c { 1.0 } else { 0.0 };
+                        sik += s[r * ds + j] * (ident - beta * k[j] * k[c]);
+                    }
+                    let expected = alpha * sik + beta * v[r] * k[c];
+                    assert!((s_new[r * ds + c] - expected).abs() < 1e-12);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_sparse_moe_aux_loss_from_real_layer() {
+        let mut rng = SplitMix64::new(23);
+        let cfg = SparseMoeConfig {
+            n_routed_experts: 4,
+            n_shared_experts: 0,
+            top_k: 1,
+            d_model: 8,
+            d_hidden: 8,
+            aux_loss_coef: 0.01,
+        };
+        let mut moe = SparseMoeLayer::new(cfg, &mut rng);
+        let x: Vec<f64> = (0..5 * 8).map(|_| rng.next_signed(1.0)).collect();
+
+        // Router toàn 0 -> P_i = 1/E đều; sum f_i = 1 nên aux_loss = alpha * E * (1/E) = alpha
+        moe.router_weights = vec![0.0; 8 * 4];
+        let res = moe.forward(&x, 5);
+        assert!(
+            (res.aux_loss - 0.01).abs() < 1e-12,
+            "aux_loss = {}",
+            res.aux_loss
+        );
+
+        // Router ngẫu nhiên: 0 < aux_loss <= alpha * E
+        let moe_rand = SparseMoeLayer::new(moe.config.clone(), &mut rng);
+        let res = moe_rand.forward(&x, 5);
+        assert!(res.aux_loss > 0.0 && res.aux_loss <= 0.01 * 4.0 + 1e-12);
     }
 
     #[test]

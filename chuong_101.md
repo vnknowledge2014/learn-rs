@@ -22,7 +22,7 @@ Chương này sẽ dựng lại toàn bộ chuỗi công cụ đó **từ số k
 | **HMAC-SHA-256** | RFC 4231 | Lớp xác thực PBKDF2 |
 | **PBKDF2** | RFC 8018 | Suy ra khoá Kerberos từ mật khẩu + salt |
 | **SHA-256** | FIPS 180-4 | Tái sử dụng ý tưởng từ Chương 70 |
-| **RC4** | RFC 4758 | Mã hoá dòng của Kerberos etype 23 |
+| **RC4** | RFC 4757 | Mã hoá dòng của Kerberos etype 23 |
 | **AES-256** | FIPS 197 | Mã hoá khối của Kerberos etype 18 |
 | **CBC-CTS** | RFC 2040 §8 + RFC 3962 | Chế độ mã hoá không nở rộng của Kerberos |
 | **ASN.1 DER** | X.690 (rút gọn) | Đóng gói thông điệp Kerberos |
@@ -35,7 +35,7 @@ Chương này sẽ dựng lại toàn bộ chuỗi công cụ đó **từ số k
 |---|---|---|
 | **Tự cài MD5 & MD4** | Hai hàm băm này là "ngôn ngữ" của thế giới xác thực cũ. Hiểu cấu trúc Merkle–Damgård giúp bạn thấy vì sao *đệm ký tự* có thể phá vỡ tính toàn vẹn của thông điệp Kerberos. | Khớp **100%** bộ vector chính thức RFC 1321 / RFC 1320 (7 vector cho MD4, 3 vector cho MD5). |
 | **Tự cài HMAC & PBKDF2** | HMAC là "băng keo" giữa khoá và dữ liệu; PBKDF2 biến mật khẩu thành khoá chậm để bẻ. | Khớp vector RFC 2202 (HMAC-MD5) và RFC 4231 (HMAC-SHA-256); PBKDF2 khớp vector PBKDF2-HMAC-SHA256 đã biết. |
-| **Tự cài RC4** | RC4 là etype 23 của Kerberos — vẫn chạy trên hàng triệu máy. Biết KSA/PRGA giúp bạn hiểu vì sao RC4 là mã hoá *dòng* và tự đồng bộ. | Khớp vector RC4 kinh điển: khoá `"Key"` → `bbf316e8d940af0ad3`, khoá `"Wiki"` → `1021bf0420`. |
+| **Tự cài RC4** | RC4 là etype 23 của Kerberos — vẫn chạy trên hàng triệu máy. Biết KSA/PRGA giúp bạn hiểu vì sao RC4 là mã hoá *dòng* **đồng bộ**. | Khớp vector RC4 kinh điển: khoá `"Key"` → `bbf316e8d940af0ad3`, khoá `"Wiki"` → `1021bf0420`. |
 | **Tự cài AES-256 + CBC/CTS** | Đây là phần khó nhất: S-box, MixColumns, Key Expansion, rồi cả thuật toán "cướp bản mã" (ciphertext stealing) của RFC 2040 §8. | Khớp vector FIPS-197 (AES-256) và vector chính thức RFC 3962 Phụ lục B cho CBC-CTS. |
 | **Tự cài ASN.1 DER rút gọn** | Thông điệp Kerberos là **DER**, không phải JSON. Hiểu TLV và thẻ context-specific là điều kiện tiên quyết để đọc/ghi AS-REQ, AS-REP, TGS-REQ, TGS-REP. | Round-trip byte-perfect cho cả 4 loại thông điệp. |
 | **Hiểu cơ chế Kerberoast / AS-REP Roasting** | Đây là hai cuộc tấn công kinh điển nhất trên hệ thống Kerberos. | Bẻ khoá thành công vé dịch vụ etype 23 **và** etype 18; phân tích được AS-REP và bẻ khoá được mật khẩu người dùng. |
@@ -52,9 +52,9 @@ Toàn bộ hệ thống trong `ch101` được định nghĩa thông qua **bất
 | **3** | **HMAC đúng đặc tả** | $\mathrm{HMAC}(K,m) = H((K'\oplus opad)\|\|H((K'\oplus ipad)\|\|m))$. | `test_08`, `test_09`, `test_17`: vector RFC 2202 và RFC 4231. |
 | **4** | **NT Hash chuẩn Windows** | $\mathrm{NT\_Hash} = \mathrm{MD4}(\mathrm{UTF16LE}(pwd))$. | `test_10`: $\mathrm{NT\_Hash}(\text{"password"}) = \texttt{8846f7eaee8fb117ad06bdd830b7586c}$. |
 | **5** | **NTLMv2 đúng công thức** | $\mathrm{NTLMv2Hash} = \mathrm{HMAC\text{-}MD5}(\mathrm{NT\_Hash}, \mathrm{UPPER}(u)\|\|\mathrm{UPPER}(d))$. | `test_11`, `test_12`. |
-| **6** | **RC4 đúng chuẩn** | $\mathrm{RC4}(k, m)$ là mã hoá dòng tự đồng bộ và đối xứng. | `test_19`, `test_20`, `test_21`. |
+| **6** | **RC4 đúng chuẩn** | $\mathrm{RC4}(k, m)$ là mã hoá dòng **đồng bộ** và đối xứng. | `test_19`, `test_20`, `test_21`. |
 | **7** | **SHA-256 đúng chuẩn** | $\mathrm{SHA\text{-}256}$ khớp FIPS 180-4. | `test_14`…`test_16`. |
-| **8** | **PBKDF2 đúng chuẩn** | $\mathrm{PBKDF2}(p,s,c,dk) = F_1 \oplus F_2 \oplus \dots$ | `test_18`. |
+| **8** | **PBKDF2 đúng chuẩn** | $\mathrm{PBKDF2}(p,s,c,dk) = (F_1 \,\|\, F_2 \,\|\, \dots)[0 \mathinner{..} dk]$ | `test_18`. |
 | **9** | **Bộ bẻ khoá tìm được mật khẩu** | $\exists c \in W: H(c) = H^\star$ | `test_22`, `test_23`, `test_24`, `test_25`. |
 | **10** | **Đột biến từ điển sinh đúng & loại trùng** | $\lvert \mathrm{generate\_all}(W)\rvert = \lvert \mathrm{unique}(\mathrm{generate\_all}(W))\rvert$ | `test_26`…`test_32`. |
 | **11** | **ASN.1 round-trip** | $\mathrm{decode}(\mathrm{encode}(x)) = x$ | `test_33`…`test_36`. |
@@ -284,7 +284,7 @@ Hằng số $K[i] = \lfloor 2^{32} \cdot |\sin(i+1)| \rfloor$ — "hằng số p
 
 MD4 là cha của MD5, và là **nền tảng của NT Hash** mà Windows dùng để lưu mật khẩu. Nó có **ba vòng** thay vì bốn, và điểm hay gây bất ngờ là:
 
-> MD4 **có** hằng số cộng thêm giống MD5, và lịch xoay vòng 1 là **3, 7, 11, 19** — **không phải** 3, 7, 11, 17 như MD5. Ai nhớ nhầm sẽ ra sai vector ngay lập tức.
+> MD4 **có** hằng số cộng thêm giống MD5, và lịch xoay vòng 1 là **3, 7, 11, 19** — lỗi hay gặp là ghi nhầm số cuối thành **17** (MD4 và MD5 có lịch xoay hoàn toàn khác nhau; vòng 1 của MD5 là 7, 12, 17, 22). Ai nhớ nhầm sẽ ra sai vector ngay lập tức.
 
 | Vòng | Hàm trộn | Hằng số cộng thêm | Chỉ số từ $g$ | Lịch xoay |
 |---|---|---|---|---|
@@ -328,7 +328,7 @@ Kerberos không dùng mật khẩu trực tiếp làm khoá. Nó dùng PBKDF2 (R
 
 $$
 DK = PBKDF2(P, S, c, dkLen), \quad
-DK = F_1 \oplus F_2 \oplus \cdots \oplus F_{\lceil dkLen/hLen \rceil}
+DK = \left(F_1 \,\|\, F_2 \,\|\, \cdots \,\|\, F_{\lceil dkLen/hLen \rceil}\right)[0 \mathinner{..} dkLen]
 $$
 
 với $F_i = U_1 \oplus U_2 \oplus \dots \oplus U_c$, $U_1 = PRF(P, S \|\| \text{INT}(i))$, $U_j = PRF(P, U_{j-1})$.
@@ -374,9 +374,9 @@ $$
 
 #### 3.6.3. LM Hash — cái bóng của thời xưa
 
-LMHASH chuẩn dùng DES: `LMHASH = DES(pwd[0..8]) || DES(pwd[8..16])` với mật khẩu viết HOA, cắt 14 ký tự. Vì DES quá nặng so với giá trị bảo mật mà nó mang, chương này **không cài DES** mà dùng một **biến thể minh hoạ** (MD5 cắt 8 byte, giữ nguyên cấu trúc hai nửa 8 byte) — và ghi rõ trong doc-comment rằng đây **không phải** LMHASH chuẩn, chỉ để minh hoạ luồng "bẻ khoá băm cũ".
+LMHASH chuẩn dùng DES: mật khẩu viết HOA, cắt/đệm về 14 byte, tách thành hai nửa **7 byte**, mỗi nửa làm **khoá DES** để mã hoá hằng số cố định `KGS!@#$%`: `LMHASH = DES_H1("KGS!@#$%") || DES_H2("KGS!@#$%")`. Vì DES quá nặng so với giá trị bảo mật mà nó mang, chương này **không cài DES** mà dùng một **biến thể minh hoạ** (MD5 cắt 8 byte, giữ nguyên cấu trúc hai nửa 8 byte) — và ghi rõ trong doc-comment rằng đây **không phải** LMHASH chuẩn, chỉ để minh hoạ luồng "bẻ khoá băm cũ".
 
-### 3.7. RC4 (RFC 4758) — mã hoá dòng của Kerberos
+### 3.7. RC4 (RFC 4757) — mã hoá dòng của Kerberos
 
 RC4 có hai giai đoạn:
 
@@ -402,7 +402,7 @@ mỗi byte:
     output = input XOR K
 ```
 
-RC4 là mã hoá **dòng tự đồng bộ** (self-synchronising): mất $n$ byte đầu thì mất $n$ byte đầu của bản rõ. Đây là điểm yếu kinh điển: cùng một khoá + cùng một plaintext → cùng một keystream, nên RC4 dễ bị tấn công thống kê (đặc biệt với `rc4-hmac` trong Kerberos).
+RC4 là mã hoá **dòng đồng bộ** (synchronous): dòng khoá chỉ phụ thuộc vào khoá và vị trí, hoàn toàn độc lập với bản rõ. Hệ quả: dùng lại cùng một khoá sẽ sinh ra **cùng một dòng khoá**, nên nếu mã hoá hai bản rõ bằng cùng khoá (không có IV/nonce) thì XOR hai bản mã sẽ lộ thông tin — đây là điểm yếu kinh điển của RC4 (và của `rc4-hmac` khi dùng sai).
 
 Hai vector kinh điển được dùng để kiểm chứng:
 
@@ -440,8 +440,8 @@ $$
 
 | Thuật toán | Khoá | Bản rõ | Bản mã |
 |---|---|---|---|
-| AES-128 | `000102…0f` | `00112233…eeff` | `69c4e0d8…d4ffb` |
-| AES-192 | `000102…17` | `00112233…eeff` | `dda97ca4…8ef79` |
+| AES-128 | `000102…0f` | `00112233…eeff` | `69c4e0d8…b4c55a` |
+| AES-192 | `000102…17` | `00112233…eeff` | `dda97ca4…0d7191` |
 | **AES-256** | `000102…1f` | `00112233…eeff` | **`8ea2b7ca516745bfeafc49904b496089`** |
 
 Chương này kiểm chứng vector AES-256 (dòng đậm) trong `test_42`, và kiểm tra tính nghịch đảo của phép giải mã khối trong `test_43`.
@@ -588,8 +588,8 @@ PA-DATA ::= SEQUENCE {
 | 18 | `aes256-cts-hmac-sha1-96` | 256-bit | HMAC-SHA-1-96 | **Khuyến nghị** |
 | 17 | `aes128-cts-hmac-sha1-96` | 128-bit | HMAC-SHA-1-96 | Chấp nhận được |
 | 23 | `rc4-hmac` | 128-bit | HMAC-MD5-96 | **Lỗi thời, mục tiêu ưu tiên của Kerberoast** |
-| 19 | `rc4-hmac-exp` | 128-bit | HMAC-MD5-96 | Lỗi thời |
-| 16 | `des-cbc-crc` | 56-bit | CRC32 | Rất lỗi thời |
+| 24 | `rc4-hmac-exp` | 128-bit | HMAC-MD5 | Lỗi thời (xuất khẩu, 40-bit hiệu dụng) |
+| 1 | `des-cbc-crc` | 56-bit | CRC32 | Rất lỗi thời |
 
 etype 23 bị "ghin vào tường" bởi lịch sử: nó là mặc định của Windows 2000/XP và rất nhiều thiết bị mạng cũ vẫn dùng. Chính vì vậy Kerberoast nhắm vào nó.
 
@@ -597,7 +597,7 @@ etype 23 bị "ghin vào tường" bởi lịch sử: nó là mặc định củ
 
 | padata-type | Tên | Ý nghĩa |
 |---|---|---|
-| 1 | `PA-TGS-REQ` | Chứa AS-REP để chuyển tiếp khi xin vé dịch vụ |
+| 1 | `PA-TGS-REQ` | Chứa **AP-REQ** (gồm TGT + authenticator) để xác thực với TGS khi xin vé dịch vụ |
 | 2 | `PA-ENC-TIMESTAMP` | Dấu thời gian mã hoá (chống chơi lại) |
 | 3 | `PA-PW-SALT` | Salt dùng để suy ra khoá |
 | 11 | `PA-ETYPE-INFO` | Thông tin etype + salt |
@@ -778,7 +778,7 @@ Cấu trúc `Account` mang cả `password` (chỉ trong dữ liệu tổng hợp
 | `sha256(data) -> [u8; 32]` | `sha256_hex(data) -> String` | FIPS 180-4 |
 | `hmac_sha256(key, msg) -> [u8; 32]` | | RFC 4231 |
 | `pbkdf2_hmac_sha256(pwd, salt, iters, dklen) -> Vec<u8>` | | RFC 8018 |
-| `rc4(key, data) -> Vec<u8>` | `Rc4::new(key)`, `Rc4::apply(data)` | RFC 4758 |
+| `rc4(key, data) -> Vec<u8>` | `Rc4::new(key)`, `Rc4::apply(data)` | RFC 4757 |
 | `aes_encrypt_block(key, block) -> [u8; 16]` | `aes_decrypt_block(...)` | FIPS 197 |
 | `aes_cts_encrypt_raw / aes_cts_decrypt_raw` | `aes_cts_encrypt_kerberos / aes_cts_decrypt` | RFC 2040 §8 |
 
@@ -1009,6 +1009,8 @@ Chú ý `padded[..16].copy_from_slice(&md5(key))`: khi khoá dài hơn khối, t
 ### 4.3. NTLMv2 Response — công thức thành mã
 
 ```rust
+impl NetNtlmV2Responder {
+    // ...
     /// Tính NTProofStr bằng biến thể *viết hoa toàn bộ* tên và miền.
     pub fn compute_response_upper(
         &self,
@@ -1042,6 +1044,7 @@ Chú ý `padded[..16].copy_from_slice(&md5(key))`: khi khoá dài hơn khối, t
         data.extend_from_slice(&blob);
         hmac_md5(ntv2, &data)
     }
+}
 ```
 
 Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upper` (viết hoa toàn bộ) cho thấy một điểm tinh tế của NTLM: **tên người dùng và miền được xử lý khác nhau giữa các phiên bản**, và công cụ phân tích phải thử **cả hai** biến thể.
@@ -1049,7 +1052,9 @@ Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upp
 ### 4.4. RC4 — động cơ dòng khoá
 
 ```rust
-    /// Mã hoá (hoặc giải mã — RC4 là mã hoá dòng tự đồng bộ) một mảng byte.
+impl Rc4 {
+    // ...
+    /// Mã hoá (hoặc giải mã — RC4 là mã hoá dòng đồng bộ) một mảng byte.
     pub fn apply(&mut self, data: &[u8]) -> Vec<u8> {
         let mut out = Vec::with_capacity(data.len());
         for &byte in data {
@@ -1062,6 +1067,7 @@ Cặp `compute_response` (giữ nguyên hoa/thường) và `compute_response_upp
         }
         out
     }
+}
 ```
 
 Một điểm thiết kế đáng chú ý: `Rc4` giữ trạng thái `s`, `i`, `j` **bên trong** đối tượng, nên có thể mã hoá nhiều lần bằng cùng một dòng khoá (đúng như Kerberos tái sử dụng keystream giữa các phần của thông điệp).
@@ -1234,6 +1240,8 @@ Ba nguyên tắc an toàn nằm trong `decode_tlv`: **kiểm tra biên trước 
 ### 4.8. Đóng gói AS-REQ
 
 ```rust
+impl AsReq {
+    // ...
     /// Mã hoá AS-REQ thành byte ASN.1 DER.
     pub fn to_asn1(&self) -> Vec<u8> {
         let body = encode_sequence(&[
@@ -1253,6 +1261,7 @@ Ba nguyên tắc an toàn nằm trong `decode_tlv`: **kiểm tra biên trước 
         ]);
         encode_application(10, &[inner])
     }
+}
 ```
 
 Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ), `padata[3]`, `req-body[4]`. Và `req-body` chứa `kdc-options[0]`, `cname[1]`, `realm[2]`, `nonce[7]`.
@@ -1260,6 +1269,8 @@ Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ),
 ### 4.9. Kerberoast — ép khoá dịch vụ
 
 ```rust
+impl KerberoastCracker {
+    // ...
     /// Bẻ khoá vé dịch vụ dùng RC4-HMAC (etype 23).
     pub fn crack_etype23(&self, ticket: &ServiceTicket) -> Option<String> {
         if ticket.etype != Etype::Rc4Hmac {
@@ -1275,6 +1286,7 @@ Cấu trúc này bám theo RFC 4120: `pvno[1] = 5`, `msg-type[2] = 10` (AS-REQ),
         }
         None
     }
+}
 ```
 
 Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật khẩu → suy ra khoá → giải mã → kiểm tra chữ ký. Không có mạng, không có KDC, không có quyền truy cập nào ngoài dữ liệu tổng hợp.
@@ -1282,6 +1294,8 @@ Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật k
 ### 4.10. Đột biến từ điển
 
 ```rust
+impl WordlistMutator {
+    // ...
     /// Sinh toàn bộ biến thể của một từ (gồm chính từ đó, luôn ở vị trí đầu).
     pub fn generate(&self, word: &str) -> Vec<String> {
         let mut output = vec![word.to_string()];
@@ -1305,6 +1319,7 @@ Bốn dòng này là **toàn bộ** cuộc tấn công Kerberoast: thử mật k
         }
         output
     }
+}
 ```
 
 Chú ý `output.contains(&variant)` — loại trùng bằng `Vec::contains` (O(n)) chấp nhận được ở quy mô từ điển nhỏ; với từ điển hàng triệu dòng, bạn nâng lên `HashSet`.
@@ -1312,12 +1327,15 @@ Chú ý `output.contains(&variant)` — loại trùng bằng `Vec::contains` (O(
 ### 4.11. Kho tín dụng và tra cứu SPN
 
 ```rust
+impl CredentialDb {
+    // ...
     /// Tìm tài khoản theo Service Principal Name.
     pub fn find_by_spn(&self, spn: &str) -> Option<&Account> {
         self.accounts
             .iter()
             .find(|account| account.spns.iter().any(|candidate| candidate == spn))
     }
+}
 ```
 
 Đây chính là truy vấn mà đợt tấn công Kerberoast cần: biết SPN → biết tài khoản dịch vụ → biết salt → bẻ khoá.
@@ -1347,6 +1365,8 @@ pub fn hash_for(algorithm: HashAlgorithm, candidate: &str) -> String {
 Chú ý cách viết này giữ cho **mọi thuật toán** có cùng một giao diện: "cho tôi một chuỗi, trả về 16/32 byte hex". Nhờ vậy `CrackEngine` không cần biết chút gì về MD5 hay SHA-256:
 
 ```rust
+impl CrackEngine {
+    // ...
     /// Quét từ điển và trả về mật khẩu tìm được (nếu có).
     pub fn crack(&self) -> Option<String> {
         let target = self.target_hash.trim().to_ascii_lowercase();
@@ -1355,6 +1375,7 @@ Chú ý cách viết này giữ cho **mọi thuật toán** có cùng một giao
             .find(|candidate| hash_for(self.algorithm, candidate).to_ascii_lowercase() == target)
             .cloned()
     }
+}
 ```
 
 `.trim().to_ascii_lowercase()` ở cả hai vế là chi tiết quan trọng trong đời thực: giá trị băm lấy từ file `hashes.txt` thường kèm khoảng trắng, chữ hoa/thường lẫn lộn, và còn tiền tố kiểu `$NT$` — nếu không chuẩn hoá, bẻ khoá sẽ **không bao giờ** khớp.
@@ -1543,7 +1564,7 @@ Vì `HashAlgorithm` là enum đóng, bạn phải thêm biến thể — đây l
 >
 > Bỏ sót `impl Display` là lỗi kinh điển của người mới: trình biên dịch báo `non-exhaustive patterns` đúng lúc bạn tưởng đã xong.
 
-```rust
+```rust,ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashAlgorithm {
     Md5,
@@ -1802,7 +1823,7 @@ Trước khi đóng sách, hãy tự trả lời (không xem lại tài liệu):
 | [RFC 2202](https://www.rfc-editor.org/rfc/rfc2202.txt) | Vector kiểm thử HMAC-MD5 | `test_08`, `test_09` |
 | [RFC 4231](https://www.rfc-editor.org/rfc/rfc4231.txt) | Vector kiểm thử HMAC-SHA-256 | `test_17` |
 | [RFC 8018](https://www.rfc-editor.org/rfc/rfc8018.txt) | PBKDF2 | §3.4, `pbkdf2_hmac_sha256` |
-| [RFC 4758](https://www.rfc-editor.org/rfc/rfc4758.txt) | RC4 và đặc tả Kerberos rc4-hmac | §3.7, `Rc4` |
+| [RFC 4757](https://www.rfc-editor.org/rfc/rfc4757.txt) | RC4-HMAC Kerberos etype 23 (Microsoft Windows) | §3.7, `Rc4` |
 | [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf) | AES — S-box, lịch khoá, vector | §3.8, `aes_encrypt_block` |
 | [RFC 2040](https://www.rfc-editor.org/rfc/rfc2040.txt) §8 | **Ciphertext Stealing** — nguồn gốc của CBC-CTS | §3.9, `aes_cts_encrypt_with_iv` |
 | [RFC 3962](https://www.rfc-editor.org/rfc/rfc3962.txt) | AES cho Kerberos 5 + errata CTS + vector | §3.9, `test_45` |

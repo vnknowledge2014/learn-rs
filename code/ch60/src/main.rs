@@ -367,10 +367,13 @@ impl FenwickTree {
     }
 
     /// Cộng `delta` vào vị trí `i` (1-indexed). Phức tạp: O(log N).
+    // Giữ cách viết kinh điển `i & i.wrapping_neg()` như trong sách. Rust mới có sẵn
+    // `isolate_lowest_one()`, nhưng dùng nó sẽ làm crate không biên dịch được trên bản cũ hơn.
+    #[allow(clippy::manual_isolate_lowest_one)]
     pub fn update(&mut self, mut i: usize, delta: i64) {
         while i < self.tree.len() {
             self.tree[i] += delta;
-            i += i.isolate_lowest_one(); // di chuyển tới nút cha
+            i += i & i.wrapping_neg(); // lowbit(i): di chuyển tới nút cha
         }
     }
 

@@ -631,6 +631,8 @@ pub struct MockFile {
 Quyền ghi được quyết định bởi một hàm duy nhất — đây là nơi mà "phân quyền" của hệ thống thật được mô phỏng lại:
 
 ```rust
+impl MockFilesystem {
+    // ...
     /// Kiểm tra người dùng `user` có thể ghi vào tệp hay không.
     ///
     /// Quy tắc mô phỏng (đơn giản hoá so với POSIX thật):
@@ -653,11 +655,14 @@ Quyền ghi được quyết định bởi một hàm duy nhất — đây là n
         }
         false
     }
+}
 ```
 
 ### 4.2 Vỏ lệnh mô phỏng — nơi sinh ra sự thật
 
 ```rust
+impl MockShell {
+    // ...
     /// Thực thi một lệnh trên vỏ lệnh mô phỏng và trả về đầu ra.
     ///
     /// Các lệnh được hiểu: `whoami`, `id`, `cat /etc/shadow`, `sudo -l`, `getcap <đường-dẫn>`,
@@ -669,11 +674,14 @@ Quyền ghi được quyết định bởi một hàm duy nhất — đây là n
         self.history.push((cmd.to_string(), output.clone()));
         output
     }
+}
 ```
 
 Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh tính mới*:
 
 ```rust
+impl MockShell {
+    // ...
     /// Mô phỏng hành động leo thang đặc quyền theo tên kỹ thuật.
     ///
     /// Trả về `true` nếu kỹ thuật được hỗ trợ và phiên làm việc chuyển sang danh tính
@@ -711,11 +719,14 @@ Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh 
         }
         false
     }
+}
 ```
 
 ### 4.3 Dò nhị phân SUID trên Linux
 
 ```rust
+impl LinuxPrivEscChecker {
+    // ...
     pub fn check_suid_binaries(&mut self) -> Vec<Finding> {
         let mut out = Vec::new();
         for (path, payload) in self.fs.suid_binaries_with_payloads() {
@@ -761,11 +772,15 @@ Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh 
             out.push(finding);
         }
         out
+    }
+}
 ```
 
 ### 4.4 Dò đường dẫn dịch vụ không ngoặc kép trên Windows
 
 ```rust
+impl WindowsPrivEscChecker {
+    // ...
     /// Dò đường dẫn tới tệp thực thi của dịch vụ không được đặt trong ngoặc kép.
     ///
     /// Khi `ImagePath` chứa khoảng trắng mà không có dấu `"`, Windows sẽ thử lần lượt
@@ -818,11 +833,14 @@ Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh 
         }
         out
     }
+}
 ```
 
 ### 4.5 Sinh kế hoạch khai thác và thứ tự ưu tiên
 
 ```rust
+impl ExploitSuggester {
+    // ...
     /// Sinh kế hoạch khai thác từ danh sách phát hiện.
     ///
     /// Mỗi phát hiện được khớp với đúng một kỹ thuật trong bảng tham chiếu; kế hoạch được
@@ -862,11 +880,13 @@ Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh 
             technique.command_template.clone()
         }
     }
+}
 ```
 
 ### 4.6 Kiểm chứng sự thật nền — bất biến cốt lõi của chương
 
-```rust
+```rust,ignore
+impl GroundTruthVerifier {
     /// Kiểm chứng trạng thái hiện tại của vỏ lệnh.
     ///
     /// Hàm này **không** tin bất kỳ lời khai nào: nó đọc trực tiếp danh tính mà vỏ lệnh
@@ -918,13 +938,18 @@ Cổng leo thang mô phỏng — bảng ánh xạ *tên kỹ thuật* → *danh 
             proof,
             method: method.to_string(),
             details,
+        }
+    }
+}
+// ... (các phương thức còn lại — xem code/ch102/src/main.rs)
 ```
 
 Chú ý dòng `eq_ignore_ascii_case` — nó **so sánh bằng**, không phải "chứa". Đây chính là ranh giới giữa một hệ thống kiểm chứng nghiêm túc và một hệ thống dễ bị lừa.
 
 ### 4.7 Chạy một kịch bản benchmark
 
-```rust
+```rust,ignore
+impl PrivEscBenchmark {
     /// Chạy một kịch bản và trả về kết quả.
     ///
     /// Quy trình của mỗi kịch bản: quét → lập kế hoạch → chọn đúng kỹ thuật kỳ vọng →
@@ -1006,11 +1031,14 @@ Chú ý dòng `eq_ignore_ascii_case` — nó **so sánh bằng**, không phải 
             notes,
         }
     }
+}
+// ... (xem đầy đủ impl PrivEscBenchmark trong code/ch102/src/main.rs)
 ```
 
 ### 4.8 Chu trình đầy đủ của động cơ
 
-```rust
+```rust,ignore
+impl PrivEscEngine {
     /// Thực thi kế hoạch và kiểm chứng sự thật nền sau từng kỹ thuật.
     ///
     /// Với mỗi kỹ thuật, động cơ: hiển thị lệnh → chạy lệnh trên vỏ lệnh mô phỏng →
@@ -1051,6 +1079,7 @@ Chú ý dòng `eq_ignore_ascii_case` — nó **so sánh bằng**, không phải 
             escalated,
         }
     }
+}
 ```
 
 ### 4.9 Một bài test đại diện cho bất biến cốt lõi
@@ -1702,7 +1731,7 @@ fn test_bt6_markdown_report_from_priv_esc_report() {
 
 ---
 
-**Kết thúc Chương 102.** Chương tiếp theo (Ch 104) sẽ ghép động cơ leo thang quyền này vào một bộ công cụ Red Team hoàn chỉnh, nơi `GroundTruthVerifier` được dùng lại như một "cổng kiểm định" bắt buộc trước khi bất kỳ phát hiện nào được ghi vào báo cáo chính thức.
+**Kết thúc Chương 102.** Chương tiếp theo (Ch 103) sẽ xây hạ tầng di chuyển trong mạng (SSH tunnel, SOCKS relay, C2); sau đó Ch 104 sẽ ghép động cơ leo thang quyền này vào một bộ công cụ Red Team hoàn chỉnh, nơi `GroundTruthVerifier` được dùng lại như một "cổng kiểm định" bắt buộc trước khi bất kỳ phát hiện nào được ghi vào báo cáo chính thức.
 
 
 

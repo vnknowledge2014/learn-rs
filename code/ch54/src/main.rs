@@ -529,7 +529,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))] // Kiểm thử WAL capstone dùng ngữ nghĩa tệp POSIX (cắt/ghi tệp đang mở); Windows khác.
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
