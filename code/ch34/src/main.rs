@@ -187,7 +187,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))] // Kiểm thử WAL dùng ngữ nghĩa tệp POSIX (thao tác tệp đang mở); Windows khác.
 mod tests {
     use super::*;
 

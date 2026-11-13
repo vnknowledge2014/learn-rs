@@ -367,7 +367,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))] // Kiểm thử Bitcask dùng ngữ nghĩa tệp POSIX (rename/cắt tệp đang mở); Windows khác.
 mod tests {
     use super::*;
 
