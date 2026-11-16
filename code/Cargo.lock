@@ -143,6 +143,10 @@ name = "ch105"
 version = "0.1.0"
 
 [[package]]
+name = "ch106"
+version = "0.1.0"
+
+[[package]]
 name = "ch11"
 version = "0.1.0"
 

@@ -242,6 +242,10 @@
 - [Chương 104: Đại dự án Tích hợp I — Bộ Công cụ Red Team Khai Thác Toàn Diện End-to-End kèm Chứng minh Khai thác (Red Team Exploit Kit with Proof-by-Exploitation)](chuong_104.md) — **đọc sau cùng trong nhóm này**
 - [Chương 105: Đại dự án Tích hợp II — Tác tử Pentest Tự hành Đa Tác tử, Phần thưởng RL, Đối kháng Red-vs-Blue & Hiến pháp An toàn (Autonomous Multi-Agent Pentest: RL Reward, Red-vs-Blue Adversarial & Constitutional Safety)](chuong_105.md) — **đọc sau cùng trong nhóm này**
 
+# Chủ đề 29: OSWP, Active Directory, OSINT & Red Team Methodology — Phần II
+<!-- Phần mở rộng sau ch105: bắt đầu bằng wireless security trên dữ liệu tổng hợp; không điều khiển radio, không socket thật. -->
+- [Chương 106: An ninh Không dây & Phòng lab OSWP Tổng hợp — RF, 802.11, WPA2/WPA3, Handshake, PMKID & Evil Twin (Wireless Security & OSWP Lab)](chuong_106.md)
+
 ---
 
 [Phụ lục A: Bản đồ đầy đủ 24 Cấu trúc Đại số của Fantasy Land trong Rust](PHU_LUC_A_FANTASY_LAND.md)
