@@ -2,7 +2,7 @@
 
 Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) không trả lời được: **học theo thứ tự nào**, **bỏ qua được gì**, và **cái gì cố tình không có trong giáo trình**.
 
-- 105 chương · 28 chủ đề · 110 crate · 1.862 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
+- 106 chương · 29 chủ đề · 111 crate · 1.904 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
 - `cargo test --workspace` phải xanh trước khi bạn tin bất cứ điều gì trong sách
 
 ---
@@ -13,7 +13,7 @@ Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) khô
 |---|---|---|
 | **I — Nền tảng** | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
 | **II — Hệ thống** | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
-| **III — Chuyên sâu** | 70–105 | Bảy lĩnh vực Rust có lợi thế không thể thay thế |
+| **III — Chuyên sâu** | 70–106 | Tám lĩnh vực Rust có lợi thế không thể thay thế |
 
 Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành các nhánh đọc song song được.
 
@@ -74,7 +74,14 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
  │  ★ 104: BỘ CÔNG CỤ RED TEAM (Proof-by-Exploitation) ★                                    │
  │             + ★ 105: TÁC TỬ PENTEST TỰ HÀNH (đa tác tử, RL, Red-vs-Blue) ★               │
  │  (105 nối công cụ với bộ khung tác tử 86–90: StateGraph, HITL, Hiến pháp)                │
- └──────────────────────────────────────────────────────────────────────────────────────────┘
+ └──────────────────────────────────────────────┬───────────────────────────────────────────┘
+                                                │
+                                                ▼
+                          ┌───────────────────────────────────────┐
+                          │ 106: WIRELESS SECURITY & OSWP LAB     │
+                          │ RF/802.11 · WPA2/WPA3 · capture giả   │
+                          │ MockWiFiLab, không radio/socket thật  │
+                          └───────────────────────────────────────┘
 ```
 
 **Điều kiện tiên quyết thực sự**, không phải gợi ý:
@@ -100,6 +107,7 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
 | 103 | 01–30, 48–50, 65 | Cần mạng, luồng và mã hoá kênh; chương 103 tự cài ChaCha20/X25519 |
 | **104** | **98, 99, 100, 101, 102, 103** | Nó **nối** trọn vẹn sáu chương công cụ khai thác lại |
 | **105** | **104**, và 86–91 | Nó nối bộ công cụ với StateGraph/HITL/Hiến pháp ở ch86–91 |
+| 106 | 65, 70, 101 | Cần mạng, xử lý byte/băm và PBKDF2; mọi capture/radio đều là dữ liệu giả |
 
 ---
 
@@ -132,9 +140,9 @@ Chọn một nhánh, đọc hết, rồi quay lại chọn nhánh khác. Đừng
 > Nhánh xây dựng toàn bộ mô hình ngôn ngữ lớn từ con số 0 bằng thuần Rust std: từ Byte-BPE, autograd ngược, Transformer hiện đại (RMSNorm, RoPE/YaRN, SwiGLU, GQA, MLA, MoE) tới động cơ phục vụ (Muon, Paged/RadixAttention, speculative decoding), căn chỉnh SFT/LoRA/DPO và học tăng cường RLVR (GRPO).
 
 ### Nhánh G — Kỹ sư Bảo mật Tấn công & Tác tử Pentest Tự hành
-`01–30` → `37–42` (bộ nhớ ảo, buffer overflow, `unsafe`, tư duy OSCP) → `57` (SQLi/XSS/SSRF/path traversal) → `65` (TCP/IP, DNS) → `70` (SHA-256, xử lý byte) → `98` (khai thác nhị phân) → `99` (bộ công cụ mạng) → `100` (khai thác web & bảo mật LLM) → `101` (Kerberos & bẻ khoá băm) → `102` (leo thang đặc quyền) → `103` (xoay chiều & C2) → **`104`** ★ → **`105`** ★ *(đọc nối với `86–90` để có StateGraph, HITL và Hiến pháp)*
+`01–30` → `37–42` (bộ nhớ ảo, buffer overflow, `unsafe`, tư duy OSCP) → `57` (SQLi/XSS/SSRF/path traversal) → `65` (TCP/IP, DNS) → `70` (SHA-256, xử lý byte) → `98` (khai thác nhị phân) → `99` (bộ công cụ mạng) → `100` (khai thác web & bảo mật LLM) → `101` (Kerberos & bẻ khoá băm) → `102` (leo thang đặc quyền) → `103` (xoay chiều & C2) → **`104`** ★ → **`105`** ★ *(đọc nối với `86–90` để có StateGraph, HITL và Hiến pháp)* → `106` (wireless/OSWP trên capture tổng hợp)
 
-> Nhánh dựng bộ công cụ tấn công **thật** bằng Rust thuần `std` — không phụ thuộc ngoài: proxy SOCKS5, chuyển tiếp cổng, nhận dạng dịch vụ, giả mạo ARP/DNS, SQLi mù với máy phân tích SQL thật, bẻ khoá MD4/MD5/NTLM/Kerberos, leo thang đặc quyền có **kiểm chứng sự thật nền**, đường hầm SSH, C2 mã hoá ChaCha20 + X25519. Hai chương cuối khép vòng: Ch 104 bắt buộc mọi phát hiện phải có **PoC khai thác chạy được** (tỷ lệ báo động giả = 0), Ch 105 ghép tất cả vào một tác tử pentest tự hành đa tác tử có phần thưởng RL, đối kháng red-vs-blue và hiến pháp 10 điều.
+> Nhánh dựng bộ công cụ tấn công **thật** bằng Rust thuần `std` — không phụ thuộc ngoài: proxy SOCKS5, chuyển tiếp cổng, nhận dạng dịch vụ, giả mạo ARP/DNS, SQLi mù với máy phân tích SQL thật, bẻ khoá MD4/MD5/NTLM/Kerberos, leo thang đặc quyền có **kiểm chứng sự thật nền**, đường hầm SSH, C2 mã hoá ChaCha20 + X25519. Hai chương 104–105 khép vòng nhóm OSCP đầu tiên: Ch 104 bắt buộc mọi phát hiện phải có **PoC khai thác chạy được** (tỷ lệ báo động giả = 0), Ch 105 ghép tất cả vào một tác tử pentest tự hành đa tác tử có phần thưởng RL, đối kháng red-vs-blue và hiến pháp 10 điều. Ch 106 mở Phần II với RF/802.11, WPA2/WPA3, handshake/PMKID và đánh giá evil twin trên `MockWiFiLab`.
 
 > **Lưu ý đạo đức**: toàn bộ exploit trong nhánh này chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`; không mã nào kết nối tới hệ thống thật ngoài loopback.
 
@@ -244,7 +252,7 @@ Ghi rõ để bạn không đi tìm:
 - **Số liệu lãi lỗ đáng tin.** Mọi phiên giao dịch trong sách đều là **tổng hợp**. Chương 85 giải thích rõ vì sao con số lãi lỗ của nó là một sản phẩm phụ của mô hình, và vì sao thứ đáng tin là các **bất biến**.
 - **Định danh tiếng Việt trong các crate của workspace.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm, biến **và cả tên hàm kiểm thử** trong `code/` đều bằng **tiếng Anh**; (các đoạn mã minh hoạ chỉ nằm trong markdown — không thuộc crate nào — vẫn còn khoảng 420 định danh tiếng Việt, đang chờ chuyển) phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 22 của [`GLOSSARY.md`](./GLOSSARY.md).
 - **Trọng số tỷ tham số, FFI CUDA/BLAS hoặc sinh văn bản tự nhiên mở trong crate LLM.** Các crate Chủ đề 27 (`ch92`–`ch97`) cài đặt chính xác 100% toán học BPE, Autograd, RoPE/GQA/MLA/MoE, Muon, PagedAttention/Speculative/Int8, LoRA/DPO/PPO/GRPO trên kích thước vi mô tất định (`d_model = 16..32`) để chạy kiểm thử offline dưới 150ms không thư viện ngoài; phần liên kết thư viện lớn (`candle`, `burn`, `safetensors`) và triển khai cụm GPU phân tán nằm trong phần lý thuyết mở rộng.
-- **Mã khai thác chạy trên hệ thống thật.** Toàn bộ Chủ đề 28 (Ch 98–105) là **giáo dục thuần túy**: mọi exploit chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`. Không mã nào kết nối tới hệ thống thật ngoài loopback; các socket đều bind `127.0.0.1:0`.
+- **Mã khai thác chạy trên hệ thống thật.** Toàn bộ Chủ đề 28 (Ch 98–105) và Chủ đề 29 hiện có (Ch 106) là **giáo dục thuần túy**: mọi exploit chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`, `MockWiFiLab`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`. Không mã nào kết nối tới hệ thống thật ngoài loopback; các socket đều bind `127.0.0.1:0`. Crate wireless không nhận interface, không điều khiển radio và không phát/deauthenticate frame.
 - **Công cụ khai thác dùng sẵn.** Không Metasploit, không Impacket, không `hashcat`, không `sqlmap`. Tất cả được cài lại từ đầu bằng Rust thuần `std` theo đặc tả RFC/FIPS công khai.
 - **Nội dung bản quyền của các nguồn tham khảo.** Chúng ta dùng phân loại và tên bài để định hướng, rồi tự cài lại từ đầu bằng Rust.
 
@@ -261,6 +269,7 @@ cargo run -p ch91                # đại dự án tác tử lập trình tự h
 cargo run -p ch97                # đại dự án đường ống micro-LLM suy luận end-to-end
 cargo run -p ch104               # bộ công cụ Red Team, chứng minh bằng khai thác
 cargo run -p ch105               # tác tử pentest tự hành đa tác tử, RL, red-vs-blue
+cargo run -p ch106               # phòng lab wireless/OSWP trên dữ liệu tổng hợp
 ```
 
 Nếu một con số trong sách không khớp với thứ máy bạn in ra, hãy tin cái máy bạn in ra và mở một issue.
