@@ -246,6 +246,7 @@
 <!-- Phần mở rộng sau ch105: wireless security và Active Directory trên dữ liệu tổng hợp; không điều khiển radio, không socket/LDAP/Kerberos network call thật. -->
 - [Chương 106: An ninh Không dây & Phòng lab OSWP Tổng hợp — RF, 802.11, WPA2/WPA3, Handshake, PMKID & Evil Twin (Wireless Security & OSWP Lab)](chuong_106.md)
 - [Chương 107: Active Directory Fundamentals & Enumeration — Domain, LDAP, Kerberos, GPO, ACL & Typed Attack-Path Graph](chuong_107.md)
+- [Chương 108: Active Directory Attack Paths & Detection — Roasting, Delegation, ACL, DCSync, PtH/OPtH & Precondition Graph](chuong_108.md)
 
 ---
 
