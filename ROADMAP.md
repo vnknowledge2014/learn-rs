@@ -2,7 +2,7 @@
 
 Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) không trả lời được: **học theo thứ tự nào**, **bỏ qua được gì**, và **cái gì cố tình không có trong giáo trình**.
 
-- 108 chương · 29 chủ đề · 113 crate · 1.986 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
+- 109 chương · 29 chủ đề · 114 crate · 2.037 bài kiểm thử · toàn bộ mã nguồn biên dịch và kiểm thử được
 - `cargo test --workspace` phải xanh trước khi bạn tin bất cứ điều gì trong sách
 
 ---
@@ -13,7 +13,7 @@ Tài liệu này trả lời ba câu hỏi mà [`SUMMARY.md`](./SUMMARY.md) khô
 |---|---|---|
 | **I — Nền tảng** | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
 | **II — Hệ thống** | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
-| **III — Chuyên sâu** | 70–108 | Tám lĩnh vực Rust có lợi thế không thể thay thế |
+| **III — Chuyên sâu** | 70–109 | Tám lĩnh vực Rust có lợi thế không thể thay thế |
 
 Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành các nhánh đọc song song được.
 
@@ -95,6 +95,13 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
                           │ 108: AD ATTACK PATHS & DETECTION      │
                           │ Roasting · Delegation · DCSync · PtH  │
                           │ MockADAttacks, evidence + remediation │
+                          └───────────────────┬───────────────────┘
+                                              │
+                                              ▼
+                          ┌───────────────────────────────────────┐
+                          │ 109: AGENTIC OSINT & EVIDENCE GRAPH   │
+                          │ ReAct · 6 nguồn passive · checkpoint  │
+                          │ MockOSINTAgent, không query/PII thật  │
                           └───────────────────────────────────────┘
 ```
 
@@ -124,6 +131,7 @@ Chặng I là **bắt buộc và tuần tự**. Chặng II và III chia thành c
 | 106 | 65, 70, 101 | Cần mạng, xử lý byte/băm và PBKDF2; mọi capture/radio đều là dữ liệu giả |
 | 107 | 01–30, 65, 101 | Cần cấu trúc dữ liệu/graph, mạng và Kerberos; mọi LDAP/Kerberos exchange đều trên snapshot tổng hợp |
 | 108 | **101, 107** | Cần Kerberos, ACL, evidence và typed graph; mọi attack/delegation/replication chỉ là precondition state machine trên `MockADAttacks` |
+| 109 | **86–91**, 25–30, 65 | Cần bộ khung tác tử ReAct/checkpoint, đồ thị và DNS; sáu nguồn passive đều trên dữ liệu `.example`/RFC1918 tổng hợp |
 
 ---
 
@@ -156,9 +164,9 @@ Chọn một nhánh, đọc hết, rồi quay lại chọn nhánh khác. Đừng
 > Nhánh xây dựng toàn bộ mô hình ngôn ngữ lớn từ con số 0 bằng thuần Rust std: từ Byte-BPE, autograd ngược, Transformer hiện đại (RMSNorm, RoPE/YaRN, SwiGLU, GQA, MLA, MoE) tới động cơ phục vụ (Muon, Paged/RadixAttention, speculative decoding), căn chỉnh SFT/LoRA/DPO và học tăng cường RLVR (GRPO).
 
 ### Nhánh G — Kỹ sư Bảo mật Tấn công & Tác tử Pentest Tự hành
-`01–30` → `37–42` (bộ nhớ ảo, buffer overflow, `unsafe`, tư duy OSCP) → `57` (SQLi/XSS/SSRF/path traversal) → `65` (TCP/IP, DNS) → `70` (SHA-256, xử lý byte) → `98` (khai thác nhị phân) → `99` (bộ công cụ mạng) → `100` (khai thác web & bảo mật LLM) → `101` (Kerberos & bẻ khoá băm) → `102` (leo thang đặc quyền) → `103` (xoay chiều & C2) → **`104`** ★ → **`105`** ★ *(đọc nối với `86–90` để có StateGraph, HITL và Hiến pháp)* → `106` (wireless/OSWP trên capture tổng hợp) → `107` (AD/LDAP/Kerberos/GPO/ACL trên snapshot tổng hợp) → `108` (AD attack preconditions/detection trên `MockADAttacks`)
+`01–30` → `37–42` (bộ nhớ ảo, buffer overflow, `unsafe`, tư duy OSCP) → `57` (SQLi/XSS/SSRF/path traversal) → `65` (TCP/IP, DNS) → `70` (SHA-256, xử lý byte) → `98` (khai thác nhị phân) → `99` (bộ công cụ mạng) → `100` (khai thác web & bảo mật LLM) → `101` (Kerberos & bẻ khoá băm) → `102` (leo thang đặc quyền) → `103` (xoay chiều & C2) → **`104`** ★ → **`105`** ★ *(đọc nối với `86–90` để có StateGraph, HITL và Hiến pháp)* → `106` (wireless/OSWP trên capture tổng hợp) → `107` (AD/LDAP/Kerberos/GPO/ACL trên snapshot tổng hợp) → `108` (AD attack preconditions/detection trên `MockADAttacks`) → `109` (Agentic OSINT & evidence graph trên `MockOSINTAgent`)
 
-> Nhánh dựng bộ công cụ tấn công **thật** bằng Rust thuần `std` — không phụ thuộc ngoài: proxy SOCKS5, chuyển tiếp cổng, nhận dạng dịch vụ, giả mạo ARP/DNS, SQLi mù với máy phân tích SQL thật, bẻ khoá MD4/MD5/NTLM/Kerberos, leo thang đặc quyền có **kiểm chứng sự thật nền**, đường hầm SSH, C2 mã hoá ChaCha20 + X25519. Hai chương 104–105 khép vòng nhóm OSCP đầu tiên: Ch 104 bắt buộc mọi phát hiện phải có **PoC khai thác chạy được** (tỷ lệ báo động giả = 0), Ch 105 ghép tất cả vào một tác tử pentest tự hành đa tác tử có phần thưởng RL, đối kháng red-vs-blue và hiến pháp 10 điều. Ch 106 mở Phần II với RF/802.11, WPA2/WPA3, handshake/PMKID và đánh giá evil twin trên `MockWiFiLab`. Ch 107 dựng nền Active Directory với DN/LDAP filter, Kerberos AS/TGS, group/GPO/trust/ACL và typed graph có provenance trên `MockADMapper`; không có collector hay network call thật. Ch 108 kiểm tra precondition cho roasting, delegation, ACL, DCSync và PtH/OPtH trên `MockADAttacks`, gắn từng finding với typed telemetry, remediation và retest; ACL mutation luôn rollback, không credential hay replication RPC thật.
+> Nhánh dựng bộ công cụ tấn công **thật** bằng Rust thuần `std` — không phụ thuộc ngoài: proxy SOCKS5, chuyển tiếp cổng, nhận dạng dịch vụ, giả mạo ARP/DNS, SQLi mù với máy phân tích SQL thật, bẻ khoá MD4/MD5/NTLM/Kerberos, leo thang đặc quyền có **kiểm chứng sự thật nền**, đường hầm SSH, C2 mã hoá ChaCha20 + X25519. Hai chương 104–105 khép vòng nhóm OSCP đầu tiên: Ch 104 bắt buộc mọi phát hiện phải có **PoC khai thác chạy được** (tỷ lệ báo động giả = 0), Ch 105 ghép tất cả vào một tác tử pentest tự hành đa tác tử có phần thưởng RL, đối kháng red-vs-blue và hiến pháp 10 điều. Ch 106 mở Phần II với RF/802.11, WPA2/WPA3, handshake/PMKID và đánh giá evil twin trên `MockWiFiLab`. Ch 107 dựng nền Active Directory với DN/LDAP filter, Kerberos AS/TGS, group/GPO/trust/ACL và typed graph có provenance trên `MockADMapper`; không có collector hay network call thật. Ch 108 kiểm tra precondition cho roasting, delegation, ACL, DCSync và PtH/OPtH trên `MockADAttacks`, gắn từng finding với typed telemetry, remediation và retest; ACL mutation luôn rollback, không credential hay replication RPC thật. Ch 109 triển khai tác tử OSINT thụ động qua ReAct harness, 6 nguồn mock, hợp nhất `SameAs`, bảo toàn mâu thuẫn `Contradicts`, phục hồi bằng `Checkpoint` và báo cáo tách bạch `Fact`/`Inference`/`Conflict`/`Unknown` trên `MockOSINTAgent`; chỉ dùng `.example`, RFC1918 và role contact tổ chức, không query hay PII thật.
 
 > **Lưu ý đạo đức**: toàn bộ exploit trong nhánh này chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`; không mã nào kết nối tới hệ thống thật ngoài loopback.
 
@@ -268,7 +276,7 @@ Ghi rõ để bạn không đi tìm:
 - **Số liệu lãi lỗ đáng tin.** Mọi phiên giao dịch trong sách đều là **tổng hợp**. Chương 85 giải thích rõ vì sao con số lãi lỗ của nó là một sản phẩm phụ của mô hình, và vì sao thứ đáng tin là các **bất biến**.
 - **Định danh tiếng Việt trong các crate của workspace.** Từ bản 85 chương, mọi tên struct, enum, trường, hàm, biến **và cả tên hàm kiểm thử** trong `code/` đều bằng **tiếng Anh**; (các đoạn mã minh hoạ chỉ nằm trong markdown — không thuộc crate nào — vẫn còn khoảng 420 định danh tiếng Việt, đang chờ chuyển) phần giảng nghĩa nằm ở **comment tiếng Việt** ngay trên định danh. Học viên đọc `OrderBook` sẽ nhận ra ngay khi mở tài liệu một crate thật, còn `SoLenh` thì không. Bảng đối chiếu tên cũ ↔ tên mới nằm ở mục 22 của [`GLOSSARY.md`](./GLOSSARY.md).
 - **Trọng số tỷ tham số, FFI CUDA/BLAS hoặc sinh văn bản tự nhiên mở trong crate LLM.** Các crate Chủ đề 27 (`ch92`–`ch97`) cài đặt chính xác 100% toán học BPE, Autograd, RoPE/GQA/MLA/MoE, Muon, PagedAttention/Speculative/Int8, LoRA/DPO/PPO/GRPO trên kích thước vi mô tất định (`d_model = 16..32`) để chạy kiểm thử offline dưới 150ms không thư viện ngoài; phần liên kết thư viện lớn (`candle`, `burn`, `safetensors`) và triển khai cụm GPU phân tán nằm trong phần lý thuyết mở rộng.
-- **Mã khai thác chạy trên hệ thống thật.** Toàn bộ Chủ đề 28 (Ch 98–105) và Chủ đề 29 hiện có (Ch 106–108) là **giáo dục thuần túy**: mọi exploit chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`, `MockWiFiLab`, `MockADMapper`, `MockADAttacks`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`. Không mã nào kết nối tới hệ thống thật ngoài loopback; các socket đều bind `127.0.0.1:0`. Crate wireless không nhận interface, không điều khiển radio và không phát/deauthenticate frame. Crate AD không có LDAP/RPC/SMB query, Kerberos network call, credential thật hoặc collector; `ch108` cũng không có credential dumping, process injection, token manipulation hay replication RPC.
+- **Mã khai thác chạy trên hệ thống thật.** Toàn bộ Chủ đề 28 (Ch 98–105) và Chủ đề 29 hiện có (Ch 106–109) là **giáo dục thuần túy**: mọi exploit chạy trên dữ liệu tổng hợp tất định (`MockFilesystem`, `MockNetwork`, `MockShell`, `MockWiFiLab`, `MockADMapper`, `MockADAttacks`, `MockOSINTAgent`) hoặc trên binary do chính giáo trình tạo ra bằng `unsafe`. Không mã nào kết nối tới hệ thống thật ngoài loopback; các socket đều bind `127.0.0.1:0`. Crate wireless không nhận interface, không điều khiển radio và không phát/deauthenticate frame. Crate AD không có LDAP/RPC/SMB query, Kerberos network call, credential thật hoặc collector; `ch108` cũng không có credential dumping, process injection, token manipulation hay replication RPC. Crate `ch109` là passive-only trên `.example` và RFC1918, không query OSINT, API key, secret thô hay dữ liệu cá nhân thật.
 - **Công cụ khai thác dùng sẵn.** Không Metasploit, không Impacket, không `hashcat`, không `sqlmap`. Tất cả được cài lại từ đầu bằng Rust thuần `std` theo đặc tả RFC/FIPS công khai.
 - **Nội dung bản quyền của các nguồn tham khảo.** Chúng ta dùng phân loại và tên bài để định hướng, rồi tự cài lại từ đầu bằng Rust.
 
@@ -288,6 +296,7 @@ cargo run -p ch105               # tác tử pentest tự hành đa tác tử, R
 cargo run -p ch106               # phòng lab wireless/OSWP trên dữ liệu tổng hợp
 cargo run -p ch107               # AD enumeration/graph trên snapshot tổng hợp
 cargo run -p ch108               # AD attack preconditions, telemetry và remediation giả
+cargo run -p ch109               # Agentic OSINT thụ động, evidence graph và checkpoint giả
 ```
 
 Nếu một con số trong sách không khớp với thứ máy bạn in ra, hãy tin cái máy bạn in ra và mở một issue.
