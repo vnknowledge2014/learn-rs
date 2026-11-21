@@ -1,6 +1,6 @@
 # Phần II — OSWP, Active Directory, Agentic OSINT & Red Team Methodology
 
-> Trạng thái: **outline đã chốt cho Phase 0**. Các ID `ch106`–`ch112` là chương dự kiến, chưa phải nội dung đã publish. Không thêm chúng vào `SUMMARY.md` hoặc Cargo workspace cho tới khi có PR chương hoàn chỉnh.
+> Trạng thái: **đã hoàn thành (PR #12–#18)**. Toàn bộ bảy chương `ch106`–`ch112` cùng crate tương ứng (`code/ch106`–`code/ch112`) đã được xuất bản, đăng ký trong `SUMMARY.md` (Chủ đề 29), Cargo workspace và vượt qua đầy đủ CI trên `main`.
 
 ## 1. Mục tiêu và ranh giới
 
