@@ -4,7 +4,7 @@ Chào mừng bạn đến với khóa học **Rust Masterclass** bằng tiếng 
 
 Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình đã được biên soạn lại hoàn toàn, mở rộng và tùy biến để giải thích những khái niệm phức tạp nhất của khoa học máy tính thông qua các ví dụ thực tế trong đời sống hằng ngày (quán phở, bãi đỗ xe, thư viện, phòng công chứng, cửa kiểm tra sân bay).
 
-**110 chương · 29 chủ đề · 115 crate · 2.093 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 100/115 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
+**111 chương · 29 chủ đề · 116 crate · 2.139 bài kiểm thử.** Toàn bộ mã nguồn biên dịch được; 101/116 crate có bộ kiểm thử riêng (các chương nhập môn là chương trình minh hoạ để chạy và đọc, không phải thư viện để kiểm thử).
 
 ---
 
@@ -14,7 +14,7 @@ Dựa trên cốt lõi của cuốn *Rust All-in-One For Dummies*, giáo trình 
 - **Người "sợ toán":** Không có công thức đại số hay hình học nào bắt buộc. Mọi khái niệm — kể cả Big-O hay Vị nhóm — đều được giải thích bằng tư duy logic và ví dụ đời thực trước, ký hiệu toán học chỉ đến sau.
 - **Lập trình viên muốn học Rust:** Nếu bạn đã biết code nhưng thấy Rust khó hiểu (đặc biệt là Borrow Checker), những "ví dụ không dùng toán" ở đây sẽ giúp bạn giác ngộ.
 - **Kỹ sư muốn đi xuống tầng thấp hoặc ra ngoài web:** Chủ đề 18–21 đưa bạn tới hệ điều hành, giao thức mạng, vi điều khiển `no_std`, thiết kế mạch số, game engine và hệ thống giao dịch — những nơi Rust có lợi thế thật sự chứ không chỉ là lựa chọn thời thượng.
-- **Người muốn đi thật sâu vào một lĩnh vực:** Chủ đề 22–29 (Chương 70–110) là tám chặng chuyên sâu độc lập — blockchain dựng từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng FPGA/CPU/GPU, tài chính định lượng, kỹ nghệ bộ khung tác tử AI cấp sản xuất, kiến trúc suy luận/hậu huấn luyện LLM/RLVR từ số không, kỹ sư bảo mật tấn công/tác tử pentest tự hành, và wireless/Active Directory/Agentic OSINT/kiểm kê hậu khai thác trên dữ liệu mô phỏng. Mỗi chặng đọc được riêng sau khi đã xong Chương 01–30.
+- **Người muốn đi thật sâu vào một lĩnh vực:** Chủ đề 22–29 (Chương 70–111) là tám chặng chuyên sâu độc lập — blockchain dựng từ số không, hệ sinh thái giao dịch tần suất cao, hiệu năng cấp phần cứng FPGA/CPU/GPU, tài chính định lượng, kỹ nghệ bộ khung tác tử AI cấp sản xuất, kiến trúc suy luận/hậu huấn luyện LLM/RLVR từ số không, kỹ sư bảo mật tấn công/tác tử pentest tự hành, và wireless/Active Directory/Agentic OSINT/kiểm kê hậu khai thác/methodology-reporting-CVSS trên dữ liệu mô phỏng. Mỗi chặng đọc được riêng sau khi đã xong Chương 01–30.
 - **Người đã biết Rust muốn học lập trình hàm nghiêm túc:** Chủ đề 3 (Chương 13–20) đi trọn con đường từ hàm thuần túy tới Monad và mô hình hóa nghiệp vụ bằng kiểu — đầy đủ luật, đầy đủ kiểm thử.
 
 ---
@@ -40,7 +40,7 @@ Không muốn cài gì cả? Các đoạn mã chỉ dùng thư viện chuẩn đ
 
 ---
 
-## 📚 Lộ Trình Học Tập (29 Chủ Đề — 110 Chương)
+## 📚 Lộ Trình Học Tập (29 Chủ Đề — 111 Chương)
 
 Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Thứ tự đọc, đồ thị phụ thuộc và bảy nhánh theo mục tiêu nằm ở **[ROADMAP.md](./ROADMAP.md)** — đọc nó trước. Lộ trình chia làm ba chặng:
 
@@ -48,7 +48,7 @@ Mục lục đầy đủ nằm ở **[SUMMARY.md](./SUMMARY.md)**. Thứ tự đ
 |---|---|---|---|
 | **I. Nền tảng** | 1–5 | 01–30 | Viết Rust thành thạo: sở hữu, lập trình hàm, macro, cấu trúc dữ liệu |
 | **II. Hệ thống** | 6–21 | 31–69 | Dựng sản phẩm thật: CSDL, bảo mật, phân tán, web, nhúng, HĐH, game |
-| **III. Chuyên sâu** | 22–29 | 70–110 | Tám lĩnh vực Rust có lợi thế không thể thay thế |
+| **III. Chuyên sâu** | 22–29 | 70–111 | Tám lĩnh vực Rust có lợi thế không thể thay thế |
 
 Tóm tắt từng chủ đề:
 
@@ -82,7 +82,7 @@ Tóm tắt từng chủ đề:
 | 26 | **Kỹ Nghệ Tác Tử Cấp Sản Xuất** | 86–91 | Vòng lặp SSE, kinh tế học KV-cache & LiveContextMirror, chuẩn SKILL.md, đồ thị kép InfoGraph & StateGraph HITL, độ bền WAL/Saga, MCP/A2A/ANP, điều phối đa tác tử, LoopDrill evals và đại dự án Coding-Agent |
 | 27 | **LLM & RLVR Từ Số Không** | 92–97 | Byte-Level BPE & autograd ngược; Transformer hiện đại (RMSNorm, RoPE/YaRN, SwiGLU, GQA, MLA, MoE); Muon & Paged/RadixAttention, giải mã suy đoán, Int8; Masked SFT, LoRA, DPO..KTO; RLVR (GRPO/Dr.GRPO/DAPO/GSPO) và đại dự án Micro-LLM |
 | 28 | **OSCP Thế Hệ Mới** | 98–105 | Phòng thí nghiệm khai thác nhị phân (De Bruijn, shellcode encoder, ROP); bộ công cụ mạng (SOCKS5, fingerprint, ARP/DNS spoofing); động cơ khai thác web & bảo mật LLM (blind SQLi, JWT, prompt injection); Kerberos & bẻ khoá băm (MD4/MD5/RC4/AES, ASN.1); leo thang đặc quyền Linux/Windows có kiểm chứng sự thật nền; xoay chiều & C2 (ChaCha20, X25519, obfuscation); và hai đại dự án: Red Team Exploit Kit + Tác tử Pentest Tự hành đa tác tử |
-| 29 | **OSWP, Active Directory, OSINT & Red Team Methodology — Phần II** | 106–110 | RF/802.11, WPA2/WPA3, handshake/PMKID trên `MockWiFiLab`; AD domain/LDAP/Kerberos/GPO/ACL và typed graph trên `MockADMapper`; roasting/delegation/DCSync/PtH-OPtH, evidence và remediation trên `MockADAttacks`; Agentic OSINT thụ động, 6 nguồn mock, evidence graph và checkpoint/resume trên `MockOSINTAgent`; kiểm kê hậu khai thác read-only, persistence, lateral DFS, telemetry gap, exfil-risk metadata và cleanup lũy đẳng trên `MockPostExploit`; không radio, socket, directory, OSINT network call hay thao tác OS thật |
+| 29 | **OSWP, Active Directory, OSINT & Red Team Methodology — Phần II** | 106–111 | RF/802.11, WPA2/WPA3, handshake/PMKID trên `MockWiFiLab`; AD domain/LDAP/Kerberos/GPO/ACL và typed graph trên `MockADMapper`; roasting/delegation/DCSync/PtH-OPtH, evidence và remediation trên `MockADAttacks`; Agentic OSINT thụ động, 6 nguồn mock, evidence graph và checkpoint/resume trên `MockOSINTAgent`; kiểm kê hậu khai thác read-only, persistence, lateral DFS, telemetry gap, exfil-risk metadata và cleanup lũy đẳng trên `MockPostExploit`; Rules of Engagement, Scope/third-party/stop-condition gates, EvidenceChain tự che secret/PII, khử trùng lặp độc lập hoán vị, CVSS v3.1 FIRST.org (Roundup Appendix A), BusinessPriority, retest và báo cáo JSON/Markdown tất định trên `MockReportingLab`; không radio, socket, directory, OSINT network call hay thao tác OS thật |
 
 **Phụ lục tra cứu:**
 - **[Lộ trình học tập](./ROADMAP.md)**: đồ thị phụ thuộc giữa các chương, bảy nhánh học theo mục tiêu, bản đồ phủ 15 nguồn kỹ nghệ tác tử & LLM từ số không, bản đồ phủ 33 kho Red/Blue team cho Chủ đề 28, bản đồ phủ đầy đủ OpenAlgo (13 khoá / 407 chương), LeetCPU (22 bài) và LeetGPU (99 thử thách) — kèm danh sách những gì **cố tình không** có trong giáo trình.
@@ -130,7 +130,7 @@ Toàn bộ văn xuôi, tiêu đề, sơ đồ và bảng biểu vẫn bằng ti�
 
 ## 🛠 Mã Nguồn Chạy Được
 
-Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 115 crate (112 crate chương + 2 crate macro thủ tục thật cho Chương 23–24 + 1 crate Axum thật cho Chương 61):
+Toàn bộ chương trình minh họa nằm trong [`code/`](./code/), tổ chức thành một **Cargo workspace** gồm 116 crate (113 crate chương + 2 crate macro thủ tục thật cho Chương 23–24 + 1 crate Axum thật cho Chương 61):
 
 ```bash
 cd code
@@ -148,6 +148,7 @@ cargo run  -p ch107             # Chương 107: AD/LDAP/Kerberos/graph với Moc
 cargo run  -p ch108             # Chương 108: AD attack paths/detection với MockADAttacks tổng hợp
 cargo run  -p ch109             # Chương 109: Agentic OSINT & evidence graph với MockOSINTAgent tổng hợp
 cargo run  -p ch110             # Chương 110: Post-exploitation/persistence audit & cleanup trên MockPostExploit tổng hợp
+cargo run  -p ch111             # Chương 111: Methodology, RoE/Scope, EvidenceChain, CVSS 3.1 & deterministic reporting trên MockReportingLab
 cargo test -p ch19              # Chạy riêng bài kiểm thử của Chương 19
 cargo test --workspace          # Chạy TẤT CẢ
 ```
@@ -158,7 +159,7 @@ Các chương về lập trình hàm đi kèm bộ kiểm thử biến **luật 
 
 ## 📖 Đọc Dưới Dạng Sách Điện Tử (tùy chọn)
 
-Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 110 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
+Giáo trình đã có sẵn cấu hình [mdBook](https://rust-lang.github.io/mdBook/) — biến 111 tệp Markdown thành một website có mục lục, tìm kiếm toàn văn và chế độ tối:
 
 ```bash
 cargo install mdbook
@@ -180,7 +181,7 @@ mdbook serve --open     # mở sách trong trình duyệt, tự tải lại khi 
 ## ✅ Cam Kết Chất Lượng
 
 - **Toàn bộ mã nguồn biên dịch được** bằng `rustc` bản ổn định, Rust 2024 Edition — và bạn có thể tự kiểm chứng bằng `cargo build --workspace`.
-- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 2.093 passed, 0 failed.
+- **Mọi bài kiểm thử đều xanh**: `cargo test --workspace` — 2.139 passed, 0 failed.
 - **`cargo clippy --workspace --all-targets -- -D warnings` sạch.** Những chỗ cố ý viết dài để *dạy* (ví dụ `assert_eq!(x.and_then(f), x.map(f).flatten())` kiểm chứng **luật Monad**) được giữ nguyên bằng `#[allow(clippy::…)]` cục bộ kèm chú thích giải thích vì sao. Đừng chạy `clippy --fix` mù quáng trên kho này.
 - **`cargo fmt --check` sạch**, và GitHub Actions chạy cả bốn bước (fmt, clippy, build, test) trên mỗi push/PR.
 - Các đoạn mã **cố tình sai** (dùng để minh họa lỗi biên dịch) đều được đánh dấu rõ bằng ký hiệu `❌` và đóng trong dấu chú thích, để chúng không phá vỡ quá trình biên dịch.
