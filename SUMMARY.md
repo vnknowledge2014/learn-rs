@@ -243,11 +243,12 @@
 - [Chương 105: Đại dự án Tích hợp II — Tác tử Pentest Tự hành Đa Tác tử, Phần thưởng RL, Đối kháng Red-vs-Blue & Hiến pháp An toàn (Autonomous Multi-Agent Pentest: RL Reward, Red-vs-Blue Adversarial & Constitutional Safety)](chuong_105.md) — **đọc sau cùng trong nhóm này**
 
 # Chủ đề 29: OSWP, Active Directory, OSINT & Red Team Methodology — Phần II
-<!-- Phần mở rộng sau ch105: wireless security, Active Directory và Agentic OSINT thụ động trên dữ liệu tổng hợp; không điều khiển radio, không socket/LDAP/Kerberos/OSINT network call thật. -->
+<!-- Phần mở rộng sau ch105: wireless security, Active Directory, Agentic OSINT thụ động và post-exploitation/persistence audit trên dữ liệu tổng hợp; không điều khiển radio, không socket/LDAP/Kerberos/OSINT network call hay thao tác OS thật. -->
 - [Chương 106: An ninh Không dây & Phòng lab OSWP Tổng hợp — RF, 802.11, WPA2/WPA3, Handshake, PMKID & Evil Twin (Wireless Security & OSWP Lab)](chuong_106.md)
 - [Chương 107: Active Directory Fundamentals & Enumeration — Domain, LDAP, Kerberos, GPO, ACL & Typed Attack-Path Graph](chuong_107.md)
 - [Chương 108: Active Directory Attack Paths & Detection — Roasting, Delegation, ACL, DCSync, PtH/OPtH & Precondition Graph](chuong_108.md)
 - [Chương 109: Agentic OSINT & Evidence Graph — ReAct Harness, Sáu Nguồn Passive Giả, Provenance & Báo Cáo Tái Lập](chuong_109.md)
+- [Chương 110: Post-Exploitation & Persistence Audit — Baseline Diff, Kiểm Kê Persistence, Lateral Graph, Telemetry & Cleanup Lũy Đẳng](chuong_110.md)
 
 ---
 
