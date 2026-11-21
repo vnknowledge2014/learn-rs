@@ -594,4 +594,4 @@ Checklist trước khi bàn giao một engagement mô phỏng hoặc kiểm th�
 - [OWASP Web Security Testing Guide (WSTG)](https://owasp.org/www-project-web-security-testing-guide/): chuẩn danh mục kiểm thử ứng dụng web và cấu trúc trích dẫn phát hiện.
 - [RFC 2606 — Reserved Top Level DNS Names](https://www.rfc-editor.org/rfc/rfc2606) và [FIPS 180-4 — Secure Hash Standard](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf): tên miền giả định `.example` và SHA-256 dùng cho bằng chứng & audit log.
 
-Chương trước: [Chương 110 — Post-Exploitation & Persistence Audit](chuong_110.md). Tiếp tục theo [ROADMAP](ROADMAP.md) và outline Phần II; không có liên kết tới chương chưa được publish.
+Chương trước: [Chương 110 — Post-Exploitation & Persistence Audit](chuong_110.md) · Chương tiếp theo: [Chương 112 — Red Team Capstone II](chuong_112.md). Tiếp tục theo [ROADMAP](ROADMAP.md).
